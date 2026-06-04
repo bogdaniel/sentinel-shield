@@ -4,21 +4,19 @@
 # docs/github-actions-security.md, pin third-party actions to a full commit SHA
 # in sensitive (deploy/release) workflows before production use.
 #
-# This workflow resolves .sentinel-shield/profile.yaml into machine-readable gate
-# thresholds (scripts/resolve-gates.sh) and enforces them. It is the single place
-# that turns the declared adoption mode into pass/fail decisions.
+# Flow: resolve -> provide summary -> enforce.
+#   1. scripts/resolve-gates.sh reads .sentinel-shield/profile.yaml and writes the
+#      resolved SENTINEL_SHIELD_FAIL_ON_* flags.
+#   2. A normalized findings document, reports/security-summary.json, is provided.
+#      Real scanner workflows (ci-security.yml, ci-php.yml, ci-node.yml,
+#      ci-docker.yml) MUST produce it from their outputs — see
+#      docs/security-summary-schema.md. If absent, this template falls back to the
+#      all-zero EXAMPLE (clearly marked, NOT real evidence) so the workflow runs.
+#   3. scripts/enforce-gates.sh maps the resolved flags onto the summary and exits
+#      0 (pass) / 1 (fail) / 2 (config error). Its exit code IS the release gate.
 #
-# IMPORTANT — what this job can and cannot verify:
-#   * It DOES enforce evidence-presence gates it can observe directly:
-#       missing_sbom               -> reports/sbom.spdx.json
-#       missing_release_evidence   -> reports/release-evidence.md
-#   * Scanner-result gates (secrets, vulnerabilities, type errors, tests,
-#     architecture, unsafe Docker/Actions) are enforced in their own workflows
-#     (ci-security.yml, ci-php.yml, ci-node.yml, ci-docker.yml). This job reads an
-#     OPTIONAL aggregated summary at reports/security-summary.json if a prior job
-#     produced one, but it does NOT re-run scanners and does not pretend to.
-#   The evidence file paths above are PLACEHOLDERS for the first version; a
-#   consuming project wires its real artifacts into those paths.
+# This job does NOT re-run scanners and does not pretend to. It enforces the
+# normalized contract; producing that contract is the scanner workflows' job.
 name: ci-release-gate
 
 on:
@@ -79,73 +77,64 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: Load resolved gates into the environment
+      - name: Provide security summary
         run: |
           set -eu
-          # Append the resolved KEY=value lines to $GITHUB_ENV so later steps can
-          # branch on them. Values are shell-safe uppercase keys.
-          cat reports/sentinel-shield-gates.env >> "$GITHUB_ENV"
-          echo "Loaded resolved gates:"
-          cat reports/sentinel-shield-gates.env
+          # The normalized findings contract. In a real pipeline, the scanner
+          # workflows (ci-security.yml, ci-php.yml, ci-node.yml, ci-docker.yml)
+          # MUST produce reports/security-summary.json from their outputs (see
+          # docs/security-summary-schema.md). If none was produced, we fall back to
+          # the all-zero EXAMPLE so this template runs — but this is clearly marked
+          # and must NOT be relied on as real evidence.
+          if [ -f reports/security-summary.json ]; then
+            echo "Using scanner-produced reports/security-summary.json"
+          else
+            echo "::warning::No reports/security-summary.json from scanners; using the"
+            echo "::warning::all-zero EXAMPLE template. This is NOT real evidence — wire"
+            echo "::warning::real scanner output per docs/security-summary-schema.md."
+            EXAMPLE=templates/security-summary.example.json
+            if [ ! -f "$EXAMPLE" ]; then EXAMPLE=.sentinel-shield/templates/security-summary.example.json; fi
+            cp "$EXAMPLE" reports/security-summary.json
+          fi
 
       - name: Enforce gates
-        env:
-          # Placeholder evidence paths — wire real artifacts here in a consuming
-          # project. See the header comment.
-          SBOM_FILE: reports/sbom.spdx.json
-          RELEASE_EVIDENCE_FILE: reports/release-evidence.md
-          SECURITY_SUMMARY_FILE: reports/security-summary.json
         run: |
           set -eu
-          FAIL=0
-
-          fail() { echo "::error::GATE FAIL: $1"; FAIL=1; }
-          okay() { echo "ok: $1"; }
-
-          echo "Sentinel Shield mode: ${SENTINEL_SHIELD_MODE:-unknown}"
-
-          # --- Evidence-presence gates this job can verify directly ---
-          if [ "${SENTINEL_SHIELD_FAIL_ON_MISSING_SBOM:-false}" = "true" ]; then
-            if [ -f "$SBOM_FILE" ]; then okay "SBOM present ($SBOM_FILE)"; else fail "SBOM required but missing ($SBOM_FILE)"; fi
-          else
-            echo "skip: SBOM presence not required in this mode"
-          fi
-
-          if [ "${SENTINEL_SHIELD_FAIL_ON_MISSING_RELEASE_EVIDENCE:-false}" = "true" ]; then
-            if [ -f "$RELEASE_EVIDENCE_FILE" ]; then okay "release evidence present ($RELEASE_EVIDENCE_FILE)"; else fail "release evidence required but missing ($RELEASE_EVIDENCE_FILE)"; fi
-          else
-            echo "skip: release evidence not required in this mode"
-          fi
-
-          # --- Scanner-result gates: enforced in their own workflows ---
-          # If a prior job produced an aggregated summary, surface it; otherwise make
-          # explicit that those gates are enforced upstream (no silent pass).
-          if [ -f "$SECURITY_SUMMARY_FILE" ]; then
-            echo "note: aggregated scanner summary found at $SECURITY_SUMMARY_FILE"
-            echo "      A consuming project parses it here and fails on any gate whose"
-            echo "      SENTINEL_SHIELD_FAIL_ON_* value is 'true'."
-          else
-            echo "note: no $SECURITY_SUMMARY_FILE present. Scanner-result gates"
-            echo "      (secrets, vulnerabilities, type errors, tests, architecture,"
-            echo "      unsafe Docker/Actions) are enforced by ci-security.yml,"
-            echo "      ci-php.yml, ci-node.yml, ci-docker.yml — not re-checked here."
-          fi
-
-          if [ "$FAIL" -ne 0 ]; then
-            echo "Release gate FAILED for mode=${SENTINEL_SHIELD_MODE:-unknown}. See RELEASE-GATES.md."
+          ENFORCER=scripts/enforce-gates.sh
+          if [ ! -f "$ENFORCER" ]; then ENFORCER=.sentinel-shield/scripts/enforce-gates.sh; fi
+          if [ ! -f "$ENFORCER" ]; then
+            echo "::error::enforce-gates.sh not found (expected scripts/ or .sentinel-shield/scripts/)"
             exit 1
           fi
-          echo "Release gate PASSED for mode=${SENTINEL_SHIELD_MODE:-unknown}."
+          # enforce-gates.sh exits: 0 pass, 1 fail, 2 config/input error.
+          # Its non-zero exit fails this job — that IS the release gate.
+          sh "$ENFORCER" \
+            --gates-env reports/sentinel-shield-gates.env \
+            --summary reports/security-summary.json \
+            --output-dir reports --format all
+
+      - name: Upload enforcement artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-enforcement
+          path: |
+            reports/security-summary.json
+            reports/sentinel-shield-enforcement.json
+            reports/sentinel-shield-enforcement.md
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Gate summary
         if: always()
         run: |
           {
             echo "## Sentinel Shield Release Gate"
-            echo "- Mode: ${SENTINEL_SHIELD_MODE:-unknown}"
             echo "- Ref: ${{ github.ref }}"
             echo ""
-            if [ -f reports/sentinel-shield-gates.md ]; then
+            if [ -f reports/sentinel-shield-enforcement.md ]; then
+              cat reports/sentinel-shield-enforcement.md
+            elif [ -f reports/sentinel-shield-gates.md ]; then
               cat reports/sentinel-shield-gates.md
             fi
           } >> "$GITHUB_STEP_SUMMARY"

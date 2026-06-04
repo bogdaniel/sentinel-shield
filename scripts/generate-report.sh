@@ -41,6 +41,29 @@ else
 	log_warn "resolve-gates.sh not found next to this script; skipping gate resolution"
 fi
 
+# Enforcement summary (best-effort; never fail the report).
+# Only runs if a security-summary.json is present and the enforcer + jq exist.
+SUMMARY_STATUS="not present (a scanner workflow must produce reports/security-summary.json)"
+ENFORCE_BLOCK="_Enforcement has not run. Provide \`reports/security-summary.json\` and run \`scripts/enforce-gates.sh\`._"
+ENFORCER="$SCRIPT_DIR/enforce-gates.sh"
+SUMMARY_FILE="$OUT_DIR/security-summary.json"
+if [ -f "$SUMMARY_FILE" ]; then
+	SUMMARY_STATUS="present (\`$SUMMARY_FILE\`)"
+	if [ -f "$ENFORCER" ] && command -v jq >/dev/null 2>&1; then
+		# Do not fail report generation on a failing gate (exit 1) or error (exit 2).
+		( cd "$TARGET" && sh "$ENFORCER" --output-dir reports --format all ) >/dev/null 2>&1 || true
+		ENFMD="$OUT_DIR/sentinel-shield-enforcement.md"
+		if [ -f "$ENFMD" ]; then
+			ENFORCE_BLOCK=$(cat "$ENFMD")
+		else
+			log_warn "enforcement did not produce a report; see scripts/enforce-gates.sh"
+		fi
+	else
+		log_warn "enforce-gates.sh or jq unavailable; skipping enforcement summary"
+		ENFORCE_BLOCK="_Enforcement skipped: enforce-gates.sh or jq not available._"
+	fi
+fi
+
 # Tool availability summary (which scanners are installed locally).
 tool_line() {
 	if command -v "$1" >/dev/null 2>&1; then
@@ -85,6 +108,14 @@ blocks the build in this mode. See \`docs/gate-resolution.md\`.
 \`\`\`
 $GATES_BLOCK
 \`\`\`
+
+## Gate enforcement
+
+- Security summary: $SUMMARY_STATUS
+- Enforced by \`scripts/enforce-gates.sh\` against the resolved gate flags. See
+  \`docs/security-summary-schema.md\`.
+
+$ENFORCE_BLOCK
 
 ## Summary
 

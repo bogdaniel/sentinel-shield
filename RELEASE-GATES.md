@@ -57,6 +57,44 @@ gates are enforced by the dedicated workflows (`ci-security.yml`, `ci-php.yml`,
 > resolver emits. They are kept consistent — `new-only` nuances in §2 are applied by
 > the individual scanner workflows via baseline comparison, not by the resolver.
 
+### Resolver vs. enforcer
+
+Two separate, composable responsibilities:
+
+| | Resolver | Enforcer |
+| --- | --- | --- |
+| Script | [`scripts/resolve-gates.sh`](scripts/resolve-gates.sh) | [`scripts/enforce-gates.sh`](scripts/enforce-gates.sh) |
+| Input | `.sentinel-shield/profile.yaml` | `sentinel-shield-gates.env` + `security-summary.json` |
+| Output | `sentinel-shield-gates.{env,json,md}` | `sentinel-shield-enforcement.{json,md}` + exit code |
+| Question | *What should fail?* | *Does it actually fail?* |
+
+**`security-summary.json` is the contract.** Scanner workflows normalize their
+findings into one document with a required `summary` of 12 keys
+([`docs/security-summary-schema.md`](docs/security-summary-schema.md)). The enforcer
+maps each resolved `SENTINEL_SHIELD_FAIL_ON_*` flag onto its summary key:
+
+| Flag | Fails when |
+| --- | --- |
+| `*_SECRETS` / `*_*_VULNERABILITIES` / `*_TYPE_ERRORS` / `*_TEST_FAILURES` / `*_ARCHITECTURE_VIOLATIONS` / `*_UNSAFE_DOCKER` / `*_UNSAFE_GITHUB_ACTIONS` | the matching `summary.<key> > 0` |
+| `*_MISSING_SBOM` | `summary.missing_sbom == true` OR `evidence.sbom.present == false` |
+| `*_MISSING_RELEASE_EVIDENCE` | `summary.missing_release_evidence == true` OR `evidence.release_evidence.present == false` |
+| `*_EXPIRED_EXCEPTIONS` | `summary.expired_exceptions > 0` OR `exceptions.expired > 0` |
+
+**Exit codes** (the enforcer's exit code is the release-gate result):
+
+| Code | Meaning |
+| --- | --- |
+| 0 | all active gates pass |
+| 1 | one or more active gates fail |
+| 2 | configuration / input / parsing error (missing summary key, invalid JSON, missing `jq`, suspicious gates env line) |
+
+**Evidence requirements.** `missing_sbom` (strict/regulated) expects
+`evidence.sbom.present == true` (path e.g. `reports/sbom.spdx.json`);
+`missing_release_evidence` (regulated) expects `evidence.release_evidence.present
+== true` (e.g. `reports/release-evidence.md`). A missing required `summary` key is
+an error, never a silent zero. The gates `.env` is validated line-by-line and never
+blind-sourced; JSON is parsed only with `jq`.
+
 ---
 
 ## 1. Gate stages

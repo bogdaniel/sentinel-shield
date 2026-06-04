@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/security-summary.schema.json",
+  "title": "Sentinel Shield security summary",
+  "description": "Normalized findings contract consumed by scripts/enforce-gates.sh. Scanner workflows populate this document; the enforcer maps SENTINEL_SHIELD_FAIL_ON_* flags onto summary keys.",
+  "type": "object",
+  "required": ["version", "generated_at", "summary"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema/document version, e.g. \"1.0\"."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp."
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "criticality": { "type": "string" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "commit": { "type": "string" },
+        "branch": { "type": "string" },
+        "workflow": { "type": "string" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "The enforceable findings. All keys are required so a missing key is an error, never a silent zero.",
+      "required": [
+        "secrets",
+        "critical_vulnerabilities",
+        "high_vulnerabilities",
+        "medium_vulnerabilities",
+        "architecture_violations",
+        "type_errors",
+        "test_failures",
+        "unsafe_docker",
+        "unsafe_github_actions",
+        "missing_sbom",
+        "missing_release_evidence",
+        "expired_exceptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "secrets": { "type": "integer", "minimum": 0 },
+        "critical_vulnerabilities": { "type": "integer", "minimum": 0 },
+        "high_vulnerabilities": { "type": "integer", "minimum": 0 },
+        "medium_vulnerabilities": { "type": "integer", "minimum": 0 },
+        "architecture_violations": { "type": "integer", "minimum": 0 },
+        "type_errors": { "type": "integer", "minimum": 0 },
+        "test_failures": { "type": "integer", "minimum": 0 },
+        "unsafe_docker": { "type": "integer", "minimum": 0 },
+        "unsafe_github_actions": { "type": "integer", "minimum": 0 },
+        "missing_sbom": { "type": "boolean" },
+        "missing_release_evidence": { "type": "boolean" },
+        "expired_exceptions": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "description": "Per-tool detail. Tools are optional (not every project has every stack); when present, common fields are validated.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "warn", "skipped", "unavailable"]
+          },
+          "findings": { "type": "integer", "minimum": 0 },
+          "critical": { "type": "integer", "minimum": 0 },
+          "high": { "type": "integer", "minimum": 0 },
+          "medium": { "type": "integer", "minimum": 0 },
+          "errors": { "type": "integer", "minimum": 0 },
+          "violations": { "type": "integer", "minimum": 0 },
+          "failures": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "exceptions": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "active": { "type": "integer", "minimum": 0 },
+        "expired": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sbom": {
+          "type": "object",
+          "properties": {
+            "present": { "type": "boolean" },
+            "path": { "type": "string" }
+          },
+          "required": ["present"]
+        },
+        "release_evidence": {
+          "type": "object",
+          "properties": {
+            "present": { "type": "boolean" },
+            "path": { "type": "string" }
+          },
+          "required": ["present"]
+        }
+      }
+    }
+  }
+}

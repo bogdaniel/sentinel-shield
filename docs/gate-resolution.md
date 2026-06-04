@@ -7,6 +7,13 @@ values, what it produces, and how CI consumes the output.
 The resolver is [`scripts/resolve-gates.sh`](../scripts/resolve-gates.sh); shared
 helpers live in [`scripts/lib/sentinel-shield-common.sh`](../scripts/lib/sentinel-shield-common.sh).
 
+> **Resolution is half the story.** This page covers turning the mode into flags.
+> The companion **enforcement** layer
+> ([`scripts/enforce-gates.sh`](../scripts/enforce-gates.sh)) consumes those flags
+> plus a normalized `security-summary.json` and decides pass/fail. See
+> [`security-summary-schema.md`](security-summary-schema.md). Flow:
+> `profile.yaml → resolve-gates.sh → gates.env → + security-summary.json → enforce-gates.sh → pass/fail`.
+
 ---
 
 ## Purpose

@@ -1,0 +1,173 @@
+# Security Summary Schema
+
+`security-summary.json` is the **contract** between scanners and Sentinel Shield's
+enforcement layer. Scanner workflows normalize their output into this one document;
+[`scripts/enforce-gates.sh`](../scripts/enforce-gates.sh) maps the resolved
+`SENTINEL_SHIELD_FAIL_ON_*` flags onto its `summary` keys and decides pass/fail.
+
+- JSON Schema: [`schemas/security-summary.schema.json`](../schemas/security-summary.schema.json)
+  (Draft 2020-12).
+- Example: [`templates/security-summary.example.json`](../templates/security-summary.example.json).
+
+---
+
+## Purpose
+
+The gate **resolver** says *what should fail* (per adoption mode). The gate
+**enforcer** needs *normalized findings* to decide *whether it actually fails*.
+`security-summary.json` is that normalized findings document. One shape, produced by
+whatever scanners a project runs, consumed by one enforcer.
+
+---
+
+## Required fields
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `version` | string | ✅ | e.g. `"1.0"` |
+| `generated_at` | string | ✅ | ISO-8601 UTC |
+| `summary` | object | ✅ | all 12 keys required (below) |
+| `project` | object | optional | name/type/criticality |
+| `source` | object | optional | commit/branch/workflow |
+| `tools` | object | optional | per-tool detail |
+| `exceptions` | object | optional | active/expired counts |
+| `evidence` | object | optional | sbom/release_evidence presence |
+
+A missing `summary` key is an **error** (exit 2), never a silent zero.
+
+---
+
+## Summary key meanings
+
+All keys are required. Integer keys are non-negative counts; two are booleans.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `secrets` | integer | Leaked-secret findings (Gitleaks). |
+| `critical_vulnerabilities` | integer | Critical dependency/code vulns. |
+| `high_vulnerabilities` | integer | High vulns. |
+| `medium_vulnerabilities` | integer | Medium vulns. |
+| `architecture_violations` | integer | Deptrac / import-boundary violations. |
+| `type_errors` | integer | PHPStan/Psalm/tsc errors. |
+| `test_failures` | integer | Failing tests. |
+| `unsafe_docker` | integer | Hadolint/Trivy misconfig findings. |
+| `unsafe_github_actions` | integer | actionlint/zizmor findings. |
+| `missing_sbom` | boolean | `true` if no SBOM was produced. |
+| `missing_release_evidence` | boolean | `true` if no readiness report. |
+| `expired_exceptions` | integer | Lapsed accepted-risk records. |
+
+---
+
+## How flags map to summary keys
+
+The enforcer evaluates each gate only when its resolved flag is `true`:
+
+| Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
+| --- | --- |
+| `SECRETS` | `summary.secrets > 0` |
+| `CRITICAL_VULNERABILITIES` | `summary.critical_vulnerabilities > 0` |
+| `HIGH_VULNERABILITIES` | `summary.high_vulnerabilities > 0` |
+| `MEDIUM_VULNERABILITIES` | `summary.medium_vulnerabilities > 0` |
+| `ARCHITECTURE_VIOLATIONS` | `summary.architecture_violations > 0` |
+| `TYPE_ERRORS` | `summary.type_errors > 0` |
+| `TEST_FAILURES` | `summary.test_failures > 0` |
+| `UNSAFE_DOCKER` | `summary.unsafe_docker > 0` |
+| `UNSAFE_GITHUB_ACTIONS` | `summary.unsafe_github_actions > 0` |
+| `MISSING_SBOM` | `summary.missing_sbom == true` OR `evidence.sbom.present == false` |
+| `MISSING_RELEASE_EVIDENCE` | `summary.missing_release_evidence == true` OR `evidence.release_evidence.present == false` |
+| `EXPIRED_EXCEPTIONS` | `summary.expired_exceptions > 0` OR `exceptions.expired > 0` |
+
+Disabled gates (flag `false`) are recorded as `skipped` and never fail the build.
+
+---
+
+## Tool-specific sections
+
+`tools` is optional and open-ended — not every project has every stack. When a tool
+is present, the schema validates its common fields. Recognized status values:
+
+```txt
+pass | fail | warn | skipped | unavailable
+```
+
+`tools` is informational for reporting/triage; **enforcement reads `summary`**, not
+`tools`. Keep the two consistent in your producing workflow (e.g. the sum of
+semgrep/trivy/composer_audit critical counts should equal
+`summary.critical_vulnerabilities`).
+
+---
+
+## Evidence fields
+
+```json
+"evidence": {
+  "sbom": { "present": true, "path": "reports/sbom.spdx.json" },
+  "release_evidence": { "present": true, "path": "reports/release-evidence.md" }
+}
+```
+
+Used by the `MISSING_SBOM` / `MISSING_RELEASE_EVIDENCE` gates. If the `evidence`
+section is omitted, those gates rely solely on the corresponding `summary` boolean.
+
+---
+
+## Exception fields
+
+```json
+"exceptions": { "active": 0, "expired": 0 }
+```
+
+`exceptions.expired` augments `summary.expired_exceptions` for the
+`EXPIRED_EXCEPTIONS` gate. See [`exception-policy.md`](exception-policy.md).
+
+---
+
+## How scanner workflows map their outputs
+
+Each scanner workflow is responsible for translating its native output into the
+`summary` counts. Sketch (a producing job collects per-tool results and writes one
+document):
+
+| Stack | Tools → summary keys |
+| --- | --- |
+| Laravel | Gitleaks→`secrets`; Semgrep+`composer audit`+Trivy→`*_vulnerabilities`; PHPStan/Psalm→`type_errors`; Deptrac→`architecture_violations`; PHPUnit→`test_failures` |
+| React | Gitleaks→`secrets`; Semgrep+`npm audit`→`*_vulnerabilities`; tsc→`type_errors`; ESLint boundaries→`architecture_violations`; test runner→`test_failures` |
+| Docker | Hadolint/Trivy→`unsafe_docker`; Trivy image→`*_vulnerabilities`; Syft→`evidence.sbom` |
+
+> Sentinel Shield does **not** yet ship the per-scanner adapters that emit this file;
+> producing `security-summary.json` is the consuming project's responsibility for
+> now. This document defines the target contract.
+
+---
+
+## Common failure modes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `jq is required …` (exit 2) | jq not installed | Install jq |
+| `missing required summary key: summary.X` (exit 2) | Producer omitted a key | Emit all 12 keys |
+| `summary.X must be a non-negative integer` (exit 2) | Wrong type (string/float) | Emit integer counts |
+| `not valid JSON` (exit 2) | Malformed document | Validate against the schema |
+| Gate unexpectedly `skipped` | Flag is `false` for the mode | Check the resolver / profile |
+
+---
+
+## Validate locally
+
+```sh
+# With Python + jsonschema:
+python3 -m pip install jsonschema  # if needed
+python3 - <<'PY'
+import json
+from jsonschema import validate
+schema = json.load(open("schemas/security-summary.schema.json"))
+doc = json.load(open("templates/security-summary.example.json"))
+validate(doc, schema)
+print("valid")
+PY
+
+# Enforce against resolved gates:
+sh scripts/resolve-gates.sh --mode baseline
+cp templates/security-summary.example.json reports/security-summary.json
+sh scripts/enforce-gates.sh --format all
+```

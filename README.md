@@ -166,12 +166,53 @@ the override explicitly (it never hides them):
 [sentinel-shield] Override: medium_vulnerabilities=false (default true)
 ```
 
-**How CI consumes it.** [`github/workflows/ci-release-gate.yml`](github/workflows/ci-release-gate.yml)
-runs the resolver, uploads the artifacts, sources `sentinel-shield-gates.env` into
-the job environment, and fails the build for any gate whose
-`SENTINEL_SHIELD_FAIL_ON_*` value is `true` and whose evidence is missing. The
-resolver prefers `yq` v4 if installed and otherwise uses a limited built-in parser
-for the canonical profile format — no `jq`/`yq`/Python required for the basic path.
+The resolver prefers `yq` v4 if installed and otherwise uses a limited built-in
+parser for the canonical profile format — no `jq`/`yq`/Python required for the
+resolver path.
+
+---
+
+## 6b. Gate enforcer
+
+The resolver says *what should fail*; the **enforcer** decides *whether it does*.
+[`scripts/enforce-gates.sh`](scripts/enforce-gates.sh) consumes the resolved flags
+plus a normalized findings document, `reports/security-summary.json`, and exits
+`0` (pass) / `1` (fail) / `2` (config/input error).
+
+**`security-summary.json` is the contract.** Scanner workflows normalize their
+output into one document with a required `summary` of 12 counts/flags
+([schema](schemas/security-summary.schema.json),
+[example](templates/security-summary.example.json),
+[docs](docs/security-summary-schema.md)). Sentinel Shield does **not** yet ship the
+per-scanner adapters that emit this file — producing it is the consuming project's
+job; this layer defines and enforces the target contract.
+
+**How `enforce-gates.sh` works.**
+
+- Loads `sentinel-shield-gates.env` **with strict per-line validation** — it is
+  never blind-sourced; any line that is not `SENTINEL_SHIELD_*=<safe-value>` is
+  rejected (exit 2). No command substitution, backticks, or shell metacharacters
+  pass.
+- Requires `jq` to read JSON (it does not parse JSON with fragile shell hacks). If
+  `jq` is absent it exits 2 with a clear message.
+- A missing required `summary` key is an error (exit 2), never a silent zero.
+- Each gate fails only when its resolved flag is `true` and its finding crosses the
+  threshold; disabled gates are recorded as `skipped`.
+- Writes `reports/sentinel-shield-enforcement.{json,md}`.
+
+Local example:
+
+```sh
+sh scripts/resolve-gates.sh --mode baseline
+cp templates/security-summary.example.json reports/security-summary.json
+sh scripts/enforce-gates.sh --format all   # exit 0 (all zero findings)
+```
+
+CI: [`github/workflows/ci-release-gate.yml`](github/workflows/ci-release-gate.yml)
+runs `resolve-gates.sh`, provides `security-summary.json` (real scanner output, or
+the all-zero example as a clearly-marked fallback), runs `enforce-gates.sh`, uploads
+the resolver + enforcement artifacts, and lets the enforcer's exit code be the
+release gate.
 
 ---
 

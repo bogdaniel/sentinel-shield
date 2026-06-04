@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "proxyflux",
+    "type": "laravel",
+    "criticality": "high"
+  },
+  "generated_at": "2026-01-01T00:00:00Z",
+  "source": {
+    "commit": "unknown",
+    "branch": "master",
+    "workflow": "local"
+  },
+  "summary": {
+    "secrets": 0,
+    "critical_vulnerabilities": 0,
+    "high_vulnerabilities": 0,
+    "medium_vulnerabilities": 0,
+    "architecture_violations": 0,
+    "type_errors": 0,
+    "test_failures": 0,
+    "unsafe_docker": 0,
+    "unsafe_github_actions": 0,
+    "missing_sbom": false,
+    "missing_release_evidence": false,
+    "expired_exceptions": 0
+  },
+  "tools": {
+    "gitleaks": { "status": "pass", "findings": 0 },
+    "semgrep": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
+    "composer_audit": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
+    "npm_audit": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
+    "trivy": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
+    "phpstan": { "status": "pass", "errors": 0 },
+    "psalm": { "status": "pass", "errors": 0 },
+    "deptrac": { "status": "pass", "violations": 0 },
+    "tests": { "status": "pass", "failures": 0 },
+    "hadolint": { "status": "pass", "violations": 0 },
+    "zizmor": { "status": "pass", "violations": 0 },
+    "actionlint": { "status": "pass", "violations": 0 }
+  },
+  "exceptions": {
+    "active": 0,
+    "expired": 0
+  },
+  "evidence": {
+    "sbom": {
+      "present": true,
+      "path": "reports/sbom.spdx.json"
+    },
+    "release_evidence": {
+      "present": true,
+      "path": "reports/release-evidence.md"
+    }
+  }
+}
