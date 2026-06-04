@@ -67,3 +67,60 @@ timestamp_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
 # utc_timestamp — backward-compatible alias for timestamp_utc.
 utc_timestamp() { timestamp_utc; }
+
+# --- collector helpers (jq-dependent; used by scripts/collectors/*.sh) -------
+# These are only used by the scanner-normalization collectors, which require jq.
+# The resolver path does not call them, so jq remains optional for resolve-gates.
+
+# ss_require_jq — exit 2 if jq is not available.
+ss_require_jq() {
+	command_exists jq || {
+		log_error "jq is required for JSON parsing but was not found. Install jq."
+		exit 2
+	}
+}
+
+# ss_emit_collector <tool> <status> <tool_report_json> <summary_overrides_json>
+# Emit a canonical collector object on stdout. The summary always has all ten count
+# keys (zeroed), with <summary_overrides_json> merged on top.
+ss_emit_collector() {
+	jq -n \
+		--arg tool "$1" \
+		--arg status "$2" \
+		--argjson report "$3" \
+		--argjson ov "$4" '
+		{
+			tool: $tool,
+			status: $status,
+			summary: ({
+				secrets: 0,
+				critical_vulnerabilities: 0,
+				high_vulnerabilities: 0,
+				medium_vulnerabilities: 0,
+				architecture_violations: 0,
+				type_errors: 0,
+				test_failures: 0,
+				unsafe_docker: 0,
+				unsafe_github_actions: 0,
+				expired_exceptions: 0
+			} + $ov),
+			tool_report: $report
+		}'
+}
+
+# ss_collector_guard <tool> <input-path>
+# Preflight for a collector: requires jq; emits an "unavailable" object and exits 0
+# when the input is missing/empty; exits 2 on invalid JSON. Returns 0 when the input
+# is present and parseable so the collector can proceed.
+ss_collector_guard() {
+	ss_require_jq
+	if [ ! -f "$2" ] || [ ! -s "$2" ]; then
+		log_warn "$1: input '$2' missing or empty; status=unavailable"
+		ss_emit_collector "$1" "unavailable" '{"status":"unavailable"}' '{}'
+		exit 0
+	fi
+	if ! jq -e . "$2" >/dev/null 2>&1; then
+		log_error "$1: invalid JSON in '$2'"
+		exit 2
+	fi
+}
