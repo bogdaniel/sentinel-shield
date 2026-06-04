@@ -307,7 +307,19 @@ Humans approve high-risk changes.
 
 ---
 
+## Contributing, changelog, make targets
+
+- Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md) (shell standards, commit
+  conventions, how to add gates/profiles/rules, local validation).
+- History: [`CHANGELOG.md`](CHANGELOG.md).
+- A `Makefile` wraps the scripts for convenience (the scripts remain runnable
+  directly): `make help`, `make resolve`, `make enforce`, `make self-test`,
+  `make validate`.
+
 ## License and provenance
+
+Licensed under the MIT License — see [`LICENSE`](LICENSE). Update the copyright
+holder to your organization on adoption.
 
 Sentinel Shield (formerly the internal working name `zenchron-engineering-baseline`)
 is intended to be adopted, forked, and tuned per organization. Treat every config
