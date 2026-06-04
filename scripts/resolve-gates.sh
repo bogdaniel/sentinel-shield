@@ -266,7 +266,7 @@ else
 	if [ -n "$_od" ]; then OUTPUT_DIR="$_od"; else OUTPUT_DIR="reports"; fi
 fi
 
-TS=$(utc_timestamp)
+TS=$(timestamp_utc)
 ensure_dir "$OUTPUT_DIR"
 
 # --- human summary to stderr (overrides are never hidden) --------------------
@@ -289,6 +289,7 @@ write_env() {
 		printf 'SENTINEL_SHIELD_PROJECT_NAME=%s\n' "$P_NAME"
 		printf 'SENTINEL_SHIELD_PROJECT_TYPE=%s\n' "$P_TYPE"
 		printf 'SENTINEL_SHIELD_PROJECT_CRITICALITY=%s\n' "$P_CRIT"
+		printf 'SENTINEL_SHIELD_PROJECT_OWNER=%s\n' "$P_OWNER"
 		for key in $FAIL_ON_KEYS; do
 			printf 'SENTINEL_SHIELD_FAIL_ON_%s=%s\n' "$(upper "$key")" "$(resolve_key "$key")"
 		done

@@ -62,5 +62,8 @@ upper() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]'; }
 # json_escape <string> — escape backslash and double-quote for JSON string values.
 json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
-# utc_timestamp — ISO-8601 UTC timestamp. `date` is POSIX.
-utc_timestamp() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+# timestamp_utc — ISO-8601 UTC timestamp. `date` is POSIX.
+timestamp_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+# utc_timestamp — backward-compatible alias for timestamp_utc.
+utc_timestamp() { timestamp_utc; }

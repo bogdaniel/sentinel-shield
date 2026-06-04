@@ -14,7 +14,7 @@ OUT_FILE="$OUT_DIR/sentinel-shield-report.md"
 ensure_dir "$OUT_DIR"
 
 # Timestamp (UTC). `date` is available on POSIX systems.
-TS=$(utc_timestamp)
+TS=$(timestamp_utc)
 
 # Collect detected stacks (best-effort; reuse detect-stack.sh).
 STACKS=$(sh "$SCRIPT_DIR/detect-stack.sh" "$TARGET" 2>/dev/null | sed -n 's/^detected: //p' | tr '\n' ' ' || true)
