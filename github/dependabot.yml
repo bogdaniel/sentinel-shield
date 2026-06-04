@@ -1,0 +1,43 @@
+# Sentinel Shield — Dependabot configuration.
+# Place at .github/dependabot.yml in the consuming project. Enable only the
+# ecosystems present; remove the rest.
+version: 2
+
+updates:
+  # --- Composer (Laravel / Symfony) ---
+  - package-ecosystem: composer
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "php"]
+    groups:
+      php-dev-minor:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  # --- npm (Node / React) ---
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "javascript"]
+    groups:
+      js-dev-minor:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  # --- GitHub Actions (keep workflows current and pinned) ---
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "ci"]
+
+  # --- Docker base images ---
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker"]

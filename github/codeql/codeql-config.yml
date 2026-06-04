@@ -1,0 +1,27 @@
+# Sentinel Shield — CodeQL configuration.
+# Referenced by github/workflows/ci-codeql.yml via config-file.
+name: "Sentinel Shield CodeQL config"
+
+# Use the security-and-quality query suite for broader coverage. Switch to
+# security-extended for security-focused-only scanning if quality noise is high.
+queries:
+  - uses: security-and-quality
+
+# Limit analysis to source paths; exclude generated/vendor/test fixtures to reduce
+# noise and runtime.
+paths:
+  - src
+  - app
+  - routes
+
+paths-ignore:
+  - "**/vendor/**"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/*.min.js"
+  - "**/tests/fixtures/**"
+
+# Optional: register custom query packs here once authored.
+# packs:
+#   - my-org/custom-codeql-queries

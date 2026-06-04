@@ -1,0 +1,64 @@
+# Sentinel Shield — Docker CI: lint, build, scan.
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Per
+# docs/github-actions-security.md, pin third-party actions to a full commit SHA
+# in sensitive (deploy/release) workflows before production use.
+name: ci-docker
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Hadolint (Dockerfile lint)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: hadolint.yaml
+          failure-threshold: warning
+
+      - name: Validate docker-compose
+        run: |
+          if [ -f docker-compose.yml ] || [ -f compose.yaml ]; then
+            docker compose config >/dev/null && echo "compose config valid"
+          else
+            echo "No compose file; skipping."
+          fi
+
+      - name: Build image
+        run: docker build -t sentinel-app:ci .
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: sentinel-app:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

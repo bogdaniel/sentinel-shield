@@ -1,0 +1,59 @@
+# Sentinel Shield — OWASP ZAP dynamic scan (STAGING ONLY).
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Per
+# docs/github-actions-security.md, pin third-party actions to a full commit SHA
+# in sensitive (deploy/release) workflows before production use.
+#
+# IMPORTANT: This template is for a non-production staging target. Do NOT point
+# active/full scans at production by default. A baseline (passive) scan is the
+# default; the full (active) scan is gated to scheduled nightly runs against
+# staging only.
+name: ci-zap
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Staging URL to scan (must NOT be production)"
+        required: true
+  schedule:
+    - cron: "0 2 * * *"   # nightly full scan against staging
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    # Passive baseline scan — safe, non-intrusive. Runs on manual dispatch.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ github.event.inputs.target_url }}
+          # Fail only on confirmed alerts; tune the rules file to your app.
+          cmd_options: "-a"
+
+  zap-full:
+    # Active full scan — intrusive. NIGHTLY ONLY, against the configured staging
+    # environment. Never enable for production.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    environment: staging   # protected environment; reviewers/secrets scoped to staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: ZAP full scan (staging)
+        uses: zaproxy/action-full-scan@v0.10.0
+        with:
+          target: ${{ vars.STAGING_URL }}   # repository/environment variable, staging only
+          cmd_options: "-a"

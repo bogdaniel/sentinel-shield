@@ -1,0 +1,151 @@
+# Sentinel Shield — Release gate aggregator.
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Per
+# docs/github-actions-security.md, pin third-party actions to a full commit SHA
+# in sensitive (deploy/release) workflows before production use.
+#
+# This workflow resolves .sentinel-shield/profile.yaml into machine-readable gate
+# thresholds (scripts/resolve-gates.sh) and enforces them. It is the single place
+# that turns the declared adoption mode into pass/fail decisions.
+#
+# IMPORTANT — what this job can and cannot verify:
+#   * It DOES enforce evidence-presence gates it can observe directly:
+#       missing_sbom               -> reports/sbom.spdx.json
+#       missing_release_evidence   -> reports/release-evidence.md
+#   * Scanner-result gates (secrets, vulnerabilities, type errors, tests,
+#     architecture, unsafe Docker/Actions) are enforced in their own workflows
+#     (ci-security.yml, ci-php.yml, ci-node.yml, ci-docker.yml). This job reads an
+#     OPTIONAL aggregated summary at reports/security-summary.json if a prior job
+#     produced one, but it does NOT re-run scanners and does not pretend to.
+#   The evidence file paths above are PLACEHOLDERS for the first version; a
+#   consuming project wires its real artifacts into those paths.
+name: ci-release-gate
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Force adoption mode (overrides profile gates.mode)"
+        required: false
+        default: ""
+        type: choice
+        options: ["", report-only, baseline, strict, regulated]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    environment: production   # protected: require reviewers before this gate releases
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve gates from profile
+        run: |
+          set -eu
+          # Locate the resolver whether Sentinel Shield is vendored at repo root
+          # (scripts/) or under .sentinel-shield/scripts/ (install-baseline layout).
+          RESOLVER=scripts/resolve-gates.sh
+          if [ ! -f "$RESOLVER" ]; then RESOLVER=.sentinel-shield/scripts/resolve-gates.sh; fi
+          if [ ! -f "$RESOLVER" ]; then
+            echo "::error::resolve-gates.sh not found (expected scripts/ or .sentinel-shield/scripts/)"
+            exit 1
+          fi
+          MODE_ARG=""
+          if [ -n "${{ github.event.inputs.mode }}" ]; then
+            MODE_ARG="--mode ${{ github.event.inputs.mode }}"
+          fi
+          # No --require-profile: a project without a profile resolves to report-only.
+          sh "$RESOLVER" $MODE_ARG --output-dir reports --format all
+
+      - name: Upload resolved gate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-gates
+          path: |
+            reports/sentinel-shield-gates.env
+            reports/sentinel-shield-gates.json
+            reports/sentinel-shield-gates.md
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Load resolved gates into the environment
+        run: |
+          set -eu
+          # Append the resolved KEY=value lines to $GITHUB_ENV so later steps can
+          # branch on them. Values are shell-safe uppercase keys.
+          cat reports/sentinel-shield-gates.env >> "$GITHUB_ENV"
+          echo "Loaded resolved gates:"
+          cat reports/sentinel-shield-gates.env
+
+      - name: Enforce gates
+        env:
+          # Placeholder evidence paths — wire real artifacts here in a consuming
+          # project. See the header comment.
+          SBOM_FILE: reports/sbom.spdx.json
+          RELEASE_EVIDENCE_FILE: reports/release-evidence.md
+          SECURITY_SUMMARY_FILE: reports/security-summary.json
+        run: |
+          set -eu
+          FAIL=0
+
+          fail() { echo "::error::GATE FAIL: $1"; FAIL=1; }
+          okay() { echo "ok: $1"; }
+
+          echo "Sentinel Shield mode: ${SENTINEL_SHIELD_MODE:-unknown}"
+
+          # --- Evidence-presence gates this job can verify directly ---
+          if [ "${SENTINEL_SHIELD_FAIL_ON_MISSING_SBOM:-false}" = "true" ]; then
+            if [ -f "$SBOM_FILE" ]; then okay "SBOM present ($SBOM_FILE)"; else fail "SBOM required but missing ($SBOM_FILE)"; fi
+          else
+            echo "skip: SBOM presence not required in this mode"
+          fi
+
+          if [ "${SENTINEL_SHIELD_FAIL_ON_MISSING_RELEASE_EVIDENCE:-false}" = "true" ]; then
+            if [ -f "$RELEASE_EVIDENCE_FILE" ]; then okay "release evidence present ($RELEASE_EVIDENCE_FILE)"; else fail "release evidence required but missing ($RELEASE_EVIDENCE_FILE)"; fi
+          else
+            echo "skip: release evidence not required in this mode"
+          fi
+
+          # --- Scanner-result gates: enforced in their own workflows ---
+          # If a prior job produced an aggregated summary, surface it; otherwise make
+          # explicit that those gates are enforced upstream (no silent pass).
+          if [ -f "$SECURITY_SUMMARY_FILE" ]; then
+            echo "note: aggregated scanner summary found at $SECURITY_SUMMARY_FILE"
+            echo "      A consuming project parses it here and fails on any gate whose"
+            echo "      SENTINEL_SHIELD_FAIL_ON_* value is 'true'."
+          else
+            echo "note: no $SECURITY_SUMMARY_FILE present. Scanner-result gates"
+            echo "      (secrets, vulnerabilities, type errors, tests, architecture,"
+            echo "      unsafe Docker/Actions) are enforced by ci-security.yml,"
+            echo "      ci-php.yml, ci-node.yml, ci-docker.yml — not re-checked here."
+          fi
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "Release gate FAILED for mode=${SENTINEL_SHIELD_MODE:-unknown}. See RELEASE-GATES.md."
+            exit 1
+          fi
+          echo "Release gate PASSED for mode=${SENTINEL_SHIELD_MODE:-unknown}."
+
+      - name: Gate summary
+        if: always()
+        run: |
+          {
+            echo "## Sentinel Shield Release Gate"
+            echo "- Mode: ${SENTINEL_SHIELD_MODE:-unknown}"
+            echo "- Ref: ${{ github.ref }}"
+            echo ""
+            if [ -f reports/sentinel-shield-gates.md ]; then
+              cat reports/sentinel-shield-gates.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

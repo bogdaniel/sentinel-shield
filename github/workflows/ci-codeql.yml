@@ -1,0 +1,55 @@
+# Sentinel Shield — CodeQL static analysis.
+#
+# ACTION PINNING: the `uses:` references below show version tags for readability.
+# Per docs/github-actions-security.md, pin every third-party action to a full commit
+# SHA before using this in a sensitive (deploy/release) workflow. First-party
+# github/codeql-action may run on a major tag.
+name: ci-codeql
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "0 3 * * 1"   # weekly deep run, Mondays 03:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # required to upload CodeQL results
+    strategy:
+      fail-fast: false
+      matrix:
+        # Adjust to the languages present in the project.
+        # CodeQL languages: javascript-typescript, java-kotlin, python, go, ...
+        # PHP is supported via the community pack; configure separately if needed.
+        language: ["javascript-typescript"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

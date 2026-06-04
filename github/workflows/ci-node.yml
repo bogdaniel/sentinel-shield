@@ -1,0 +1,61 @@
+# Sentinel Shield — Node.js / React CI.
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Per
+# docs/github-actions-security.md, pin third-party actions to a full commit SHA
+# in sensitive (deploy/release) workflows before production use.
+name: ci-node
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-node-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install (from lockfile)
+        run: npm ci
+
+      - name: Audit (audit-ci if present, else npm audit)
+        # Blocking on high/critical in baseline+. report-only: append || true.
+        run: |
+          if [ -f audit-ci.json ]; then
+            npx audit-ci --config audit-ci.json
+          else
+            npm audit --audit-level=high
+          fi
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Unused code / deps (Knip, optional)
+        run: npx knip
+        continue-on-error: true
+
+      - name: Test / build
+        run: |
+          if npm run | grep -q "^  test"; then npm test; fi
+          if npm run | grep -q "^  build"; then npm run build; fi

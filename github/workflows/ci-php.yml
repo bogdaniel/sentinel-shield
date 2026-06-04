@@ -1,0 +1,87 @@
+# Sentinel Shield — PHP CI (Laravel / Symfony).
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Per
+# docs/github-actions-security.md, pin third-party actions to a full commit SHA
+# in sensitive (deploy/release) workflows before production use.
+# Copy to .github/workflows/ in the consuming project and tune as needed.
+name: ci-php
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Minimal permissions: read-only by default.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-php-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Install dependencies (from lockfile)
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Composer audit
+        # Blocking in baseline+. In report-only, append: || true
+        run: composer audit --locked
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+      - name: Psalm
+        run: vendor/bin/psalm --no-cache --no-progress
+
+      - name: Psalm taint analysis (optional but recommended)
+        run: vendor/bin/psalm --taint-analysis --no-cache --no-progress
+        continue-on-error: true
+
+      - name: Code style (Pint or PHP-CS-Fixer)
+        run: |
+          if [ -f vendor/bin/pint ]; then
+            vendor/bin/pint --test
+          elif [ -f vendor/bin/php-cs-fixer ]; then
+            vendor/bin/php-cs-fixer fix --dry-run --diff
+          else
+            echo "No style tool installed; skipping."
+          fi
+
+      - name: Rector dry-run (optional)
+        run: vendor/bin/rector process --dry-run
+        continue-on-error: true
+
+      - name: Architecture boundaries (Deptrac, optional)
+        run: |
+          if [ -f vendor/bin/deptrac ] && [ -f deptrac.yaml ]; then
+            vendor/bin/deptrac analyse --config-file=deptrac.yaml --no-progress
+          else
+            echo "Deptrac not configured; skipping."
+          fi
+
+      - name: Tests
+        run: |
+          if [ -f artisan ]; then
+            php artisan test
+          else
+            vendor/bin/phpunit
+          fi
