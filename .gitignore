@@ -1,0 +1,10 @@
+# Sentinel Shield — generated artifacts and local noise.
+reports/
+*.log
+.DS_Store
+
+# Baseline / scan caches that may appear in consuming projects.
+.trivyignore.tmp
+sbom.cdx.json
+.phpstan.cache/
+.php-cs-fixer.cache
