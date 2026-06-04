@@ -1,0 +1,58 @@
+# Sentinel Shield — consuming-project profile.
+#
+# Copy this file to .sentinel-shield/profile.yaml in your project and edit it.
+# scripts/resolve-gates.sh reads this file and resolves it into concrete,
+# machine-readable gate thresholds that CI enforces. See docs/gate-resolution.md.
+#
+# This is the CANONICAL format. The shell fallback parser supports exactly this
+# structure (2-space indentation, simple scalars, and the profiles list). Advanced
+# YAML (anchors, aliases, inline {}/[] collections, block scalars, quoted booleans)
+# requires mikefarah `yq` v4 to be installed.
+
+project:
+  name: proxyflux
+  type: laravel          # laravel | symfony | node | react | docker | other
+  criticality: high      # low | medium | high | critical (informational)
+  owner: platform-team
+
+# Which Sentinel Shield profiles apply (informational for the resolver).
+profiles:
+  - laravel
+  - react
+  - docker
+  - github-actions
+
+gates:
+  # Adoption mode selects the default fail_on map. See docs/gate-resolution.md.
+  #   report-only | baseline | strict | regulated
+  mode: baseline
+
+  # Optional per-gate overrides. Any key set here overrides the mode default and
+  # is reported explicitly by the resolver (overrides are never hidden). Omit a
+  # key to inherit the mode default.
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    medium_vulnerabilities: false
+    architecture_violations: true
+    type_errors: true
+    test_failures: true
+    unsafe_docker: true
+    unsafe_github_actions: true
+    missing_sbom: false
+    missing_release_evidence: false
+    expired_exceptions: true
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json
