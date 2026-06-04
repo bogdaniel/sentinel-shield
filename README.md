@@ -249,6 +249,62 @@ sh scripts/enforce-gates.sh --format all
 
 ---
 
+## 6d. CI artifact handoff (production-safe)
+
+Scanner output reaches the release gate as **artifacts**, with a strict fallback
+rule. Artifact names:
+
+| Artifact | Contents | Produced by |
+| --- | --- | --- |
+| `sentinel-shield-raw-security` | `reports/raw/*.json` | `ci-security.yml` |
+| `sentinel-shield-raw-security-php` / `-node` / `-docker` | `reports/raw/*.json` | `ci-php` / `ci-node` / `ci-docker` |
+| `sentinel-shield-security-summary` | `reports/security-summary.json` | `ci-security.yml` (builder) |
+| `sentinel-shield-sbom` | `reports/sbom.spdx.json` | `ci-security.yml` |
+| `sentinel-shield-gate-resolution` | `reports/sentinel-shield-gates.{env,json,md}` | `ci-release-gate.yml` |
+| `sentinel-shield-enforcement` | `reports/sentinel-shield-enforcement.{json,md}` | `ci-release-gate.yml` |
+| `sentinel-shield-release-evidence` | `reports/release-evidence.md` | `ci-release-gate.yml` |
+
+### Fallback rule (mandatory)
+
+> The all-zero example summary is **never** accepted in `baseline`, `strict`, or
+> `regulated`. If the gate cannot prove a real `security-summary.json` exists:
+> **`baseline`/`strict`/`regulated` → fail; `report-only` → warn and continue with
+> the example.**
+
+This is enforced by [`scripts/select-security-summary.sh`](scripts/select-security-summary.sh),
+which the release gate runs after resolving the mode. "Real" means the summary
+exists, is valid JSON, and is not byte-identical to the example template (a real
+builder run always differs) — so dropping in the example cannot spoof a pass.
+
+### Recommended topology
+
+`actions/download-artifact` only sees artifacts from the **current run**. For
+production, run the release gate **in the same workflow** as the scanner jobs using
+`needs:`, so the `sentinel-shield-security-summary` artifact is in-run:
+
+```yaml
+jobs:
+  security:        # runs scanners, builds + uploads sentinel-shield-security-summary
+    ...
+  release-gate:
+    needs: [security]
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: sentinel-shield-security-summary, path: reports }
+      - run: sh scripts/select-security-summary.sh --gates-env reports/sentinel-shield-gates.env
+      - run: sh scripts/enforce-gates.sh --format all
+```
+
+**Cross-workflow** retrieval (release gate in a separate workflow from scanners) is
+**not** wired here: GitHub does not download artifacts across unrelated runs without
+extra logic, and Sentinel Shield deliberately ships **no** artifact discovery that
+could pull from untrusted runs. If you need it, wire a trusted strategy keyed on
+commit SHA + workflow run ID + a trusted branch + environment protection rules. The
+standalone `ci-release-gate.yml` is fail-closed: with no real summary,
+`baseline`/`strict`/`regulated` fail.
+
+---
+
 ## 7. Example GitHub Actions usage
 
 Copy the workflow templates from [`github/workflows`](github/workflows) into your

@@ -4,19 +4,28 @@
 # docs/github-actions-security.md, pin third-party actions to a full commit SHA
 # in sensitive (deploy/release) workflows before production use.
 #
-# Flow: resolve -> provide summary -> enforce.
-#   1. scripts/resolve-gates.sh reads .sentinel-shield/profile.yaml and writes the
-#      resolved SENTINEL_SHIELD_FAIL_ON_* flags.
-#   2. A normalized findings document, reports/security-summary.json, is provided.
-#      Real scanner workflows (ci-security.yml, ci-php.yml, ci-node.yml,
-#      ci-docker.yml) MUST produce it from their outputs — see
-#      docs/security-summary-schema.md. If absent, this template falls back to the
-#      all-zero EXAMPLE (clearly marked, NOT real evidence) so the workflow runs.
-#   3. scripts/enforce-gates.sh maps the resolved flags onto the summary and exits
+# Flow: resolve -> obtain summary -> apply fallback policy -> enforce.
+#   1. scripts/resolve-gates.sh writes the resolved SENTINEL_SHIELD_FAIL_ON_* flags
+#      and the adoption mode.
+#   2. The normalized findings document, reports/security-summary.json, is obtained
+#      from the "sentinel-shield-security-summary" artifact produced by the scanner
+#      workflows (build-security-summary.sh).
+#   3. scripts/select-security-summary.sh applies the FALLBACK POLICY:
+#        report-only            -> may use the all-zero EXAMPLE (loud warning).
+#        baseline/strict/regulated -> a REAL summary is REQUIRED; otherwise FAIL.
+#      The example is never accepted as evidence in baseline/strict/regulated.
+#   4. scripts/enforce-gates.sh maps the resolved flags onto the summary and exits
 #      0 (pass) / 1 (fail) / 2 (config error). Its exit code IS the release gate.
 #
-# This job does NOT re-run scanners and does not pretend to. It enforces the
-# normalized contract; producing that contract is the scanner workflows' job.
+# ARTIFACT TOPOLOGY — IMPORTANT:
+#   actions/download-artifact retrieves artifacts from the CURRENT run only. For
+#   production, run this gate job in the SAME workflow as the scanner jobs using
+#   `needs:` so the summary artifact is in-run (see README "CI artifact handoff").
+#   This standalone template's download step is best-effort: if no real summary is
+#   present, baseline/strict/regulated FAIL by design (fail-closed). Do NOT add
+#   artifact discovery that pulls from arbitrary/untrusted runs.
+#
+# This job does NOT re-run scanners. It enforces the normalized contract.
 name: ci-release-gate
 
 on:
@@ -69,7 +78,7 @@ jobs:
       - name: Upload resolved gate artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sentinel-shield-gates
+          name: sentinel-shield-gate-resolution
           path: |
             reports/sentinel-shield-gates.env
             reports/sentinel-shield-gates.json
@@ -77,27 +86,34 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: Provide security summary
+      - name: Download security summary (same-run artifact, if present)
+        # Works when a prior job in THIS run produced the summary (needs: topology).
+        # Best-effort: a standalone tag run has no such artifact, and the fallback
+        # policy below fails baseline/strict/regulated accordingly.
+        uses: actions/download-artifact@v4
+        with:
+          name: sentinel-shield-security-summary
+          path: reports
+        continue-on-error: true
+
+      - name: Apply security-summary fallback policy
         run: |
           set -eu
-          # The normalized findings contract. In a real pipeline, ci-security.yml
-          # (and the PHP/Node/Docker workflows) produce reports/security-summary.json
-          # via scripts/build-security-summary.sh and upload it as the
-          # "security-summary" artifact; this job downloads that artifact into
-          # reports/ before this step. If none is present, we fall back to the
-          # all-zero EXAMPLE so the template runs — clearly marked, NOT real evidence.
-          # (Add an actions/download-artifact step here once the producing workflow
-          # runs in the same pipeline.)
-          if [ -f reports/security-summary.json ]; then
-            echo "Using scanner-produced reports/security-summary.json"
-          else
-            echo "::warning::No reports/security-summary.json from scanners; using the"
-            echo "::warning::all-zero EXAMPLE template. This is NOT real evidence — wire"
-            echo "::warning::real scanner output per docs/security-summary-schema.md."
-            EXAMPLE=templates/security-summary.example.json
-            if [ ! -f "$EXAMPLE" ]; then EXAMPLE=.sentinel-shield/templates/security-summary.example.json; fi
-            cp "$EXAMPLE" reports/security-summary.json
+          SELECT=scripts/select-security-summary.sh
+          if [ ! -f "$SELECT" ]; then SELECT=.sentinel-shield/scripts/select-security-summary.sh; fi
+          if [ ! -f "$SELECT" ]; then
+            echo "::error::select-security-summary.sh not found"
+            exit 1
           fi
+          EXAMPLE=templates/security-summary.example.json
+          if [ ! -f "$EXAMPLE" ]; then EXAMPLE=.sentinel-shield/templates/security-summary.example.json; fi
+          # Reads the resolved mode from reports/sentinel-shield-gates.env.
+          # Exit 1 here = "real summary required but missing" -> the gate fails,
+          # which is the intended fail-closed behavior for baseline/strict/regulated.
+          sh "$SELECT" \
+            --summary reports/security-summary.json \
+            --example "$EXAMPLE" \
+            --gates-env reports/sentinel-shield-gates.env
 
       - name: Enforce gates
         run: |
@@ -124,6 +140,37 @@ jobs:
             reports/security-summary.json
             reports/sentinel-shield-enforcement.json
             reports/sentinel-shield-enforcement.md
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Assemble release evidence
+        if: always()
+        run: |
+          set -eu
+          mkdir -p reports
+          {
+            echo "# Sentinel Shield Release Evidence"
+            echo ""
+            echo "- Repository: ${{ github.repository }}"
+            echo "- Ref: ${{ github.ref }}"
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Run: ${{ github.run_id }}"
+            echo ""
+            echo "## Resolved gates"
+            echo ""
+            [ -f reports/sentinel-shield-gates.md ] && cat reports/sentinel-shield-gates.md
+            echo ""
+            echo "## Enforcement"
+            echo ""
+            [ -f reports/sentinel-shield-enforcement.md ] && cat reports/sentinel-shield-enforcement.md
+          } > reports/release-evidence.md
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-release-evidence
+          path: reports/release-evidence.md
           retention-days: 90
           if-no-files-found: warn
 

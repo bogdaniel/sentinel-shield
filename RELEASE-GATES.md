@@ -113,6 +113,35 @@ output into the contract. Responsibilities stay separate:
 fatal (exit 1). The builder does **not** run scanners. **Enforcement begins only on
 `security-summary.json`** — see [`docs/scanner-normalization.md`](docs/scanner-normalization.md).
 
+### Security-summary artifact requirement
+
+In CI, `security-summary.json` is passed as the `sentinel-shield-security-summary`
+artifact. The release gate applies a **fallback policy** before enforcing
+([`scripts/select-security-summary.sh`](scripts/select-security-summary.sh)):
+
+| Mode | No real summary present |
+| --- | --- |
+| `report-only` | warn loudly, fall back to the all-zero example, continue |
+| `baseline` | **fail** (exit 1) |
+| `strict` | **fail** (exit 1) |
+| `regulated` | **fail** (exit 1) |
+
+> The all-zero example summary is **never** valid evidence in `baseline`/`strict`/
+> `regulated`. "Real" = present, valid JSON, and not byte-identical to
+> `templates/security-summary.example.json`, so the example cannot be dropped in to
+> spoof a pass. This is fail-closed by design.
+
+**Artifact trust model.** Artifacts are trusted only within the **same workflow
+run** (`needs:` topology). Sentinel Shield ships no cross-run artifact discovery —
+pulling artifacts from arbitrary/untrusted runs is a supply-chain risk. Cross-workflow
+release gating must be wired by the consumer with a trusted strategy (commit SHA +
+run ID + trusted branch + environment protection).
+
+**Same-workflow vs cross-workflow.** Production should run the release gate in the
+same workflow as the scanner jobs (so `download-artifact` finds the summary in-run).
+The standalone `ci-release-gate.yml` is fail-closed: absent a real summary,
+`baseline`/`strict`/`regulated` fail. See README "CI artifact handoff".
+
 ---
 
 ## 1. Gate stages

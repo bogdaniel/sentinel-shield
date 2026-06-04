@@ -62,3 +62,38 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+      # --- Sentinel Shield raw reports (best-effort; for normalization) ---
+      - name: Prepare raw dir
+        if: always()
+        run: mkdir -p reports/raw
+
+      - name: Hadolint (JSON → reports/raw/hadolint.json)
+        if: always()
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: hadolint.yaml
+          format: json
+          output-file: reports/raw/hadolint.json
+          no-fail: true
+
+      - name: Trivy (JSON → reports/raw/trivy.json)
+        if: always()
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: image
+          image-ref: sentinel-app:ci
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+
+      - name: Upload raw Docker reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-docker
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn

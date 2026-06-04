@@ -59,3 +59,26 @@ jobs:
         run: |
           if npm run | grep -q "^  test"; then npm test; fi
           if npm run | grep -q "^  build"; then npm run build; fi
+
+      # --- Sentinel Shield raw reports (best-effort; for normalization) ---
+      # npm audit --json maps to the npm_audit collector. tests.json must be a
+      # normalized { "failures": N, "errors": N } from your test runner (not faked).
+      # ESLint/TypeScript do not yet have collectors; do not invent unsupported ones.
+      - name: Sentinel Shield raw reports
+        if: always()
+        run: |
+          mkdir -p reports/raw
+          npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
+          # Example for later: normalize your test runner output to reports/raw/tests.json
+          #   e.g. { "failures": 0, "errors": 0 }
+          echo "raw Node reports written (where available):"
+          ls -1 reports/raw 2>/dev/null || true
+
+      - name: Upload raw Node reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-node
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn

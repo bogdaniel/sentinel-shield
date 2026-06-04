@@ -168,6 +168,32 @@ A failed self-check aborts with exit 2 — no contradictory summary is ever writ
 
 ---
 
+## CI artifact handoff
+
+In CI the layers communicate via artifacts (see README "CI artifact handoff"):
+
+- **Raw artifacts are uploaded** by the scanner workflows:
+  `ci-security.yml` → `sentinel-shield-raw-security`; `ci-php`/`ci-node`/`ci-docker`
+  → `sentinel-shield-raw-security-php`/`-node`/`-docker` (each holding
+  `reports/raw/*.json`).
+- **`security-summary.json` is produced** by `ci-security.yml` running
+  `build-security-summary.sh` and uploaded as `sentinel-shield-security-summary`.
+  (A fuller pipeline downloads the per-stack raw artifacts into `reports/raw/` first
+  so one summary covers all stacks.)
+- **The release gate consumes it**: `ci-release-gate.yml` downloads
+  `sentinel-shield-security-summary` (same-run), applies the fallback policy
+  ([`select-security-summary.sh`](../scripts/select-security-summary.sh)), then runs
+  `enforce-gates.sh`.
+
+### Why the example fallback is report-only
+
+The all-zero example (`templates/security-summary.example.json`) exists so the
+template *runs* without scanners. It is **not evidence**. In `baseline`, `strict`,
+and `regulated` a real summary is required and a missing/example summary **fails the
+gate** — fail-closed. Only `report-only` may continue on the example, and only with
+a loud warning. The policy detects a copied example (byte-identical) and refuses it
+in baseline+, so it cannot be used to spoof a pass.
+
 ## Adding a new collector (for consuming projects)
 
 1. Create `scripts/collectors/<tool>.sh` following the contract (source the common

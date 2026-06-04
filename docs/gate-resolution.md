@@ -185,6 +185,23 @@ A minimal consumer in any workflow:
 
 ---
 
+## Mode controls the summary fallback
+
+The resolved mode does more than pick thresholds — it decides whether a missing
+findings document may fall back to the example. The release gate runs
+[`scripts/select-security-summary.sh`](../scripts/select-security-summary.sh), which
+reads `SENTINEL_SHIELD_MODE` from the resolved env:
+
+| Mode | No real `security-summary.json` |
+| --- | --- |
+| `report-only` | warn, use the all-zero example, continue |
+| `baseline` / `strict` / `regulated` | **fail** (the example is not evidence) |
+
+So `report-only` can demonstrate the pipeline without scanners, while
+`baseline`+ require real, scanner-produced findings — fail-closed. See
+[`scanner-normalization.md`](scanner-normalization.md) and
+[`security-summary-schema.md`](security-summary-schema.md).
+
 ## Fallback parser limitations
 
 The resolver prefers **mikefarah `yq` v4** when it is installed. Otherwise it uses a

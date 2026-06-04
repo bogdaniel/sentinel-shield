@@ -88,25 +88,30 @@ jobs:
           persist-credentials: false
 
       - name: Generate SBOM (Syft)
+        # SPDX JSON at reports/sbom.spdx.json — the path the builder checks for the
+        # missing_sbom evidence gate.
+        run: mkdir -p reports
+      - name: Syft SBOM
         uses: anchore/sbom-action@v0
         with:
           path: .
-          format: cyclonedx-json
-          output-file: sbom.cdx.json
+          format: spdx-json
+          output-file: reports/sbom.spdx.json
 
       - name: Scan SBOM (Grype)
         uses: anchore/scan-action@v4
         with:
-          sbom: sbom.cdx.json
+          sbom: reports/sbom.spdx.json
           severity-cutoff: high
           fail-build: true
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sbom
-          path: sbom.cdx.json
+          name: sentinel-shield-sbom
+          path: reports/sbom.spdx.json
           retention-days: 90
+          if-no-files-found: error
 
   # Produce raw scanner artifacts and normalize them into security-summary.json.
   # This job demonstrates the contract; the exact tool flags depend on the project.
@@ -155,17 +160,25 @@ jobs:
         # (tools recorded "unavailable") unless --strict-tools/--require-tool is set.
         run: |
           sh scripts/build-security-summary.sh \
-            --project-name "${{ github.event.repository.name }}" \
+            --project-name "${{ github.repository }}" \
+            --project-type "unknown" \
+            --criticality "medium" \
             --commit "${{ github.sha }}" \
             --branch "${{ github.ref_name }}" \
-            --workflow ci-security
+            --workflow "${{ github.workflow }}"
+
+      - name: Upload raw scanner artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Upload security summary
         uses: actions/upload-artifact@v4
         with:
-          name: security-summary
-          path: |
-            reports/security-summary.json
-            reports/raw/*.json
+          name: sentinel-shield-security-summary
+          path: reports/security-summary.json
           retention-days: 90
           if-no-files-found: error

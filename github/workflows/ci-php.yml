@@ -85,3 +85,30 @@ jobs:
           else
             vendor/bin/phpunit
           fi
+
+      # --- Sentinel Shield raw reports (best-effort; for normalization) ---
+      # Writes reports/raw/*.json for the PHP collectors. Each line tolerates a
+      # missing tool or a non-zero exit (tools emit JSON even when they find issues).
+      # Project-specific: tune flags/paths. tests.json must be a normalized
+      # { "failures": N, "errors": N } produced by your test step — not faked here.
+      - name: Sentinel Shield raw reports
+        if: always()
+        run: |
+          mkdir -p reports/raw
+          [ -x vendor/bin/phpstan ] && vendor/bin/phpstan analyse --error-format=json > reports/raw/phpstan.json 2>/dev/null || true
+          [ -x vendor/bin/psalm ] && vendor/bin/psalm --output-format=json > reports/raw/psalm.json 2>/dev/null || true
+          if [ -x vendor/bin/deptrac ] && [ -f deptrac.yaml ]; then
+            vendor/bin/deptrac analyse --config-file=deptrac.yaml --formatter=json --output=reports/raw/deptrac.json --no-progress || true
+          fi
+          composer audit --locked --format=json > reports/raw/composer-audit.json 2>/dev/null || true
+          echo "raw PHP reports written (where tools were available):"
+          ls -1 reports/raw 2>/dev/null || true
+
+      - name: Upload raw PHP reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-php
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn

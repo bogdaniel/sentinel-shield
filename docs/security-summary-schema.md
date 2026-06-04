@@ -173,6 +173,19 @@ written.
 > a claim of perfect scanner coverage. See
 > [`scanner-normalization.md`](scanner-normalization.md).
 
+## Real summary required for baseline and above
+
+`security-summary.json` must be produced from **real scanner artifacts** for
+`baseline`, `strict`, and `regulated`. The all-zero example
+(`templates/security-summary.example.json`) is **not evidence** — it exists only so
+templates run and is accepted **only** in `report-only` (with a loud warning).
+
+The release gate enforces this via
+[`select-security-summary.sh`](../scripts/select-security-summary.sh): in
+`baseline`+ a missing summary — or one byte-identical to the example — **fails the
+gate**. See [`gate-resolution.md`](gate-resolution.md) and
+[`../RELEASE-GATES.md`](../RELEASE-GATES.md).
+
 ---
 
 ## Common failure modes
