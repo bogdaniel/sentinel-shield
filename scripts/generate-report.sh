@@ -46,7 +46,15 @@ fi
 SUMMARY_STATUS="not present (a scanner workflow must produce reports/security-summary.json)"
 ENFORCE_BLOCK="_Enforcement has not run. Provide \`reports/security-summary.json\` and run \`scripts/enforce-gates.sh\`._"
 ENFORCER="$SCRIPT_DIR/enforce-gates.sh"
+BUILDER="$SCRIPT_DIR/build-security-summary.sh"
 SUMMARY_FILE="$OUT_DIR/security-summary.json"
+
+# If no summary yet but raw scanner artifacts exist, build one (best-effort).
+if [ ! -f "$SUMMARY_FILE" ] && [ -d "$TARGET/reports/raw" ] && [ -f "$BUILDER" ] && command -v jq >/dev/null 2>&1; then
+	log_info "building security-summary.json from reports/raw/"
+	( cd "$TARGET" && sh "$BUILDER" ) >/dev/null 2>&1 || log_warn "builder failed; continuing without a summary"
+fi
+
 if [ -f "$SUMMARY_FILE" ]; then
 	SUMMARY_STATUS="present (\`$SUMMARY_FILE\`)"
 	if [ -f "$ENFORCER" ] && command -v jq >/dev/null 2>&1; then

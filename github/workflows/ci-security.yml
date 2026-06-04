@@ -107,3 +107,65 @@ jobs:
           name: sbom
           path: sbom.cdx.json
           retention-days: 90
+
+  # Produce raw scanner artifacts and normalize them into security-summary.json.
+  # This job demonstrates the contract; the exact tool flags depend on the project.
+  # In a fuller pipeline, the PHP/Node/Docker workflows would also write
+  # reports/raw/*.json (phpstan, psalm, deptrac, tests, hadolint, ...), be uploaded
+  # as artifacts, and a single job would download them all before building.
+  security-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare raw dir
+        run: mkdir -p reports/raw
+
+      - name: Semgrep (JSON → reports/raw/semgrep.json)
+        # Conservative: never abort the summary on findings; the release gate decides.
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
+            semgrep --json --output /src/reports/raw/semgrep.json \
+            --config /src/semgrep || true
+        continue-on-error: true
+
+      - name: Gitleaks (JSON → reports/raw/gitleaks.json)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+        continue-on-error: true
+
+      - name: Trivy (JSON → reports/raw/trivy.json)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+
+      - name: Build security-summary.json
+        # jq is preinstalled on ubuntu-latest. Missing raw files are tolerated
+        # (tools recorded "unavailable") unless --strict-tools/--require-tool is set.
+        run: |
+          sh scripts/build-security-summary.sh \
+            --project-name "${{ github.event.repository.name }}" \
+            --commit "${{ github.sha }}" \
+            --branch "${{ github.ref_name }}" \
+            --workflow ci-security
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: |
+            reports/security-summary.json
+            reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: error

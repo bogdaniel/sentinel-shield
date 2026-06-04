@@ -95,6 +95,24 @@ maps each resolved `SENTINEL_SHIELD_FAIL_ON_*` flag onto its summary key:
 an error, never a silent zero. The gates `.env` is validated line-by-line and never
 blind-sourced; JSON is parsed only with `jq`.
 
+### Scanner normalization (producing the contract)
+
+Between resolution and enforcement sits a normalization step that turns raw scanner
+output into the contract. Responsibilities stay separate:
+
+| Stage | Who | Output |
+| --- | --- | --- |
+| Run scanners | scanner workflows (`ci-security.yml`, `ci-php.yml`, …) | `reports/raw/*.json` |
+| Parse one tool | `scripts/collectors/<tool>.sh` | a normalized per-tool object |
+| Merge | `scripts/build-security-summary.sh` | `reports/security-summary.json` |
+| Decide | `scripts/enforce-gates.sh` | pass/fail + exit code |
+
+**Raw artifact contract:** each tool writes JSON to `reports/raw/<tool>.json`
+(e.g. `gitleaks.json`, `semgrep.json`, `trivy.json`). Missing artifacts are
+`unavailable` (counts 0) by default; `--strict-tools` / `--require-tool` make them
+fatal (exit 1). The builder does **not** run scanners. **Enforcement begins only on
+`security-summary.json`** — see [`docs/scanner-normalization.md`](docs/scanner-normalization.md).
+
 ---
 
 ## 1. Gate stages

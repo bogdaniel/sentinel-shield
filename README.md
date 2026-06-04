@@ -183,9 +183,7 @@ plus a normalized findings document, `reports/security-summary.json`, and exits
 output into one document with a required `summary` of 12 counts/flags
 ([schema](schemas/security-summary.schema.json),
 [example](templates/security-summary.example.json),
-[docs](docs/security-summary-schema.md)). Sentinel Shield does **not** yet ship the
-per-scanner adapters that emit this file — producing it is the consuming project's
-job; this layer defines and enforces the target contract.
+[docs](docs/security-summary-schema.md)).
 
 **How `enforce-gates.sh` works.**
 
@@ -213,6 +211,41 @@ runs `resolve-gates.sh`, provides `security-summary.json` (real scanner output, 
 the all-zero example as a clearly-marked fallback), runs `enforce-gates.sh`, uploads
 the resolver + enforcement artifacts, and lets the enforcer's exit code be the
 release gate.
+
+---
+
+## 6c. Scanner normalization (producing `security-summary.json`)
+
+Sentinel Shield ships a first-pass layer that turns raw scanner output into the
+contract above, keeping scanner *execution* separate from *normalization*:
+
+```txt
+reports/raw/*.json  →  scripts/collectors/<tool>.sh  →  scripts/build-security-summary.sh  →  reports/security-summary.json
+```
+
+- **Scanner workflows** run the tools and write raw output to `reports/raw/`
+  (e.g. `gitleaks.json`, `semgrep.json`, `trivy.json`, …).
+- **Collectors** ([`scripts/collectors/`](scripts/collectors/)) each parse one raw
+  file with `jq` and emit a small normalized object. A missing artifact ⇒ the tool
+  is `unavailable` (counts 0), not a crash; invalid JSON ⇒ exit 2.
+- **The builder** ([`scripts/build-security-summary.sh`](scripts/build-security-summary.sh))
+  merges collectors by summing counts, builds the `tools` object, sets evidence by
+  file existence, reads `reports/exceptions.json` if present, and writes a
+  schema-consistent summary (with a self-check). `--strict-tools` / `--require-tool`
+  make missing artifacts fatal.
+
+Twelve tools are supported today (Gitleaks, Semgrep, Trivy, composer audit, npm
+audit, PHPStan, Psalm, Deptrac, tests, Hadolint, actionlint, zizmor) with
+**conservative, tunable** severity mappings — not a claim of perfect coverage. See
+[`docs/scanner-normalization.md`](docs/scanner-normalization.md). Clean input
+examples live in [`templates/raw/`](templates/raw/).
+
+```sh
+# Build a summary from raw artifacts, then resolve + enforce.
+sh scripts/build-security-summary.sh --project-name proxyflux --project-type laravel
+sh scripts/resolve-gates.sh --mode baseline
+sh scripts/enforce-gates.sh --format all
+```
 
 ---
 

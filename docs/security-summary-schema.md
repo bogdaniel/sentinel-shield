@@ -134,9 +134,44 @@ document):
 | React | Gitleaks→`secrets`; Semgrep+`npm audit`→`*_vulnerabilities`; tsc→`type_errors`; ESLint boundaries→`architecture_violations`; test runner→`test_failures` |
 | Docker | Hadolint/Trivy→`unsafe_docker`; Trivy image→`*_vulnerabilities`; Syft→`evidence.sbom` |
 
-> Sentinel Shield does **not** yet ship the per-scanner adapters that emit this file;
-> producing `security-summary.json` is the consuming project's responsibility for
-> now. This document defines the target contract.
+Sentinel Shield ships a first-pass builder and collectors that produce this file
+from raw artifacts — see below and [`scanner-normalization.md`](scanner-normalization.md).
+
+## How `build-security-summary.sh` populates fields
+
+[`scripts/build-security-summary.sh`](../scripts/build-security-summary.sh) runs the
+per-tool collectors over `reports/raw/*.json` and merges them:
+
+- **`summary` counts** = the sum of every collector's count for that key.
+- **`tools.<tool>`** = each collector's `tool_report` (carrying a `status` of
+  `pass`/`fail`/`unavailable`).
+- **`evidence`** = set by file existence: `reports/sbom.spdx.json` and
+  `reports/release-evidence.md`.
+- **`summary.missing_sbom` / `summary.missing_release_evidence`** = the inverse of
+  the corresponding `evidence.*.present`.
+- **`exceptions` + `summary.expired_exceptions`** = read from
+  `reports/exceptions.json` if present, else 0.
+- **`project` / `source` / `generated_at` / `version`** = from CLI flags and the
+  clock.
+
+### Tool status meanings
+
+`pass` (ran, no findings in its buckets), `fail` (ran, found something), `warn`
+(ran, advisory), `skipped` (intentionally not run), `unavailable` (no/empty raw
+artifact). Enforcement reads `summary`, not `tools`.
+
+### Consistency rules
+
+The builder guarantees (and self-checks) that `summary.missing_sbom ==
+not evidence.sbom.present`, `summary.missing_release_evidence ==
+not evidence.release_evidence.present`, and `summary.expired_exceptions ==
+exceptions.expired`. A contradiction aborts with exit 2 — no inconsistent summary is
+written.
+
+> The collectors are a **first-pass, conservative** normalization layer. Severity
+> mappings and tool output shapes vary by version and will need tuning; this is not
+> a claim of perfect scanner coverage. See
+> [`scanner-normalization.md`](scanner-normalization.md).
 
 ---
 

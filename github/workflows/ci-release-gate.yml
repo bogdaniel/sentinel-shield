@@ -80,12 +80,14 @@ jobs:
       - name: Provide security summary
         run: |
           set -eu
-          # The normalized findings contract. In a real pipeline, the scanner
-          # workflows (ci-security.yml, ci-php.yml, ci-node.yml, ci-docker.yml)
-          # MUST produce reports/security-summary.json from their outputs (see
-          # docs/security-summary-schema.md). If none was produced, we fall back to
-          # the all-zero EXAMPLE so this template runs — but this is clearly marked
-          # and must NOT be relied on as real evidence.
+          # The normalized findings contract. In a real pipeline, ci-security.yml
+          # (and the PHP/Node/Docker workflows) produce reports/security-summary.json
+          # via scripts/build-security-summary.sh and upload it as the
+          # "security-summary" artifact; this job downloads that artifact into
+          # reports/ before this step. If none is present, we fall back to the
+          # all-zero EXAMPLE so the template runs — clearly marked, NOT real evidence.
+          # (Add an actions/download-artifact step here once the producing workflow
+          # runs in the same pipeline.)
           if [ -f reports/security-summary.json ]; then
             echo "Using scanner-produced reports/security-summary.json"
           else
