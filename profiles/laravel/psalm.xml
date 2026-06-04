@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<!--
+  Sentinel Shield - Laravel Psalm baseline with taint analysis.
+
+  Psalm complements PHPStan and, critically, provides taint analysis to trace
+  untrusted input to dangerous sinks (SQL, shell, HTML, headers).
+
+  Install (dev):   composer require vimeo/psalm psalm/plugin-laravel
+  Baseline legacy: run psalm with the set-baseline option to write psalm-baseline.xml
+  Taint analysis:  run psalm with the taint-analysis option (slower; security CI)
+
+  errorLevel 4 is a migration-friendly start; lower the number toward 1 in strict
+  mode (lower is stricter in Psalm).
+  NOTE: XML comments cannot contain a double hyphen, so CLI flags are described in
+  prose above rather than shown verbatim.
+-->
+<psalm
+    errorLevel="4"
+    resolveFromConfigFile="true"
+    findUnusedBaselineEntry="true"
+    findUnusedCode="false"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+>
+    <projectFiles>
+        <directory name="app" />
+        <directory name="routes" />
+        <ignoreFiles>
+            <directory name="vendor" />
+            <directory name="bootstrap/cache" />
+            <directory name="storage" />
+        </ignoreFiles>
+    </projectFiles>
+
+    <plugins>
+        <pluginClass class="Psalm\LaravelPlugin\Plugin" />
+    </plugins>
+
+    <issueHandlers>
+        <!-- Taint sinks we care about most. Keep these at error level. -->
+        <TaintedSql errorLevel="error" />
+        <TaintedShell errorLevel="error" />
+        <TaintedHtml errorLevel="error" />
+        <TaintedHeader errorLevel="error" />
+        <TaintedInclude errorLevel="error" />
+        <TaintedSystemSecret errorLevel="error" />
+
+        <!-- Migration noise dampeners — review before relaxing further. -->
+        <MissingClosureReturnType errorLevel="suppress" />
+        <PropertyNotSetInConstructor errorLevel="suppress" />
+    </issueHandlers>
+</psalm>

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "//": "Sentinel Shield — Knip config. Finds unused files, dependencies, and exports.",
+  "//rationale": "Unused code and deps are attack surface and maintenance debt. Review before deleting.",
+  "entry": [
+    "src/index.ts",
+    "src/main.ts",
+    "src/server.ts"
+  ],
+  "project": ["src/**/*.{ts,js}"],
+  "ignore": ["**/*.d.ts", "dist/**", "build/**"],
+  "ignoreDependencies": [],
+  "ignoreBinaries": [],
+  "rules": {
+    "files": "warn",
+    "dependencies": "error",
+    "unlisted": "error",
+    "exports": "warn",
+    "types": "warn",
+    "duplicates": "warn"
+  }
+}

@@ -1,0 +1,59 @@
+# Sentinel Shield — Laravel Deptrac architecture boundaries.
+#
+# Enforces layered Clean Architecture inside a Laravel app. Adjust the collectors
+# to match your namespace layout. Defaults assume:
+#   App\Domain\*          domain layer (pure business rules)
+#   App\Application\*     use cases / handlers
+#   App\Infrastructure\*  adapters (DB, HTTP, queues)
+#   App\Http\*            presentation (controllers, requests, middleware)
+#
+# Run:  vendor/bin/deptrac analyse --config-file=deptrac.yaml
+# Start by observing violations; make blocking once the graph is clean.
+#
+# Requires:  composer require --dev qossmic/deptrac-shim
+
+deptrac:
+  paths:
+    - ./app
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Domain\\.*#'
+
+    - name: Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Application\\.*#'
+
+    - name: Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Infrastructure\\.*#'
+
+    - name: Presentation
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Http\\.*#'
+
+  ruleset:
+    # Domain depends on nothing internal. (No entry = depends on nothing.)
+    Domain: ~
+
+    # Application may depend on Domain only.
+    Application:
+      - Domain
+
+    # Infrastructure implements ports defined in Domain/Application.
+    Infrastructure:
+      - Domain
+      - Application
+
+    # Presentation calls use cases (Application). It must not reach Infrastructure
+    # or Domain directly.
+    Presentation:
+      - Application
+
+  # Surface code not assigned to any layer so coverage gaps are visible.
+  skip_violations: {}

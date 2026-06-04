@@ -1,0 +1,48 @@
+# Sentinel Shield — Symfony Deptrac architecture boundaries.
+#
+# Layered Clean Architecture for a Symfony app with code in src/. Adjust the
+# collectors to match your namespaces. Defaults assume:
+#   App\Domain\*          domain layer
+#   App\Application\*     use cases / handlers (CQRS handlers live here)
+#   App\Infrastructure\*  adapters (Doctrine repositories, HTTP clients, messengers)
+#   App\Controller\*      presentation (HTTP controllers)
+#
+# Run:  vendor/bin/deptrac analyse --config-file=deptrac.yaml
+# Requires:  composer require --dev qossmic/deptrac-shim
+
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Domain\\.*#'
+
+    - name: Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Application\\.*#'
+
+    - name: Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Infrastructure\\.*#'
+
+    - name: Presentation
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Controller\\.*#'
+
+  ruleset:
+    Domain: ~
+    Application:
+      - Domain
+    Infrastructure:
+      - Domain
+      - Application
+    Presentation:
+      - Application
+
+  skip_violations: {}

@@ -1,0 +1,41 @@
+# Sentinel Shield — Trivy config for image, filesystem, and config scanning.
+# Docs: https://aquasecurity.github.io/trivy
+#
+# Run:
+#   trivy image  --config trivy.yaml <image>
+#   trivy fs     --config trivy.yaml .
+#   trivy config --config trivy.yaml .
+
+# Scanners: vulnerabilities, misconfiguration (IaC/Dockerfile/compose), secrets.
+scan:
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+
+# Fail CI on HIGH and CRITICAL. report-only mode may set this to CRITICAL only.
+severity:
+  - HIGH
+  - CRITICAL
+
+# Only report fixable vulns by default to reduce noise; flip to false in strict mode
+# to surface everything (including not-yet-fixed CVEs for tracking).
+vulnerability:
+  ignore-unfixed: true
+
+# Exit non-zero when findings at/above the severity threshold exist.
+exit-code: 1
+
+# Misconfiguration / IaC checks.
+misconfiguration:
+  include-non-failures: false
+
+# Suppress findings only via .trivyignore with a justification comment; in regulated
+# mode each suppression must map to an exception record.
+ignorefile: .trivyignore
+
+# Cache to speed up repeated runs.
+cache:
+  backend: fs
+
+timeout: 10m

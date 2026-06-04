@@ -1,0 +1,13 @@
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  "//": "Sentinel Shield — audit-ci config. Wraps npm audit with a fail threshold for CI.",
+  "//modes": "baseline+/strict/regulated should fail on high and critical. report-only may set 'critical' only.",
+  "moderate": false,
+  "high": true,
+  "critical": true,
+  "report-type": "important",
+  "output-format": "text",
+  "//allowlist": "Each allowlisted advisory MUST correspond to an approved exception (see docs/exception-policy.md).",
+  "allowlist": [],
+  "skip-dev": false
+}

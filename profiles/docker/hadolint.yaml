@@ -1,0 +1,29 @@
+# Sentinel Shield — Hadolint config for Dockerfile linting.
+# Docs: https://github.com/hadolint/hadolint
+#
+# Run:  hadolint --config hadolint.yaml Dockerfile
+
+# Fail the build on warnings and above in strict/regulated; relax to "info" for
+# report-only onboarding.
+failure-threshold: warning
+
+# Treat these as errors regardless of default level — they map to our standard.
+override:
+  error:
+    - DL3002   # do not switch to root USER (last USER must be non-root)
+    - DL3007   # do not pin image to :latest
+    - DL3025   # use JSON notation for CMD/ENTRYPOINT (signal handling)
+  warning:
+    - DL3008   # pin apt package versions
+    - DL3018   # pin apk package versions
+    - DL4006   # set -o pipefail before piped RUN
+    - DL3059   # avoid consecutive RUN (layer hygiene)
+
+# Trusted base-image registries. Add your private registry; flag others.
+trustedRegistries:
+  - docker.io
+  - registry.example.com
+  - ghcr.io
+
+# Ignore rules only with justification (link an exception in regulated mode).
+ignored: []

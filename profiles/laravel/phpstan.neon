@@ -1,0 +1,47 @@
+# Sentinel Shield — Laravel PHPStan / Larastan baseline
+#
+# Assumes modern Laravel (PHP 8.3+), app code in app/.
+# Larastan provides the Laravel-aware reflection extension.
+#
+# Adoption: start at a level you can pass, then raise toward max.
+# Generate a baseline for legacy code so only new issues block:
+#   vendor/bin/phpstan analyse --generate-baseline
+#
+# Requires:
+#   composer require --dev larastan/larastan phpstan/phpstan
+
+includes:
+    - vendor/larastan/larastan/extension.neon
+    # Uncomment once a baseline is generated for legacy debt:
+    # - phpstan-baseline.neon
+
+parameters:
+    # Level 5 is a realistic migration target; raise to 8/max in strict mode.
+    level: 6
+
+    paths:
+        - app
+        - routes
+        - database
+
+    # Keep analysis fast and signal-focused.
+    excludePaths:
+        - app/Console/Kernel.php
+        - bootstrap/*
+        - storage/*
+        - vendor/*
+
+    # Treat PHPDoc as authoritative; surfaces mismatched types.
+    treatPhpDocTypesAsCertain: true
+
+    # Catch silently-swallowed errors.
+    reportUnmatchedIgnoredErrors: true
+
+    # Laravel magic can hide real issues; keep these on once green.
+    checkModelProperties: true
+    checkOctaneCompatibility: false
+
+    ignoreErrors:
+        # Example: tune per project. Each ignore should be justified and, in
+        # regulated mode, linked to an exception record.
+        # - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'

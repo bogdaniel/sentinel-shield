@@ -1,0 +1,38 @@
+{
+    "//": "Sentinel Shield — example composer.json scripts and dev dependencies.",
+    "//usage": "Merge the require-dev and scripts blocks into your project composer.json.",
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "vimeo/psalm": "^6.0",
+        "psalm/plugin-laravel": "^3.0",
+        "laravel/pint": "^1.18",
+        "rector/rector": "^2.0",
+        "qossmic/deptrac-shim": "^1.0",
+        "phpmd/phpmd": "^2.15"
+    },
+    "scripts": {
+        "quality": [
+            "@phpstan",
+            "@psalm",
+            "@pint",
+            "@deptrac",
+            "@test"
+        ],
+        "phpstan": "phpstan analyse --memory-limit=1G",
+        "psalm": "psalm --no-cache",
+        "psalm:taint": "psalm --taint-analysis --no-cache",
+        "pint": "pint --test",
+        "pint:fix": "pint",
+        "rector:dry": "rector process --dry-run",
+        "rector:fix": "rector process",
+        "deptrac": "deptrac analyse --config-file=deptrac.yaml --no-progress",
+        "phpmd": "phpmd app text cleancode,codesize,design,unusedcode",
+        "test": "php artisan test",
+        "security:audit": "composer audit --locked"
+    },
+    "scripts-descriptions": {
+        "quality": "Run the full Sentinel Shield quality gate locally.",
+        "psalm:taint": "Taint analysis: trace untrusted input to dangerous sinks.",
+        "security:audit": "Fail on known-vulnerable locked dependencies."
+    }
+}

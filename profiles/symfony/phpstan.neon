@@ -1,0 +1,42 @@
+# Sentinel Shield — Symfony PHPStan baseline.
+#
+# Assumes PHP 8.3+, Symfony 6/7, PSR-12, app code in src/.
+# Uses the PHPStan Symfony extension for container/service awareness.
+#
+# Requires:
+#   composer require --dev phpstan/phpstan phpstan/extension-installer \
+#       phpstan/phpstan-symfony phpstan/phpstan-doctrine
+#
+# Generate the container XML for the Symfony extension (test or dev env):
+#   php bin/console cache:warmup --env=dev
+#
+# Generate a baseline for legacy code so only new issues block:
+#   vendor/bin/phpstan analyse --generate-baseline
+
+includes:
+    # extension-installer wires these automatically; listed for clarity.
+    - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-doctrine/extension.neon
+    # - phpstan-baseline.neon
+
+parameters:
+    level: 6
+
+    paths:
+        - src
+
+    excludePaths:
+        - src/Kernel.php
+        - var/*
+        - vendor/*
+
+    symfony:
+        # Path to the compiled container; required for service resolution.
+        containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml
+
+    treatPhpDocTypesAsCertain: true
+    reportUnmatchedIgnoredErrors: true
+
+    ignoreErrors:
+        # Tune per project; justify each ignore.
+        # - '#Service ".*" is private#'
