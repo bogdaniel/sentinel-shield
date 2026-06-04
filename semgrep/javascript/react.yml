@@ -1,0 +1,54 @@
+# Sentinel Shield — React Semgrep rules. Starter set focused on XSS / unsafe DOM.
+rules:
+  - id: ss-react-dangerously-set-inner-html
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      dangerouslySetInnerHTML renders raw HTML. Sanitise with DOMPurify and justify
+      it; prefer rendering as JSX text. Silence only after sanitisation is verified.
+    metadata:
+      category: security
+      cwe: "CWE-79: Cross-site Scripting"
+    pattern-either:
+      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: $X }} />"
+      - pattern: "dangerouslySetInnerHTML={{ __html: $X }}"
+
+  - id: ss-react-unsafe-dom-write
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Direct DOM write bypasses React escaping. Avoid innerHTML/outerHTML/
+      insertAdjacentHTML/document.write with dynamic data.
+    metadata:
+      category: security
+      cwe: "CWE-79: Cross-site Scripting"
+    pattern-either:
+      - pattern: $EL.innerHTML = $X
+      - pattern: $EL.outerHTML = $X
+      - pattern: $EL.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+
+  - id: ss-react-javascript-url
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      javascript: URL in href/src executes script. Validate/normalise URLs and
+      reject the javascript: scheme.
+    metadata:
+      category: security
+      cwe: "CWE-79: Cross-site Scripting"
+    pattern-either:
+      - pattern: <$EL href="javascript:..." />
+      - pattern: <$EL src="javascript:..." />
+
+  - id: ss-react-unsanitized-html-render
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      HTML string assembled from variables and rendered. Ensure it is sanitised
+      (DOMPurify) before reaching the DOM.
+    metadata:
+      category: security
+      cwe: "CWE-79: Cross-site Scripting"
+    patterns:
+      - pattern: "dangerouslySetInnerHTML={{ __html: `...${$X}...` }}"

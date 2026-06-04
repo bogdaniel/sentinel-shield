@@ -1,0 +1,40 @@
+# Sentinel Shield — generic JavaScript/TypeScript Semgrep rules. Starter set.
+rules:
+  - id: ss-js-eval-new-function
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Dynamic code execution (eval/new Function). Remove it; parse data explicitly
+      instead of evaluating it.
+    metadata:
+      category: security
+      cwe: "CWE-95: Eval Injection"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: ss-js-hardcoded-secret
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Possible hardcoded secret. Load from environment / secret manager; never
+      commit credentials.
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+    pattern-either:
+      - pattern: const apiKey = "..."
+      - pattern: const secret = "..."
+      - pattern: const password = "..."
+      - pattern: const token = "..."
+
+  - id: ss-js-insecure-random-security
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Math.random() is not cryptographically secure. For tokens/IDs/secrets use
+      crypto.randomBytes / crypto.getRandomValues.
+    metadata:
+      category: security
+      cwe: "CWE-338: Use of Cryptographically Weak PRNG"
+    pattern: Math.random()

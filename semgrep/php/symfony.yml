@@ -1,0 +1,59 @@
+# Sentinel Shield — Symfony-specific Semgrep rules. Starter set; tune to your app.
+rules:
+  - id: ss-symfony-raw-sql-concat
+    languages: [php]
+    severity: ERROR
+    message: >
+      Raw SQL/DQL built by concatenation. Use Doctrine parameters
+      (setParameter / ->where('x = :p')) instead of interpolating input.
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+    pattern-either:
+      - pattern: $CONN->executeQuery("..." . $X . "...")
+      - pattern: $CONN->query("..." . $X . "...")
+      - pattern: $EM->createQuery("..." . $X . "...")
+      - pattern: $QB->where("..." . $X . "...")
+
+  - id: ss-symfony-missing-csrf-note
+    languages: [php]
+    severity: INFO
+    message: >
+      State-changing controller action. Confirm CSRF protection (form type CSRF
+      token or isCsrfTokenValid). Review prompt — silence once verified.
+    metadata:
+      category: security
+      cwe: "CWE-352: Cross-Site Request Forgery"
+    patterns:
+      - pattern: |
+          #[Route(..., methods: ["POST"])]
+          public function $M(...) { ... }
+      - pattern-not-inside: |
+          { ... $this->isCsrfTokenValid(...) ... }
+
+  - id: ss-symfony-unsafe-deserialization
+    languages: [php]
+    severity: ERROR
+    message: >
+      Unsafe deserialization. Avoid unserialize() on untrusted input; use the
+      Symfony Serializer with explicit, safe formats (json).
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+    patterns:
+      - pattern: unserialize($X)
+      - pattern-not: unserialize($X, ['allowed_classes' => false])
+
+  - id: ss-symfony-process-shell-string
+    languages: [php]
+    severity: ERROR
+    message: >
+      Process built from a shell string is injectable. Use
+      new Process([...]) with an argument array, or Process::fromShellCommandline
+      only with fully static, trusted strings.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: Process::fromShellCommandline("..." . $X . "...")
+      - pattern: new Process("..." . $X . "...")

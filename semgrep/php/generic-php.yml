@@ -1,0 +1,101 @@
+# Sentinel Shield — generic PHP Semgrep rules.
+# Starter rules. Tune messages/severity to your project; suppress with a justified
+# // nosemgrep that references an exception record (regulated mode).
+rules:
+  - id: ss-php-dangerous-eval
+    languages: [php]
+    severity: ERROR
+    message: >
+      Use of eval() executes arbitrary PHP. Remove it; if dynamic dispatch is
+      required, use a vetted allow-list or call_user_func with validated names.
+    metadata:
+      category: security
+      cwe: "CWE-95: Eval Injection"
+    patterns:
+      - pattern: eval(...)
+
+  - id: ss-php-shell-exec-user-input
+    languages: [php]
+    severity: ERROR
+    message: >
+      Shell execution with request data is command injection. Use
+      Symfony\Component\Process\Process with an argument array (no shell).
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: shell_exec(...)
+      - pattern: exec(...)
+      - pattern: system(...)
+      - pattern: passthru(...)
+      - pattern: proc_open(...)
+      - pattern: popen(...)
+
+  - id: ss-php-raw-sql-concat
+    languages: [php]
+    severity: ERROR
+    message: >
+      SQL built by string concatenation. Use parameterised queries / query-builder
+      bindings instead of concatenating variables into SQL.
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+    pattern-either:
+      - pattern: $DB->query("..." . $X . "...")
+      - pattern: mysqli_query($CONN, "..." . $X . "...")
+      - pattern: $PDO->query("..." . $X . "...")
+
+  - id: ss-php-unsafe-unserialize
+    languages: [php]
+    severity: ERROR
+    message: >
+      unserialize() on untrusted input enables object injection. Use json_decode or
+      pass allowed_classes => false explicitly with trusted input only.
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+    patterns:
+      - pattern: unserialize($X)
+      - pattern-not: unserialize($X, ['allowed_classes' => false])
+
+  - id: ss-php-debug-dump
+    languages: [php]
+    severity: WARNING
+    message: >
+      Debug dump left in code. Remove var_dump/dd/dump/print_r before production;
+      they leak internal state.
+    metadata:
+      category: hygiene
+    pattern-either:
+      - pattern: var_dump(...)
+      - pattern: dd(...)
+      - pattern: dump(...)
+      - pattern: print_r($X)
+
+  - id: ss-php-insecure-random
+    languages: [php]
+    severity: ERROR
+    message: >
+      Insecure randomness for a security-sensitive value. Use random_bytes() or
+      random_int() instead of rand/mt_rand/uniqid.
+    metadata:
+      category: security
+      cwe: "CWE-338: Use of Cryptographically Weak PRNG"
+    pattern-either:
+      - pattern: rand(...)
+      - pattern: mt_rand(...)
+      - pattern: uniqid(...)
+
+  - id: ss-php-hardcoded-credentials
+    languages: [php]
+    severity: ERROR
+    message: >
+      Possible hardcoded credential. Move secrets to environment/secret manager.
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+    pattern-either:
+      - pattern: $password = "...";
+      - pattern: $secret = "...";
+      - pattern: $apiKey = "...";
+      - pattern: $api_key = "...";

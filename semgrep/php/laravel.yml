@@ -1,0 +1,80 @@
+# Sentinel Shield — Laravel-specific Semgrep rules.
+# Starter rules. Several are intentionally noisy "review prompts" rather than hard
+# bugs — tune severity to your codebase.
+rules:
+  - id: ss-laravel-mass-assignment-request-all
+    languages: [php]
+    severity: ERROR
+    message: >
+      Mass assignment from request()->all(). Use $request->validated() or
+      ->only([...]) and define $fillable; never feed all() into create/update.
+    metadata:
+      category: security
+      cwe: "CWE-915: Improperly Controlled Modification of Object Attributes"
+    pattern-either:
+      - pattern: $X::create($REQUEST->all())
+      - pattern: $X::create(request()->all())
+      - pattern: $MODEL->update($REQUEST->all())
+      - pattern: $MODEL->fill($REQUEST->all())
+
+  - id: ss-laravel-missing-authorization-review
+    languages: [php]
+    severity: WARNING
+    message: >
+      Controller action mutates data. Confirm authorization is enforced
+      ($this->authorize(...), a policy, or a Gate). This is a review prompt, not
+      proof of a bug — silence with nosemgrep + justification once verified.
+    metadata:
+      category: security
+      cwe: "CWE-862: Missing Authorization"
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL->delete()
+          - pattern: $MODEL->forceDelete()
+      - pattern-not-inside: |
+          $this->authorize(...);
+          ...
+
+  - id: ss-laravel-raw-query
+    languages: [php]
+    severity: ERROR
+    message: >
+      Raw query with interpolation. DB::raw/whereRaw/selectRaw must use bound
+      parameters, never concatenated request data.
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+    pattern-either:
+      - pattern: DB::raw("..." . $X . "...")
+      - pattern: $Q->whereRaw("..." . $X . "...")
+      - pattern: $Q->selectRaw("..." . $X . "...")
+      - pattern: DB::statement("..." . $X . "...")
+
+  - id: ss-laravel-app-debug-true
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - ".env"
+        - ".env.*"
+        - "config/app.php"
+    message: >
+      APP_DEBUG appears enabled. Debug mode leaks stack traces and config in
+      production. Ensure APP_DEBUG=false in production environments.
+    metadata:
+      category: security
+      cwe: "CWE-489: Active Debug Code"
+    pattern-regex: 'APP_DEBUG\s*=\s*(true|1)'
+
+  - id: ss-laravel-unsafe-file-upload
+    languages: [php]
+    severity: WARNING
+    message: >
+      File stored using the client-supplied name. Use store()/storeAs() with a
+      server-generated name, validate MIME by content, and store outside web root.
+    metadata:
+      category: security
+      cwe: "CWE-434: Unrestricted Upload of File with Dangerous Type"
+    pattern-either:
+      - pattern: $FILE->storeAs($DIR, $FILE->getClientOriginalName())
+      - pattern: $FILE->move($DIR, $FILE->getClientOriginalName())

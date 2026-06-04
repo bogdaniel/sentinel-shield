@@ -1,0 +1,56 @@
+# Sentinel Shield — Node.js Semgrep rules. Starter set.
+rules:
+  - id: ss-node-child-process-user-input
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Command execution with interpolated input is command injection. Use
+      execFile/spawn with an argument array; never build a shell string from input.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: exec(`...${$X}...`)
+      - pattern: exec("..." + $X)
+      - pattern: execSync(`...${$X}...`)
+      - pattern: execSync("..." + $X)
+
+  - id: ss-node-nosql-injection
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Query object built directly from the request body allows NoSQL operator
+      injection ($gt, $where, ...). Validate/whitelist fields before querying.
+    metadata:
+      category: security
+      cwe: "CWE-943: Improper Neutralization of Data within Query Logic"
+    pattern-either:
+      - pattern: $COLL.find(req.body)
+      - pattern: $COLL.findOne(req.body)
+      - pattern: "$MODEL.find({ $KEY: req.query.$Q })"
+
+  - id: ss-node-jwt-no-verify
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      JWT decoded without verification, or verification without an explicit
+      algorithm allow-list. Use jwt.verify(token, key, { algorithms: ['RS256'] }).
+    metadata:
+      category: security
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+    pattern-either:
+      - pattern: jwt.decode($T)
+      - pattern: jwt.verify($T, $K)   # missing options/algorithms — review
+
+  - id: ss-node-tls-verification-disabled
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      TLS certificate verification disabled. Never set rejectUnauthorized:false or
+      NODE_TLS_REJECT_UNAUTHORIZED=0 in production.
+    metadata:
+      category: security
+      cwe: "CWE-295: Improper Certificate Validation"
+    pattern-either:
+      - pattern: "{ ..., rejectUnauthorized: false, ... }"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
