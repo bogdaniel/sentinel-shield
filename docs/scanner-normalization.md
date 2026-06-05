@@ -185,6 +185,23 @@ In CI the layers communicate via artifacts (see README "CI artifact handoff"):
   ([`select-security-summary.sh`](../scripts/select-security-summary.sh)), then runs
   `enforce-gates.sh`.
 
+### How `ci-pipeline.yml` gathers and merges raw artifacts
+
+The combined pipeline ([`github/workflows/ci-pipeline.yml`](../github/workflows/ci-pipeline.yml))
+is the reference for this in one run:
+
+1. Stack jobs (`php-quality`, `node-quality`, `docker-security`, `security-scan`)
+   each write `reports/raw/*.json` and upload it as
+   `sentinel-shield-raw-security[-php|-node|-docker]`. `security-scan` also produces
+   the SPDX SBOM (`sentinel-shield-sbom`).
+2. `build-security-summary` downloads **all** `sentinel-shield-raw-security*`
+   artifacts with `pattern: sentinel-shield-raw-security*` + `merge-multiple: true`
+   into a single `reports/raw/`, downloads the SBOM into `reports/`, then runs
+   `build-security-summary.sh`. The builder **sums** each `summary` key across every
+   collector, so per-stack raw outputs combine into one document. Tools whose raw
+   files are absent are `unavailable` (counts 0) — not faked.
+3. `release-gate` consumes the resulting `sentinel-shield-security-summary`.
+
 ### Why the example fallback is report-only
 
 The all-zero example (`templates/security-summary.example.json`) exists so the

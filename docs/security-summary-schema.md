@@ -186,6 +186,12 @@ The release gate enforces this via
 gate**. See [`gate-resolution.md`](gate-resolution.md) and
 [`../RELEASE-GATES.md`](../RELEASE-GATES.md).
 
+In the recommended pipeline
+([`github/workflows/ci-pipeline.yml`](../github/workflows/ci-pipeline.yml)),
+`security-summary.json` is produced by the `build-security-summary` job (running
+`build-security-summary.sh` over the merged raw artifacts) and uploaded as
+`sentinel-shield-security-summary`. The example is never used in that job.
+
 ---
 
 ## Common failure modes

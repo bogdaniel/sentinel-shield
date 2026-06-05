@@ -142,6 +142,25 @@ same workflow as the scanner jobs (so `download-artifact` finds the summary in-r
 The standalone `ci-release-gate.yml` is fail-closed: absent a real summary,
 `baseline`/`strict`/`regulated` fail. See README "CI artifact handoff".
 
+### Recommended production topology: the combined pipeline
+
+[`github/workflows/ci-pipeline.yml`](github/workflows/ci-pipeline.yml) is the
+canonical topology. Scanner/quality jobs, the summary build, and the release gate
+run in **one workflow run**, wired with `needs:`; the
+`sentinel-shield-security-summary` artifact is produced and consumed **in-run**:
+
+```txt
+prepare → { php-quality, node-quality, docker-security, security-scan }
+        → build-security-summary → release-gate
+```
+
+**Why cross-workflow artifact discovery is not shipped.** `download-artifact` only
+sees the current run. Reaching into other runs requires extra logic and is a
+supply-chain risk (you could ingest artifacts from an untrusted run). Sentinel
+Shield ships none. Same-run handoff is the safe, default answer; cross-workflow
+gating is left to the consumer to wire with a trusted run-ID/branch/environment
+strategy.
+
 ---
 
 ## 1. Gate stages

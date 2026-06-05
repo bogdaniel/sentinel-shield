@@ -303,6 +303,41 @@ commit SHA + workflow run ID + a trusted branch + environment protection rules. 
 standalone `ci-release-gate.yml` is fail-closed: with no real summary,
 `baseline`/`strict`/`regulated` fail.
 
+### Combined reference workflow (recommended)
+
+[`github/workflows/ci-pipeline.yml`](github/workflows/ci-pipeline.yml) is the
+**canonical** production topology: it runs everything in one workflow run so the
+summary artifact is passed in-run via `needs:` + `upload`/`download-artifact` — no
+cross-run handoff required.
+
+```txt
+prepare → { php-quality, node-quality, docker-security, security-scan }
+        → build-security-summary → release-gate
+```
+
+- `prepare` resolves project metadata (name/type/criticality/branch/commit) by
+  reusing `resolve-gates.sh` — no YAML parsing in the workflow.
+- The four stack jobs are **best-effort**: each detects its files (composer.json /
+  package.json / Dockerfile / always for secrets) and uploads `reports/raw/*.json`.
+  Absent tools/files ⇒ no raw ⇒ the builder marks them `unavailable` (not faked).
+- `build-security-summary` downloads every `sentinel-shield-raw-security*` artifact
+  (`pattern` + `merge-multiple`) plus the SBOM, builds the **real**
+  `security-summary.json` (never the example), and uploads it.
+- `release-gate` downloads that summary, resolves, applies the fallback policy, and
+  enforces. Its exit code is the gate.
+
+**Why same-run `needs:` is preferred over the standalone templates.** The standalone
+`ci-*.yml` files are useful when stages live in different workflows, but cross-run
+artifact handoff is unsafe to automate. The combined pipeline keeps every artifact
+inside one trusted run, so the release gate provably consumes the summary the
+scanners just produced.
+
+**Adapting for Laravel + React + Docker.** Set `.sentinel-shield/profile.yaml`
+(`type`, `criticality`, `mode`); the stack jobs already detect each ecosystem. Add
+your real test step that writes a normalized `reports/raw/tests.json`
+(`{ "failures": N, "errors": N }`), tune scanner flags, and pin the actions to SHAs.
+No pipeline logic changes — only configuration.
+
 ---
 
 ## 7. Example GitHub Actions usage

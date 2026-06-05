@@ -202,6 +202,13 @@ So `report-only` can demonstrate the pipeline without scanners, while
 [`scanner-normalization.md`](scanner-normalization.md) and
 [`security-summary-schema.md`](security-summary-schema.md).
 
+In the recommended combined pipeline
+([`github/workflows/ci-pipeline.yml`](../github/workflows/ci-pipeline.yml)) the
+`release-gate` job consumes the **real** `sentinel-shield-security-summary` artifact
+produced by its `build-security-summary` dependency (same run, `needs:`), then runs
+`resolve-gates.sh → select-security-summary.sh → enforce-gates.sh`. Because the
+build job is a dependency, a real summary is always present for `baseline`+.
+
 ## Fallback parser limitations
 
 The resolver prefers **mikefarah `yq` v4** when it is installed. Otherwise it uses a

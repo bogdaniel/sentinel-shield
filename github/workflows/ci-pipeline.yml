@@ -1,0 +1,420 @@
+# Sentinel Shield — combined reference pipeline (canonical same-run topology).
+#
+# This is the RECOMMENDED production topology: scanner/quality jobs run, upload raw
+# artifacts, a build job merges them into reports/security-summary.json, and the
+# release gate enforces — all in ONE workflow run, so artifacts are passed via
+# needs: + upload/download-artifact (no cross-run discovery).
+#
+#   prepare → { php-quality, node-quality, docker-security, security-scan }
+#           → build-security-summary → release-gate
+#
+# ACTION PINNING: `uses:` shows version tags for readability. Consuming projects
+# MUST pin third-party actions to verified commit SHAs before production
+# (docs/github-actions-security.md). Do not use pull_request_target. No broad writes.
+name: ci-pipeline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+# Minimal permissions. This workflow does not upload SARIF/CodeQL, so read is enough.
+# (Add `security-events: write` only if you add a CodeQL/SARIF upload step.)
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      project_name: ${{ steps.meta.outputs.project_name }}
+      project_type: ${{ steps.meta.outputs.project_type }}
+      criticality: ${{ steps.meta.outputs.criticality }}
+      branch: ${{ steps.meta.outputs.branch }}
+      commit: ${{ steps.meta.outputs.commit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve project metadata
+        id: meta
+        run: |
+          set -eu
+          mkdir -p reports
+          # Reuse the resolver to read project metadata + mode (no YAML parsing here).
+          sh scripts/resolve-gates.sh --format env --output-dir reports || true
+          ENVF=reports/sentinel-shield-gates.env
+          get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
+          PN=$(get SENTINEL_SHIELD_PROJECT_NAME); [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"
+          PT=$(get SENTINEL_SHIELD_PROJECT_TYPE); [ -n "$PT" ] || PT="unknown"
+          CR=$(get SENTINEL_SHIELD_PROJECT_CRITICALITY)
+          case "$CR" in low|medium|high|critical) ;; *) CR="medium" ;; esac
+          {
+            echo "project_name=$PN"
+            echo "project_type=$PT"
+            echo "criticality=$CR"
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "commit=${GITHUB_SHA}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved: name=$PN type=$PT criticality=$CR"
+
+  # --------------------------------------------------------------------------
+  php-quality:
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: PHP raw reports (best-effort)
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          if [ ! -f composer.json ]; then
+            echo "::warning::no composer.json; skipping PHP quality (builder will mark tools unavailable)"
+            exit 0
+          fi
+          composer install --no-interaction --no-progress --prefer-dist || true
+          # Each tool writes JSON even when it finds issues; never abort the job here.
+          composer audit --locked --format=json > reports/raw/composer-audit.json 2>/dev/null || true
+          [ -x vendor/bin/phpstan ] && vendor/bin/phpstan analyse --error-format=json > reports/raw/phpstan.json 2>/dev/null || true
+          [ -x vendor/bin/psalm ] && vendor/bin/psalm --output-format=json > reports/raw/psalm.json 2>/dev/null || true
+          if [ -x vendor/bin/deptrac ] && [ -f deptrac.yaml ]; then
+            vendor/bin/deptrac analyse --config-file=deptrac.yaml --formatter=json --output=reports/raw/deptrac.json --no-progress || true
+          fi
+          # tests.json must be a normalized { "failures": N, "errors": N } produced by
+          # your test step. It is NOT faked here; wire it for your test runner.
+          ls -1 reports/raw 2>/dev/null || true
+
+      - name: Upload PHP raw reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-php
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  node-quality:
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Node raw reports (best-effort)
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          if [ ! -f package.json ]; then
+            echo "::warning::no package.json; skipping Node quality (builder will mark tools unavailable)"
+            exit 0
+          fi
+          npm ci || true
+          npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
+          # Future collectors (eslint/typescript/knip) are not wired: no collector
+          # exists for them yet, so do not emit unsupported raw files.
+          # tests.json must be a normalized { "failures": N, "errors": N } (not faked).
+          ls -1 reports/raw 2>/dev/null || true
+
+      - name: Upload Node raw reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-node
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  docker-security:
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Detect Docker files
+        id: detect
+        run: |
+          set -eu
+          if [ -f Dockerfile ] || [ -f docker-compose.yml ] || [ -f compose.yml ] || [ -f compose.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::no Docker files; skipping Docker security"
+          fi
+          mkdir -p reports/raw
+
+      - name: Hadolint (JSON → reports/raw/hadolint.json)
+        if: steps.detect.outputs.present == 'true' && hashFiles('Dockerfile') != ''
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          config: hadolint.yaml
+          format: json
+          output-file: reports/raw/hadolint.json
+          no-fail: true
+
+      - name: Trivy filesystem (JSON → reports/raw/trivy.json)
+        if: steps.detect.outputs.present == 'true'
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+
+      - name: Upload Docker raw reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-docker
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  security-scan:
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare dirs
+        run: mkdir -p reports/raw
+
+      - name: Semgrep (JSON → reports/raw/semgrep.json)
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
+            semgrep --json --output /src/reports/raw/semgrep.json \
+            --config /src/semgrep || true
+        continue-on-error: true
+
+      - name: Gitleaks (JSON → reports/raw/gitleaks.json)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+        continue-on-error: true
+
+      - name: Trivy filesystem (JSON → reports/raw/trivy.json)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+
+      - name: SBOM (SPDX → reports/sbom.spdx.json)
+        # If this is skipped/fails, missing_sbom stays true and strict/regulated
+        # gates fail later — we do NOT pretend an SBOM exists.
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: reports/sbom.spdx.json
+        continue-on-error: true
+
+      - name: Upload generic raw reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-sbom
+          path: reports/sbom.spdx.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  build-security-summary:
+    needs: [prepare, php-quality, node-quality, docker-security, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare dirs
+        run: mkdir -p reports/raw
+
+      - name: Download all raw artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sentinel-shield-raw-security*
+          path: reports/raw
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Download SBOM (sets evidence.sbom.present)
+        uses: actions/download-artifact@v4
+        with:
+          name: sentinel-shield-sbom
+          path: reports
+        continue-on-error: true
+
+      - name: Build security summary (no example fallback here)
+        env:
+          PROJECT_NAME: ${{ needs.prepare.outputs.project_name }}
+          PROJECT_TYPE: ${{ needs.prepare.outputs.project_type }}
+          CRITICALITY: ${{ needs.prepare.outputs.criticality }}
+        run: |
+          set -eu
+          sh scripts/build-security-summary.sh \
+            --project-name "${PROJECT_NAME}" \
+            --project-type "${PROJECT_TYPE}" \
+            --criticality "${CRITICALITY}" \
+            --commit "${GITHUB_SHA}" \
+            --branch "${GITHUB_REF_NAME}" \
+            --workflow "${GITHUB_WORKFLOW}"
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-security-summary
+          path: reports/security-summary.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload merged raw artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-raw-security-merged
+          path: reports/raw/*.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  release-gate:
+    needs: [prepare, build-security-summary]
+    runs-on: ubuntu-latest
+    environment: production   # protected: require reviewers before this gate releases
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare dirs
+        run: mkdir -p reports
+
+      - name: Download security summary
+        uses: actions/download-artifact@v4
+        with:
+          name: sentinel-shield-security-summary
+          path: reports
+
+      - name: Resolve gates
+        run: sh scripts/resolve-gates.sh --output-dir reports --format all
+
+      - name: Apply security-summary fallback policy
+        # In this same-run pipeline a real summary always exists (build job is a
+        # dependency). select-security-summary.sh fails baseline/strict/regulated if
+        # it is somehow missing or is the all-zero example. report-only may fall back.
+        run: |
+          sh scripts/select-security-summary.sh \
+            --summary reports/security-summary.json \
+            --example templates/security-summary.example.json \
+            --gates-env reports/sentinel-shield-gates.env
+
+      - name: Enforce gates
+        # Exit 0 pass / 1 fail / 2 config — this IS the release gate.
+        run: |
+          sh scripts/enforce-gates.sh \
+            --gates-env reports/sentinel-shield-gates.env \
+            --summary reports/security-summary.json \
+            --output-dir reports --format all
+
+      - name: Assemble release evidence
+        if: always()
+        run: |
+          set -eu
+          mkdir -p reports
+          {
+            echo "# Sentinel Shield Release Evidence"
+            echo ""
+            echo "- Repository: ${{ github.repository }}"
+            echo "- Ref: ${{ github.ref }}"
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Run: ${{ github.run_id }}"
+            echo ""
+            echo "## Resolved gates"
+            echo ""
+            [ -f reports/sentinel-shield-gates.md ] && cat reports/sentinel-shield-gates.md
+            echo ""
+            echo "## Enforcement"
+            echo ""
+            [ -f reports/sentinel-shield-enforcement.md ] && cat reports/sentinel-shield-enforcement.md
+          } > reports/release-evidence.md
+
+      - name: Upload gate resolution
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-gate-resolution
+          path: |
+            reports/sentinel-shield-gates.env
+            reports/sentinel-shield-gates.json
+            reports/sentinel-shield-gates.md
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload enforcement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-enforcement
+          path: |
+            reports/sentinel-shield-enforcement.json
+            reports/sentinel-shield-enforcement.md
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-release-evidence
+          path: reports/release-evidence.md
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Gate summary
+        if: always()
+        run: |
+          {
+            echo "## Sentinel Shield Release Gate (ci-pipeline)"
+            echo "- Ref: ${{ github.ref }}"
+            echo ""
+            if [ -f reports/sentinel-shield-enforcement.md ]; then
+              cat reports/sentinel-shield-enforcement.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
