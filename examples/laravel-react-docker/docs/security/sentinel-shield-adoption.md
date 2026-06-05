@@ -212,6 +212,52 @@ none exists. In `regulated`, supply a real, completed readiness document.
   error, not "0 failures". Until the normalizer is wired, Node test failures stay
   `unavailable` and are not gated.
 
+## First GitHub Runner Validation
+
+Before trusting the gates, run the pipeline once on a real runner (use a throwaway
+fixture repo). Step-by-step: [`github-fixture-run.md`](github-fixture-run.md);
+preflight: [`github-preflight-checklist.md`](github-preflight-checklist.md).
+
+**What should pass (report-only):** the overall release gate is **PASS** unless a
+real secret or an expired exception is present. Only `secrets` and
+`expired_exceptions` are active in `report-only`.
+
+**What may warn (not fail):** `no composer.json` / `no package.json` / `no Docker
+files` when a stack is absent; a scanner container that could not run; missing
+optional tools. Warnings are expected and do not fail the build in report-only.
+
+**Which artifacts must exist after a run:**
+`sentinel-shield-security-summary`, `sentinel-shield-gate-resolution`,
+`sentinel-shield-enforcement`, and `sentinel-shield-release-evidence`.
+`sentinel-shield-raw-security` and `sentinel-shield-sbom` should exist from
+`security-scan`. Per-stack raw artifacts exist **only** if that stack ran.
+
+**Inspect `reports/security-summary.json`:**
+
+```sh
+jq '.summary' security-summary.json   # the 12 normalized counts/flags
+jq '.tools'   security-summary.json   # per-tool status; "unavailable" = no raw produced
+```
+
+**Inspect `reports/sentinel-shield-enforcement.md`:** it lists each active gate and
+whether it passed. In report-only, expect only `secrets`/`expired_exceptions` active
+and `Overall result: PASS`.
+
+**If the Sentinel Shield checkout fails:** verify `SENTINEL_SHIELD_REPOSITORY` and
+`SENTINEL_SHIELD_REF` (the tag/SHA must exist); for a private Sentinel Shield repo,
+add a read `token:` to the checkout steps. The job log shows the failing
+`actions/checkout` step.
+
+**If scanner containers fail:** Semgrep/Gitleaks run via Docker and are
+`continue-on-error` — a container failure logs a warning and that tool becomes
+`unavailable`; it does not fail report-only. Re-check the image
+tags/pinning and runner network if you need that scanner.
+
+**If npm/composer tools are missing:** the stack jobs are best-effort. A missing
+tool simply does not write its raw report, and the builder marks it `unavailable`.
+Install the tool (recommended dev dependencies above) when you want that signal —
+do not fake the report.
+
 ## Known missing adapters / tools
 
 - Severity mappings in the collectors are conservative first-pass and may need
