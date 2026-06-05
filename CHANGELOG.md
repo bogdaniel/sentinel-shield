@@ -6,12 +6,24 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.2] — trivy-action transitive-pin fix
+
+### Fixed
+
+- **`aquasecurity/trivy-action` bumped to `v0.36.0`.** `v0.30.0` resolved as a tag
+  but transitively pinned `aquasecurity/setup-trivy@v0.2.2`, a tag that no longer
+  exists, so job setup still failed with "Unable to resolve action
+  …setup-trivy@v0.2.2". `v0.36.0` pins `setup-trivy` by commit SHA, so it always
+  resolves. Applied across `ci-security.yml`, `ci-pipeline.yml`, `ci-docker.yml`,
+  and the example workflow. (Supersedes the partial `v0.1.1` trivy fix.)
+
 ## [0.1.1] — workflow fixes from first GitHub-runner validation
 
 ### Fixed
 
 - **`aquasecurity/trivy-action` version pin** corrected from the non-existent
-  `0.30.0` to `v0.30.0` (the action's tags are `v`-prefixed). Affected
+  `0.30.0` to `v0.30.0` (the action's tags are `v`-prefixed); later found
+  insufficient (see 0.1.2). Affected
   `ci-security.yml`, `ci-pipeline.yml`, `ci-docker.yml`, and the Laravel+React+Docker
   example workflow. The bad pin failed job setup with
   "Unable to resolve action …@0.30.0".

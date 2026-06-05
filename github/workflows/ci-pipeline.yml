@@ -185,7 +185,7 @@ jobs:
 
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
         if: steps.detect.outputs.present == 'true'
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -231,7 +231,7 @@ jobs:
         continue-on-error: true
 
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
