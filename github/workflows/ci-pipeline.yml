@@ -125,9 +125,22 @@ jobs:
           fi
           npm ci || true
           npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
-          # Future collectors (eslint/typescript/knip) are not wired: no collector
-          # exists for them yet, so do not emit unsupported raw files.
-          # tests.json must be a normalized { "failures": N, "errors": N } (not faked).
+          # TypeScript -> reports/raw/typescript.json (normalized { "errors": N }).
+          if [ -f tsconfig.json ]; then
+            if out=$(npx --no-install tsc --noEmit 2>&1); then
+              printf '{"errors":0}\n' > reports/raw/typescript.json
+            else
+              n=$(printf '%s\n' "$out" | grep -cE 'error TS[0-9]+' || true)
+              [ "$n" -gt 0 ] 2>/dev/null || n=1
+              printf '{"errors":%s}\n' "$n" > reports/raw/typescript.json
+            fi
+          fi
+          # ESLint -> reports/raw/eslint.json (native JSON; failures captured, not hidden).
+          if [ -f package.json ]; then
+            npx --no-install eslint . --format json --output-file reports/raw/eslint.json || true
+          fi
+          # tests.json must be a normalized { "failures": N, "errors": N } from your
+          # test runner (e.g. vitest --reporter=json then a normalizer). NOT faked here.
           ls -1 reports/raw 2>/dev/null || true
 
       - name: Upload Node raw reports

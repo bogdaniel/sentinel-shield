@@ -81,6 +81,8 @@
           "high": { "type": "integer", "minimum": 0 },
           "medium": { "type": "integer", "minimum": 0 },
           "errors": { "type": "integer", "minimum": 0 },
+          "warnings": { "type": "integer", "minimum": 0 },
+          "security_errors": { "type": "integer", "minimum": 0 },
           "violations": { "type": "integer", "minimum": 0 },
           "failures": { "type": "integer", "minimum": 0 }
         },

@@ -113,6 +113,13 @@ output into the contract. Responsibilities stay separate:
 fatal (exit 1). The builder does **not** run scanners. **Enforcement begins only on
 `security-summary.json`** — see [`docs/scanner-normalization.md`](docs/scanner-normalization.md).
 
+**Node/React quality is gateable.** TypeScript (`type_errors`), ESLint
+(`type_errors` / `medium_vulnerabilities` / `high_vulnerabilities`), and Node tests
+(`test_failures`, via a Vitest/Jest → `tests.json` normalizer) now feed the same
+gates. So a consuming project must wire Node test normalization (do not fake
+`tests.json`) before moving to `baseline`, where `type_errors`, `test_failures`, and
+`high_vulnerabilities` block. See [`docs/node-react-normalization.md`](docs/node-react-normalization.md).
+
 ### Security-summary artifact requirement
 
 In CI, `security-summary.json` is passed as the `sentinel-shield-security-summary`

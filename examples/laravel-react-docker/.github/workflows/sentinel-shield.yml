@@ -135,11 +135,14 @@ jobs:
           fi
           npm ci || true
           npm run sentinel:npm-audit || true
-          # typecheck/lint are advisory here (no collectors yet); run for signal:
-          npm run sentinel:typecheck || true
-          npm run sentinel:lint || true
-          # If a test runner is configured, normalize its output to
-          # reports/raw/tests.json ({ "failures": N, "errors": N }). Not faked here.
+          # TypeScript + ESLint now feed enforceable summary keys via collectors.
+          npm run sentinel:typescript || true   # writes reports/raw/typescript.json {errors:N}
+          npm run sentinel:eslint || true        # writes reports/raw/eslint.json (native JSON)
+          # Node tests: run your runner with JSON output, then normalize to tests.json.
+          #   e.g. npx vitest run --reporter=json --outputFile=reports/raw/node-tests.json
+          #        npm run sentinel:test:node   # -> reports/raw/tests.json
+          # Do NOT fake tests.json; if no runner is wired, tests stay 'unavailable'.
+          npm run sentinel:test:node || true
           ls -1 reports/raw 2>/dev/null || true
       - name: Upload Node raw reports
         uses: actions/upload-artifact@v4

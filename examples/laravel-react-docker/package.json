@@ -9,14 +9,18 @@
   },
   "scripts": {
     "sentinel:npm-audit": "npm audit --json > reports/raw/npm-audit.json",
+    "sentinel:typescript": "tsc --noEmit && echo '{\"errors\":0}' > reports/raw/typescript.json",
+    "sentinel:eslint": "eslint . --format json --output-file reports/raw/eslint.json || true",
     "sentinel:typecheck": "tsc --noEmit",
     "sentinel:lint": "eslint .",
-    "sentinel:quality": "npm run sentinel:npm-audit && npm run sentinel:typecheck && npm run sentinel:lint"
+    "sentinel:test:node": "node scripts/sentinel/vitest-to-tests-json.mjs reports/raw/node-tests.json reports/raw/tests.json",
+    "sentinel:quality": "npm run sentinel:npm-audit && npm run sentinel:typescript && npm run sentinel:eslint"
   },
   "//scripts-notes": [
     "sentinel:npm-audit feeds the npm_audit collector (medium/high/critical).",
-    "typecheck/lint are advisory: there is no tsc/eslint collector yet, so they do not feed security-summary.json. Run them for signal.",
-    "If you have a test runner (Vitest/Jest), add a step that normalizes its output to reports/raw/tests.json: { \"failures\": N, \"errors\": N }. Do not fake it."
+    "sentinel:typescript writes reports/raw/typescript.json {errors:N} -> type_errors. The shell above writes 0 on success; in CI prefer counting 'error TS' lines on failure (see the workflow) so the real count is captured.",
+    "sentinel:eslint writes native ESLint JSON -> errorCount=type_errors, warningCount=medium_vulnerabilities, security/no-unsanitized severity-2=high_vulnerabilities (conservative, tunable).",
+    "sentinel:test:node normalizes a Vitest/Jest JSON report (reports/raw/node-tests.json) to reports/raw/tests.json {failures,errors}. Run your test runner with JSON output first; do NOT fake it."
   ],
   "devDependencies": {
     "typescript": "^5.5.0",

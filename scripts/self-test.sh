@@ -169,6 +169,24 @@ run_enforcement_case() {
 	rm -rf "$_d"
 }
 
+# run_build_case <description> <mode> <expected-exit> <raw-filename> <raw-content>
+# End-to-end through a collector: write one raw artifact, BUILD the summary (so the
+# collector's mapping is exercised), resolve gates for <mode>, enforce, assert.
+run_build_case() {
+	_d=$(mktemp -d)
+	mkdir -p "$_d/raw"
+	printf '%s' "$5" > "$_d/raw/$4"
+	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
+		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
+	expect_exit_code "$1" "$3" \
+		sh scripts/enforce-gates.sh \
+		--gates-env "$_d/sentinel-shield-gates.env" \
+		--summary "$_d/security-summary.json" \
+		--output-dir "$_d" --format json
+	rm -rf "$_d"
+}
+
 run_negative() {
 	log_info "negative: enforcing finding-bearing summaries"
 	# Control: clean summary passes in baseline.
@@ -187,6 +205,17 @@ run_negative() {
 	run_enforcement_case "baseline + test failures"              baseline 1 '.summary.test_failures = 1'
 	# Case 7
 	run_enforcement_case "baseline + architecture violations"    baseline 1 '.summary.architecture_violations = 1'
+
+	# Node/React collector mappings, exercised end-to-end through the builder.
+	log_info "negative: Node/React collector mappings (build -> enforce)"
+	run_build_case "baseline + typescript errors (type_errors gated)" baseline 1 \
+		typescript.json '{"errors":2}'
+	run_build_case "baseline + eslint security error (high_vulnerabilities gated)" baseline 1 \
+		eslint.json '[{"filePath":"a.tsx","messages":[{"ruleId":"security/detect-object-injection","severity":2,"message":"x"}],"errorCount":1,"warningCount":0}]'
+	run_build_case "baseline + eslint warning only (medium not gated -> pass)" baseline 0 \
+		eslint.json '[{"filePath":"a.tsx","messages":[{"ruleId":"no-console","severity":1,"message":"x"}],"errorCount":0,"warningCount":1}]'
+	run_build_case "strict + eslint warning only (medium gated -> fail)" strict 1 \
+		eslint.json '[{"filePath":"a.tsx","messages":[{"ruleId":"no-console","severity":1,"message":"x"}],"errorCount":0,"warningCount":1}]'
 
 	if [ "$NEG_FAILS" -ne 0 ]; then
 		log_error "negative: $NEG_FAILS case(s) failed"

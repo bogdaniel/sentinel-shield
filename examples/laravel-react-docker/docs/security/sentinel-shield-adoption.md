@@ -195,15 +195,25 @@ none exists. In `regulated`, supply a real, completed readiness document.
 
 ---
 
+## Node/React normalization (now available)
+
+- **TypeScript and ESLint collectors now feed enforceable gates.**
+  `sentinel:typescript` → `reports/raw/typescript.json` (`{errors:N}`) → `type_errors`.
+  `sentinel:eslint` → native ESLint JSON → `type_errors` (errorCount),
+  `medium_vulnerabilities` (warningCount), `high_vulnerabilities` (security severity-2).
+  The ESLint security mapping is conservative and tunable — see
+  [Sentinel Shield: node-react-normalization](https://example.com/sentinel-shield/docs/node-react-normalization.md).
+- **Node test normalization is required before `baseline`.** Run your test runner
+  with JSON output and normalize it to `reports/raw/tests.json` via
+  `scripts/sentinel/vitest-to-tests-json.mjs` (`sentinel:test:node`). In `baseline`+,
+  `test_failures` is gated. **Do not fake `tests.json`** — a missing report is an
+  error, not "0 failures". Until the normalizer is wired, Node test failures stay
+  `unavailable` and are not gated.
+
 ## Known missing adapters / tools
 
-- **No collectors yet for ESLint or TypeScript** — `sentinel:typecheck`/`sentinel:lint`
-  run for signal but do not feed `security-summary.json`.
-- **`tests.json` normalization:** PHP is covered by
-  `scripts/sentinel/phpunit-to-tests-json.php`. A **Node** test normalizer (Vitest/
-  Jest → `{ "failures": N, "errors": N }`) is a follow-up; until then Node test
-  failures are not gated.
 - Severity mappings in the collectors are conservative first-pass and may need
-  tuning for this project's tools/versions.
+  tuning for this project's tools/versions (especially ESLint security severity).
+- `knip` and other Node tools are not yet collected.
 - This integration has **not** been executed on a GitHub runner yet; run it once and
   review real scanner output before trusting the gates.

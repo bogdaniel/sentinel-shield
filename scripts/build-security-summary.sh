@@ -29,6 +29,8 @@ semgrep|semgrep.json|semgrep.sh|semgrep
 trivy|trivy.json|trivy.sh|trivy
 composer-audit|composer-audit.json|composer-audit.sh|composer_audit
 npm-audit|npm-audit.json|npm-audit.sh|npm_audit
+typescript|typescript.json|typescript.sh|typescript
+eslint|eslint.json|eslint.sh|eslint
 phpstan|phpstan.json|phpstan.sh|phpstan
 psalm|psalm.json|psalm.sh|psalm
 deptrac|deptrac.json|deptrac.sh|deptrac

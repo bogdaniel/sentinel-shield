@@ -234,11 +234,12 @@ reports/raw/*.json  →  scripts/collectors/<tool>.sh  →  scripts/build-securi
   schema-consistent summary (with a self-check). `--strict-tools` / `--require-tool`
   make missing artifacts fatal.
 
-Twelve tools are supported today (Gitleaks, Semgrep, Trivy, composer audit, npm
-audit, PHPStan, Psalm, Deptrac, tests, Hadolint, actionlint, zizmor) with
-**conservative, tunable** severity mappings — not a claim of perfect coverage. See
-[`docs/scanner-normalization.md`](docs/scanner-normalization.md). Clean input
-examples live in [`templates/raw/`](templates/raw/).
+Fourteen tools are supported today (Gitleaks, Semgrep, Trivy, composer audit, npm
+audit, TypeScript, ESLint, PHPStan, Psalm, Deptrac, tests, Hadolint, actionlint,
+zizmor) with **conservative, tunable** severity mappings — not a claim of perfect
+coverage. See [`docs/scanner-normalization.md`](docs/scanner-normalization.md) and,
+for the Node/React mappings, [`docs/node-react-normalization.md`](docs/node-react-normalization.md).
+Clean input examples live in [`templates/raw/`](templates/raw/).
 
 ```sh
 # Build a summary from raw artifacts, then resolve + enforce.

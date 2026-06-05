@@ -33,6 +33,8 @@
     "trivy": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
     "phpstan": { "status": "pass", "errors": 0 },
     "psalm": { "status": "pass", "errors": 0 },
+    "typescript": { "status": "pass", "errors": 0 },
+    "eslint": { "status": "pass", "errors": 0, "warnings": 0, "security_errors": 0 },
     "deptrac": { "status": "pass", "violations": 0 },
     "tests": { "status": "pass", "failures": 0 },
     "hadolint": { "status": "pass", "violations": 0 },

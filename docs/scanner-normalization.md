@@ -91,9 +91,15 @@ Rules:
 | `psalm` | array / `.issues[]` | `type_errors` |
 | `deptrac` | `.report.violations` (defensive) | `architecture_violations` |
 | `tests` | `{ "failures", "errors" }` | `test_failures` |
+| `typescript` | `{ "errors": N }` (normalized) | `type_errors` |
+| `eslint` | native ESLint JSON array | `type_errors` (errorCount), `medium_vulnerabilities` (warningCount), `high_vulnerabilities` (security severity-2) |
 | `hadolint` | array; level error/warning | `unsafe_docker` |
 | `actionlint` | `{ "errors" }` or error array | `unsafe_github_actions` |
 | `zizmor` | array / `.findings[]` | `unsafe_github_actions` |
+
+TypeScript and ESLint normalization (including the conservative ESLint
+severity mapping) is documented in
+[`node-react-normalization.md`](node-react-normalization.md).
 
 > Severity→bucket mappings are first-pass and **conservative**. They will need
 > tuning per project (e.g. how you treat Semgrep `INFO`, or composer `low`). These

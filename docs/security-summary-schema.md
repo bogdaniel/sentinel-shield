@@ -83,8 +83,16 @@ Disabled gates (flag `false`) are recorded as `skipped` and never fail the build
 
 ## Tool-specific sections
 
-`tools` is optional and open-ended — not every project has every stack. When a tool
-is present, the schema validates its common fields. Recognized status values:
+`tools` is optional and open-ended — not every project has every stack. Node/React
+adds two entries (see [`node-react-normalization.md`](node-react-normalization.md)):
+
+```json
+"typescript": { "status": "pass", "errors": 0 },
+"eslint":     { "status": "pass", "errors": 0, "warnings": 0, "security_errors": 0 }
+```
+
+These are optional (not globally required). When a tool is present, the schema
+validates its common fields. Recognized status values:
 
 ```txt
 pass | fail | warn | skipped | unavailable
