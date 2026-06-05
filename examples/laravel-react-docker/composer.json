@@ -1,0 +1,43 @@
+{
+  "//": "ILLUSTRATIVE example composer.json for a Sentinel Shield consuming project.",
+  "//merge": "Merge the require-dev and scripts blocks into your real composer.json; do not overwrite it.",
+  "name": "your-org/your-laravel-app",
+  "type": "project",
+  "require": {
+    "php": "^8.3"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.0",
+    "larastan/larastan": "^3.0",
+    "vimeo/psalm": "^6.0",
+    "qossmic/deptrac-shim": "^1.0",
+    "laravel/pint": "^1.18",
+    "rector/rector": "^2.0"
+  },
+  "scripts": {
+    "sentinel:composer-audit": "composer audit --locked --format=json > reports/raw/composer-audit.json",
+    "sentinel:phpstan": "phpstan analyse --error-format=json > reports/raw/phpstan.json",
+    "sentinel:psalm": "psalm --output-format=json > reports/raw/psalm.json",
+    "sentinel:deptrac": "deptrac analyse --formatter=json --output=reports/raw/deptrac.json --no-progress",
+    "sentinel:test": "php artisan test --log-junit reports/raw/phpunit.xml",
+    "sentinel:tests-json": "php scripts/sentinel/phpunit-to-tests-json.php reports/raw/phpunit.xml reports/raw/tests.json",
+    "sentinel:quality": [
+      "@sentinel:composer-audit",
+      "@sentinel:phpstan",
+      "@sentinel:psalm",
+      "@sentinel:deptrac",
+      "@sentinel:test",
+      "@sentinel:tests-json"
+    ]
+  },
+  "scripts-descriptions": {
+    "sentinel:quality": "Produce Sentinel Shield raw PHP reports under reports/raw/. Each step is best-effort; tools that are not installed simply do not write their report (the builder marks them unavailable).",
+    "sentinel:tests-json": "Normalize the PHPUnit JUnit report to reports/raw/tests.json."
+  },
+  "config": {
+    "allow-plugins": {
+      "phpstan/extension-installer": true
+    },
+    "sort-packages": true
+  }
+}

@@ -1,0 +1,10 @@
+# Sentinel Shield — generated artifacts in the consuming project.
+# Keep the directories (placeholders) but ignore generated content.
+/reports/*
+!/reports/.gitkeep
+!/reports/raw/
+/reports/raw/*
+!/reports/raw/.gitkeep
+
+# Sentinel Shield vendored/checked-out into CI (Option B path).
+/tools/sentinel-shield/

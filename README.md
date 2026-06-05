@@ -464,6 +464,16 @@ Humans approve high-risk changes.
 
 ---
 
+## Example integration
+
+[`examples/laravel-react-docker/`](examples/laravel-react-docker/) is a reference
+integration package: the files Sentinel Shield adds to a Laravel + React + Docker
+project (`.sentinel-shield/profile.yaml` in `report-only`, a combined CI workflow
+that checks Sentinel Shield out into `tools/sentinel-shield`, `composer`/`npm`
+`sentinel:*` scripts, a PHPUnit→`tests.json` normalizer, adoption + release-evidence
+docs, and a migration plan from `report-only` → `baseline` → `strict` → `regulated`).
+Copy and adapt it; see its [README](examples/laravel-react-docker/README.md).
+
 ## Contributing, changelog, make targets
 
 - Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md) (shell standards, commit

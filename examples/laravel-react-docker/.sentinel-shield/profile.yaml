@@ -1,0 +1,47 @@
+# Sentinel Shield — consuming-project profile (Laravel + React + Docker).
+#
+# Replace PROJECT_NAME_HERE with your project name. Start in report-only
+# (migration-safe): only secrets and expired exceptions block. Tighten the mode as
+# the project gets clean — see docs/security/sentinel-shield-adoption.md.
+project:
+  name: PROJECT_NAME_HERE
+  type: laravel-react-docker
+  criticality: high
+  owner: platform-team
+
+profiles:
+  - laravel
+  - react
+  - node
+  - docker
+  - github-actions
+
+gates:
+  # MIGRATION MODE — do not start in baseline unless the project is already clean.
+  mode: report-only
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: false
+    high_vulnerabilities: false
+    medium_vulnerabilities: false
+    architecture_violations: false
+    type_errors: false
+    test_failures: false
+    unsafe_docker: false
+    unsafe_github_actions: false
+    missing_sbom: false
+    missing_release_evidence: false
+    expired_exceptions: true
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

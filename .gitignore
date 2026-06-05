@@ -1,5 +1,7 @@
 # Sentinel Shield — generated artifacts and local noise.
-reports/
+# Anchored to the repo root so the reference integration under
+# examples/**/reports/ (with committed .gitkeep) is not ignored.
+/reports/
 *.log
 .DS_Store
 

@@ -1,0 +1,34 @@
+{
+  "//": "ILLUSTRATIVE example package.json for a Sentinel Shield consuming project (React + Vite).",
+  "//merge": "Merge the devDependencies and sentinel:* scripts into your real package.json; do not overwrite it or your existing test/build scripts.",
+  "name": "your-org-your-react-app",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sentinel:npm-audit": "npm audit --json > reports/raw/npm-audit.json",
+    "sentinel:typecheck": "tsc --noEmit",
+    "sentinel:lint": "eslint .",
+    "sentinel:quality": "npm run sentinel:npm-audit && npm run sentinel:typecheck && npm run sentinel:lint"
+  },
+  "//scripts-notes": [
+    "sentinel:npm-audit feeds the npm_audit collector (medium/high/critical).",
+    "typecheck/lint are advisory: there is no tsc/eslint collector yet, so they do not feed security-summary.json. Run them for signal.",
+    "If you have a test runner (Vitest/Jest), add a step that normalizes its output to reports/raw/tests.json: { \"failures\": N, \"errors\": N }. Do not fake it."
+  ],
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "eslint-plugin-security": "^3.0.0",
+    "eslint-plugin-no-unsanitized": "^4.0.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "knip": "^5.0.0",
+    "audit-ci": "^7.0.0"
+  }
+}
