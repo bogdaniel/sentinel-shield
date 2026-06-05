@@ -140,7 +140,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
       - name: Node raw reports (best-effort)
         run: |
           set -eu
@@ -198,7 +197,7 @@ jobs:
           no-fail: true
       - name: Trivy filesystem (JSON)
         if: steps.detect.outputs.present == 'true'
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: fs
           scan-ref: .
@@ -246,7 +245,7 @@ jobs:
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
       - name: Trivy filesystem (JSON)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: fs
           scan-ref: .

@@ -2,10 +2,28 @@
 
 All notable changes to Sentinel Shield are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project is
-pre-1.0 and not yet versioned/tagged; entries accumulate under **Unreleased**
-until the first tagged release.
+pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
+
+## [0.1.1] — workflow fixes from first GitHub-runner validation
+
+### Fixed
+
+- **`aquasecurity/trivy-action` version pin** corrected from the non-existent
+  `0.30.0` to `v0.30.0` (the action's tags are `v`-prefixed). Affected
+  `ci-security.yml`, `ci-pipeline.yml`, `ci-docker.yml`, and the Laravel+React+Docker
+  example workflow. The bad pin failed job setup with
+  "Unable to resolve action …@0.30.0".
+- **`actions/setup-node` cache** (`cache: npm`) removed from the fixture-capable
+  workflows (`ci-pipeline.yml`, example `sentinel-shield.yml`) because it fails when
+  no lockfile is present (minimal/report-only repos without `package.json`).
+  `ci-node.yml` (a Node-project-only workflow) keeps the cache.
+
+Both were found by the first real GitHub Actions fixture run; the Sentinel Shield
+scripts (resolver/builder/enforcer) were unaffected.
+
+## [0.1.0]
 
 ### Added
 

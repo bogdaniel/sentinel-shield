@@ -46,7 +46,7 @@ jobs:
         run: docker build -t sentinel-app:ci .
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: fs
           scan-ref: .
@@ -55,7 +55,7 @@ jobs:
           exit-code: "1"
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: image
           image-ref: sentinel-app:ci
@@ -80,7 +80,7 @@ jobs:
 
       - name: Trivy (JSON → reports/raw/trivy.json)
         if: always()
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: image
           image-ref: sentinel-app:ci
