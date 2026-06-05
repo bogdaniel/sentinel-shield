@@ -15,19 +15,18 @@
     "rector/rector": "^2.0"
   },
   "scripts": {
-    "sentinel:composer-audit": "composer audit --locked --format=json > reports/raw/composer-audit.json",
-    "sentinel:phpstan": "phpstan analyse --error-format=json > reports/raw/phpstan.json",
-    "sentinel:psalm": "psalm --output-format=json > reports/raw/psalm.json",
-    "sentinel:deptrac": "deptrac analyse --formatter=json --output=reports/raw/deptrac.json --no-progress",
-    "sentinel:test": "php artisan test --log-junit reports/raw/phpunit.xml",
+    "sentinel:composer-audit": "mkdir -p reports/raw && composer audit --format=json > reports/raw/composer-audit.json",
+    "sentinel:phpstan": "mkdir -p reports/raw && vendor/bin/phpstan analyse --error-format=json > reports/raw/phpstan.json",
+    "sentinel:psalm": "mkdir -p reports/raw && vendor/bin/psalm --output-format=json > reports/raw/psalm.json",
+    "sentinel:deptrac": "mkdir -p reports/raw && vendor/bin/deptrac analyse --formatter=json > reports/raw/deptrac.json",
+    "sentinel:test": "mkdir -p reports/raw && php artisan test --log-junit reports/raw/phpunit.xml",
     "sentinel:tests-json": "php scripts/sentinel/phpunit-to-tests-json.php reports/raw/phpunit.xml reports/raw/tests.json",
     "sentinel:quality": [
       "@sentinel:composer-audit",
       "@sentinel:phpstan",
       "@sentinel:psalm",
       "@sentinel:deptrac",
-      "@sentinel:test",
-      "@sentinel:tests-json"
+      "@sentinel:test"
     ]
   },
   "scripts-descriptions": {

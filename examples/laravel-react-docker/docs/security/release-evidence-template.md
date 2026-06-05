@@ -12,6 +12,11 @@
 | Date | |
 | Release owner | |
 | Adoption mode | report-only / baseline / strict / regulated |
+| Risk level | low / medium / high |
+
+## Release summary
+
+One-paragraph summary of what is being released and why.
 
 ## Scope
 
@@ -34,12 +39,27 @@ What is being released (features, fixes, migrations)? What is explicitly out of 
 - Migrations reversible or paired with a tested down-path: yes / no / n/a
 - Rollback procedure (and who executes it):
 
+## Security findings & accepted risks
+
+- Summary of findings from this release's scan (counts by severity).
+- Accepted risks: exception IDs, owners, reasons, expiry dates.
+
+## Test evidence
+
+- Test suites run and results (PHP: `reports/raw/tests.json`; Node: `reports/raw/tests.json`).
+- Coverage of critical paths; link to CI run.
+
 ## Verification
 
 - [ ] Tests pass
 - [ ] Static analysis / type checks pass at target level
 - [ ] Container/IaC scans reviewed
 - [ ] Secrets scan clean
+
+## Deployment notes
+
+- Migrations / config / env changes; backward compatibility; feature flags;
+  sequencing and any manual steps.
 
 ## Approvals
 

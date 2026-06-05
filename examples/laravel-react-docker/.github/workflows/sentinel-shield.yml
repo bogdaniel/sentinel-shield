@@ -3,12 +3,12 @@
 # Adapted from Sentinel Shield's combined reference pipeline (ci-pipeline.yml).
 # SOURCE STRATEGY: Option B — Sentinel Shield is checked out into tools/sentinel-shield
 # and its scripts are called from there (central updates, pinned version).
-#   1. Set SS_REPO to your Sentinel Shield repository.
-#   2. Pin SS_REF to a tag or full commit SHA (NOT a moving branch).
+#   1. Set SENTINEL_SHIELD_REPOSITORY to your Sentinel Shield repository.
+#   2. Pin SENTINEL_SHIELD_REF to a tag or full commit SHA (NOT a moving branch).
 #   3. If Sentinel Shield is a PRIVATE repo, add a token/deploy key to the checkout
 #      steps (e.g. `token: ${{ secrets.SENTINEL_SHIELD_RO_TOKEN }}`).
 # Fallback (Option A): vendor scripts/ schemas/ templates/ into the project and
-# replace `tools/sentinel-shield/scripts` paths with the vendored location.
+# replace `${{ env.SENTINEL_SHIELD_PATH }}/scripts` paths with the vendored location.
 #
 # ACTION PINNING: `uses:` shows version tags for readability. Pin ALL third-party
 # actions to verified commit SHAs before production. Do not use pull_request_target.
@@ -29,8 +29,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SS_REPO: YOUR_ORG/sentinel-shield   # TODO: set your Sentinel Shield repository
-  SS_REF: v0.1.0                      # TODO: pin to a tag or full commit SHA
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO: set your Sentinel Shield repository
+  # v0.1.0 is acceptable for first adoption; pin to a FULL COMMIT SHA before production.
+  SENTINEL_SHIELD_REF: v0.1.0
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
 
 jobs:
   # --------------------------------------------------------------------------
@@ -48,16 +50,16 @@ jobs:
       - name: Checkout Sentinel Shield
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.SS_REPO }}
-          ref: ${{ env.SS_REF }}
-          path: tools/sentinel-shield
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
       - name: Resolve project metadata
         id: meta
         run: |
           set -eu
           mkdir -p reports
-          sh tools/sentinel-shield/scripts/resolve-gates.sh \
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
             --profile .sentinel-shield/profile.yaml --format env --output-dir reports || true
           ENVF=reports/sentinel-shield-gates.env
           get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
@@ -70,6 +72,20 @@ jobs:
             echo "project_type=$PT"
             echo "criticality=$CR"
           } >> "$GITHUB_OUTPUT"
+      - name: Resolve gates (all formats) for the artifact
+        run: |
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
+            --profile .sentinel-shield/profile.yaml --output-dir reports --format all
+      - name: Upload gate resolution
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-gate-resolution
+          path: |
+            reports/sentinel-shield-gates.env
+            reports/sentinel-shield-gates.json
+            reports/sentinel-shield-gates.md
+          retention-days: 30
+          if-no-files-found: warn
 
   # --------------------------------------------------------------------------
   php-quality:
@@ -211,9 +227,9 @@ jobs:
       - name: Checkout Sentinel Shield (for bundled Semgrep rules)
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.SS_REPO }}
-          ref: ${{ env.SS_REF }}
-          path: tools/sentinel-shield
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
       - name: Prepare dirs
         run: mkdir -p reports/raw
@@ -221,7 +237,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
             semgrep --json --output /src/reports/raw/semgrep.json \
-            --config /src/tools/sentinel-shield/semgrep || true
+            --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep || true
         continue-on-error: true
       - name: Gitleaks (JSON)
         run: |
@@ -273,9 +289,9 @@ jobs:
       - name: Checkout Sentinel Shield
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.SS_REPO }}
-          ref: ${{ env.SS_REF }}
-          path: tools/sentinel-shield
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
       - name: Prepare dirs
         run: mkdir -p reports/raw
@@ -299,7 +315,7 @@ jobs:
           CRITICALITY: ${{ needs.prepare.outputs.criticality }}
         run: |
           set -eu
-          sh tools/sentinel-shield/scripts/build-security-summary.sh \
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh \
             --project-name "${PROJECT_NAME}" \
             --project-type "${PROJECT_TYPE}" \
             --criticality "${CRITICALITY}" \
@@ -334,9 +350,9 @@ jobs:
       - name: Checkout Sentinel Shield
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.SS_REPO }}
-          ref: ${{ env.SS_REF }}
-          path: tools/sentinel-shield
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
       - name: Prepare dirs
         run: mkdir -p reports
@@ -347,19 +363,19 @@ jobs:
           path: reports
       - name: Resolve gates
         run: |
-          sh tools/sentinel-shield/scripts/resolve-gates.sh \
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
             --profile .sentinel-shield/profile.yaml --output-dir reports --format all
       - name: Apply fallback policy
         # report-only: tolerates a missing summary; baseline+ require a real one.
         run: |
-          sh tools/sentinel-shield/scripts/select-security-summary.sh \
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/select-security-summary.sh \
             --summary reports/security-summary.json \
-            --example tools/sentinel-shield/templates/security-summary.example.json \
+            --example ${{ env.SENTINEL_SHIELD_PATH }}/templates/security-summary.example.json \
             --gates-env reports/sentinel-shield-gates.env
       - name: Enforce gates
         # exit 0 pass / 1 fail / 2 config — this IS the release gate.
         run: |
-          sh tools/sentinel-shield/scripts/enforce-gates.sh \
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh \
             --gates-env reports/sentinel-shield-gates.env \
             --summary reports/security-summary.json \
             --output-dir reports --format all
@@ -382,17 +398,10 @@ jobs:
             echo ""
             [ -f reports/sentinel-shield-enforcement.md ] && cat reports/sentinel-shield-enforcement.md
           } >> reports/release-evidence.md
-      - name: Upload gate resolution
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sentinel-shield-gate-resolution
-          path: |
-            reports/sentinel-shield-gates.env
-            reports/sentinel-shield-gates.json
-            reports/sentinel-shield-gates.md
-          retention-days: 30
-          if-no-files-found: warn
+      # NOTE: the resolved gates are uploaded once by the `prepare` job as
+      # `sentinel-shield-gate-resolution`. upload-artifact@v4 forbids two jobs
+      # uploading the same artifact name in one run, so this job does not re-upload
+      # it (it re-resolves locally only to drive select/enforce).
       - name: Upload enforcement
         if: always()
         uses: actions/upload-artifact@v4

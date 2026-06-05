@@ -34,8 +34,9 @@ ref and calls its scripts from there. Set these in
 
 ```yaml
 env:
-  SS_REPO: YOUR_ORG/sentinel-shield   # your Sentinel Shield repo
-  SS_REF: v0.1.0                      # pin to a tag or full commit SHA
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # your Sentinel Shield repo
+  SENTINEL_SHIELD_REF: v0.1.0                            # tag for first adoption; FULL SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
 ```
 
 - If Sentinel Shield is **private**, add a read token/deploy key to the checkout
@@ -50,8 +51,9 @@ env:
 ## How to run locally
 
 ```sh
-# 1. Get Sentinel Shield scripts available (clone next to the project, or vendor).
-git clone <SS_REPO> tools/sentinel-shield   # or symlink your local checkout
+# 1. Get Sentinel Shield scripts available (pinned clone, or symlink a local checkout).
+git clone --depth 1 --branch v0.1.0 https://github.com/YOUR_ORG/sentinel-shield tools/sentinel-shield
+# For production, check out a full commit SHA instead of the tag.
 
 # 2. Produce raw reports (best-effort; missing tools are simply skipped).
 mkdir -p reports/raw

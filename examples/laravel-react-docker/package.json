@@ -8,11 +8,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "sentinel:npm-audit": "npm audit --json > reports/raw/npm-audit.json",
-    "sentinel:typescript": "tsc --noEmit && echo '{\"errors\":0}' > reports/raw/typescript.json",
-    "sentinel:eslint": "eslint . --format json --output-file reports/raw/eslint.json || true",
-    "sentinel:typecheck": "tsc --noEmit",
-    "sentinel:lint": "eslint .",
+    "sentinel:npm-audit": "mkdir -p reports/raw && npm audit --json > reports/raw/npm-audit.json",
+    "sentinel:typescript": "mkdir -p reports/raw && tsc --noEmit && echo '{\"errors\":0}' > reports/raw/typescript.json",
+    "sentinel:eslint": "mkdir -p reports/raw && eslint . --format json --output-file reports/raw/eslint.json || true",
+    "sentinel:typecheck": "npm run typecheck --if-present",
+    "sentinel:lint": "npm run lint --if-present",
+    "sentinel:test": "npm test --if-present",
     "sentinel:test:node": "node scripts/sentinel/vitest-to-tests-json.mjs reports/raw/node-tests.json reports/raw/tests.json",
     "sentinel:quality": "npm run sentinel:npm-audit && npm run sentinel:typescript && npm run sentinel:eslint"
   },
