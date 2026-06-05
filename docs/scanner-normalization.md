@@ -211,6 +211,15 @@ gate** — fail-closed. Only `report-only` may continue on the example, and only
 a loud warning. The policy detects a copied example (byte-identical) and refuses it
 in baseline+, so it cannot be used to spoof a pass.
 
+### Fixtures and the self-test
+
+The clean examples in [`templates/raw/`](../templates/raw/) are not just
+documentation — they are the fixtures the self-test runs on. `ci-self-test.yml`
+(via [`scripts/self-test.sh`](../scripts/self-test.sh)) copies `templates/raw/*.example.json`
+into `reports/raw/`, builds a real `security-summary.json`, and runs it through the
+full lifecycle on every push/PR. Keep the examples valid and representative: if you
+change a collector's expected input shape, update its example too.
+
 ## Adding a new collector (for consuming projects)
 
 1. Create `scripts/collectors/<tool>.sh` following the contract (source the common

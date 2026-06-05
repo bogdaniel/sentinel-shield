@@ -161,6 +161,16 @@ Shield ships none. Same-run handoff is the safe, default answer; cross-workflow
 gating is left to the consumer to wire with a trusted run-ID/branch/environment
 strategy.
 
+### Self-test before onboarding
+
+Before integrating Sentinel Shield into a real project, the self-test
+([`github/workflows/ci-self-test.yml`](github/workflows/ci-self-test.yml) /
+[`scripts/self-test.sh`](scripts/self-test.sh)) must be green. It exercises the
+full lifecycle on fixtures and, crucially, **asserts the fallback policy in CI**:
+`report-only + missing → pass`, `baseline/strict/regulated + missing → fail`,
+`copied example → fail`, `real summary → pass`. This proves the gates are
+fail-closed before any production code depends on them.
+
 ---
 
 ## 1. Gate stages

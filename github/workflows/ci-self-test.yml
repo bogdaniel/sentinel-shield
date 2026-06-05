@@ -1,0 +1,142 @@
+# Sentinel Shield — self-test.
+#
+# Proves Sentinel Shield's OWN enforcement lifecycle on every push/PR using fixture
+# data (templates/raw/*, templates/profile.yaml, templates/security-summary.example.json).
+# YAML validity alone does not prove behavior — this exercises the scripts.
+#
+# Most logic lives in scripts/self-test.sh (single source of truth); jobs call its
+# subcommands. ACTION PINNING: pin third-party actions to verified commit SHAs
+# before production (docs/github-actions-security.md).
+name: ci-self-test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Shell + JSON (self-test.sh syntax)
+        run: sh scripts/self-test.sh syntax
+
+      - name: Validate all JSON (Python)
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          paths = list(Path("templates").rglob("*.json")) + list(Path("schemas").rglob("*.json"))
+          for path in paths:
+              with path.open("r", encoding="utf-8") as fh:
+                  json.load(fh)
+              print(f"valid json: {path}")
+          PY
+
+      - name: Validate all XML (Python)
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          for path in pathlib.Path(".").rglob("*.xml"):
+              ET.parse(path)
+              print(f"valid xml: {path}")
+          PY
+
+      - name: Validate all YAML (Ruby, best-effort)
+        run: |
+          if command -v ruby >/dev/null 2>&1; then
+            ruby -ryaml -e 'ARGV.each { |f| YAML.load_stream(File.read(f)); puts "valid yaml: #{f}" }' \
+              $(find . -name "*.yml" -o -name "*.yaml")
+          else
+            echo "::warning::ruby not available; YAML parser validation skipped"
+          fi
+
+  # --------------------------------------------------------------------------
+  lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Run clean lifecycle (self-test.sh lifecycle)
+        # build -> resolve -> select -> enforce -> generate-report, with JSON checks.
+        run: sh scripts/self-test.sh lifecycle
+
+      - name: Upload self-test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-shield-self-test-reports
+          path: reports
+          retention-days: 14
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  fallback-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Assert fallback policy is fail-closed (self-test.sh fallback)
+        # report-only + missing -> 0; baseline/strict/regulated + missing -> 1;
+        # baseline + copied example -> 1; baseline + real summary -> 0.
+        # The job fails if any expected exit code is wrong.
+        run: sh scripts/self-test.sh fallback
+
+  # --------------------------------------------------------------------------
+  workflow-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # actionlint via its official Docker image (stable on hosted runners; no
+      # curl|bash). Advisory in this first iteration: findings are surfaced in logs
+      # but do not fail the job until the templates are confirmed clean.
+      - name: actionlint (advisory)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest \
+            -color github/workflows/*.yml \
+            || echo "::warning::actionlint reported findings (advisory; review the log)"
+
+      # zizmor is best-effort: it may need setup/network. We do NOT claim zizmor
+      # validation unless this step actually runs it successfully.
+      - name: zizmor (best-effort)
+        continue-on-error: true
+        run: |
+          if command -v pipx >/dev/null 2>&1; then
+            pipx run zizmor github/workflows \
+              || echo "::warning::zizmor reported findings or could not run (advisory)"
+          else
+            echo "::warning::pipx unavailable; zizmor skipped (not validated)"
+          fi

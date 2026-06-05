@@ -209,6 +209,12 @@ produced by its `build-security-summary` dependency (same run, `needs:`), then r
 `resolve-gates.sh → select-security-summary.sh → enforce-gates.sh`. Because the
 build job is a dependency, a real summary is always present for `baseline`+.
 
+Gate resolution is exercised on every push/PR by the self-test
+([`github/workflows/ci-self-test.yml`](../github/workflows/ci-self-test.yml)): its
+`lifecycle` job runs `resolve-gates.sh` against `templates/profile.yaml`, and its
+`fallback-policy` job asserts that the resolved mode drives the correct fail-closed
+behavior. So this resolution logic is continuously verified, not just documented.
+
 ## Fallback parser limitations
 
 The resolver prefers **mikefarah `yq` v4** when it is installed. Otherwise it uses a

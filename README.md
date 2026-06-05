@@ -338,6 +338,34 @@ your real test step that writes a normalized `reports/raw/tests.json`
 (`{ "failures": N, "errors": N }`), tune scanner flags, and pin the actions to SHAs.
 No pipeline logic changes — only configuration.
 
+### Self-test workflow
+
+[`github/workflows/ci-self-test.yml`](github/workflows/ci-self-test.yml) makes
+Sentinel Shield test **itself** on every push/PR, using the fixtures in
+`templates/raw/`, `templates/profile.yaml`, and the example summary. Jobs:
+
+- **syntax** — `sh -n` over every script + JSON/XML/YAML validity.
+- **lifecycle** — runs `build → resolve → select → enforce → generate-report`
+  against the fixtures and validates the generated JSON (uploads
+  `sentinel-shield-self-test-reports`).
+- **fallback-policy** — asserts the exact fail-closed exit codes (report-only +
+  missing → 0; baseline/strict/regulated + missing → 1; copied example → 1; real
+  summary → 0). The job fails if any exit code is wrong.
+- **workflow-sanity** — runs `actionlint` (Docker) and `zizmor` (best-effort) as
+  **advisory** linters; findings are logged, not gated, in this first iteration.
+
+The meaningful logic lives in [`scripts/self-test.sh`](scripts/self-test.sh) so it
+runs identically in CI and locally:
+
+```sh
+sh scripts/self-test.sh            # all: syntax + lifecycle + fallback
+sh scripts/self-test.sh fallback   # just the fail-closed matrix
+```
+
+**Why YAML validity is not enough.** A workflow can parse as valid YAML and still
+mis-wire artifacts, mishandle exit codes, or accept the all-zero example. The
+self-test proves the scripts actually behave — the part YAML linting can't see.
+
 ---
 
 ## 7. Example GitHub Actions usage
