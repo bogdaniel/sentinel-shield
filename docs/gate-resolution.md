@@ -215,6 +215,12 @@ Gate resolution is exercised on every push/PR by the self-test
 `fallback-policy` job asserts that the resolved mode drives the correct fail-closed
 behavior. So this resolution logic is continuously verified, not just documented.
 
+The `negative-policy` job proves the mode→threshold mapping with a controlled
+experiment: the **same** finding (a single medium vulnerability) is enforced under
+two modes — `baseline` (medium not gated → **pass**) and `strict` (medium gated →
+**fail**). Same input, different mode, opposite outcome: evidence that resolution
+actually changes enforcement.
+
 ## Fallback parser limitations
 
 The resolver prefers **mikefarah `yq` v4** when it is installed. Otherwise it uses a

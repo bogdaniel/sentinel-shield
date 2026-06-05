@@ -171,6 +171,13 @@ full lifecycle on fixtures and, crucially, **asserts the fallback policy in CI**
 `copied example → fail`, `real summary → pass`. This proves the gates are
 fail-closed before any production code depends on them.
 
+**Finding-bearing cases are required too.** The `negative` self-test
+(`sh scripts/self-test.sh negative`, run by the `negative-policy` job) proves real
+findings drive enforcement — not just that clean fixtures pass: baseline + {high
+vuln, secret, type errors, test failures, architecture violations} → fail, baseline
++ medium-only → pass, strict + medium → fail. These must pass before onboarding a
+consuming project; a gate that never blocks is not a gate.
+
 ---
 
 ## 1. Gate stages

@@ -220,6 +220,12 @@ into `reports/raw/`, builds a real `security-summary.json`, and runs it through 
 full lifecycle on every push/PR. Keep the examples valid and representative: if you
 change a collector's expected input shape, update its example too.
 
+**Negative fixture cases** (`sh scripts/self-test.sh negative`) go further: they
+craft summaries carrying a single gated finding (high vuln, secret, type errors,
+test failures, architecture violations) and assert that `enforce-gates.sh` actually
+fails. This proves normalized findings *influence enforcement* — that the counts a
+collector emits are not cosmetic.
+
 ## Adding a new collector (for consuming projects)
 
 1. Create `scripts/collectors/<tool>.sh` following the contract (source the common

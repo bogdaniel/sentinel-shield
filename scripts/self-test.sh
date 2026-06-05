@@ -127,21 +127,91 @@ run_fallback() {
 	log_info "fallback: OK (all cases as expected)"
 }
 
+# --- negative (finding-bearing) ---------------------------------------------
+# Prove that real findings actually drive enforcement: clean fixtures pass, but a
+# summary carrying a gated finding fails in the relevant mode. Summaries are crafted
+# deterministically from the committed example via jq (committed fixtures are never
+# mutated in place).
+NEG_FAILS=0
+
+expect_exit_code() {
+	# expect_exit_code <description> <expected-exit> <command...>
+	_desc=$1
+	_exp=$2
+	shift 2
+	if "$@" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	if [ "$_rc" -eq "$_exp" ]; then
+		log_info "PASS: $_desc (exit $_rc)"
+	else
+		log_error "FAIL: $_desc (got exit $_rc, expected $_exp)"
+		NEG_FAILS=$((NEG_FAILS + 1))
+	fi
+}
+
+# make_summary_with_key <outfile> <jq-mutation>
+# Write a security summary derived from the example with one mutation applied.
+make_summary_with_key() {
+	jq "$2" templates/security-summary.example.json > "$1" \
+		|| { log_error "could not craft summary: $1"; NEG_FAILS=$((NEG_FAILS + 1)); }
+}
+
+# run_enforcement_case <description> <mode> <expected-exit> <jq-mutation>
+# Resolve gates for <mode>, craft a mutated summary, enforce, assert the exit code.
+run_enforcement_case() {
+	_d=$(mktemp -d)
+	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
+	make_summary_with_key "$_d/security-summary.json" "$4"
+	expect_exit_code "$1" "$3" \
+		sh scripts/enforce-gates.sh \
+		--gates-env "$_d/sentinel-shield-gates.env" \
+		--summary "$_d/security-summary.json" \
+		--output-dir "$_d" --format json
+	rm -rf "$_d"
+}
+
+run_negative() {
+	log_info "negative: enforcing finding-bearing summaries"
+	# Control: clean summary passes in baseline.
+	run_enforcement_case "baseline + clean (control)"            baseline 0 '.'
+	# Case 1
+	run_enforcement_case "baseline + high vulnerability"         baseline 1 '.summary.high_vulnerabilities = 1'
+	# Case 2 — medium is NOT gated in baseline
+	run_enforcement_case "baseline + medium vulnerability only"  baseline 0 '.summary.medium_vulnerabilities = 1'
+	# Case 3 — medium IS gated in strict
+	run_enforcement_case "strict + medium vulnerability"         strict   1 '.summary.medium_vulnerabilities = 1'
+	# Case 4
+	run_enforcement_case "baseline + secret finding"             baseline 1 '.summary.secrets = 1'
+	# Case 5
+	run_enforcement_case "baseline + type errors"                baseline 1 '.summary.type_errors = 1'
+	# Case 6
+	run_enforcement_case "baseline + test failures"              baseline 1 '.summary.test_failures = 1'
+	# Case 7
+	run_enforcement_case "baseline + architecture violations"    baseline 1 '.summary.architecture_violations = 1'
+
+	if [ "$NEG_FAILS" -ne 0 ]; then
+		log_error "negative: $NEG_FAILS case(s) failed"
+		return 1
+	fi
+	log_info "negative: OK (findings fail closed; ungated findings pass)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
 	fallback) run_fallback ;;
+	negative) run_negative ;;
 	all)
 		run_syntax
 		run_lifecycle
 		run_fallback
+		run_negative
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|all)"
 		exit 2
 		;;
 esac

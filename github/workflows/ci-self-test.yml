@@ -111,6 +111,25 @@ jobs:
         run: sh scripts/self-test.sh fallback
 
   # --------------------------------------------------------------------------
+  negative-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Assert findings fail closed (self-test.sh negative)
+        # Proves real findings drive enforcement, not just that clean fixtures pass:
+        # baseline + {high vuln, secret, type errors, test failures, arch violations}
+        # -> exit 1; baseline + medium-only -> exit 0; strict + medium -> exit 1.
+        # The job fails if any expected exit code is wrong.
+        run: sh scripts/self-test.sh negative
+
+  # --------------------------------------------------------------------------
   workflow-sanity:
     runs-on: ubuntu-latest
     steps:
