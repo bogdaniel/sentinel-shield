@@ -44,6 +44,12 @@ SUMMARY="reports/security-summary.json"
 OUTPUT_DIR="reports"
 FORMAT="all"
 STRICT_SUMMARY=0
+ACCEPTED_RISKS_FILE=".sentinel-shield/accepted-risks.json"
+
+# Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
+# narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
+# missing_sbom, and the critical/high vuln gates.
+SUPPRESSIBLE_GATES="unsafe_docker medium_vulnerabilities"
 
 usage() {
 	cat <<'EOF'
@@ -57,6 +63,10 @@ Options:
   --output-dir <path>  Output directory (default: reports)
   --format <fmt>       markdown | json | all   (default: all)
   --strict-summary     Validate optional structure (source, evidence, tool statuses)
+  --accepted-risks <path>  Accepted-risk records (default: .sentinel-shield/accepted-risks.json).
+                       An APPROVED, unexpired, owned record may suppress a
+                       suppressible gate (unsafe_docker, medium_vulnerabilities).
+                       Never suppresses secrets/expired_exceptions/missing_release_evidence.
   -h, --help           Show this help
 
 Outputs:
@@ -75,6 +85,7 @@ while [ $# -gt 0 ]; do
 		--output-dir) OUTPUT_DIR="${2:?--output-dir requires a value}"; shift 2 ;;
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
+		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; die_cfg "unknown argument: $1" ;;
 	esac
@@ -187,11 +198,58 @@ if [ "$STRICT_SUMMARY" -eq 1 ]; then
 	fi
 fi
 
+# --- accepted-risk suppression (explicit, owner-bound, expiring) -------------
+# Load APPROVED, unexpired, owned records that target a suppressible gate. The raw
+# count is never reduced; a suppressed gate is reported as "accepted-risk", not
+# "pass". pending/expired/invalid records never suppress.
+TODAY=$(date -u +%Y-%m-%d)
+AR_LOADED=0
+AR_PENDING=0
+AR_EXPIRED=0
+AR_INVALID=0
+SUPPRESSED_GATES=" "   # space-padded list of gate keys with a valid approved risk
+AR_APPLIED_DETAIL=""   # "gate|id" per applied suppression
+
+if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
+	jq -e . "$ACCEPTED_RISKS_FILE" >/dev/null 2>&1 || die_cfg "accepted-risks file is not valid JSON: $ACCEPTED_RISKS_FILE"
+	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
+	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
+	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")
+	# Records that are approved + unexpired but missing owner/reason or targeting a
+	# non-suppressible gate are "invalid" and ignored.
+	AR_INVALID=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
+		($ok | split(" ")) as $S
+		| [ (.risks // [])[]
+			| select(.status == "approved" and ((.expires_at // "") >= $today))
+			| select(((.owner // "") == "") or ((.reason // "") == "") or (((.gate // "") | IN($S[])) | not)) ] | length' "$ACCEPTED_RISKS_FILE")
+	# Valid approved suppressions: status approved, unexpired, owner+reason set, gate suppressible.
+	_valid_gates=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
+		($ok | split(" ")) as $S
+		| (.risks // [])[]
+		| select(.status == "approved" and ((.expires_at // "") >= $today) and ((.owner // "") != "") and ((.reason // "") != "") and (((.gate // "") | IN($S[]))))
+		| "\(.gate)|\(.id // "?")"' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	if [ -n "$_valid_gates" ]; then
+		AR_APPLIED_DETAIL="$_valid_gates"
+		while IFS='|' read -r _g _id; do
+			[ -n "$_g" ] || continue
+			case "$SUPPRESSED_GATES" in *" $_g "*) : ;; *) SUPPRESSED_GATES="${SUPPRESSED_GATES}${_g} " ;; esac
+		done <<EOF
+$_valid_gates
+EOF
+	fi
+	log_info "accepted-risks: loaded $AR_LOADED (pending $AR_PENDING, expired $AR_EXPIRED, invalid $AR_INVALID ignored)"
+fi
+
+is_suppressed() {
+	case "$SUPPRESSED_GATES" in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
 # --- evaluate gates ----------------------------------------------------------
 TS=$(timestamp_utc)
 ensure_dir "$OUTPUT_DIR"
 
 FAILED=""        # space-separated failed gate keys
+ACCEPTED=""      # space-separated gate keys suppressed by an approved accepted-risk
 EVAL_LINES=""    # "key|enabled|value|result" per line
 
 add_eval() {
@@ -203,13 +261,24 @@ add_eval() {
 	fi
 }
 
-# Count-based gate: fails when the count is > 0 and the flag is enabled.
+# Count-based gate: fails when the count is > 0 and the flag is enabled — UNLESS a
+# valid approved accepted-risk suppresses this gate, in which case it is reported as
+# "accepted-risk" (the raw count is preserved, not zeroed) and does not fail.
 eval_count_gate() {
 	_key=$1
 	_flag=$(gate_flag "$_key")
 	_val=$(jqr ".summary.$_key")
 	if [ "$_flag" = "true" ]; then
-		if [ "$_val" -gt 0 ]; then add_eval "$_key" true "$_val" fail; else add_eval "$_key" true "$_val" pass; fi
+		if [ "$_val" -gt 0 ]; then
+			if is_suppressed "$_key"; then
+				add_eval "$_key" true "$_val" "accepted-risk"
+				ACCEPTED="$ACCEPTED $_key"
+			else
+				add_eval "$_key" true "$_val" fail
+			fi
+		else
+			add_eval "$_key" true "$_val" pass
+		fi
 	else
 		add_eval "$_key" false "$_val" skipped
 	fi
@@ -275,6 +344,9 @@ log_info "Mode: $MODE  Result: $(printf '%s' "$RESULT" | tr '[:lower:]' '[:upper
 if [ -n "$FAILED" ]; then
 	for g in $FAILED; do log_info "FAILED gate: $g"; done
 fi
+if [ -n "$ACCEPTED" ]; then
+	for g in $ACCEPTED; do log_info "ACCEPTED-RISK gate (count preserved, not failing): $g"; done
+fi
 
 # --- writers -----------------------------------------------------------------
 json_eval() {
@@ -294,6 +366,15 @@ json_failed() {
 	done
 }
 
+json_list() {
+	# json_list <space-separated items>
+	_first=1
+	for g in $1; do
+		if [ "$_first" -eq 1 ]; then _first=0; else printf ', '; fi
+		printf '"%s"' "$g"
+	done
+}
+
 write_json() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
 	{
@@ -305,6 +386,14 @@ write_json() {
 		printf '  "project": { "name": "%s", "type": "%s", "criticality": "%s" },\n' \
 			"$(json_escape "$PROJ_NAME")" "$(json_escape "$PROJ_TYPE")" "$(json_escape "$PROJ_CRIT")"
 		printf '  "failed_gates": [%s],\n' "$(json_failed)"
+		printf '  "accepted_risks": {\n'
+		printf '    "file": "%s",\n' "$(json_escape "$ACCEPTED_RISKS_FILE")"
+		printf '    "loaded": %s,\n' "$AR_LOADED"
+		printf '    "applied_gates": [%s],\n' "$(json_list "$ACCEPTED")"
+		printf '    "pending_ignored": %s,\n' "$AR_PENDING"
+		printf '    "expired_ignored": %s,\n' "$AR_EXPIRED"
+		printf '    "invalid_ignored": %s\n' "$AR_INVALID"
+		printf '  },\n'
 		printf '  "evaluated_gates": [\n'
 		json_eval
 		printf '\n  ]\n'
@@ -358,6 +447,23 @@ write_markdown() {
 		printf -- '| Field | Value |\n| --- | --- |\n'
 		printf -- '| active | %s |\n' "$(jqr '.exceptions.active')"
 		printf -- '| expired | %s |\n\n' "$(jqr '.exceptions.expired')"
+
+		printf '## Accepted risks\n\n'
+		printf -- '- File: `%s`\n' "$ACCEPTED_RISKS_FILE"
+		printf -- '- Loaded: %s | pending ignored: %s | expired ignored: %s | invalid ignored: %s\n' \
+			"$AR_LOADED" "$AR_PENDING" "$AR_EXPIRED" "$AR_INVALID"
+		if [ -n "$ACCEPTED" ]; then
+			printf -- '- Applied (gate marked accepted-risk, **count preserved, not zeroed, does not fail**):\n'
+			printf '%s' "$AR_APPLIED_DETAIL" | while IFS='|' read -r _g _id; do
+				[ -n "$_g" ] || continue
+				printf -- '  - `%s` ← risk id `%s`\n' "$_g" "$_id"
+			done
+		else
+			printf -- '- Applied: none.\n'
+		fi
+		printf -- '\n> Only APPROVED, unexpired, owner-bound records suppress, and only for\n'
+		printf -- '> suppressible gates (unsafe_docker, medium_vulnerabilities). secrets,\n'
+		printf -- '> expired_exceptions, and missing_release_evidence are never suppressed.\n\n'
 
 		printf '## Next steps\n\n'
 		if [ -n "$FAILED" ]; then

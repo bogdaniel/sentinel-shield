@@ -88,6 +88,14 @@ maps each resolved `SENTINEL_SHIELD_FAIL_ON_*` flag onto its summary key:
 | 1 | one or more active gates fail |
 | 2 | configuration / input / parsing error (missing summary key, invalid JSON, missing `jq`, suspicious gates env line) |
 
+**Accepted-risk suppression (v0.1.3+).** An APPROVED, unexpired, owner-bound record
+in `.sentinel-shield/accepted-risks.json` may suppress a **suppressible** gate
+(`unsafe_docker`, `medium_vulnerabilities`): the gate is reported as `accepted-risk`
+(raw count preserved, not zeroed) and does not fail. `pending`/expired/invalid records
+never suppress; `secrets`, `expired_exceptions`, and `missing_release_evidence` are
+**never** suppressible. Baseline adoption still requires the human `status: approved`.
+See [`docs/accepted-risk-suppression.md`](docs/accepted-risk-suppression.md).
+
 **Evidence requirements.** `missing_sbom` (strict/regulated) expects
 `evidence.sbom.present == true` (path e.g. `reports/sbom.spdx.json`);
 `missing_release_evidence` (regulated) expects `evidence.release_evidence.present

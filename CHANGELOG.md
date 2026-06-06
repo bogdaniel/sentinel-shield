@@ -6,6 +6,47 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.3] — Semgrep image fix, rule-noise tuning, accepted-risk suppression
+
+### Fixed
+
+- **Invalid Semgrep image reference.** `semgrep/semgrep:1` does not exist
+  (`manifest unknown`), so Semgrep never ran (`unavailable`). Changed to
+  `semgrep/semgrep:latest` in `ci-security.yml`, `ci-pipeline.yml`, and the
+  Laravel+React+Docker example workflow (pin to a digest before production).
+
+### Changed
+
+- **Semgrep starter-rule scoping** to cut false positives on real projects:
+  - `ss-laravel-app-debug-true` now excludes `*.example`/`.env.testing`/`.env.local`/
+    `.env.ci` (APP_DEBUG=true is normal in non-production env templates).
+  - `ss-php-insecure-random` → WARNING (was ERROR) and excludes
+    `tests/`/`database/factories/`/`database/seeders/`/`fixtures/`/`examples/`.
+  - `ss-js-insecure-random-security` → INFO (was WARNING) and excludes test/story
+    paths (UI `Math.random()` is benign).
+  - `ss-php-hardcoded-credentials` excludes test/factory/fixture paths (Gitleaks
+    remains the authoritative secret scanner).
+  - React XSS heuristics (`ss-react-dangerously-set-inner-html`,
+    `ss-react-unsafe-dom-write`, `ss-react-javascript-url`) → WARNING (high), not
+    ERROR (critical).
+  - `ss-laravel-missing-authorization-review` moved out of the default set into
+    opt-in `semgrep/php/laravel-review-prompts.yml` at INFO (it is a review prompt,
+    not a confirmed bug).
+
+### Added
+
+- **Accepted-risk suppression** in `scripts/enforce-gates.sh` (`--accepted-risks`,
+  default `.sentinel-shield/accepted-risks.json`). An APPROVED, unexpired,
+  owner-bound record may mark a **suppressible** gate (`unsafe_docker`,
+  `medium_vulnerabilities`) as `accepted-risk` — raw count preserved (not zeroed),
+  reported, does not fail. `pending`/expired/invalid never suppress; `secrets`,
+  `expired_exceptions`, `missing_release_evidence` are never suppressible.
+- `schemas/accepted-risks.schema.json`, `templates/accepted-risks.example.json`,
+  `docs/accepted-risk-suppression.md`, and the example
+  `.sentinel-shield/accepted-risks.example.json`.
+- Self-test `suppression` subcommand (in `all`): approved→pass(accepted-risk),
+  pending/expired/missing→fail, secrets+approved→still fail.
+
 ## [0.1.2] — trivy-action transitive-pin fix
 
 ### Fixed

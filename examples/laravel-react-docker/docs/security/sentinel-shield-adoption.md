@@ -258,6 +258,23 @@ tool simply does not write its raw report, and the builder marks it `unavailable
 Install the tool (recommended dev dependencies above) when you want that signal —
 do not fake the report.
 
+## Accepted-risk suppression (v0.1.3+)
+
+For a Docker DL3018 or similar hygiene finding, **prefer fixing**. If you accept it
+temporarily, a Markdown draft alone does **not** suppress the gate — create an
+**approved** JSON record:
+
+1. Copy `.sentinel-shield/accepted-risks.example.json` → `.sentinel-shield/accepted-risks.json`.
+2. Set `gate` (only `unsafe_docker` / `medium_vulnerabilities` are suppressible),
+   `owner`, `reason`, `expires_at` (≤ 90 days), and — after human review —
+   `status: approved`.
+3. The release gate reads it automatically (`enforce-gates.sh` default path) and
+   marks the gate **accepted-risk** (count preserved, reported, does not fail).
+
+`secrets`, `expired_exceptions`, and `missing_release_evidence` are **never**
+suppressible; `pending`/expired records do not suppress. Requires Sentinel Shield
+**≥ v0.1.3**. See the upstream `docs/accepted-risk-suppression.md`.
+
 ## Known missing adapters / tools
 
 - Severity mappings in the collectors are conservative first-pass and may need

@@ -217,8 +217,9 @@ jobs:
         run: mkdir -p reports/raw
 
       - name: Semgrep (JSON → reports/raw/semgrep.json)
+        # Pin to a digest (semgrep/semgrep@sha256:...) before production.
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep || true
         continue-on-error: true

@@ -196,6 +196,13 @@ output into one document with a required `summary` of 12 counts/flags
 - A missing required `summary` key is an error (exit 2), never a silent zero.
 - Each gate fails only when its resolved flag is `true` and its finding crosses the
   threshold; disabled gates are recorded as `skipped`.
+- **Accepted-risk suppression (v0.1.3+):** an APPROVED, unexpired, owner-bound record
+  in `.sentinel-shield/accepted-risks.json` may mark a **suppressible** gate
+  (`unsafe_docker`, `medium_vulnerabilities`) as `accepted-risk` — the raw count is
+  preserved (not zeroed) and reported, and it does not fail. `secrets`,
+  `expired_exceptions`, and `missing_release_evidence` are **never** suppressible;
+  `pending`/expired records never suppress. See
+  [`docs/accepted-risk-suppression.md`](docs/accepted-risk-suppression.md).
 - Writes `reports/sentinel-shield-enforcement.{json,md}`.
 
 Local example:

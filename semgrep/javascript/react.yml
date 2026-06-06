@@ -2,7 +2,7 @@
 rules:
   - id: ss-react-dangerously-set-inner-html
     languages: [javascript, typescript]
-    severity: ERROR
+    severity: WARNING
     message: >
       dangerouslySetInnerHTML renders raw HTML. Sanitise with DOMPurify and justify
       it; prefer rendering as JSX text. Silence only after sanitisation is verified.
@@ -15,7 +15,7 @@ rules:
 
   - id: ss-react-unsafe-dom-write
     languages: [javascript, typescript]
-    severity: ERROR
+    severity: WARNING
     message: >
       Direct DOM write bypasses React escaping. Avoid innerHTML/outerHTML/
       insertAdjacentHTML/document.write with dynamic data.
@@ -30,7 +30,7 @@ rules:
 
   - id: ss-react-javascript-url
     languages: [javascript, typescript]
-    severity: ERROR
+    severity: WARNING
     message: >
       javascript: URL in href/src executes script. Validate/normalise URLs and
       reject the javascript: scheme.

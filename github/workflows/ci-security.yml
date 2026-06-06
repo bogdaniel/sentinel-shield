@@ -24,7 +24,7 @@ jobs:
     container:
       # Maintained Semgrep image. Pin to a digest (image: semgrep/semgrep@sha256:...)
       # for reproducibility in sensitive pipelines.
-      image: semgrep/semgrep:1
+      image: semgrep/semgrep:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -132,8 +132,9 @@ jobs:
 
       - name: Semgrep (JSON → reports/raw/semgrep.json)
         # Conservative: never abort the summary on findings; the release gate decides.
+        # Pin to a digest (semgrep/semgrep@sha256:...) before production.
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep || true
         continue-on-error: true

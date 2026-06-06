@@ -217,6 +217,14 @@ gate** — fail-closed. Only `report-only` may continue on the example, and only
 a loud warning. The policy detects a copied example (byte-identical) and refuses it
 in baseline+, so it cannot be used to spoof a pass.
 
+### Accepted-risk suppression vs. the summary
+
+Normalization never zeroes a finding. If a finding is intentionally accepted, that is
+handled at **enforcement** time (v0.1.3+) via an approved accepted-risk record, which
+marks the gate `accepted-risk` while **preserving** the raw count in the summary —
+the count is never reduced in `security-summary.json`. See
+[`accepted-risk-suppression.md`](accepted-risk-suppression.md).
+
 ### Fixtures and the self-test
 
 The clean examples in [`templates/raw/`](../templates/raw/) are not just

@@ -30,11 +30,25 @@ rules:
 
   - id: ss-js-insecure-random-security
     languages: [javascript, typescript]
-    severity: WARNING
+    # INFO (-> medium), not high: Math.random() is overwhelmingly used for UI/keys/
+    # animation, not security. This is a review prompt — confirm it is not used for
+    # tokens/IDs/secrets. Excludes test/story/fixture paths. Tune to your layout.
+    severity: INFO
+    paths:
+      exclude:
+        - "tests"
+        - "*/tests/*"
+        - "*/__tests__/*"
+        - "*.test.*"
+        - "*.spec.*"
+        - "*.stories.*"
+        - "fixtures"
+        - "examples"
     message: >
       Math.random() is not cryptographically secure. For tokens/IDs/secrets use
-      crypto.randomBytes / crypto.getRandomValues.
+      crypto.getRandomValues / crypto.randomBytes. (Review prompt; UI use is fine.)
     metadata:
       category: security
+      confidence: LOW
       cwe: "CWE-338: Use of Cryptographically Weak PRNG"
     pattern: Math.random()

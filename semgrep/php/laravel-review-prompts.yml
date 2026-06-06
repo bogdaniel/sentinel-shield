@@ -1,0 +1,31 @@
+# Sentinel Shield — Laravel REVIEW-PROMPT rules (opt-in, low-signal).
+#
+# These rules surface code to *review*, not confirmed vulnerabilities. They are
+# noisy on real codebases and map to INFO (-> medium_vulnerabilities) so they do
+# NOT inflate critical/high counts. They are NOT included by the default
+# `--config semgrep` scan of the bundled rules root unless you point Semgrep at this
+# file explicitly, e.g.:
+#
+#   semgrep --config semgrep/php/laravel-review-prompts.yml
+#
+# Use them during manual review; silence individual hits with a justified
+# `// nosemgrep: <rule-id>` once confirmed safe.
+rules:
+  - id: ss-laravel-missing-authorization-review
+    languages: [php]
+    severity: INFO
+    message: >
+      Controller/handler mutates data. Confirm authorization is enforced
+      ($this->authorize(...), a policy, or a Gate). This is a REVIEW PROMPT, not
+      proof of a bug — expect false positives; silence with nosemgrep once verified.
+    metadata:
+      category: security
+      confidence: LOW
+      cwe: "CWE-862: Missing Authorization"
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL->delete()
+          - pattern: $MODEL->forceDelete()
+      - pattern-not-inside: |
+          $this->authorize(...);
+          ...

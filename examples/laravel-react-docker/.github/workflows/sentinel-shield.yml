@@ -234,7 +234,7 @@ jobs:
         run: mkdir -p reports/raw
       - name: Semgrep (JSON)
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:1 \
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep || true
         continue-on-error: true

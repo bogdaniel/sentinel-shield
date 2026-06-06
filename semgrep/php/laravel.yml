@@ -17,23 +17,10 @@ rules:
       - pattern: $MODEL->update($REQUEST->all())
       - pattern: $MODEL->fill($REQUEST->all())
 
-  - id: ss-laravel-missing-authorization-review
-    languages: [php]
-    severity: WARNING
-    message: >
-      Controller action mutates data. Confirm authorization is enforced
-      ($this->authorize(...), a policy, or a Gate). This is a review prompt, not
-      proof of a bug — silence with nosemgrep + justification once verified.
-    metadata:
-      category: security
-      cwe: "CWE-862: Missing Authorization"
-    patterns:
-      - pattern-either:
-          - pattern: $MODEL->delete()
-          - pattern: $MODEL->forceDelete()
-      - pattern-not-inside: |
-          $this->authorize(...);
-          ...
+  # NOTE: the review-prompt rule `ss-laravel-missing-authorization-review` moved to
+  # semgrep/php/laravel-review-prompts.yml (opt-in, INFO severity) in v0.1.3 — it
+  # was a high-noise review prompt, not a confirmed bug, and was over-counted as
+  # high. Include that file explicitly if you want authorization review prompts.
 
   - id: ss-laravel-raw-query
     languages: [php]
@@ -58,6 +45,16 @@ rules:
         - ".env"
         - ".env.*"
         - "config/app.php"
+      # Do not flag non-production env templates/test envs (APP_DEBUG=true is normal
+      # in these). Tune to your project's env-file naming.
+      exclude:
+        - "*.example"
+        - ".env.example"
+        - ".env.testing"
+        - ".env.testing.*"
+        - ".env.local"
+        - ".env.ci"
+        - ".env.*.example"
     message: >
       APP_DEBUG appears enabled. Debug mode leaks stack traces and config in
       production. Ensure APP_DEBUG=false in production environments.

@@ -42,7 +42,10 @@ What is being released (features, fixes, migrations)? What is explicitly out of 
 ## Security findings & accepted risks
 
 - Summary of findings from this release's scan (counts by severity).
-- Accepted risks: exception IDs, owners, reasons, expiry dates.
+- Accepted risks: exception IDs, owners, reasons, expiry dates. For gate suppression
+  (v0.1.3+), these must be APPROVED entries in `.sentinel-shield/accepted-risks.json`
+  (Markdown drafts do not suppress); only `unsafe_docker`/`medium_vulnerabilities`
+  are suppressible.
 
 ## Test evidence
 

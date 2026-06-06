@@ -79,6 +79,12 @@ The enforcer evaluates each gate only when its resolved flag is `true`:
 
 Disabled gates (flag `false`) are recorded as `skipped` and never fail the build.
 
+A gate that would fail may instead be marked **`accepted-risk`** (v0.1.3+) when an
+approved, unexpired accepted-risk record covers it (only `unsafe_docker` /
+`medium_vulnerabilities`; never `secrets`/`expired_exceptions`/
+`missing_release_evidence`). The raw count is preserved. See
+[`accepted-risk-suppression.md`](accepted-risk-suppression.md).
+
 ---
 
 ## Tool-specific sections

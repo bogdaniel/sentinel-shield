@@ -74,12 +74,29 @@ rules:
 
   - id: ss-php-insecure-random
     languages: [php]
-    severity: ERROR
+    # WARNING (-> high), not ERROR (-> critical): weak PRNG is only critical for
+    # crypto/session/token use. Excludes test/factory/seeder/fixture paths where
+    # rand()/mt_rand() is benign test data. Production crypto randomness is still
+    # flagged. Tune paths to your layout.
+    severity: WARNING
+    paths:
+      exclude:
+        - "tests"
+        - "*/tests/*"
+        - "*Test.php"
+        - "database/factories"
+        - "*/database/factories/*"
+        - "*Factory.php"
+        - "database/seeders"
+        - "*/database/seeders/*"
+        - "fixtures"
+        - "examples"
     message: >
       Insecure randomness for a security-sensitive value. Use random_bytes() or
-      random_int() instead of rand/mt_rand/uniqid.
+      random_int() instead of rand/mt_rand/uniqid. (Excluded in test/factory paths.)
     metadata:
       category: security
+      confidence: LOW
       cwe: "CWE-338: Use of Cryptographically Weak PRNG"
     pattern-either:
       - pattern: rand(...)
@@ -89,6 +106,19 @@ rules:
   - id: ss-php-hardcoded-credentials
     languages: [php]
     severity: ERROR
+    paths:
+      # Hardcoded credentials in test fixtures/factories/examples are usually not
+      # real secrets; exclude those paths to cut noise. Gitleaks remains the
+      # authoritative secret scanner.
+      exclude:
+        - "tests"
+        - "*/tests/*"
+        - "*Test.php"
+        - "database/factories"
+        - "*/database/factories/*"
+        - "database/seeders"
+        - "fixtures"
+        - "examples"
     message: >
       Possible hardcoded credential. Move secrets to environment/secret manager.
     metadata:

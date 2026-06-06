@@ -224,23 +224,71 @@ run_negative() {
 	log_info "negative: OK (findings fail closed; ungated findings pass)"
 }
 
+# --- accepted-risk suppression ----------------------------------------------
+# Uses fixed far-future/far-past expiry dates (deterministic, no date arithmetic):
+#   2999-12-31 >= today  -> valid ; 2000-01-01 < today -> expired.
+SUP_FAILS=0
+
+# run_suppression_case <desc> <mode> <expected-exit> <summary-jq> <accepted-risks-json>
+run_suppression_case() {
+	_d=$(mktemp -d)
+	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
+	jq "$4" templates/security-summary.example.json > "$_d/security-summary.json"
+	printf '%s' "$5" > "$_d/accepted-risks.json"
+	if sh scripts/enforce-gates.sh \
+		--gates-env "$_d/sentinel-shield-gates.env" \
+		--summary "$_d/security-summary.json" \
+		--accepted-risks "$_d/accepted-risks.json" \
+		--output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	if [ "$_rc" -eq "$3" ]; then
+		log_info "PASS: $1 (exit $_rc)"
+	else
+		log_error "FAIL: $1 (got exit $_rc, expected $3)"
+		SUP_FAILS=$((SUP_FAILS + 1))
+	fi
+	rm -rf "$_d"
+}
+
+run_suppression() {
+	log_info "suppression: accepted-risk gate suppression (unsafe_docker)"
+	_ad='.summary.unsafe_docker = 1'
+	_valid='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"approved"}]}'
+	_pending='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"pending"}]}'
+	_expired='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2000-01-01","status":"approved"}]}'
+	_secret='{"version":"1.0","risks":[{"id":"s","gate":"secrets","owner":"plat","severity":"high","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+
+	run_suppression_case "baseline + unsafe_docker=1 + no accepted risk -> fail"        baseline 1 "$_ad" '{"version":"1.0","risks":[]}'
+	run_suppression_case "baseline + unsafe_docker=1 + pending risk -> fail"            baseline 1 "$_ad" "$_pending"
+	run_suppression_case "baseline + unsafe_docker=1 + expired approved risk -> fail"   baseline 1 "$_ad" "$_expired"
+	run_suppression_case "baseline + unsafe_docker=1 + valid approved risk -> pass"     baseline 0 "$_ad" "$_valid"
+	run_suppression_case "baseline + secrets=1 + approved risk for secrets -> fail"     baseline 1 '.summary.secrets = 1' "$_secret"
+
+	if [ "$SUP_FAILS" -ne 0 ]; then
+		log_error "suppression: $SUP_FAILS case(s) failed"
+		return 1
+	fi
+	log_info "suppression: OK (only approved/unexpired suppress; secrets never)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
 	fallback) run_fallback ;;
 	negative) run_negative ;;
+	suppression) run_suppression ;;
 	all)
 		run_syntax
 		run_lifecycle
 		run_fallback
 		run_negative
+		run_suppression
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|all)"
 		exit 2
 		;;
 esac

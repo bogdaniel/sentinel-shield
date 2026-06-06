@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "//": "Copy to .sentinel-shield/accepted-risks.json. Only APPROVED, unexpired, owner-bound records suppress, and only for suppressible gates (unsafe_docker, medium_vulnerabilities). secrets/expired_exceptions/missing_release_evidence are NEVER suppressed. Suppression is reported, and the raw count is preserved (not zeroed). A Markdown draft alone does NOT suppress anything.",
+  "risks": [
+    {
+      "id": "dockerfile-apk-unpinned",
+      "gate": "unsafe_docker",
+      "owner": "platform-team",
+      "severity": "medium",
+      "reason": "Alpine package pinning is brittle for the Chromium image; reviewed as a hygiene risk, not an exploitable CVE.",
+      "mitigation": "Base image is pinned; image is scanned by Trivy; revisit package pinning later.",
+      "expires_at": "2026-07-06",
+      "status": "pending"
+    }
+  ]
+}
