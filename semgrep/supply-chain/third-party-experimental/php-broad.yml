@@ -1,0 +1,79 @@
+# Sentinel Shield — THIRD-PARTY PHP BROAD heuristics (EXPERIMENTAL, OPT-IN).
+#
+# NOT loaded by the default third-party scan. Higher false-positive rate over real
+# vendor/ trees. Enable deliberately:
+#   semgrep --config <path>/semgrep/supply-chain/third-party-experimental vendor
+# They map to the same third_party_* categories as the default rules.
+rules:
+  - id: ss-tp-php-dynamic-exec
+    languages: [php]
+    severity: WARNING
+    message: >
+      Dynamic code execution (eval/assert) in third-party code. Confirm it is not a
+      backdoor; some templating engines use eval. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-95: Eval Injection"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: assert($X)
+
+  - id: ss-tp-php-shell-exec
+    languages: [php]
+    severity: WARNING
+    message: >
+      OS command execution (shell_exec/exec/system/passthru/proc_open/popen) in
+      third-party code. Legitimate for some tools. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: shell_exec(...)
+      - pattern: exec(...)
+      - pattern: system(...)
+      - pattern: passthru(...)
+      - pattern: proc_open(...)
+      - pattern: popen(...)
+
+  - id: ss-tp-php-unserialize
+    languages: [php]
+    severity: WARNING
+    message: >
+      unserialize() in third-party code can enable object-injection if fed untrusted
+      data. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+    pattern: unserialize(...)
+
+  - id: ss-tp-php-env-read
+    languages: [php]
+    severity: WARNING
+    message: >
+      Third-party code reads .env directly — env/secret-exfiltration indicator when
+      paired with an outbound request. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: LOW
+      cwe: "CWE-200: Exposure of Sensitive Information"
+    pattern-either:
+      - pattern: file_get_contents(".env")
+      - pattern: fopen(".env", ...)
+
+  - id: ss-tp-php-outbound-network
+    languages: [php]
+    severity: WARNING
+    message: >
+      Outbound network primitive (curl_exec/fsockopen/stream_socket_client) in
+      third-party code. Common in HTTP clients. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: LOW
+      cwe: "CWE-913: Improper Control of Dynamically-Managed Code Resources"
+    pattern-either:
+      - pattern: curl_exec(...)
+      - pattern: fsockopen(...)
+      - pattern: stream_socket_client(...)

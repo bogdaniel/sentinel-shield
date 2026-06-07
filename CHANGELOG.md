@@ -6,6 +6,54 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.6] — separate app vs third-party rule trees; high-confidence supply-chain rules
+
+### Changed (rule layout — see migration note)
+
+- **Physically separated Semgrep rule trees.** Application rules moved to
+  `semgrep/app/{php,javascript,docker}`; supply-chain rules to
+  `semgrep/supply-chain/third-party/`. Broad/noisy heuristics moved to a **sibling**
+  `semgrep/supply-chain/third-party-experimental/` (opt-in; NOT loaded by the default
+  third-party config). The old `semgrep/{php,javascript,docker,third-party}` paths are
+  gone.
+- **App scans can no longer load third-party rules.** All workflows
+  (`ci-security.yml`, `ci-pipeline.yml`, example, `run-local-security.sh`) config the
+  app scan from `semgrep/app` (never the bare `semgrep/` catch-all) and the
+  third-party scan from `semgrep/supply-chain/third-party`.
+
+### Changed (third-party JS rules)
+
+- **Tightened to high-confidence by default.** Default third-party set = npm
+  install-script risk (`js-install-scripts.yml`, with a higher-severity variant for
+  `curl`/`wget`/`bash`/`node -e`/`child_process`/URL), decode→eval + remote-fetch→eval
+  (`js-high-confidence.yml`), and PHP decode→eval / `preg_replace /e`
+  (`php-suspicious.yml`). The broad rules that flooded `node_modules` with false
+  positives (`ss-tp-js-dynamic-require`, generic `eval`/`new Function`,
+  `child_process`, generic outbound, `.env` read, long-base64) are now **experimental
+  / opt-in**.
+
+### Changed (third-party target discovery)
+
+- Workflows mount each dependency dir under a **neutral name** (`/scan/depN`) so
+  Semgrep's built-in `node_modules`/`vendor` ignore + git-only discovery no longer skip
+  them, and exclude `*.min.js`/`dist`/`build`/`coverage`. Still skips cleanly when no
+  dependency dirs exist.
+
+### Fixed
+
+- Three pre-existing Semgrep rules that never compiled now parse and run:
+  `ss-react-dangerously-set-inner-html`, `ss-react-unsanitized-html-render` (JSX
+  bare-attribute patterns), and `ss-symfony-missing-csrf-note` (attribute+method
+  pattern → regex).
+
+### Notes
+
+- Summary keys and the collector (`third-party-semgrep.sh`, maps by
+  `metadata.sentinel_shield_category`) are unchanged — `security-summary.json` stays
+  backward compatible.
+- **Migration:** consuming projects that copied a workflow must repoint app scans to
+  `…/semgrep/app` and third-party scans to `…/semgrep/supply-chain/third-party`.
+
 ## [0.1.5] — third-party supply-chain suspicious-code scan
 
 ### Added

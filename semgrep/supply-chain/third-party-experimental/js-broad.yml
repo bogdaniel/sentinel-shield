@@ -1,0 +1,104 @@
+# Sentinel Shield — THIRD-PARTY JavaScript BROAD heuristics (EXPERIMENTAL, OPT-IN).
+#
+# NOT loaded by the default third-party scan. These rules are HIGH-NOISE over real
+# node_modules (e.g. ss-tp-js-dynamic-require matched ~10.5k ordinary CommonJS
+# `require(var)` calls in one rollout). Enable deliberately for a focused audit:
+#
+#   semgrep --config <path>/semgrep/supply-chain/third-party-experimental \
+#     --exclude '*.min.js' --exclude 'dist' --exclude 'build' --exclude 'coverage' <targets>
+#
+# They map to the same third_party_* categories as the default rules.
+rules:
+  - id: ss-tp-js-dynamic-exec
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Dynamic code execution (eval / new Function) in third-party code. Common in
+      bundlers/parsers; review in context. (Experimental: noisy on minified code.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-95: Eval Injection"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: ss-tp-js-child-process
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Third-party code spawns OS processes (child_process). Strong signal in a library
+      that should not shell out — but common in build tools. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+      - pattern: child_process.spawn(...)
+      - pattern: require("child_process").exec(...)
+      - pattern: $CP.exec(...)
+
+  - id: ss-tp-js-dynamic-require
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Dynamic require()/import() from a non-literal source. VERY common in CommonJS;
+      high false-positive rate over node_modules. (Experimental — opt-in only.)
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
+    pattern-either:
+      - pattern: require($X)
+      - pattern: import($X)
+    pattern-not: require("...")
+
+  - id: ss-tp-js-env-read
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Third-party code reads .env directly. Combined with an outbound request this is
+      an env-exfiltration indicator. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: LOW
+      cwe: "CWE-200: Exposure of Sensitive Information"
+    pattern-either:
+      - pattern: fs.readFileSync(".env", ...)
+      - pattern: fs.readFileSync(".env")
+      - pattern: fs.readFile(".env", ...)
+
+  - id: ss-tp-js-outbound-network
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Outbound network primitive (http(s).request, net/tls connect, dns lookup) in
+      third-party code. Common in HTTP clients. (Experimental.)
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: LOW
+      cwe: "CWE-913: Improper Control of Dynamically-Managed Code Resources"
+    pattern-either:
+      - pattern: https.request(...)
+      - pattern: http.request(...)
+      - pattern: net.connect(...)
+      - pattern: tls.connect(...)
+      - pattern: dns.lookup(...)
+
+  - id: ss-tp-long-base64-blob
+    languages: [generic]
+    severity: WARNING
+    paths:
+      exclude:
+        - "*.map"
+    message: >
+      Very long base64-like literal — possible packed/obfuscated payload. High false
+      positives in minified bundles. (Experimental — correlate with decode→eval.)
+    metadata:
+      sentinel_shield_category: third_party_obfuscation
+      confidence: LOW
+      cwe: "CWE-506: Embedded Malicious Code"
+    patterns:
+      - pattern-regex: '[A-Za-z0-9+/]{200,}={0,2}'

@@ -4,8 +4,15 @@ Sentinel Shield runs **two separate SAST channels**:
 
 | Channel | Scans | Rules | Artifact | Summary keys | Default gating |
 | --- | --- | --- | --- | --- | --- |
-| **Application SAST** | code you own (`app/`, `Modules/`, `resources/js`, `src/`) | `semgrep/` (app rules) | `reports/raw/semgrep.json` | `*_vulnerabilities` | baseline-blocking when configured |
-| **Third-party suspicious scan** | dependency/vendored code (`vendor/`, `node_modules/`, `public/vendor/`, `public/js/filament/`) | `semgrep/third-party/` only | `reports/raw/third-party-semgrep.json` | `third_party_*` | non-blocking by default (report-only/baseline) |
+| **Application SAST** | code you own (`app/`, `Modules/`, `resources/js`, `src/`) | `semgrep/app/**` only | `reports/raw/semgrep.json` | `*_vulnerabilities` | baseline-blocking when configured |
+| **Third-party suspicious scan** | dependency/vendored code (`vendor/`, `node_modules/`, `public/vendor/`, `public/js/filament/`) | `semgrep/supply-chain/third-party/**` only | `reports/raw/third-party-semgrep.json` | `third_party_*` | non-blocking by default (report-only/baseline) |
+
+**Rule trees are physically separate (v0.1.6+):** application rules live under
+`semgrep/app/` and supply-chain rules under `semgrep/supply-chain/`. The app scan
+configs from `semgrep/app` and **cannot** load third-party rules; the broad/noisy
+behavioral rules live in a **sibling** `semgrep/supply-chain/third-party-experimental/`
+that the default third-party config does **not** load. No workflow uses the bare
+`semgrep/` root as a catch-all.
 
 They never mix: third-party findings land in their own summary keys and their own
 artifact, and the app scan still excludes vendor/generated assets via `.semgrepignore`
@@ -30,7 +37,7 @@ ignore them — they are covered by:
 
 ## How the third-party scan works
 
-A **separate** Semgrep run uses only `semgrep/third-party/*.yml` against the
+A **separate** Semgrep run uses only `semgrep/supply-chain/third-party/*.yml` against the
 dependency directories. In CI it runs from `-w /tmp` (not the repo root) with the
 dependency dirs passed as **explicit targets**, so the app `.semgrepignore` (which
 excludes `vendor/`/`node_modules/`) is **not** applied to this channel. Output goes
@@ -46,11 +53,39 @@ third_party_obfuscation           decode→eval chains, packed/long base64 blobs
 third_party_network_behavior      .env reads, curl/fetch/http(s)/net/dns outbound primitives
 ```
 
+## Default (high-confidence) vs experimental (opt-in) — v0.1.6+
+
+The default config (`semgrep/supply-chain/third-party/`) is **intentionally
+high-confidence** so it is usable over a real `node_modules` without drowning in
+false positives:
+
+- `js-install-scripts.yml` — npm `pre/post/install` hooks (and a higher-severity
+  variant when the script runs `curl`/`wget`/`bash`/`node -e`/`child_process`/a URL).
+- `js-high-confidence.yml` — decode→eval (`eval(atob(...))`, `eval(Buffer.from(...))`)
+  and remote-fetch→eval.
+- `php-suspicious.yml` — decode→eval chains and `preg_replace` `/e` (RCE).
+
+The **broad** heuristics (generic `eval`/`new Function`, dynamic `require`,
+`child_process`, generic outbound network, `.env` read, long-base64) are **opt-in** in
+the sibling `semgrep/supply-chain/third-party-experimental/`. In one real rollout the
+generic `require(var)` rule alone produced ~10.5k false positives across CommonJS
+bundles — that is why it is not in the default set. Opt in for a focused audit:
+
+```sh
+semgrep --config <…>/semgrep/supply-chain/third-party-experimental \
+  --exclude '*.min.js' --exclude dist --exclude build --exclude coverage <targets>
+```
+
+Both trees map to the same `third_party_*` categories via
+`metadata.sentinel_shield_category`, so enabling experimental rules does not change the
+summary schema — only the counts.
+
 ## What it detects / does NOT detect
 
-**Detects (heuristics):** eval/`new Function`/dynamic exec, `child_process`/`shell_exec`,
-`preg_replace` `/e`, decode→eval obfuscation, npm install hooks, `.env` reads, outbound
-network primitives, dynamic `require`/`import`.
+**Detects (default, high-confidence):** npm install hooks (and risky install commands),
+decode→eval obfuscation (JS + PHP), `preg_replace` `/e`, remote-fetch→eval. **Opt-in
+(experimental):** generic eval/`new Function`/dynamic `require`, `child_process`/
+`shell_exec`, `.env` reads, generic outbound network, long-base64 blobs.
 
 **Does NOT detect (be honest):** novel/obfuscated malware that avoids these patterns,
 logic-only backdoors, compromised binaries/postinstall payloads fetched at runtime,

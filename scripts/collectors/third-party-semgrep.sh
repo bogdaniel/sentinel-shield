@@ -3,7 +3,7 @@
 #
 # Parses a SEPARATE Semgrep run over dependency/vendored code
 # (reports/raw/third-party-semgrep.json) using the supply-chain rules under
-# semgrep/third-party/. It does NOT read the normal app scan (reports/raw/semgrep.json)
+# semgrep/supply-chain/third-party/. It does NOT read the normal app scan (reports/raw/semgrep.json)
 # and its findings are kept in their own summary keys — they never mix into the
 # app-code *_vulnerabilities buckets.
 #

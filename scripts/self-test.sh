@@ -45,6 +45,32 @@ run_syntax() {
 	# motivated this — guard against regressions.
 	grep -q 'public/js/filament/' examples/laravel-react-docker/.semgrepignore \
 		|| { log_error "example .semgrepignore missing public/js/filament/"; return 1; }
+
+	# v0.1.6 rule-tree separation: app rules and third-party rules are physically
+	# separate, and no workflow uses the broad semgrep/ catch-all for the app scan.
+	log_info "syntax: app vs third-party Semgrep rule trees are separated (v0.1.6)"
+	[ -d semgrep/app ] || { log_error "missing semgrep/app (app rules)"; return 1; }
+	[ -d semgrep/supply-chain/third-party ] || { log_error "missing semgrep/supply-chain/third-party"; return 1; }
+	[ ! -d semgrep/third-party ] || { log_error "stale semgrep/third-party still present (must move under supply-chain/)"; return 1; }
+	[ ! -d semgrep/php ] || { log_error "stale semgrep/php still present (must move under semgrep/app/)"; return 1; }
+	# No app config may reference third-party rules; no broad semgrep/ catch-all.
+	_wf="github/workflows/ci-security.yml github/workflows/ci-pipeline.yml examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+	for f in $_wf; do
+		# 1) app Semgrep config must point at semgrep/app, never the bare semgrep/ root.
+		if grep -nE -- "--config [^ ]*/semgrep( |\\\\|\"|\$)" "$f" >/dev/null 2>&1; then
+			log_error "$f uses broad 'semgrep/' catch-all config (must be semgrep/app)"; return 1
+		fi
+		# 2) no app-scan step may load third-party rules.
+		if grep -nE -- "--config [^ ]*/semgrep/app[^ ]*third-party" "$f" >/dev/null 2>&1; then
+			log_error "$f app scan references third-party rules"; return 1
+		fi
+		# 3) the third-party step must use the supply-chain path.
+		grep -q 'semgrep/supply-chain/third-party' "$f" \
+			|| { log_error "$f missing third-party scan config (semgrep/supply-chain/third-party)"; return 1; }
+		# 4) app scan must reference semgrep/app.
+		grep -q 'semgrep/app' "$f" \
+			|| { log_error "$f missing app scan config (semgrep/app)"; return 1; }
+	done
 	log_info "syntax: OK"
 }
 

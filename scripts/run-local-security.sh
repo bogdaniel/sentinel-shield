@@ -39,7 +39,7 @@ if have semgrep; then
 	echo ">> Semgrep"
 	# Prefer bundled rules if this repo's semgrep/ dir is reachable; else registry.
 	if [ -d semgrep ]; then
-		semgrep --error --config ./semgrep || OVERALL=1
+		semgrep --error --config ./semgrep/app || OVERALL=1
 	else
 		semgrep --error --config "p/owasp-top-ten" || OVERALL=1
 	fi

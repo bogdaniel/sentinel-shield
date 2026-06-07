@@ -24,12 +24,10 @@ rules:
     metadata:
       category: security
       cwe: "CWE-352: Cross-Site Request Forgery"
-    patterns:
-      - pattern: |
-          #[Route(..., methods: ["POST"])]
-          public function $M(...) { ... }
-      - pattern-not-inside: |
-          { ... $this->isCsrfTokenValid(...) ... }
+    # Regex form (always parses; the structural attribute+method pattern did not
+    # compile). Flags Route attributes whose methods include a state-changing verb —
+    # a review prompt to confirm CSRF protection. Silence once verified.
+    pattern-regex: '#\[Route\([^)]*methods:\s*\[[^\]]*[\x27"](POST|PUT|PATCH|DELETE)[\x27"]'
 
   - id: ss-symfony-unsafe-deserialization
     languages: [php]

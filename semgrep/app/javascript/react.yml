@@ -11,7 +11,7 @@ rules:
       cwe: "CWE-79: Cross-site Scripting"
     pattern-either:
       - pattern: "<$EL dangerouslySetInnerHTML={{ __html: $X }} />"
-      - pattern: "dangerouslySetInnerHTML={{ __html: $X }}"
+      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: $X }}>...</$EL>"
 
   - id: ss-react-unsafe-dom-write
     languages: [javascript, typescript]
@@ -50,5 +50,6 @@ rules:
     metadata:
       category: security
       cwe: "CWE-79: Cross-site Scripting"
-    patterns:
-      - pattern: "dangerouslySetInnerHTML={{ __html: `...${$X}...` }}"
+    pattern-either:
+      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: `...${$X}...` }} />"
+      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: `...${$X}...` }}>...</$EL>"

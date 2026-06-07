@@ -277,22 +277,27 @@ scanned (React XSS rules included).
   positive prefer a narrow `// nosemgrep: <rule-id> -- <reason>`. See the upstream
   `docs/semgrep-scoping.md`.
 
-## Third-party suspicious-code scan (v0.1.5+)
+## Third-party suspicious-code scan (v0.1.5+; rule trees separated in v0.1.6)
 
 A **separate** Semgrep channel scans dependency/vendored code (`vendor/`,
 `node_modules/`, `public/vendor/`, `public/js/filament/`) with supply-chain rules
-(`semgrep/third-party/`) into its own artifact (`reports/raw/third-party-semgrep.json`)
-and its own summary keys (`third_party_*`). It does **not** touch the normal app SAST
-scan and does **not** replace Trivy / composer audit / npm audit / Gitleaks / SBOM
-(those still cover dependency CVEs and secrets).
+(`semgrep/supply-chain/third-party/`) into its own artifact
+(`reports/raw/third-party-semgrep.json`) and its own summary keys (`third_party_*`). It
+does **not** touch the normal app SAST scan (which configs from `semgrep/app/` and
+cannot load third-party rules) and does **not** replace Trivy / composer audit / npm
+audit / Gitleaks / SBOM (those still cover dependency CVEs and secrets).
 
 - The workflow step runs only if a dependency dir exists; otherwise the collector
   marks the tool `unavailable`.
+- **Default rules are high-confidence** (v0.1.6): npm install hooks + decode→eval. The
+  broad/noisy heuristics (generic eval/require/child_process/network) are **opt-in** in
+  `semgrep/supply-chain/third-party-experimental/` — add a second `--config` for a
+  focused audit.
 - **Non-blocking by default** (report-only/baseline). Strict blocks
   `install_script_risk` + `network_behavior`; regulated blocks all four.
-- It catches *behavioral* indicators (npm install hooks, decode→eval, child_process,
-  `.env` reads, outbound network) — a triage aid, **not** a guarantee. Expect some
-  noise from minified bundles; triage by category/confidence and package.
+- A triage aid, **not** a guarantee. Install-script findings (e.g. esbuild, puppeteer)
+  are often legitimate — review, don't panic. The scan passing does **not** mean
+  `node_modules` is clean.
 
 See the upstream `docs/third-party-supply-chain-scan.md`.
 

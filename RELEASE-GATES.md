@@ -126,7 +126,10 @@ workflows run Semgrep with `-w /src`) keeps SAST on application source and off
 vendored/generated assets. **SAST-only** — composer/npm audit, Trivy, Syft SBOM,
 Gitleaks, and Hadolint are not narrowed. See [`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
 
-**Third-party supply-chain gates (v0.1.5+).** A separate scan over dependency code
+**Third-party supply-chain gates (v0.1.5+; rules separated in v0.1.6).** Rule trees are
+physically split — application SAST (`semgrep/app/`) can never load supply-chain rules
+(`semgrep/supply-chain/third-party/`, high-confidence by default; broad heuristics
+opt-in under `…/third-party-experimental/`). A separate scan over dependency code
 feeds four gates — `third_party_suspicious_code`, `third_party_install_script_risk`,
 `third_party_obfuscation`, `third_party_network_behavior`. Defaults: report-only &
 baseline → all false (visible, non-blocking); strict → `install_script_risk` +

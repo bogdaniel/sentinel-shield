@@ -1,0 +1,43 @@
+# Sentinel Shield — THIRD-PARTY npm install-script risk (high-confidence, default).
+#
+# Runs ONLY in the supply-chain channel against dependency package.json files. npm
+# lifecycle install hooks run arbitrary code on `npm install` and are the #1 npm
+# supply-chain vector. NOTE: many install scripts are legitimate (esbuild, puppeteer,
+# protobufjs, react-docgen-typescript, …) — these findings REQUIRE REVIEW, not panic.
+# Non-blocking in report-only/baseline; blocking only in strict/regulated by policy.
+rules:
+  - id: ss-tp-npm-install-script
+    languages: [generic]
+    severity: WARNING
+    paths:
+      include:
+        - "package.json"
+        - "**/package.json"
+    message: >
+      Dependency declares a pre/post/install npm lifecycle script (runs on install).
+      Review what it does, especially for new or changed dependencies. Many are
+      legitimate binary/asset downloads.
+    metadata:
+      sentinel_shield_category: third_party_install_script_risk
+      confidence: MEDIUM
+      cwe: "CWE-506: Embedded Malicious Code"
+    patterns:
+      - pattern-regex: '"(preinstall|install|postinstall)"\s*:'
+
+  - id: ss-tp-npm-install-script-risky
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "package.json"
+        - "**/package.json"
+    message: >
+      Dependency install script invokes a shell/network/exec primitive
+      (curl/wget/bash/sh/powershell/node -e/child_process/remote URL). High-confidence
+      supply-chain risk — inspect the package before installing.
+    metadata:
+      sentinel_shield_category: third_party_install_script_risk
+      confidence: HIGH
+      cwe: "CWE-506: Embedded Malicious Code"
+    patterns:
+      - pattern-regex: '"(preinstall|install|postinstall)"\s*:\s*"[^"]*(curl |wget |\bbash\b|\bsh \b|powershell|node -e|child_process|https?://)[^"]*"'

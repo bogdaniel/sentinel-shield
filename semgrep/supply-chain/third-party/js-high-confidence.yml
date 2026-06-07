@@ -1,0 +1,42 @@
+# Sentinel Shield — THIRD-PARTY JavaScript HIGH-CONFIDENCE rules (default).
+#
+# Supply-chain channel only. These are the patterns that are strongly indicative of a
+# malicious/compromised package (decode→execute, remote-fetch→execute). They are kept
+# narrow on purpose so they are usable over real node_modules. Broad/noisy heuristics
+# (generic eval, dynamic require, child_process, generic HTTP) live in
+# ../third-party-experimental/ and are OPT-IN (see docs/third-party-supply-chain-scan.md).
+rules:
+  - id: ss-tp-js-decode-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Obfuscated execution: a base64/hex decode feeds eval()/new Function(). A common
+      malicious-package pattern. Inspect the dependency.
+    metadata:
+      sentinel_shield_category: third_party_obfuscation
+      confidence: HIGH
+      cwe: "CWE-506: Embedded Malicious Code"
+    pattern-either:
+      - pattern: eval(atob(...))
+      - pattern: eval(Buffer.from(...).toString(...))
+      - pattern: new Function(atob(...))
+      - pattern: new Function(Buffer.from(...).toString(...))
+
+  - id: ss-tp-js-remote-fetch-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Remote payload executed: the result of an HTTP fetch/get is passed to
+      eval()/new Function(). Strong supply-chain/backdoor indicator — inspect.
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: HIGH
+      cwe: "CWE-494: Download of Code Without Integrity Check"
+    pattern-either:
+      - pattern: eval(await fetch(...).then(...))
+      - pattern: |
+          $R = await fetch(...);
+          ...
+          eval(...);
+      - pattern: |
+          $H.get(..., function($RES) { ...; eval(...); ... });

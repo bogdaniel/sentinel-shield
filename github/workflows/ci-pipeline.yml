@@ -223,27 +223,30 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
-            --config /src/semgrep || true
+            --config /src/semgrep/app || true
         continue-on-error: true
 
       - name: Third-party suspicious-code scan (SEPARATE channel)
-        # Supply-chain SAST over dependency/vendored code ONLY, to a SEPARATE artifact
-        # (third-party-semgrep.json). -w /tmp so the app .semgrepignore is NOT applied;
-        # dependency dirs passed as explicit targets. Skips when none exist. NOT a
-        # replacement for Trivy/composer audit/npm audit/Gitleaks/SBOM.
+        # Supply-chain SAST over dependency/vendored code ONLY -> SEPARATE artifact
+        # (third-party-semgrep.json), high-confidence rules only. NOT a replacement for
+        # Trivy/composer audit/npm audit/Gitleaks/SBOM. See docs/third-party-supply-chain-scan.md.
+        # Each dep dir is mounted under a neutral name (/scan/depN) so Semgrep's
+        # built-in node_modules/vendor ignore + git-only discovery do not skip it;
+        # minified/build output excluded.
         run: |
           mkdir -p reports/raw
-          TARGETS=""
+          MOUNTS=""; SCANT=""; i=0
           for d in vendor node_modules public/vendor public/js/filament; do
-            [ -d "$d" ] && TARGETS="$TARGETS /src/$d"
+            if [ -d "$d" ]; then i=$((i+1)); MOUNTS="$MOUNTS -v $PWD/$d:/scan/dep$i:ro"; SCANT="$SCANT /scan/dep$i"; fi
           done
-          if [ -z "$TARGETS" ]; then
+          if [ -z "$SCANT" ]; then
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" -w /tmp semgrep/semgrep:latest \
-            semgrep --json --output /src/reports/raw/third-party-semgrep.json \
-            --config /src/semgrep/third-party $TARGETS || true
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh semgrep/semgrep:latest -c \
+            "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
+              --config /src/semgrep/supply-chain/third-party \
+              --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true
         continue-on-error: true
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)

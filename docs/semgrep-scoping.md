@@ -55,11 +55,14 @@ scanner:
 ## How it works mechanically
 
 The Sentinel Shield workflows run the Docker Semgrep step with `-w /src` (working
-directory = repo root), so Semgrep reads `.semgrepignore` from the project root.
-Output stays at `reports/raw/semgrep.json`. If there are no findings, Semgrep still
-writes a valid (empty-results) JSON — the collector reports `pass`, not
-`unavailable`. Excluded paths simply aren't scanned; their absence never changes
-tool status.
+directory = repo root), so Semgrep reads `.semgrepignore` from the project root, and
+config from **`semgrep/app/`** only (v0.1.6+) — never the bare `semgrep/` root, so the
+app scan can never load supply-chain rules. Output stays at `reports/raw/semgrep.json`.
+If there are no findings, Semgrep still writes a valid (empty-results) JSON — the
+collector reports `pass`, not `unavailable`. Excluded paths simply aren't scanned;
+their absence never changes tool status. The third-party channel is a **separate**
+scan over dependency code (config `semgrep/supply-chain/third-party`) — see
+[`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md).
 
 ## Overriding / customizing
 

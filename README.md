@@ -74,7 +74,8 @@ sentinel-shield/
 ├─ docs/                     # Policies and guides
 ├─ profiles/                 # Per-stack tool configurations
 ├─ github/                   # Reusable workflow + Dependabot + CodeQL templates
-├─ semgrep/                  # Starter Semgrep rules per stack
+├─ semgrep/                  # Semgrep rules — app/ (application SAST) and
+│                            #   supply-chain/ (third-party + opt-in experimental)
 ├─ policies/                 # OPA/Rego policies and exception templates
 ├─ scripts/                  # Local helper scripts (detect, scan, report, install)
 └─ templates/                # PR, security review, threat model, ADR, readiness
@@ -255,11 +256,13 @@ exclude vendored/generated/cache assets (`vendor/`, `node_modules/`,
 audit, Trivy, Syft SBOM, Gitleaks, and Hadolint are **not** narrowed by it. See
 [`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
 
-**Third-party suspicious-code scan (v0.1.5+).** A **separate** Semgrep channel scans
-dependency/vendored code with supply-chain rules (`semgrep/third-party/`) into a
-separate artifact + `third_party_*` summary keys — non-blocking by default. It catches
-*behavioral* indicators (install hooks, decode→eval, child_process, env/outbound) and
-**does not replace** Trivy / composer audit / npm audit / Gitleaks / SBOM. See
+**Third-party suspicious-code scan (v0.1.5+; rule trees separated in v0.1.6).** Rules
+are physically split: application SAST configs from `semgrep/app/` and a **separate**
+supply-chain channel configs from `semgrep/supply-chain/third-party/` (high-confidence
+by default; broad heuristics opt-in under `…/third-party-experimental/`). The app scan
+**cannot** load third-party rules; the third-party scan writes a separate artifact +
+`third_party_*` keys, non-blocking by default, and **does not replace** Trivy /
+composer audit / npm audit / Gitleaks / SBOM. See
 [`docs/third-party-supply-chain-scan.md`](docs/third-party-supply-chain-scan.md).
 
 ```sh

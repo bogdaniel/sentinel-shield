@@ -1,0 +1,34 @@
+# Sentinel Shield — THIRD-PARTY PHP HIGH-CONFIDENCE rules (default).
+#
+# Supply-chain channel only, against vendor/**/*.php. Narrow, high-signal backdoor
+# patterns. Broad heuristics (generic eval/assert, shell_exec, unserialize, env-read,
+# outbound network) live in ../third-party-experimental/ and are OPT-IN.
+rules:
+  - id: ss-tp-php-decode-eval
+    languages: [php]
+    severity: ERROR
+    message: >
+      Obfuscated execution: a decode/decompress chain feeds eval()/assert(). A classic
+      PHP malware/backdoor pattern in third-party code. Inspect the package.
+    metadata:
+      sentinel_shield_category: third_party_obfuscation
+      confidence: HIGH
+      cwe: "CWE-506: Embedded Malicious Code"
+    pattern-either:
+      - pattern: eval(base64_decode(...))
+      - pattern: eval(gzinflate(...))
+      - pattern: eval(gzuncompress(...))
+      - pattern: eval(str_rot13(...))
+      - pattern: assert(base64_decode(...))
+
+  - id: ss-tp-php-preg-replace-eval-modifier
+    languages: [php]
+    severity: ERROR
+    message: >
+      preg_replace() with the /e modifier executes the replacement as PHP code (RCE).
+      Removed in PHP 7 but still seen in malicious/legacy third-party code.
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: HIGH
+      cwe: "CWE-95: Eval Injection"
+    pattern-regex: 'preg_replace\s*\(\s*[\x27"][^\x27"]*/[a-zA-Z]*e[a-zA-Z]*[\x27"]'
