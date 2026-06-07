@@ -255,6 +255,13 @@ exclude vendored/generated/cache assets (`vendor/`, `node_modules/`,
 audit, Trivy, Syft SBOM, Gitleaks, and Hadolint are **not** narrowed by it. See
 [`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
 
+**Third-party suspicious-code scan (v0.1.5+).** A **separate** Semgrep channel scans
+dependency/vendored code with supply-chain rules (`semgrep/third-party/`) into a
+separate artifact + `third_party_*` summary keys — non-blocking by default. It catches
+*behavioral* indicators (install hooks, decode→eval, child_process, env/outbound) and
+**does not replace** Trivy / composer audit / npm audit / Gitleaks / SBOM. See
+[`docs/third-party-supply-chain-scan.md`](docs/third-party-supply-chain-scan.md).
+
 ```sh
 # Build a summary from raw artifacts, then resolve + enforce.
 sh scripts/build-security-summary.sh --project-name proxyflux --project-type laravel

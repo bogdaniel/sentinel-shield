@@ -1,0 +1,103 @@
+# Sentinel Shield — THIRD-PARTY JavaScript/Node suspicious-code rules.
+#
+# Run ONLY against dependency/vendored code (node_modules/**, public/vendor/**,
+# public/js/filament/**) in a SEPARATE Semgrep channel — never the normal app SAST.
+# Heuristics for supply-chain triage; minified/bundled code will produce some noise.
+# metadata.sentinel_shield_category drives the collector's bucket.
+#
+# Severity guide: decode→eval, install-script execution → ERROR; generic eval/
+# new Function, child_process, env/network → WARNING.
+rules:
+  - id: ss-tp-js-decode-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >
+      Obfuscated execution: base64/hex decode feeding eval()/new Function(). A
+      common malicious-package pattern. Inspect the dependency.
+    metadata:
+      sentinel_shield_category: third_party_obfuscation
+      confidence: HIGH
+      cwe: "CWE-506: Embedded Malicious Code"
+    pattern-either:
+      - pattern: eval(atob(...))
+      - pattern: eval(Buffer.from(...).toString(...))
+      - pattern: new Function(atob(...))
+      - pattern: new Function(Buffer.from(...).toString(...))
+
+  - id: ss-tp-js-dynamic-exec
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Dynamic code execution in third-party code (eval / new Function). Confirm it
+      is not a payload loader; some bundlers emit eval — review.
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: MEDIUM
+      cwe: "CWE-95: Eval Injection"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: ss-tp-js-child-process
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Third-party code spawns OS processes (child_process exec/execSync/spawn).
+      Strong supply-chain signal in a library that should not shell out — review.
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: MEDIUM
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+      - pattern: child_process.spawn(...)
+      - pattern: require("child_process").exec(...)
+      - pattern: $CP.exec(...)
+
+  - id: ss-tp-js-env-read
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Third-party code reads .env directly. Combined with an outbound request this
+      is an env/secret-exfiltration indicator — inspect surrounding code.
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: MEDIUM
+      cwe: "CWE-200: Exposure of Sensitive Information"
+    pattern-either:
+      - pattern: fs.readFileSync(".env", ...)
+      - pattern: fs.readFileSync(".env")
+      - pattern: fs.readFile(".env", ...)
+
+  - id: ss-tp-js-outbound-network
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Outbound network primitive in third-party code (http(s).request, net/tls
+      connect, dns lookup, fetch). Confirm the package is expected to connect out.
+    metadata:
+      sentinel_shield_category: third_party_network_behavior
+      confidence: LOW
+      cwe: "CWE-913: Improper Control of Dynamically-Managed Code Resources"
+    pattern-either:
+      - pattern: https.request(...)
+      - pattern: http.request(...)
+      - pattern: net.connect(...)
+      - pattern: tls.connect(...)
+      - pattern: dns.lookup(...)
+
+  - id: ss-tp-js-dynamic-require
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: >
+      Dynamic require()/import() from a non-literal source in third-party code can
+      load remote/attacker-controlled modules. Review what is being loaded.
+    metadata:
+      sentinel_shield_category: third_party_suspicious_code
+      confidence: LOW
+      cwe: "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
+    pattern-either:
+      - pattern: require($X)
+      - pattern: import($X)
+    pattern-not: require("...")

@@ -6,6 +6,39 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.5] — third-party supply-chain suspicious-code scan
+
+### Added
+
+- **Separate third-party suspicious-code scan channel.** A dedicated Semgrep run over
+  dependency/vendored code (`vendor/`, `node_modules/`, `public/vendor/`,
+  `public/js/filament/`) using **only** `semgrep/third-party/*.yml` — distinct from
+  the application SAST scan, written to a **separate** artifact
+  (`reports/raw/third-party-semgrep.json`).
+- New summary keys: `third_party_suspicious_code`, `third_party_install_script_risk`,
+  `third_party_obfuscation`, `third_party_network_behavior` (schema + example +
+  builder seed). New gate flags + resolver defaults (report-only/baseline: all false;
+  strict: install_script_risk + network_behavior true; regulated: all true).
+- New files: `semgrep/third-party/{suspicious-code,php-suspicious,js-suspicious}.yml`,
+  `scripts/collectors/third-party-semgrep.sh`,
+  `templates/raw/third-party-semgrep.example.json`,
+  `docs/third-party-supply-chain-scan.md`. Profile gains a `supply_chain.third_party_sast`
+  block (modes: disabled | report-only | scheduled | strict | regulated).
+- Workflow steps (ci-security, ci-pipeline, example) run the third-party scan from
+  `-w /tmp` with explicit dependency-dir targets (so the app `.semgrepignore` does
+  not exclude them); they skip cleanly when no dependency dirs exist.
+- Self-test `third-party` subcommand: missing raw → unavailable/0; fixture → category
+  counts; report-only non-blocking; regulated blocks all four.
+
+### Scope (explicit)
+
+- This is **behavioral** supply-chain triage, **not** a replacement for Trivy /
+  composer audit / npm audit (dependency CVEs), Syft (SBOM), or Gitleaks (secrets) —
+  those remain the source of truth and are unchanged.
+- Application SAST still excludes `vendor/`/`node_modules/` (v0.1.4 `.semgrepignore`);
+  third-party findings stay in their own keys/artifact and never mix into app
+  `*_vulnerabilities`. Non-blocking by default in v1; secrets are never suppressible.
+
 ## [0.1.4] — default Semgrep/SAST scoping for Laravel/React
 
 ### Added

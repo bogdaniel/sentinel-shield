@@ -55,6 +55,10 @@ All keys are required. Integer keys are non-negative counts; two are booleans.
 | `missing_sbom` | boolean | `true` if no SBOM was produced. |
 | `missing_release_evidence` | boolean | `true` if no readiness report. |
 | `expired_exceptions` | integer | Lapsed accepted-risk records. |
+| `third_party_suspicious_code` | integer | (v0.1.5+, optional) Third-party suspicious-code findings — separate channel. |
+| `third_party_install_script_risk` | integer | (v0.1.5+, optional) Dependency install-script (pre/post/install) risks. |
+| `third_party_obfuscation` | integer | (v0.1.5+, optional) Third-party obfuscation indicators. |
+| `third_party_network_behavior` | integer | (v0.1.5+, optional) Third-party env-read / outbound-network indicators. |
 
 ---
 

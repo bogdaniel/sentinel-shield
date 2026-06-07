@@ -37,7 +37,8 @@ deptrac|deptrac.json|deptrac.sh|deptrac
 tests|tests.json|tests.sh|tests
 hadolint|hadolint.json|hadolint.sh|hadolint
 actionlint|actionlint.json|actionlint.sh|actionlint
-zizmor|zizmor.json|zizmor.sh|zizmor'
+zizmor|zizmor.json|zizmor.sh|zizmor
+third-party-semgrep|third-party-semgrep.json|third-party-semgrep.sh|third_party_semgrep'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -158,7 +159,9 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
-		 test_failures:0, unsafe_docker:0, unsafe_github_actions:0, expired_exceptions:0};
+		 test_failures:0, unsafe_docker:0, unsafe_github_actions:0, expired_exceptions:0,
+		 third_party_suspicious_code:0, third_party_install_script_risk:0,
+		 third_party_obfuscation:0, third_party_network_behavior:0};
 		reduce ($c.summary | keys_unsorted[]) as $k (.; .[$k] = ((.[$k] // 0) + ($c.summary[$k] // 0)))
 	)')
 

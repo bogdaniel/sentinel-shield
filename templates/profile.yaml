@@ -43,6 +43,33 @@ gates:
     missing_sbom: false
     missing_release_evidence: false
     expired_exceptions: true
+    # Third-party / supply-chain gates (v0.1.5). Separate channel from app SAST.
+    # v1 defaults keep these non-blocking in report-only/baseline; strict blocks
+    # install_script_risk + network_behavior; regulated blocks all. Override here.
+    third_party_suspicious_code: false
+    third_party_install_script_risk: false
+    third_party_obfuscation: false
+    third_party_network_behavior: false
+
+# Third-party suspicious-code scan configuration (v0.1.5). This is a SEPARATE Semgrep
+# channel over dependency/vendored code — it does NOT change the normal application
+# SAST scan, and does NOT replace Trivy / composer audit / npm audit / Gitleaks /
+# SBOM (those still cover dependency CVEs and secrets). See
+# docs/third-party-supply-chain-scan.md.
+supply_chain:
+  third_party_sast:
+    # Supported modes: disabled | report-only | scheduled | strict | regulated
+    enabled: true
+    mode: report-only
+    paths:
+      - vendor/**
+      - node_modules/**
+      - public/vendor/**
+      - public/js/filament/**
+    # When true, strict/regulated may block on high-confidence findings
+    # (install_script_risk, network_behavior). The gate flags above + the adoption
+    # mode are what the enforcer actually reads; this is the intent/record.
+    high_confidence_blocking: false
 
 exceptions:
   allowed: true

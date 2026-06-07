@@ -281,25 +281,76 @@ run_suppression() {
 	log_info "suppression: OK (only approved/unexpired suppress; secrets never)"
 }
 
+# --- third-party supply-chain scan ------------------------------------------
+TP_FAILS=0
+tp_check() { # tp_check <desc> <actual> <expected>
+	if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; TP_FAILS=$((TP_FAILS + 1)); fi
+}
+
+run_third_party() {
+	log_info "third-party: collector + gates (fixture-driven, no real Semgrep)"
+	_d=$(mktemp -d)
+
+	# 1. Missing raw -> unavailable, counts 0.
+	_u=$(sh scripts/collectors/third-party-semgrep.sh --input "$_d/none.json" --tool-name third_party_semgrep 2>/dev/null)
+	tp_check "missing raw -> status unavailable" "$(printf '%s' "$_u" | jq -r .status)" "unavailable"
+
+	# 2/3. Fixture -> category counts (3 suspicious incl. metadata fallback, 1 each others).
+	_c=$(sh scripts/collectors/third-party-semgrep.sh --input templates/raw/third-party-semgrep.example.json --tool-name third_party_semgrep 2>/dev/null)
+	tp_check "fixture -> third_party_suspicious_code"     "$(printf '%s' "$_c" | jq -r .summary.third_party_suspicious_code)"     "3"
+	tp_check "fixture -> third_party_install_script_risk" "$(printf '%s' "$_c" | jq -r .summary.third_party_install_script_risk)" "1"
+	tp_check "fixture -> third_party_obfuscation"         "$(printf '%s' "$_c" | jq -r .summary.third_party_obfuscation)"         "1"
+	tp_check "fixture -> third_party_network_behavior"    "$(printf '%s' "$_c" | jq -r .summary.third_party_network_behavior)"    "1"
+
+	# Build a summary that carries third-party findings (from the fixture only).
+	mkdir -p "$_d/raw"
+	cp templates/raw/third-party-semgrep.example.json "$_d/raw/third-party-semgrep.json"
+	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
+		--project-name tp --commit c --workflow self-test >/dev/null 2>&1
+	tp_check "build -> summary carries third_party_install_script_risk" \
+		"$(jq -r '.summary.third_party_install_script_risk' "$_d/security-summary.json")" "1"
+
+	# 4. report-only does NOT block third-party findings.
+	sh scripts/resolve-gates.sh --mode report-only --output-dir "$_d" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	tp_check "report-only does not block third-party" "$_rc" "0"
+
+	# 5. regulated blocks third-party findings; the four gates appear in failed_gates.
+	sh scripts/resolve-gates.sh --mode regulated --output-dir "$_d" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	tp_check "regulated blocks (exit 1)" "$_rc" "1"
+	_failed=$(jq -r '[.failed_gates[]|select(startswith("third_party"))]|length' "$_d/sentinel-shield-enforcement.json")
+	tp_check "regulated: all 4 third-party gates failed" "$_failed" "4"
+
+	rm -rf "$_d"
+	if [ "$TP_FAILS" -ne 0 ]; then
+		log_error "third-party: $TP_FAILS case(s) failed"
+		return 1
+	fi
+	log_info "third-party: OK (separate channel; report-only non-blocking; regulated blocks)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
 	fallback) run_fallback ;;
 	negative) run_negative ;;
 	suppression) run_suppression ;;
+	third-party) run_third_party ;;
 	all)
 		run_syntax
 		run_lifecycle
 		run_fallback
 		run_negative
 		run_suppression
+		run_third_party
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|third-party|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|third-party|all)"
 		exit 2
 		;;
 esac

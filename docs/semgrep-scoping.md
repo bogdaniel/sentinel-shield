@@ -47,6 +47,11 @@ scanner:
   broadly; tune it only via its own `.gitleaks.toml` allowlist, never via
   `.semgrepignore`.
 
+> **Excluding vendor from *app* SAST does not mean third-party code is unscanned.**
+> A separate **third-party suspicious-code scan** (v0.1.5+) covers `vendor/`/
+> `node_modules/` with supply-chain rules in its own channel — see
+> [`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md).
+
 ## How it works mechanically
 
 The Sentinel Shield workflows run the Docker Semgrep step with `-w /src` (working

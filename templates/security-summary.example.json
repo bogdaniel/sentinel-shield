@@ -23,7 +23,11 @@
     "unsafe_github_actions": 0,
     "missing_sbom": false,
     "missing_release_evidence": false,
-    "expired_exceptions": 0
+    "expired_exceptions": 0,
+    "third_party_suspicious_code": 0,
+    "third_party_install_script_risk": 0,
+    "third_party_obfuscation": 0,
+    "third_party_network_behavior": 0
   },
   "tools": {
     "gitleaks": { "status": "pass", "findings": 0 },
@@ -39,7 +43,8 @@
     "tests": { "status": "pass", "failures": 0 },
     "hadolint": { "status": "pass", "violations": 0 },
     "zizmor": { "status": "pass", "violations": 0 },
-    "actionlint": { "status": "pass", "violations": 0 }
+    "actionlint": { "status": "pass", "violations": 0 },
+    "third_party_semgrep": { "status": "unavailable", "suspicious_code": 0, "install_script_risk": 0, "obfuscation": 0, "network_behavior": 0 }
   },
   "exceptions": {
     "active": 0,

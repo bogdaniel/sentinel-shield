@@ -277,6 +277,25 @@ scanned (React XSS rules included).
   positive prefer a narrow `// nosemgrep: <rule-id> -- <reason>`. See the upstream
   `docs/semgrep-scoping.md`.
 
+## Third-party suspicious-code scan (v0.1.5+)
+
+A **separate** Semgrep channel scans dependency/vendored code (`vendor/`,
+`node_modules/`, `public/vendor/`, `public/js/filament/`) with supply-chain rules
+(`semgrep/third-party/`) into its own artifact (`reports/raw/third-party-semgrep.json`)
+and its own summary keys (`third_party_*`). It does **not** touch the normal app SAST
+scan and does **not** replace Trivy / composer audit / npm audit / Gitleaks / SBOM
+(those still cover dependency CVEs and secrets).
+
+- The workflow step runs only if a dependency dir exists; otherwise the collector
+  marks the tool `unavailable`.
+- **Non-blocking by default** (report-only/baseline). Strict blocks
+  `install_script_risk` + `network_behavior`; regulated blocks all four.
+- It catches *behavioral* indicators (npm install hooks, decode→eval, child_process,
+  `.env` reads, outbound network) — a triage aid, **not** a guarantee. Expect some
+  noise from minified bundles; triage by category/confidence and package.
+
+See the upstream `docs/third-party-supply-chain-scan.md`.
+
 ## Accepted-risk suppression (v0.1.3+)
 
 For a Docker DL3018 or similar hygiene finding, **prefer fixing**. If you accept it

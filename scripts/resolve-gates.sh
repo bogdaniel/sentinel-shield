@@ -19,7 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 
 # Canonical fail_on keys, in stable output order.
-FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions"
+FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
 
 VALID_MODES="report-only baseline strict regulated"
 
@@ -211,13 +211,20 @@ default_for() {
 			;;
 		baseline)
 			case "$2" in
-				medium_vulnerabilities | missing_sbom | missing_release_evidence) printf 'false' ;;
+				# v1: third-party supply-chain findings are visible but non-blocking
+				# in baseline (and report-only) — they need triage tuning first.
+				medium_vulnerabilities | missing_sbom | missing_release_evidence \
+				| third_party_suspicious_code | third_party_install_script_risk \
+				| third_party_obfuscation | third_party_network_behavior) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;
 		strict)
 			case "$2" in
-				missing_release_evidence) printf 'false' ;;
+				# strict blocks only the higher-confidence third-party signals
+				# (install-script execution, outbound network behavior); generic
+				# suspicious-code and obfuscation-only signals stay visible/non-blocking.
+				missing_release_evidence | third_party_suspicious_code | third_party_obfuscation) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;

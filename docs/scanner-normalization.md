@@ -96,6 +96,7 @@ Rules:
 | `hadolint` | array; level error/warning | `unsafe_docker` |
 | `actionlint` | `{ "errors" }` or error array | `unsafe_github_actions` |
 | `zizmor` | array / `.findings[]` | `unsafe_github_actions` |
+| `third_party_semgrep` | `.results[].extra.metadata.sentinel_shield_category` (separate dependency scan; see [`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md)) | `third_party_install_script_risk` / `third_party_obfuscation` / `third_party_network_behavior`; missing category → `third_party_suspicious_code`. **Never** mixed into app `*_vulnerabilities`. |
 
 TypeScript and ESLint normalization (including the conservative ESLint
 severity mapping) is documented in

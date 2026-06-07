@@ -126,6 +126,14 @@ workflows run Semgrep with `-w /src`) keeps SAST on application source and off
 vendored/generated assets. **SAST-only** — composer/npm audit, Trivy, Syft SBOM,
 Gitleaks, and Hadolint are not narrowed. See [`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
 
+**Third-party supply-chain gates (v0.1.5+).** A separate scan over dependency code
+feeds four gates — `third_party_suspicious_code`, `third_party_install_script_risk`,
+`third_party_obfuscation`, `third_party_network_behavior`. Defaults: report-only &
+baseline → all false (visible, non-blocking); strict → `install_script_risk` +
+`network_behavior` true; regulated → all true. Findings stay in their own keys/artifact
+and never mix into app `*_vulnerabilities`. See
+[`docs/third-party-supply-chain-scan.md`](docs/third-party-supply-chain-scan.md).
+
 **Node/React quality is gateable.** TypeScript (`type_errors`), ESLint
 (`type_errors` / `medium_vulnerabilities` / `high_vulnerabilities`), and Node tests
 (`test_failures`, via a Vitest/Jest → `tests.json` normalizer) now feed the same

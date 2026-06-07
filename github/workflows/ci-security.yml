@@ -142,6 +142,29 @@ jobs:
             --config /src/semgrep || true
         continue-on-error: true
 
+      - name: Third-party suspicious-code scan (SEPARATE channel)
+        # Supply-chain SAST over dependency/vendored code ONLY — separate from the app
+        # scan above and written to a SEPARATE artifact (third-party-semgrep.json).
+        # Runs from -w /tmp (NOT /src) so the app .semgrepignore is NOT applied; the
+        # dependency dirs are passed as explicit targets. Skips cleanly when none
+        # exist (collector then marks the tool unavailable). See
+        # docs/third-party-supply-chain-scan.md. NOT a replacement for Trivy/composer
+        # audit/npm audit/Gitleaks/SBOM.
+        run: |
+          mkdir -p reports/raw
+          TARGETS=""
+          for d in vendor node_modules public/vendor public/js/filament; do
+            [ -d "$d" ] && TARGETS="$TARGETS /src/$d"
+          done
+          if [ -z "$TARGETS" ]; then
+            echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
+            exit 0
+          fi
+          docker run --rm -v "$PWD:/src" -w /tmp semgrep/semgrep:latest \
+            semgrep --json --output /src/reports/raw/third-party-semgrep.json \
+            --config /src/semgrep/third-party $TARGETS || true
+        continue-on-error: true
+
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \

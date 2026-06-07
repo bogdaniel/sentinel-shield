@@ -85,8 +85,17 @@ expired_exceptions
 | missing_sbom | ❌ | ❌ | ✅ | ✅ |
 | missing_release_evidence | ❌ | ❌ | ❌ | ✅ |
 | expired_exceptions | ✅ | ✅ | ✅ | ✅ |
+| third_party_suspicious_code | ❌ | ❌ | ❌ | ✅ |
+| third_party_install_script_risk | ❌ | ❌ | ✅ | ✅ |
+| third_party_obfuscation | ❌ | ❌ | ❌ | ✅ |
+| third_party_network_behavior | ❌ | ❌ | ✅ | ✅ |
 
 ✅ = the gate blocks the build. ❌ = report-only (does not block).
+
+The four `third_party_*` gates (v0.1.5+) come from the **separate** third-party
+supply-chain scan (see
+[`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md)); v1 keeps
+them non-blocking except strict (install-script + network) and regulated (all).
 
 - **report-only** — Legacy visibility mode. Only leaked secrets and expired
   exceptions block.

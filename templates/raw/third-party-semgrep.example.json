@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "results": [
+    {
+      "check_id": "third-party.js-suspicious.ss-tp-js-dynamic-exec",
+      "path": "node_modules/evil-pkg/index.js",
+      "start": { "line": 12 },
+      "extra": {
+        "severity": "WARNING",
+        "message": "Dynamic code execution (eval) in third-party code.",
+        "metadata": { "sentinel_shield_category": "third_party_suspicious_code" }
+      }
+    },
+    {
+      "check_id": "third-party.js-suspicious.ss-tp-js-child-process",
+      "path": "node_modules/evil-pkg/postinstall.js",
+      "start": { "line": 3 },
+      "extra": {
+        "severity": "WARNING",
+        "message": "Third-party code spawns OS processes (child_process).",
+        "metadata": { "sentinel_shield_category": "third_party_suspicious_code" }
+      }
+    },
+    {
+      "check_id": "third-party.suspicious-code.ss-tp-npm-install-script",
+      "path": "node_modules/evil-pkg/package.json",
+      "start": { "line": 8 },
+      "extra": {
+        "severity": "ERROR",
+        "message": "Dependency declares a postinstall lifecycle script.",
+        "metadata": { "sentinel_shield_category": "third_party_install_script_risk" }
+      }
+    },
+    {
+      "check_id": "third-party.js-suspicious.ss-tp-js-decode-eval",
+      "path": "node_modules/evil-pkg/loader.js",
+      "start": { "line": 1 },
+      "extra": {
+        "severity": "ERROR",
+        "message": "base64 decode feeding eval().",
+        "metadata": { "sentinel_shield_category": "third_party_obfuscation" }
+      }
+    },
+    {
+      "check_id": "third-party.js-suspicious.ss-tp-js-env-read",
+      "path": "node_modules/evil-pkg/exfil.js",
+      "start": { "line": 5 },
+      "extra": {
+        "severity": "WARNING",
+        "message": "Third-party code reads .env directly.",
+        "metadata": { "sentinel_shield_category": "third_party_network_behavior" }
+      }
+    },
+    {
+      "check_id": "third-party.php-suspicious.ss-tp-php-unserialize",
+      "path": "vendor/some/lib/Legacy.php",
+      "start": { "line": 42 },
+      "extra": {
+        "severity": "WARNING",
+        "message": "unserialize() with no explicit metadata category (falls back to suspicious_code)."
+      }
+    }
+  ],
+  "errors": [],
+  "paths": { "scanned": ["node_modules", "vendor"] }
+}

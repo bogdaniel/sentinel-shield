@@ -32,11 +32,17 @@ die_cfg() {
 
 # Canonical gate keys in stable order. Mapping of gate key -> env suffix is the
 # uppercase of the key (handled below).
-GATE_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions"
+GATE_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
 
 # Integer summary keys that must be present (the two missing_* are booleans and
 # are validated separately).
 INT_SUMMARY_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions expired_exceptions"
+
+# Third-party supply-chain gates (v0.1.5). Evaluated like count gates, but NOT in the
+# required INT_SUMMARY_KEYS set: an older summary that omits them is treated as 0
+# (absent), not a config error. v1 defaults keep them non-blocking except in
+# strict/regulated (see resolve-gates.sh).
+THIRD_PARTY_KEYS="third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
 
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
@@ -268,6 +274,11 @@ eval_count_gate() {
 	_key=$1
 	_flag=$(gate_flag "$_key")
 	_val=$(jqr ".summary.$_key")
+	# Null-safe: a key absent from the summary (e.g. third-party keys on an older
+	# summary) reads as "null"; treat any non-integer as 0 so we never error here.
+	case "$_val" in
+		'' | *[!0-9]*) _val=0 ;;
+	esac
 	if [ "$_flag" = "true" ]; then
 		if [ "$_val" -gt 0 ]; then
 			if is_suppressed "$_key"; then
@@ -331,6 +342,12 @@ eval_count_gate "unsafe_github_actions"
 eval_missing_gate "missing_sbom" "evidence.sbom.present"
 eval_missing_gate "missing_release_evidence" "evidence.release_evidence.present"
 eval_expired_gate
+
+# Third-party supply-chain gates (separate channel; non-blocking by default in
+# report-only/baseline). Evaluated like count gates; absent keys read as 0.
+for _tpk in $THIRD_PARTY_KEYS; do
+	eval_count_gate "$_tpk"
+done
 
 RESULT="pass"
 EXIT=0
@@ -429,6 +446,16 @@ write_markdown() {
 		done
 		printf -- '| missing_sbom | %s |\n' "$(jqr '.summary.missing_sbom')"
 		printf -- '| missing_release_evidence | %s |\n\n' "$(jqr '.summary.missing_release_evidence')"
+
+		printf '## Third-party (supply-chain) findings\n\n'
+		printf -- '> Separate channel from application SAST. Non-blocking by default in\n'
+		printf -- '> report-only/baseline; see docs/third-party-supply-chain-scan.md.\n\n'
+		printf -- '| Key | Count |\n| --- | --- |\n'
+		for k in $THIRD_PARTY_KEYS; do
+			_tv=$(jqr ".summary.$k"); case "$_tv" in ''|null) _tv=0 ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_tv"
+		done
+		printf -- '| tool status | %s |\n\n' "$(jqr '.tools.third_party_semgrep.status')"
 
 		printf '## Failed gates\n\n'
 		if [ -n "$FAILED" ]; then

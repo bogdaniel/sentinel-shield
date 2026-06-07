@@ -63,7 +63,11 @@
         "unsafe_github_actions": { "type": "integer", "minimum": 0 },
         "missing_sbom": { "type": "boolean" },
         "missing_release_evidence": { "type": "boolean" },
-        "expired_exceptions": { "type": "integer", "minimum": 0 }
+        "expired_exceptions": { "type": "integer", "minimum": 0 },
+        "third_party_suspicious_code": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party/supply-chain suspicious-code findings (separate channel from app SAST). Optional for backward compatibility." },
+        "third_party_install_script_risk": { "type": "integer", "minimum": 0, "description": "v0.1.5+ dependency install-script (pre/post/install) risk findings. Optional." },
+        "third_party_obfuscation": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party obfuscation indicators (decode→exec, packed blobs). Optional." },
+        "third_party_network_behavior": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party env-read / outbound-network indicators. Optional." }
       }
     },
     "tools": {
