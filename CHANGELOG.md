@@ -6,6 +6,34 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.4] — default Semgrep/SAST scoping for Laravel/React
+
+### Added
+
+- Default **Semgrep/SAST path exclusions** via project-local `.semgrepignore`
+  templates: `profiles/laravel/.semgrepignore`, `profiles/react/.semgrepignore`, and
+  `examples/laravel-react-docker/.semgrepignore`. They exclude vendored/generated/
+  cache paths (`vendor/`, `node_modules/`, `storage/`, `bootstrap/cache/`,
+  `public/js/filament/`, `public/vendor/`, `public/build/`, `dist/`, `build/`,
+  `coverage/`, …) while keeping application source scanned.
+- `docs/semgrep-scoping.md` explaining the scope and the scanner-specific behavior.
+- Self-test check that the `.semgrepignore` templates exist and carry the key
+  exclusions (incl. `public/js/filament/` in the example).
+
+### Changed
+
+- Semgrep workflow steps run with `-w /src` so a project-local `.semgrepignore` (at
+  the repo root) is honored: `ci-security.yml`, `ci-pipeline.yml`, and the
+  Laravel+React+Docker example workflow.
+- Fixed a Semgrepignore-v2 anchoring deprecation in the JS rule excludes
+  (`*/__tests__/*` → `**/__tests__/*`, `*/tests/*` → `**/tests/*`).
+
+### Scope (explicit)
+
+- These exclusions apply to **Semgrep / SAST only**. `composer audit`, `npm audit`,
+  Trivy, Syft (SBOM), Gitleaks, and Hadolint are **not** narrowed — dependency
+  scanning, SBOM, and secret scanning remain broad.
+
 ## [0.1.3] — Semgrep image fix, rule-noise tuning, accepted-risk suppression
 
 ### Fixed

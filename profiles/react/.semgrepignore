@@ -1,0 +1,32 @@
+# Sentinel Shield — Semgrep scope for React / front-end projects.
+# Copy to your repository ROOT as `.semgrepignore`. The Sentinel Shield workflows
+# run Semgrep with `-w /src` so this file (at the repo root) is honored.
+#
+# SCOPE: SEMGREP / SAST ONLY. It does NOT change:
+#   npm audit · Trivy (fs/deps) · Syft SBOM · Gitleaks · composer audit · Hadolint
+# Those still scan dependencies, lockfiles, and the whole tree.
+# (See docs/semgrep-scoping.md.)
+#
+# Goal: scan application source (src/, app/, components/, resources/js); do NOT
+# treat installed deps or build output as application code.
+
+# Dependencies
+node_modules/
+
+# Build / bundler output
+dist/
+build/
+coverage/
+.next/
+out/
+.svelte-kit/
+.turbo/
+storybook-static/
+
+# If colocated with a PHP/Laravel backend (monorepo), these are not app source:
+vendor/
+storage/
+public/build/
+public/vendor/
+
+# Do NOT exclude your application source — keep src/ and resources/js scanned.

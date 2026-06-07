@@ -83,7 +83,7 @@ Rules:
 | Collector | Reads | → summary key(s) |
 | --- | --- | --- |
 | `gitleaks` | array of findings / `.findings[]` | `secrets` |
-| `semgrep` | `.results[].extra.severity` | ERROR/CRITICAL→`critical_vulnerabilities`, WARNING/HIGH→`high_vulnerabilities`, INFO/MEDIUM→`medium_vulnerabilities` |
+| `semgrep` | `.results[].extra.severity` | ERROR/CRITICAL→`critical_vulnerabilities`, WARNING/HIGH→`high_vulnerabilities`, INFO/MEDIUM→`medium_vulnerabilities` (scanned paths are scoped by a project-local `.semgrepignore` — SAST only; see [`semgrep-scoping.md`](semgrep-scoping.md)) |
 | `trivy` | `.Results[].Vulnerabilities[].Severity` | CRITICAL/HIGH/MEDIUM → matching `*_vulnerabilities` |
 | `composer_audit` | `.advisories.<pkg>[].severity` | critical/high/medium(moderate) → `*_vulnerabilities` |
 | `npm_audit` | `.metadata.vulnerabilities.{critical,high,moderate}` | → `*_vulnerabilities` (moderate→medium) |

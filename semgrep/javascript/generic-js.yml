@@ -37,8 +37,8 @@ rules:
     paths:
       exclude:
         - "tests"
-        - "*/tests/*"
-        - "*/__tests__/*"
+        - "**/tests/*"
+        - "**/__tests__/*"
         - "*.test.*"
         - "*.spec.*"
         - "*.stories.*"

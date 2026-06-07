@@ -148,6 +148,12 @@ document):
 | React | Gitleaks→`secrets`; Semgrep+`npm audit`→`*_vulnerabilities`; tsc→`type_errors`; ESLint boundaries→`architecture_violations`; test runner→`test_failures` |
 | Docker | Hadolint/Trivy→`unsafe_docker`; Trivy image→`*_vulnerabilities`; Syft→`evidence.sbom` |
 
+> **Semgrep scope vs. dependency scope (v0.1.4+):** the `Semgrep` part of
+> `*_vulnerabilities` is **SAST over application source** and is scoped by a
+> project-local `.semgrepignore` (excludes vendored/generated assets). The
+> `composer audit` / `npm audit` / `Trivy` parts are **dependency** findings and are
+> **not** narrowed by `.semgrepignore`. See [`semgrep-scoping.md`](semgrep-scoping.md).
+
 Sentinel Shield ships a first-pass builder and collectors that produce this file
 from raw artifacts — see below and [`scanner-normalization.md`](scanner-normalization.md).
 

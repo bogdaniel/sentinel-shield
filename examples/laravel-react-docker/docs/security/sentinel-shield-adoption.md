@@ -258,6 +258,25 @@ tool simply does not write its raw report, and the builder marks it `unavailable
 Install the tool (recommended dev dependencies above) when you want that signal —
 do not fake the report.
 
+## Semgrep scoping (v0.1.4+)
+
+Semgrep scans **application code**, not vendored/generated assets. This example ships
+a root [`.semgrepignore`](../../.semgrepignore) that excludes `vendor/`,
+`node_modules/`, `storage/`, `bootstrap/cache/`, `public/js/filament/`,
+`public/vendor/`, `public/build/`, and `tools/sentinel-shield/`; the workflow runs
+Semgrep with `-w /src` so it is honored. `app/`, `Modules/`, and `resources/js` stay
+scanned (React XSS rules included).
+
+- **Laravel/Filament:** keep `public/js/filament/**` and `public/vendor/**` excluded
+  (published vendor JS, not your code).
+- **React:** also exclude `public/build/`, `dist/`, `build/`, `coverage/`.
+- This is **SAST only** — `composer audit`, `npm audit`, Trivy, Syft (SBOM), and
+  Gitleaks still scan dependencies/lockfiles/tree and are **not** narrowed by
+  `.semgrepignore`. Tune Gitleaks only via its own `.gitleaks.toml`.
+- To re-scan a path, remove its line from `.semgrepignore`; for a single false
+  positive prefer a narrow `// nosemgrep: <rule-id> -- <reason>`. See the upstream
+  `docs/semgrep-scoping.md`.
+
 ## Accepted-risk suppression (v0.1.3+)
 
 For a Docker DL3018 or similar hygiene finding, **prefer fixing**. If you accept it

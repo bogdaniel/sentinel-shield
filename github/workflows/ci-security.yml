@@ -133,8 +133,11 @@ jobs:
       - name: Semgrep (JSON → reports/raw/semgrep.json)
         # Conservative: never abort the summary on findings; the release gate decides.
         # Pin to a digest (semgrep/semgrep@sha256:...) before production.
+        # -w /src runs Semgrep from the repo root so a project-local .semgrepignore
+        # is honored (excludes vendored/generated assets — SAST only; dependency
+        # scanners below are unaffected). See docs/semgrep-scoping.md.
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep || true
         continue-on-error: true

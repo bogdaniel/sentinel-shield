@@ -1,0 +1,33 @@
+# Sentinel Shield — Semgrep scope for Laravel (+ Filament) projects.
+# Copy to your repository ROOT as `.semgrepignore`. Semgrep reads it from the scan
+# root, so the Sentinel Shield workflows run Semgrep with `-w /src` (repo root).
+#
+# SCOPE: this file affects SEMGREP / SAST ONLY. It does NOT change:
+#   composer audit · npm audit · Trivy (fs/deps) · Syft SBOM · Gitleaks · Hadolint
+# Those still scan dependencies, lockfiles, the whole tree, and the Dockerfile.
+# (See docs/semgrep-scoping.md.)
+#
+# Goal: scan application code (app/, Modules/, resources/js, routes/, config/);
+# do NOT treat vendored/generated/cache assets as application code.
+
+# PHP dependencies + framework runtime
+vendor/
+storage/
+bootstrap/cache/
+
+# JS toolchain + build output
+node_modules/
+public/build/
+public/hot
+dist/
+build/
+coverage/
+
+# Published / compiled vendor front-end assets (NOT your source)
+public/vendor/
+public/js/filament/
+# Uncomment if you publish more vendor JS/CSS under public/ that you do not author:
+# public/js/
+# public/css/
+
+# Do NOT exclude your application source — keep resources/js, app/, Modules/ scanned.

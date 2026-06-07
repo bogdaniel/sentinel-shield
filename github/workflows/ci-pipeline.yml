@@ -218,8 +218,10 @@ jobs:
 
       - name: Semgrep (JSON → reports/raw/semgrep.json)
         # Pin to a digest (semgrep/semgrep@sha256:...) before production.
+        # -w /src so a project-local .semgrepignore (vendored/generated assets) is
+        # honored — SAST only; the dependency scanners are unaffected.
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep || true
         continue-on-error: true

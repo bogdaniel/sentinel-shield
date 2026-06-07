@@ -34,6 +34,17 @@ run_syntax() {
 	for f in $(find templates schemas -name '*.json' 2>/dev/null); do
 		jq -e . "$f" >/dev/null 2>&1 || { log_error "invalid JSON: $f"; return 1; }
 	done
+	log_info "syntax: .semgrepignore templates carry the key SAST exclusions"
+	for f in profiles/laravel/.semgrepignore profiles/react/.semgrepignore examples/laravel-react-docker/.semgrepignore; do
+		[ -f "$f" ] || { log_error "missing .semgrepignore: $f"; return 1; }
+		for pat in 'vendor/' 'node_modules/'; do
+			grep -q "$pat" "$f" || { log_error "$f missing exclusion: $pat"; return 1; }
+		done
+	done
+	# The example (Laravel+Filament) must exclude the published Filament JS that
+	# motivated this — guard against regressions.
+	grep -q 'public/js/filament/' examples/laravel-react-docker/.semgrepignore \
+		|| { log_error "example .semgrepignore missing public/js/filament/"; return 1; }
 	log_info "syntax: OK"
 }
 

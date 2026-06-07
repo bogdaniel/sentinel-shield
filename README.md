@@ -248,6 +248,13 @@ coverage. See [`docs/scanner-normalization.md`](docs/scanner-normalization.md) a
 for the Node/React mappings, [`docs/node-react-normalization.md`](docs/node-react-normalization.md).
 Clean input examples live in [`templates/raw/`](templates/raw/).
 
+**Semgrep scoping (v0.1.4+).** Semgrep scans **application source** only — copy a
+[`.semgrepignore` template](profiles/laravel/.semgrepignore) to your repo root to
+exclude vendored/generated/cache assets (`vendor/`, `node_modules/`,
+`public/js/filament/`, build output, …). This is **SAST-only**: composer audit, npm
+audit, Trivy, Syft SBOM, Gitleaks, and Hadolint are **not** narrowed by it. See
+[`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
+
 ```sh
 # Build a summary from raw artifacts, then resolve + enforce.
 sh scripts/build-security-summary.sh --project-name proxyflux --project-type laravel

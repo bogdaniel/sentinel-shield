@@ -233,8 +233,12 @@ jobs:
       - name: Prepare dirs
         run: mkdir -p reports/raw
       - name: Semgrep (JSON)
+        # -w /src runs Semgrep from the repo root so the project-local .semgrepignore
+        # (vendored/generated assets, e.g. public/js/filament) is honored. SAST only —
+        # composer/npm audit, Trivy, Syft, Gitleaks, Hadolint are unaffected.
+        # Pin the image to a digest before production.
         run: |
-          docker run --rm -v "$PWD:/src" semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep || true
         continue-on-error: true

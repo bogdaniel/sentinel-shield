@@ -1,0 +1,27 @@
+# Sentinel Shield — Semgrep scope for this Laravel + React + Docker example.
+# Lives at the repository ROOT; the workflow runs Semgrep with `-w /src` so this is
+# honored. SEMGREP / SAST ONLY — does NOT affect composer audit, npm audit, Trivy,
+# Syft SBOM, Gitleaks, or Hadolint (they still scan deps/lockfiles/tree/Dockerfile).
+# See docs/security/sentinel-shield-adoption.md and the upstream docs/semgrep-scoping.md.
+
+# PHP deps + framework runtime
+vendor/
+storage/
+bootstrap/cache/
+
+# JS toolchain + build output
+node_modules/
+public/build/
+public/hot
+dist/
+build/
+coverage/
+
+# Published / compiled vendor front-end assets (e.g. Filament admin JS) — not source
+public/vendor/
+public/js/filament/
+
+# The bundled Sentinel Shield checkout is tooling, not application code
+tools/sentinel-shield/
+
+# Keep application source scanned: app/, Modules/, resources/js, routes/, config/.

@@ -121,6 +121,11 @@ output into the contract. Responsibilities stay separate:
 fatal (exit 1). The builder does **not** run scanners. **Enforcement begins only on
 `security-summary.json`** — see [`docs/scanner-normalization.md`](docs/scanner-normalization.md).
 
+**Semgrep scoping (v0.1.4+).** A project-local `.semgrepignore` (repo root; the
+workflows run Semgrep with `-w /src`) keeps SAST on application source and off
+vendored/generated assets. **SAST-only** — composer/npm audit, Trivy, Syft SBOM,
+Gitleaks, and Hadolint are not narrowed. See [`docs/semgrep-scoping.md`](docs/semgrep-scoping.md).
+
 **Node/React quality is gateable.** TypeScript (`type_errors`), ESLint
 (`type_errors` / `medium_vulnerabilities` / `high_vulnerabilities`), and Node tests
 (`test_failures`, via a Vitest/Jest → `tests.json` normalizer) now feed the same
