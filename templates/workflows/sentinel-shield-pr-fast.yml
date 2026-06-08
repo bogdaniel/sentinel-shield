@@ -39,12 +39,22 @@ jobs:
           npm ci || true
           npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
           # tsc --noEmit + eslint -> reports/raw/{typescript,eslint}.json
-      - name: Secrets + SAST + GH Actions + Docker lint
+      - name: GH Actions + Docker lint + dependency policy
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-hadolint.sh || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-github-actions-pins.sh --output reports/raw/github-actions-pins.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-docker-base-digest.sh --output reports/raw/docker-base-digest.json || true
-          # gitleaks + semgrep + actionlint + zizmor via their pinned actions (see ci-security.yml)
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-policy.sh reports/raw/dependency-policy.json . || true
+      - name: Semgrep app scan — CURATED Sentinel Shield rules (NEVER --config=auto)
+        # Validated on zenchron-tools (run 27170148123): curated rules produced 0 critical / 0
+        # high (vs 7/16 with --config=auto) and far fewer scan errors. The project .semgrepignore
+        # is honored via `-w /src`. Do NOT switch to --config=auto in production — it is noisy.
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.90.0 \
+            semgrep --json --output /src/reports/raw/semgrep.json \
+            --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
+          # gitleaks + actionlint + zizmor via their pinned actions/containers (see ci-security.yml)
       - name: Build summary + enforce
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json

@@ -47,3 +47,13 @@ docker buildx imagetools inspect <image>:<tag> --format '{{.Manifest.Digest}}'
 ## Validation status
 - ci-self-test.yml actions: **pinned + validated** (workflow runs in this repo).
 - All other refs: **resolved SHAs documented**, not yet applied (template-readability tags retained). Consumers MUST pin before production — the GH Actions pin audit gate flags unpinned refs.
+
+## v0.1.15 — validated pins (used in zenchron-tools validation workflows, run 27170148123)
+These action SHAs were resolved from upstream and exercised live in the consumer's validation
+workflows (still tag-readable in Sentinel Shield templates — pin in the consumer before prod):
+gitleaks-action v2.3.9 `ff98106e4c7b2bc287b24eaf42907196329070c7`,
+github/codeql-action v3.29.0 `ce28f5bb42b7a9f2c824e633a3f6ee835bab6858`,
+aquasecurity/trivy-action v0.36.0 `ed142fd0673e97e23eac54620cfb913e5ce36c25`,
+anchore/sbom-action v0.20.7 `d8a2c0130026bf585de5c176ab8f7ce62d75bf04`,
+google/osv-scanner-action v1.9.0 `19ec1116569a47416e11a45848722b1af31a857b`.
+Semgrep image used as `semgrep/semgrep:1.90.0` (tag) — pin by digest before production.

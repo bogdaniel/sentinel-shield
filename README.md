@@ -580,3 +580,11 @@ eslint, typescript, actionlint, zizmor, deptrac, codeql-export, architecture-tes
 trivy-fs, trivy-image), and policy/remediation docs for the dependency/IaC/style/architecture
 layers. **Feature coverage, not production readiness** — most integrations remain
 supported/experimental (fixture-validated). See [`docs/feature-completion-v0.1.14.md`](docs/feature-completion-v0.1.14.md).
+
+## v0.1.15 — live-validation hardening
+
+Hardened Semgrep to **curated SS rules** (never `--config=auto`) and promoted Pint/PHP-CS-Fixer,
+TypeScript, and the dependency-policy detector to **live-validated** based on cited zenchron-tools
+CI evidence (run 27170148123); baseline stayed green with no regression. Most other v0.1.12/14
+integrations remain supported/experimental (not yet exercised on a consumer). See
+[`docs/production-readiness-audit.md`](docs/production-readiness-audit.md).

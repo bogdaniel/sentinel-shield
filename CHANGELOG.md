@@ -6,6 +6,29 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.15] — live-validation hardening
+
+### Changed
+- **Semgrep default hardened**: the PR-fast workflow template now runs **curated
+  `semgrep/app` rules** (honoring the project `.semgrepignore`), explicitly **never
+  `--config=auto`**. Validated on zenchron-tools (run 27170148123): curated rules produced
+  **0 critical / 0 high** and 118 scan errors vs `--config=auto`'s 7/16 + 341 errors.
+- **Maturity promotions (evidence-based, cited)** in production-readiness-audit.md from the
+  zenchron-tools pilot (run 27170148123): Pint/PHP-CS-Fixer (php-style → live-validated,
+  style_violations=88), TypeScript --noEmit (live-validated, type_errors=0), dependency-policy
+  lockfile detector (live-validated, dependency_policy_violations=0). Core PR-fast tools remain
+  proven; baseline gate PASS with no regression on v0.1.14.
+- pr-fast template also runs the dependency-policy audit by default.
+- Docs updated: production-readiness-audit, tooling/scanner-enablement (curated Semgrep
+  guidance), pinned-tool-references (validated action SHAs), README.
+
+### Not promoted (honest)
+Psalm/Deptrac/ESLint were `not-configured` on the pilot (runner correctly reported unavailable —
+no fake). CodeQL/OSV/Trivy/Syft/Grype/Dependency-Check/IaC remain template/fixture-only
+(main-validation not yet dispatchable). DAST/Nuclei/AI stay manual/non-gating. No new scanners;
+no gates weakened.
+
+
 ## [0.1.14] — enterprise feature completion
 
 ### Added

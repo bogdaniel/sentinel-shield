@@ -62,3 +62,25 @@ output handling.** Most v0.1.12 additions are **fixture-validated, not live-vali
 - **No tool's scanner binary is bundled.** Image/action digests must be pinned by the consumer before production (see [pinned-tool-references.md](pinned-tool-references.md)).
 
 **Sentinel Shield is production-ready as a release-gate ENGINE** (resolver/enforcer/builder/install/sync/self-test are A-grade, fixture- and self-gated). **It is NOT a turnkey "all 30 scanners proven" product** — most scanner integrations are supported/experimental and require a live consumer run + digest pinning to promote to proven.
+
+---
+
+## v0.1.15 live-validation update (evidence-based promotions)
+
+Evidence: consumer **bogdaniel/zenchron-tools**, workflow `sentinel-shield-pr-fast-validation.yml`,
+**run 27170148123** (+ baseline run 27170126445, PASS). Promotions cite the raw report + summary key.
+
+| Tool | Promotion | Evidence (raw → summary key) |
+|---|---|---|
+| Pint/PHP-CS-Fixer (php-style) | supported → **live-validated** | `php-style.json` (6114B) → `style_violations`=88 (real) |
+| TypeScript --noEmit | supported → **live-validated** | `typescript.json` → `type_errors`=0 |
+| dependency-policy (lockfile) | supported → **live-validated** | `dependency-policy.json` → `dependency_policy_violations`=0 (detector ran; composer.lock+package-lock present) |
+| Semgrep (app) | proven, **config hardened** | curated `semgrep/app` → 0 critical / 0 high / 25 medium, 118 scan errors (vs `--config=auto`: 7/16, 341 errors). **Never use --config=auto.** |
+| php-syntax, PHPStan, composer audit, npm audit, Hadolint, GH-pin audit, docker-base-digest | remain **proven/live** | unchanged from v0.1.13/zenchron baseline |
+
+**NOT promoted (still supported/experimental — not exercised):** Psalm, Deptrac, ESLint
+(zenchron does not configure them → runner correctly reported `not-configured`/`unavailable`,
+no fake). CodeQL, OSV, Trivy-fs, Syft, Grype, Dependency-Check, Checkov/Conftest/Terrascan,
+Dockle — `sentinel-shield-main-validation.yml` is workflow_dispatch-only and not dispatchable
+from a feature branch until merged to default; **not live-validated this pass.** DAST (ZAP/
+Nuclei) + AI review remain manual/non-gating, **not validated.**

@@ -27,3 +27,10 @@ full matrix and per-tool gate categories.
 ## DAST (manual) / AI (assistive)
 - DAST: `sentinel-shield-dast.yml` only, with target+allowlist (docs/dast-policy.md).
 - AI: `sentinel-shield-ai-review.yml`, non-gating (docs/ai-review-policy.md).
+
+## Semgrep configuration (v0.1.15, validated)
+Use the **curated Sentinel Shield app rules** for the app SAST scan:
+`semgrep --config <SENTINEL_SHIELD_PATH>/semgrep/app` with the project `.semgrepignore`
+(honored via `-w /src`). **Do NOT use `--config=auto`** — validated on zenchron-tools
+(run 27170148123) to be noisy (7 critical / 16 high false-positives + 341 scan errors vs
+0/0 + 118 with curated rules). The pr-fast workflow template uses curated rules by default.
