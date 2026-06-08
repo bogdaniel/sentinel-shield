@@ -36,6 +36,8 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | zap.json / zap-full.json | OWASP ZAP | `{site[].alerts[].riskcode}` | zap.sh | dast_findings | unavailable | exit 2 | scanner-matrix |
 | nuclei.json | Nuclei | array `[{info.severity}]` | nuclei.sh | dast_findings | unavailable | exit 2 | scanner-matrix |
 | ai-security-review.json | Claude Code Sec Review | `{findings:[…]}` | ai-security-review.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
+| dependency-policy.json | audits/dependency-policy.sh | `{count,violations[]}` | dependency-policy.sh | dependency_policy_violations | unavailable | exit 2 | feature-completion |
+| architecture-tests.json | runners/architecture-tests.sh | `{violations:N}` | architecture-tests.sh | architecture_violations | unavailable | exit 2 | feature-completion |
 | kuzushi.json | Kuzushi | `{findings:[…]}` | kuzushi.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
 
 All collectors are exercised by `scripts/self-test.sh` (`scanner-matrix` for v0.1.12 tools,

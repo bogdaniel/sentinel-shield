@@ -125,6 +125,10 @@
     "psalm.json",
     "zap.json",
     "nuclei.json",
-    "ai-security-review.json"
+    "ai-security-review.json",
+    "dependency-policy.json",
+    "architecture-tests.json",
+    "deptrac.json",
+    "sbom.spdx.json"
   ]
 }

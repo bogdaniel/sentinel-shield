@@ -883,6 +883,60 @@ run_workflow_sanity() {
 	log_info "workflow-sanity: OK (no PRT trigger, permissions present, DAST allowlisted, AI non-gating)"
 }
 
+# --- feature completion (v0.1.14) -------------------------------------------
+FC_FAILS=0
+fc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; FC_FAILS=$((FC_FAILS + 1)); fi; }
+
+run_feature_completion() {
+	log_info "feature-completion: dependency-policy detector, architecture-tests collector, new runners present"
+	_d=$(mktemp -d); _r="$_d/raw"; mkdir -p "$_r"
+	DP="$ROOT/scripts/audits/dependency-policy.sh"; C="$ROOT/scripts/collectors"
+
+	# dependency-policy: manifest WITHOUT lockfile -> violation; WITH lockfile -> 0; no manifest -> 0.
+	_p=$(mktemp -d); echo '{}' > "$_p/composer.json"
+	sh "$DP" "$_p/dp.json" "$_p" >/dev/null 2>&1
+	fc_check "dep-policy: composer.json w/o lock -> 1" "$(jq '.count' "$_p/dp.json")" "1"
+	echo '{}' > "$_p/composer.lock"
+	sh "$DP" "$_p/dp2.json" "$_p" >/dev/null 2>&1
+	fc_check "dep-policy: with lock -> 0" "$(jq '.count' "$_p/dp2.json")" "0"
+	_e=$(mktemp -d)
+	sh "$DP" "$_e/dp.json" "$_e" >/dev/null 2>&1
+	fc_check "dep-policy: no manifests -> 0 (clean, honest)" "$(jq '.count' "$_e/dp.json")" "0"
+	# collector mapping + missing/invalid behavior
+	fc_check "dep-policy collector -> dependency_policy_violations" "$(sh "$C/dependency-policy.sh" --input "$_p/dp.json" | jq '.summary.dependency_policy_violations')" "1"
+	_rc=0; _o=$(sh "$C/dependency-policy.sh" --input "$_r/nope.json") || _rc=$?
+	fc_check "dep-policy collector missing -> unavailable exit 0" "$_rc" "0"
+	fc_check "dep-policy collector missing -> unavailable" "$(printf '%s' "$_o" | jq -r .status)" "unavailable"
+	echo 'NOT JSON' > "$_r/bad.json"; _rc=0; sh "$C/dependency-policy.sh" --input "$_r/bad.json" >/dev/null 2>&1 || _rc=$?
+	fc_check "dep-policy collector invalid JSON -> exit 2" "$_rc" "2"
+
+	# architecture-tests collector -> architecture_violations
+	echo '{"violations":2}' > "$_r/architecture-tests.json"
+	fc_check "arch-tests collector -> architecture_violations" "$(sh "$C/architecture-tests.sh" --input "$_r/architecture-tests.json" | jq '.summary.architecture_violations')" "2"
+
+	# new runners exist + are syntactically valid
+	_miss=0
+	for r in psalm php-style eslint typescript actionlint zizmor deptrac codeql-export architecture-tests; do
+		[ -f "$ROOT/scripts/runners/$r.sh" ] && sh -n "$ROOT/scripts/runners/$r.sh" || { log_error "  runner missing/bad: $r"; _miss=$((_miss + 1)); }
+	done
+	fc_check "all v0.1.14 runners present + valid" "$_miss" "0"
+	# new audits exist
+	_miss=0
+	for a in syft trivy-fs trivy-image dependency-policy; do
+		[ -f "$ROOT/scripts/audits/$a.sh" ] && sh -n "$ROOT/scripts/audits/$a.sh" || { log_error "  audit missing/bad: $a"; _miss=$((_miss + 1)); }
+	done
+	fc_check "all v0.1.14 audits present + valid" "$_miss" "0"
+
+	# IaC detector skips cleanly: an audit wrapper with no binary present is a clean no-op (exit 0).
+	_rc=0; ( sh "$ROOT/scripts/audits/checkov.sh" "$_e/checkov.json" >/dev/null 2>&1 ) || _rc=$?
+	fc_check "IaC audit (no binary) -> clean no-op exit 0" "$_rc" "0"
+	fc_check "IaC audit (no binary) wrote no fake report" "$([ -f "$_e/checkov.json" ] && echo wrote || echo none)" "none"
+
+	rm -rf "$_d" "$_p" "$_e"
+	if [ "$FC_FAILS" -ne 0 ]; then log_error "feature-completion: $FC_FAILS case(s) failed"; return 1; fi
+	log_info "feature-completion: OK (dependency-policy detector, arch-tests collector, runners/audits present, IaC clean-skip)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -899,6 +953,7 @@ case "$SUB" in
 	scanner-matrix) run_scanner_matrix ;;
 	fixtures) run_fixtures ;;
 	workflow-sanity) run_workflow_sanity ;;
+	feature-completion) run_feature_completion ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -915,13 +970,14 @@ case "$SUB" in
 		run_scanner_matrix
 		run_fixtures
 		run_workflow_sanity
+		run_feature_completion
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|all)"
 		exit 2
 		;;
 esac

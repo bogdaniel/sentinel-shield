@@ -6,6 +6,30 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.14] — enterprise feature completion
+
+### Added
+- **dependency-policy emitter** (`scripts/audits/dependency-policy.sh` + collector) — first
+  concrete `dependency_policy_violations` source: flags ecosystem manifests missing a lockfile
+  (composer/npm/python/go/ruby/rust). License/version policy deferred (documented future).
+- **9 runners**: psalm, php-style (Pint/PHP-CS-Fixer), eslint, typescript, actionlint, zizmor,
+  deptrac, codeql-export (SARIF→raw), architecture-tests. **3 audits**: syft, trivy-fs,
+  trivy-image. **1 collector**: architecture-tests. All honest: missing binary → unavailable,
+  never fake-clean.
+- Policy docs: iac-security-policy, static-analysis-policy, style-policy, architecture-policy;
+  dependency-policy emitter section. Remediation: dependency-advisory-triage, iac-finding-triage,
+  phpstan-psalm-triage, deptrac-architecture-triage. Templates: dependency-risk-review,
+  iac-exception-request. Gap audit: `docs/feature-completion-v0.1.14.md`.
+- Self-test `feature-completion` (dependency-policy detector, arch-tests collector, runner/audit
+  presence, IaC clean-skip, missing→unavailable, invalid→exit 2). `architecture-tests` +
+  `dependency-policy` wired into the summary TOOL_TABLE.
+
+### Notes
+This is a FEATURE-COMPLETION release, NOT hardening/live-validation. Scanner binaries are
+external; most integrations remain supported/experimental (fixture-validated, not live). DAST
+stays manual+allowlisted+fail-closed; AI review stays assistive+non-gating. No gates weakened.
+
+
 ## [0.1.13] — production readiness hardening
 
 ### Added

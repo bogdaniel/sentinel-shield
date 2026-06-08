@@ -56,7 +56,9 @@ dockle|dockle.json|dockle.sh|dockle
 zap|zap.json|zap.sh|zap
 nuclei|nuclei.json|nuclei.sh|nuclei
 ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_review
-kuzushi|kuzushi.json|kuzushi.sh|kuzushi'
+kuzushi|kuzushi.json|kuzushi.sh|kuzushi
+dependency-policy|dependency-policy.json|dependency-policy.sh|dependency_policy
+architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"

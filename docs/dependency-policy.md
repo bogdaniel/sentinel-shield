@@ -16,3 +16,14 @@ floor) — not CVE severity. Gated in baseline+ by default, but has **no default
 v0.1.12: wire a project dependency-policy tool to emit
 `reports/raw/<tool>.json` with `{"dependency_policy_violations": N}` (a custom collector
 or `ss_emit_collector` override). Until then it stays 0.
+
+## dependency-policy emitter (v0.1.14)
+
+`scripts/audits/dependency-policy.sh` is the first concrete emitter for
+`dependency_policy_violations`. v0.1.14 implements the **lockfile detector** only: it flags an
+ecosystem manifest present WITHOUT its lockfile (composer/npm/python/go/ruby/rust) — a
+reproducible-build + supply-chain risk. Output `reports/raw/dependency-policy.json`
+`{count, violations:[{ecosystem,manifest,reason}]}` → collector `dependency-policy.sh` →
+`dependency_policy_violations` (baseline+ gating). **License/version-allowlist policy is
+deferred** to a future release (doing it badly is worse than not at all). No manifests → 0
+(clean, honest); not fake.

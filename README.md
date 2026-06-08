@@ -571,3 +571,12 @@ integrations are `supported`/`experimental`** — collector + deterministic self
 live-validated against a real consumer. DAST is `manual`; AI review is `non-gating`. Full
 per-tool status: [`docs/production-readiness-audit.md`](docs/production-readiness-audit.md).
 Pin tool images/actions before production: [`docs/pinned-tool-references.md`](docs/pinned-tool-references.md).
+
+## v0.1.14 — enterprise feature completion
+
+Completed feature coverage for the planned tool matrix: a first concrete dependency-policy
+(lockfile) emitter, runners/audits for the remaining PR-fast/main tools (psalm, php-style,
+eslint, typescript, actionlint, zizmor, deptrac, codeql-export, architecture-tests; syft,
+trivy-fs, trivy-image), and policy/remediation docs for the dependency/IaC/style/architecture
+layers. **Feature coverage, not production readiness** — most integrations remain
+supported/experimental (fixture-validated). See [`docs/feature-completion-v0.1.14.md`](docs/feature-completion-v0.1.14.md).
