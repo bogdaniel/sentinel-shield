@@ -89,7 +89,7 @@ approved, unexpired accepted-risk record covers it (only `unsafe_docker` /
 `missing_release_evidence`). The raw count is preserved. **v0.1.8:** records are
 **finding-scoped by default** — for `unsafe_docker` a record matches `rule_id` + `files`
 (read from `reports/raw/hadolint.json`) and the gate is `accepted-risk` only when **every**
-finding is matched; unaccepted findings still fail. Broad gate-wide suppression needs
+finding is matched; unaccepted findings still fail. **v0.1.10:** unsafe_docker has TWO raw sources — `reports/raw/hadolint.json` (DL*) and `reports/raw/docker-base-digest.json` (SS_DOCKER_BASE_DIGEST); both are normalized and matched, and a missing source is treated as unaccepted (fail-closed). The release-gate job must provide both raw files. Broad gate-wide suppression needs
 explicit `scope: gate`. See [`accepted-risk-suppression.md`](accepted-risk-suppression.md).
 
 ---

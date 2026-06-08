@@ -154,3 +154,37 @@ This is transparent in both reports:
   `medium_vulnerabilities` in v0.1.3. Do not expect this to clear critical/high vulns.
 - **Findings are never hidden.** Counts remain; suppression is explicit and logged.
 - Prefer **fixing** over accepting. Acceptance is a time-boxed bridge, not a resolution.
+
+## unsafe_docker finding sources (v0.1.10)
+
+`unsafe_docker` is fed by **two** raw sources; finding-scoped matching normalizes both
+(`{source, rule_id, file, severity}`) and matches records by `rule_id` + `files`:
+
+| Source | Raw file | `rule_id`(s) |
+| --- | --- | --- |
+| Hadolint | `reports/raw/hadolint.json` | `DL3018`, `DL3008`, `DL3016`, `DL4006`, … |
+| Docker base-digest detector | `reports/raw/docker-base-digest.json` | `SS_DOCKER_BASE_DIGEST` |
+
+A record's `rule_id` matches only its own source — **a `DL3018` accepted-risk does NOT
+suppress `SS_DOCKER_BASE_DIGEST` findings** (and vice versa). Each needs its own
+finding-scoped record. Example:
+
+```json
+{
+  "id": "docker-base-digest-dev-image",
+  "gate": "unsafe_docker",
+  "scope": "finding",
+  "rule_id": "SS_DOCKER_BASE_DIGEST",
+  "files": ["docker/dev/Dockerfile"],
+  "owner": "platform-team", "severity": "medium",
+  "reason": "…", "expires_at": "2026-07-06", "status": "approved"
+}
+```
+
+**Fail-closed on missing sources:** if `summary.unsafe_docker` accounts for findings whose
+raw source the enforcer cannot read (missing/invalid), that shortfall is treated as
+**unaccepted** (the gate fails) — the enforcer never silently passes a source it could not
+inspect. The release-gate job must therefore make `reports/raw/hadolint.json` and
+`reports/raw/docker-base-digest.json` available (download them before enforcing). Prefer
+**fixing** base-digest findings (digest-pin the base) over accepting them. Broad
+`scope: gate` remains discouraged.

@@ -96,6 +96,18 @@ jobs:
           path: reports
         continue-on-error: true
 
+      - name: Download raw reports (finding-scope unsafe_docker matching)
+        # v0.1.10: enforce-gates.sh matches unsafe_docker findings against the raw reports
+        # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Provide them
+        # so finding-scope accepted-risks match; without them the gate fails closed.
+        # Best-effort: a standalone run may have no such artifact.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sentinel-shield-raw-security*
+          path: reports/raw
+          merge-multiple: true
+        continue-on-error: true
+
       - name: Apply security-summary fallback policy
         run: |
           set -eu

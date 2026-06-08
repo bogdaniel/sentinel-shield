@@ -397,3 +397,13 @@ In addition to everything in `strict`:
   jobs, and infrastructure changes.
 - A rollback plan is mandatory for the release.
 - Audit logs and gate results are retained per the applicable compliance regime.
+
+**unsafe_docker finding sources + release-gate raw artifacts (v0.1.10).** Finding-scoped
+`unsafe_docker` matching normalizes **two** raw sources — `reports/raw/hadolint.json`
+(Hadolint `DL*`) and `reports/raw/docker-base-digest.json` (`SS_DOCKER_BASE_DIGEST`). A
+`DL3018` record does not suppress `SS_DOCKER_BASE_DIGEST` findings; each needs its own
+finding-scoped record. The **release-gate job must download these raw reports** before
+running `enforce-gates.sh` (the reusable workflows do this via
+`pattern: sentinel-shield-raw-security*` + `merge-multiple`). A source whose raw report is
+missing is treated as **unaccepted** (fail-closed) — finding-scope never silently passes a
+source it cannot read.

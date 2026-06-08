@@ -81,7 +81,7 @@ for f in $FILES; do
 			emit_reason="base image '$_img' has no tag/digest (implicit :latest)"
 		fi
 		jq -n --arg f "$f" --argjson l "$_ln" --arg i "$_img" --arg m "$emit_reason" \
-			'{file:$f, line:$l, image:$i, code:"SS-DOCKER-BASE-DIGEST", reason:$m}' >> "$TMP"
+			'{file:$f, line:$l, image:$i, code:"SS_DOCKER_BASE_DIGEST", reason:$m}' >> "$TMP"
 	done < "$f"
 done
 

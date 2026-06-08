@@ -557,6 +557,100 @@ run_adapters() {
 	log_info "consolidation: OK (adapters, runner, audits, detectors, templates/guides)"
 }
 
+# --- Laravel PHPStan runner robustness (v0.1.10) ----------------------------
+PR_FAILS=0
+pr_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; PR_FAILS=$((PR_FAILS + 1)); fi; }
+
+run_phpstan_runner() {
+	log_info "phpstan-runner: robustness (fake php/phpstan; no real Laravel app)"
+	_runner="$PWD/scripts/runners/laravel-phpstan.sh"
+	_d=$(mktemp -d); mkdir -p "$_d/bin"
+	# Fake `php` so command_exists php passes (no artisan in proj -> discover skipped).
+	printf '#!/bin/sh\nexit 0\n' > "$_d/bin/php"; chmod +x "$_d/bin/php"
+	# Fake phpstan variants (ignore args; emit to stdout).
+	printf '#!/bin/sh\nprintf "%%s\\n" '\''{"totals":{"errors":0,"file_errors":0},"files":{},"errors":[]}'\''\n' > "$_d/bin/ps-clean"; chmod +x "$_d/bin/ps-clean"
+	printf '#!/bin/sh\nprintf "%%s\\n" '\''{"totals":{"errors":2,"file_errors":2},"files":{"a.php":{"errors":2}},"errors":[]}'\''\nexit 1\n' > "$_d/bin/ps-errs"; chmod +x "$_d/bin/ps-errs"
+	printf '#!/bin/sh\necho "PHP Deprecated: something on stdout"\nprintf "%%s\\n" '\''{"totals":{"errors":0,"file_errors":0},"files":{},"errors":[]}'\''\n' > "$_d/bin/ps-noise"; chmod +x "$_d/bin/ps-noise"
+	printf '#!/bin/sh\necho "Fatal error: bootstrap blew up"\nexit 255\n' > "$_d/bin/ps-fatal"; chmod +x "$_d/bin/ps-fatal"
+
+	mkdir -p "$_d/proj"
+	_run() { # _run <case-dir> <phpstan-bin|""> ; sets exit in $_rc, output at proj/reports/raw/phpstan.json
+		( cd "$_d/proj" && rm -rf reports && PATH="$_d/bin:$PATH" \
+			SENTINEL_SHIELD_PHPSTAN_BIN="$1" SENTINEL_SHIELD_LARAVEL_PACKAGE_DISCOVER=false \
+			sh "$_runner" >/dev/null 2>&1 ); printf '%s' "$?"
+	}
+	# 1. PHPStan missing -> unavailable (exit 0, NO report).
+	_rc=$(_run "/nonexistent/phpstan")
+	pr_check "phpstan missing -> exit 0" "$_rc" "0"
+	pr_check "phpstan missing -> NO report (unavailable)" "$([ -f "$_d/proj/reports/raw/phpstan.json" ] && echo present || echo absent)" "absent"
+	# 2. Clean JSON -> report written + valid + errors 0.
+	_rc=$(_run "$_d/bin/ps-clean")
+	pr_check "clean JSON -> report written" "$([ -f "$_d/proj/reports/raw/phpstan.json" ] && echo yes || echo no)" "yes"
+	pr_check "clean JSON -> valid + errors 0" "$(jq -r '(.totals.errors)+(.totals.file_errors)' "$_d/proj/reports/raw/phpstan.json" 2>/dev/null)" "0"
+	# 3. JSON with errors -> report written + valid + errors>0 (not faked to 0).
+	_rc=$(_run "$_d/bin/ps-errs")
+	pr_check "errors JSON -> report written" "$([ -f "$_d/proj/reports/raw/phpstan.json" ] && echo yes || echo no)" "yes"
+	pr_check "errors JSON -> errors preserved (4)" "$(jq -r '(.totals.errors)+(.totals.file_errors)' "$_d/proj/reports/raw/phpstan.json" 2>/dev/null)" "4"
+	# 4. stdout noise + JSON -> JSON extracted, valid.
+	_rc=$(_run "$_d/bin/ps-noise")
+	pr_check "noise+JSON -> extracted valid report" "$(jq -e 'type=="object"' "$_d/proj/reports/raw/phpstan.json" >/dev/null 2>&1 && echo yes || echo no)" "yes"
+	# 5. non-JSON fatal -> NO fake report (unavailable), debug artifacts kept.
+	_rc=$(_run "$_d/bin/ps-fatal")
+	pr_check "non-JSON fatal -> NO fake report" "$([ -f "$_d/proj/reports/raw/phpstan.json" ] && echo present || echo absent)" "absent"
+	pr_check "non-JSON fatal -> exit 0 (artifact upload not skipped)" "$_rc" "0"
+	pr_check "non-JSON fatal -> debug stdout kept" "$([ -f "$_d/proj/reports/raw/phpstan.stdout.raw" ] && echo yes || echo no)" "yes"
+
+	rm -rf "$_d"
+	if [ "$PR_FAILS" -ne 0 ]; then log_error "phpstan-runner: $PR_FAILS case(s) failed"; return 1; fi
+	log_info "phpstan-runner: OK (missing/clean/errors/noise/fatal — never fakes a clean report)"
+}
+
+# --- unsafe_docker multi-source finding-scope (v0.1.10) ----------------------
+MS_FAILS=0
+# ms_case <desc> <exit> <summary-ud> <hadolint-json> <base-json> <risks-json> [acc] [unacc]
+ms_case() {
+	_d=$(mktemp -d); mkdir -p "$_d/raw"
+	sh scripts/resolve-gates.sh --mode baseline --output-dir "$_d" --format env >/dev/null 2>&1
+	jq ".summary.unsafe_docker = $3" templates/security-summary.example.json > "$_d/security-summary.json"
+	printf '%s' "$4" > "$_d/raw/hadolint.json"
+	printf '%s' "$5" > "$_d/raw/docker-base-digest.json"
+	printf '%s' "$6" > "$_d/accepted-risks.json"
+	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" \
+		--summary "$_d/security-summary.json" --accepted-risks "$_d/accepted-risks.json" \
+		--hadolint-raw "$_d/raw/hadolint.json" --docker-base-digest-raw "$_d/raw/docker-base-digest.json" \
+		--output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	_ok=1; [ "$_rc" -eq "$2" ] || _ok=0
+	if [ -n "${7:-}" ]; then
+		_a=$(jq -r '.accepted_risks.unsafe_docker.accepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)
+		_u=$(jq -r '.accepted_risks.unsafe_docker.unaccepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)
+		[ "$_a" = "$7" ] || _ok=0; [ "$_u" = "$8" ] || _ok=0
+	fi
+	if [ "$_ok" -eq 1 ]; then log_info "PASS: $1 (exit $_rc${7:+, acc=$7/unacc=$8})"; else
+		log_error "FAIL: $1 (exit $_rc/exp $2; acc=$(jq -r '.accepted_risks.unsafe_docker.accepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)/$7 unacc=$(jq -r '.accepted_risks.unsafe_docker.unaccepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)/$8)"; MS_FAILS=$((MS_FAILS + 1)); fi
+	rm -rf "$_d"
+}
+
+run_ud_multisource() {
+	log_info "ud-multisource: unsafe_docker matching across hadolint + docker-base-digest"
+	_h='[{"file":"Dockerfile","line":2,"code":"DL3018","level":"warning"}]'
+	_b='[{"file":"docker/8.3/Dockerfile","line":1,"image":"ubuntu:24.04","code":"SS_DOCKER_BASE_DIGEST","reason":"tag"}]'
+	_r_dl3018='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"finding","rule_id":"DL3018","files":["Dockerfile"],"owner":"p","severity":"medium","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_base='{"version":"1.1","risks":[{"id":"rb","gate":"unsafe_docker","scope":"finding","rule_id":"SS_DOCKER_BASE_DIGEST","files":["docker/8.3/Dockerfile"],"owner":"p","severity":"medium","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_both='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"finding","rule_id":"DL3018","files":["Dockerfile"],"owner":"p","severity":"medium","reason":"x","expires_at":"2999-12-31","status":"approved"},{"id":"rb","gate":"unsafe_docker","scope":"finding","rule_id":"SS_DOCKER_BASE_DIGEST","files":["docker/8.3/Dockerfile"],"owner":"p","severity":"medium","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_gate='{"version":"1.1","risks":[{"id":"rg","gate":"unsafe_docker","scope":"gate","owner":"p","severity":"medium","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+
+	ms_case "Hadolint DL3018 accepted, base-digest UNACCEPTED -> fail"        1 2 "$_h" "$_b" "$_r_dl3018" 1 1
+	ms_case "base-digest accepted via SS_DOCKER_BASE_DIGEST+file -> pass"     0 1 '[]' "$_b" "$_r_base"    1 0
+	ms_case "mixed hadolint + base-digest all accepted -> pass"              0 2 "$_h" "$_b" "$_r_both"   2 0
+	ms_case "DL3018 record does NOT suppress base-digest finding -> fail"    1 2 "$_h" "$_b" "$_r_dl3018" 1 1
+	ms_case "legacy scope:gate still suppresses whole gate (broad)"          0 2 "$_h" "$_b" "$_r_gate"   2 0
+	# unaccounted source: summary says 2 but base raw is empty -> 1 unaccounted -> fail
+	ms_case "missing base raw counted as unaccounted -> fail"               1 2 "$_h" '[]' "$_r_dl3018"  1 1
+
+	if [ "$MS_FAILS" -ne 0 ]; then log_error "ud-multisource: $MS_FAILS case(s) failed"; return 1; fi
+	log_info "ud-multisource: OK (hadolint + docker-base-digest; DL3018 never suppresses base-digest; unaccounted fails closed)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -567,6 +661,8 @@ case "$SUB" in
 	third-party) run_third_party ;;
 	hadolint) run_hadolint ;;
 	adapters) run_adapters ;;
+	phpstan-runner) run_phpstan_runner ;;
+	ud-multisource) run_ud_multisource ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -577,13 +673,15 @@ case "$SUB" in
 		run_third_party
 		run_hadolint
 		run_adapters
+		run_phpstan_runner
+		run_ud_multisource
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|all)"
 		exit 2
 		;;
 esac

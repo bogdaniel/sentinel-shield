@@ -6,6 +6,44 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.10] — Larastan PHPStan runner robustness; multi-source unsafe_docker enforcement
+
+### Changed
+
+- **Laravel PHPStan runner** (`scripts/runners/laravel-phpstan.sh`) hardened for Larastan
+  apps: captures stdout/stderr **separately**, **extracts/validates** the JSON object
+  before writing `reports/raw/phpstan.json` (so deprecation/boot noise on stdout no longer
+  forces `unavailable`), keeps debug artifacts (`phpstan.stdout.raw`, `phpstan.stderr.log`)
+  on trouble, and exits 0 so artifact upload is not skipped. Still **never writes a fake
+  clean report** — PHPStan missing or no valid JSON → report absent (`unavailable`). New
+  env: `SENTINEL_SHIELD_LARAVEL_PACKAGE_DISCOVER`, `SENTINEL_SHIELD_LARAVEL_PREPARE`
+  (plus the existing `…_MEMORY_LIMIT/_CONFIG/_PATHS/_BIN`).
+- **Multi-source `unsafe_docker` finding-scope enforcement** (`scripts/enforce-gates.sh`):
+  matching now normalizes **all** unsafe_docker raw sources into one shape and matches
+  `rule_id` + `files` — `reports/raw/hadolint.json` (DL*) **and**
+  `reports/raw/docker-base-digest.json` (`SS_DOCKER_BASE_DIGEST`). A `DL3018` accepted-risk
+  no longer (silently) covers base-digest findings; each source needs its own record. A
+  source whose raw report is missing while the summary accounts for it is treated as
+  **unaccepted** (fail-closed). New flag `--docker-base-digest-raw`.
+- The base-digest detector emits `rule_id: SS_DOCKER_BASE_DIGEST` (underscored).
+- **Release-gate** in `ci-release-gate.yml`, `ci-pipeline.yml`, and the example workflow
+  now downloads the raw reports (`sentinel-shield-raw-security*`, merge-multiple) so
+  finding-scope matching has `hadolint.json` + `docker-base-digest.json`. The reusable
+  docker job now also runs the base-digest audit.
+
+### Added
+
+- Self-test `phpstan-runner` (missing/clean/errors/stdout-noise/fatal — never fakes) and
+  `ud-multisource` (hadolint+base-digest matching; DL3018 never suppresses base-digest;
+  unaccounted source fails closed). Schema/template/docs document the two unsafe_docker
+  sources and an `SS_DOCKER_BASE_DIGEST` finding-scoped example.
+
+### Notes
+
+- The runner improvements are **not yet verified against zenchron-tools** (no real
+  Larastan app in this repo) — tested via fake php/phpstan fixtures only.
+
+
 ## [0.1.9] — consolidation: promote pilot lessons upstream
 
 Reusable pieces discovered during the `zenchron-tools` pilot are now owned by Sentinel

@@ -38,7 +38,7 @@
           },
           "rule_id": {
             "type": "string",
-            "description": "v0.1.8+. Single tool rule to match for finding scope (e.g. Hadolint 'DL3018'). Omit to match any rule within the listed files."
+            "description": "v0.1.8+. Single tool rule to match for finding scope. unsafe_docker sources (v0.1.10): Hadolint rule ids (DL3018/DL3008/DL3016/DL4006/…) from reports/raw/hadolint.json, and 'SS_DOCKER_BASE_DIGEST' (the Docker base-image digest detector) from reports/raw/docker-base-digest.json. A DL3018 record does NOT match SS_DOCKER_BASE_DIGEST findings (and vice versa). Omit to match any rule within the listed files."
           },
           "rule_ids": {
             "type": "array",

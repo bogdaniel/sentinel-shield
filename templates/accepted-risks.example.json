@@ -20,6 +20,21 @@
       "status": "pending"
     },
     {
+      "id": "docker-base-digest-dev-image",
+      "gate": "unsafe_docker",
+      "scope": "finding",
+      "rule_id": "SS_DOCKER_BASE_DIGEST",
+      "files": [
+        "docker/dev/Dockerfile"
+      ],
+      "owner": "platform-team",
+      "severity": "medium",
+      "reason": "v0.1.10 example: a SEPARATE unsafe_docker source (Docker base-image digest detector, rule_id SS_DOCKER_BASE_DIGEST) — NOT covered by a DL3018/DL3008 Hadolint record. Prefer digest-pinning the base; accept narrowly only if deferred. Status 'pending' so this example never suppresses.",
+      "mitigation": "Digest-pin the base image (FROM image:tag@sha256:...).",
+      "expires_at": "2026-07-06",
+      "status": "pending"
+    },
+    {
       "id": "EXAMPLE-broad-gate-discouraged",
       "gate": "medium_vulnerabilities",
       "scope": "gate",

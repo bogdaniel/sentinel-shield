@@ -177,3 +177,11 @@ to `unsafe_docker`. This is **distinct** from Hadolint DL3018/DL3008 (apk/apt pa
 pinning) — it is about base-image reproducibility. Allows `@sha256:` and multi-stage
 `FROM <stage>` aliases. Remediation:
 [`remediation/docker-base-digest-pinning.md`](remediation/docker-base-digest-pinning.md).
+
+## Base-digest findings in finding-scoped accepted-risk (v0.1.10)
+
+The base-digest detector's findings use `rule_id: SS_DOCKER_BASE_DIGEST` and are matched
+by finding-scoped accepted-risk records **independently** of Hadolint DL3018/DL3008 — a
+DL3018 record cannot suppress an un-digested-base finding. Prefer digest-pinning the base;
+accept narrowly (rule_id `SS_DOCKER_BASE_DIGEST` + `files`) only if deferred. See
+[`accepted-risk-suppression.md`](accepted-risk-suppression.md).

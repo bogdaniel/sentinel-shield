@@ -181,6 +181,12 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: sh scripts/run-hadolint.sh
 
+      - name: Docker base-image digest audit (→ reports/raw/docker-base-digest.json)
+        # v0.1.9 detector, v0.1.10 enforced via finding-scope. Distinct from DL3018/DL3008
+        # (rule_id SS_DOCKER_BASE_DIGEST). Contributes to unsafe_docker.
+        if: steps.detect.outputs.present == 'true'
+        run: sh scripts/audit-docker-base-digest.sh --output reports/raw/docker-base-digest.json
+
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
         if: steps.detect.outputs.present == 'true'
         uses: aquasecurity/trivy-action@v0.36.0
@@ -368,6 +374,17 @@ jobs:
         with:
           name: sentinel-shield-security-summary
           path: reports
+
+      - name: Download raw reports (finding-scope unsafe_docker matching)
+        # v0.1.10: enforce-gates.sh matches unsafe_docker findings against the raw reports
+        # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Without them
+        # finding-scope records cannot match and the gate fails closed. Best-effort.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sentinel-shield-raw-security*
+          path: reports/raw
+          merge-multiple: true
+        continue-on-error: true
 
       - name: Resolve gates
         run: sh scripts/resolve-gates.sh --output-dir reports --format all

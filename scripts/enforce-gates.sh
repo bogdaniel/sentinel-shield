@@ -51,7 +51,8 @@ OUTPUT_DIR="reports"
 FORMAT="all"
 STRICT_SUMMARY=0
 ACCEPTED_RISKS_FILE=".sentinel-shield/accepted-risks.json"
-RAW_HADOLINT=""   # default derived from --summary dir (reports/raw/hadolint.json)
+RAW_HADOLINT=""        # default derived from --summary dir (reports/raw/hadolint.json)
+RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-base-digest.json)
 
 # Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
 # narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
@@ -77,8 +78,13 @@ Options:
                        broad gate suppression requires explicit "scope":"gate".
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
   --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
-                       (default: <summary-dir>/raw/hadolint.json). If absent, finding-scope
-                       records cannot match and the gate fails on any unsafe_docker count.
+                       (default: <summary-dir>/raw/hadolint.json).
+  --docker-base-digest-raw <path>  Raw Docker base-digest report (v0.1.10) — the OTHER
+                       unsafe_docker source (rule_id SS_DOCKER_BASE_DIGEST). Default:
+                       <summary-dir>/raw/docker-base-digest.json.
+                       Finding-scope matching normalizes BOTH sources; if a source's raw
+                       report is missing while summary.unsafe_docker accounts for it, the
+                       unaccounted findings are treated as UNACCEPTED (gate fails closed).
   -h, --help           Show this help
 
 Outputs:
@@ -99,6 +105,7 @@ while [ $# -gt 0 ]; do
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
 		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
+		--docker-base-digest-raw) RAW_DOCKER_BASE="${2:?--docker-base-digest-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; die_cfg "unknown argument: $1" ;;
 	esac
@@ -117,6 +124,7 @@ command_exists jq || die_cfg "jq is required for security-summary.json enforceme
 # Default the raw Hadolint report next to the summary (reports/raw/hadolint.json) unless
 # the caller pointed elsewhere. Used for unsafe_docker finding-scope matching (v0.1.8).
 [ -n "$RAW_HADOLINT" ] || RAW_HADOLINT="$(dirname "$SUMMARY")/raw/hadolint.json"
+[ -n "$RAW_DOCKER_BASE" ] || RAW_DOCKER_BASE="$(dirname "$SUMMARY")/raw/docker-base-digest.json"
 
 # --- load the gates env SAFELY (validate; never blind-source) ----------------
 # Allowed line shape: SENTINEL_SHIELD_<UPPER_KEY>=<safe-value>
@@ -354,40 +362,51 @@ eval_unsafe_docker() {
 		return
 	fi
 	UD_SCOPE="finding"
-	# Finding-scope matching needs the raw Hadolint report. Without it we cannot confirm
-	# matches → fail closed (never broad-suppress implicitly).
-	if [ ! -f "$RAW_HADOLINT" ] || [ ! -s "$RAW_HADOLINT" ] || ! jq -e 'type=="array"' "$RAW_HADOLINT" >/dev/null 2>&1; then
-		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
-		add_eval "$_key" true "$_val" fail
-		log_warn "unsafe_docker: $_val finding(s) but raw report '$RAW_HADOLINT' missing/invalid — cannot match finding-scope accepted-risks; gate FAILS. (Declare \"scope\":\"gate\" for broad suppression.)"
-		return
-	fi
-	# Per-finding accounting: a finding is accepted iff some valid finding-scope record
-	# matches its rule_id (or rule absent) AND its file (or files absent).
-	_acct=$(jq -n --slurpfile risks "$ACCEPTED_RISKS_FILE" --slurpfile hado "$RAW_HADOLINT" --arg today "$TODAY" '
+	# Finding-scope matching normalizes ALL unsafe_docker raw sources into one shape
+	# {source, rule_id, file, severity} and matches each against finding-scope records
+	# (rule_id + files). Sources (v0.1.10):
+	#   hadolint.json          -> rule_id = .code (DL3018/DL3008/...), error/warning only
+	#   docker-base-digest.json-> rule_id = .code (SS_DOCKER_BASE_DIGEST), all findings
+	# A source whose raw report is missing/invalid is "unaccounted": its share of the
+	# summary total (total - findings we could read) is treated as UNACCEPTED so the gate
+	# fails closed (never silently passes a source we cannot inspect).
+	[ -f "$RAW_HADOLINT" ] && jq -e 'type=="array"' "$RAW_HADOLINT" >/dev/null 2>&1 && _HJ="$RAW_HADOLINT" || _HJ="/dev/null"
+	[ -f "$RAW_DOCKER_BASE" ] && jq -e 'type=="array"' "$RAW_DOCKER_BASE" >/dev/null 2>&1 && _DJ="$RAW_DOCKER_BASE" || _DJ="/dev/null"
+	_acct=$(jq -n \
+		--slurpfile risks "$ACCEPTED_RISKS_FILE" \
+		--slurpfile hado "$_HJ" \
+		--slurpfile base "$_DJ" \
+		--arg today "$TODAY" --argjson total "$_val" '
 		def norm: sub("^\\./"; "");
 		([ ($risks[0].risks // [])[]
 			| select(.gate == "unsafe_docker" and .status == "approved" and ((.expires_at // "") >= $today)
 				and ((.owner // "") != "") and ((.reason // "") != "")
 				and ((.scope // "finding") == "finding")
 				and (has("rule_id") or has("files") or has("rule_ids"))) ]) as $fs
-		| [ ($hado[0] // [])[]
-			| select((.level // "" | ascii_downcase) == "error" or (.level // "" | ascii_downcase) == "warning")
-			| { code: (.code // ""), file: ((.file // "") | norm), line: (.line // 0) } ] as $finds
+		# Normalize each source into {source, rule_id, file, severity}.
+		| ( [ (($hado[0] // []))[]
+				| select((.level // "" | ascii_downcase) == "error" or (.level // "" | ascii_downcase) == "warning")
+				| { source: "hadolint", rule_id: (.code // ""), file: ((.file // "") | norm), severity: (.level // "warning") } ]
+			+ [ (($base[0] // []))[]
+				| { source: "docker-base-digest", rule_id: (.code // "SS_DOCKER_BASE_DIGEST"), file: ((.file // "") | norm), severity: "warning" } ]
+		) as $finds
 		| [ $finds[]
 			| . as $f
 			| ( ( first( $fs[]
 					| select(
-						( ((.rule_id // "") == "") or (.rule_id == $f.code) or (((.rule_ids // []) | index($f.code)) != null) )
+						( ((.rule_id // "") == "") or (.rule_id == $f.rule_id) or (((.rule_ids // []) | index($f.rule_id)) != null) )
 						and ( (((.files // []) | length) == 0)
 							or any((.files // [])[]; (. | norm) as $rf | ($f.file == $rf) or ($f.file | endswith("/" + $rf)) or (($f.file | split("/") | last) == $rf)) )
 					)
 					| .id ) ) // null ) as $rid
-			| { code: $f.code, file: $f.file, line: $f.line, accepted: ($rid != null), risk_id: ($rid // "") } ]
-		| { total: length,
-			accepted: ([ .[] | select(.accepted) ] | length),
-			unaccepted: ([ .[] | select(.accepted | not) ] | length),
-			detail: . }' 2>/dev/null || printf '')
+			| { source: $f.source, rule_id: $f.rule_id, file: $f.file, accepted: ($rid != null), risk_id: ($rid // "") } ]
+		| ( length ) as $accounted
+		| ( [ .[] | select(.accepted) ] | length ) as $acc
+		| ( [ .[] | select(.accepted | not) ] | length ) as $unacc_visible
+		| ( (if $total > $accounted then ($total - $accounted) else 0 end) ) as $unaccounted_sources
+		| { total: $total, accounted: $accounted, accepted: $acc,
+			unaccepted: ($unacc_visible + $unaccounted_sources),
+			unaccounted_sources: $unaccounted_sources, detail: . }' 2>/dev/null || printf '')
 	if [ -z "$_acct" ]; then
 		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
 		add_eval "$_key" true "$_val" fail
@@ -396,12 +415,14 @@ eval_unsafe_docker() {
 	fi
 	UD_ACCEPTED=$(printf '%s' "$_acct" | jq '.accepted')
 	UD_UNACCEPTED=$(printf '%s' "$_acct" | jq '.unaccepted')
+	_unacc_src=$(printf '%s' "$_acct" | jq '.unaccounted_sources')
 	UD_DETAIL=$(printf '%s' "$_acct" | jq -c '.detail')
 	if [ "$UD_UNACCEPTED" -eq 0 ] && [ "$UD_ACCEPTED" -gt 0 ]; then
 		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
-		log_info "unsafe_docker: finding-scoped accepted-risk — total $_val, accepted $UD_ACCEPTED, unaccepted 0."
+		log_info "unsafe_docker: finding-scoped accepted-risk — total $_val, accepted $UD_ACCEPTED, unaccepted 0 (hadolint + docker-base-digest)."
 	else
 		add_eval "$_key" true "$_val" fail
+		[ "$_unacc_src" -gt 0 ] 2>/dev/null && log_warn "unsafe_docker: $_unacc_src finding(s) from a raw source that could not be read (missing/invalid) — treated as UNACCEPTED."
 		log_info "unsafe_docker: total $_val, accepted $UD_ACCEPTED, unaccepted $UD_UNACCEPTED → gate FAILS (unaccepted findings present)."
 	fi
 }
@@ -639,8 +660,8 @@ write_markdown() {
 		printf '### Unsafe Docker findings (finding-scoped accounting)\n\n'
 		printf -- '- Scope: **%s** | total: %s | accepted: %s | unaccepted: %s\n\n' \
 			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED"
-		printf -- '| Rule | File | Line | Accepted | Risk id |\n| --- | --- | --- | --- | --- |\n'
-		printf '%s' "$UD_DETAIL" | jq -r '.[]? | "| \(.code) | \(.file) | \(.line) | \(if .accepted then "yes" else "**NO**" end) | \(.risk_id // "") |"' 2>/dev/null || printf -- '| _(no raw findings)_ | | | | |\n'
+		printf -- '| Source | Rule | File | Accepted | Risk id |\n| --- | --- | --- | --- | --- |\n'
+		printf '%s' "$UD_DETAIL" | jq -r '.[]? | "| \(.source // "?") | \(.rule_id // "?") | \(.file) | \(if .accepted then "yes" else "**NO**" end) | \(.risk_id // "") |"' 2>/dev/null || printf -- '| _(no raw findings)_ | | | | |\n'
 		printf -- '\n> Unaccepted findings are **not hidden** — they fail the gate. Convert each into\n'
 		printf -- '> a fix or a finding-scoped accepted-risk (rule_id + files).\n\n'
 		printf -- '> Only APPROVED, unexpired, owner-bound records suppress, and only for\n'
