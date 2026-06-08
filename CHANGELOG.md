@@ -6,6 +6,46 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.8] — finding-scoped accepted-risk suppression
+
+### Added
+
+- **Finding-scoped accepted-risk suppression.** Accepted-risk records are now
+  FINDING-SCOPED by default: a record suppresses only the findings it matches, not the
+  whole gate. Implemented for `unsafe_docker` (matched against `reports/raw/hadolint.json`
+  by `rule_id` + `files`). New record fields: `scope` (`finding`|`gate`, default
+  `finding`), `rule_id`, `rule_ids`, `files`; `components`/`fingerprints` are reserved
+  (declared in the schema, not yet enforced).
+- `enforce-gates.sh --hadolint-raw <path>` (default `<summary-dir>/raw/hadolint.json`)
+  for unsafe_docker finding matching.
+- Enforcement reports (`sentinel-shield-enforcement.json`/`.md`) now show: accepted-risks
+  loaded; applied **broad** (`scope:gate`) vs **finding-scoped**; pending/expired/invalid/
+  legacy-unscoped ignored; and a per-finding `unsafe_docker` table (rule_id, file, line,
+  accepted, matched risk id) with total/accepted/unaccepted. Unaccepted findings are not
+  hidden — they fail the gate.
+- Self-test `finding-scope` subcommand (9 cases): per-file/per-rule matching, mixed
+  accepted/unaccepted, legacy-unscoped (no suppress), `scope:gate` (broad), pending/
+  expired (no suppress), and secrets-never-suppressed.
+
+### Changed
+
+- **Prevents one `unsafe_docker` accepted-risk from suppressing unrelated Docker
+  findings** (the v0.1.7 multi-Dockerfile-discovery governance bug): a DL3018 record for
+  `Dockerfile`/`Dockerfile.prod` no longer hides DL3008/DL3016/DL4006 in other Dockerfiles.
+- **Backward compatibility / migration:** a record with no `scope` and no
+  `rule_id`/`files` is ambiguous and **no longer suppresses** (it warns). Broad gate-wide
+  suppression now requires explicit `"scope": "gate"` and is reported as broad and
+  discouraged. Raw counts are still never reduced; `secrets`/`expired_exceptions`/
+  `missing_release_evidence` are still never suppressible.
+
+### Notes
+
+- Finding-scoped suppression is implemented for **`unsafe_docker` only** in v0.1.8. Other
+  suppressible gates (`medium_vulnerabilities`) support only broad `scope:gate`
+  suppression; finding-scope records targeting them warn and do not suppress.
+- If the raw Hadolint report is missing, finding-scope records cannot match and the
+  `unsafe_docker` gate fails on any count > 0 (declare `scope:gate` for broad).
+
 ## [0.1.7] — global multi-Dockerfile Hadolint discovery
 
 ### Added

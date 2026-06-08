@@ -51,6 +51,7 @@ OUTPUT_DIR="reports"
 FORMAT="all"
 STRICT_SUMMARY=0
 ACCEPTED_RISKS_FILE=".sentinel-shield/accepted-risks.json"
+RAW_HADOLINT=""   # default derived from --summary dir (reports/raw/hadolint.json)
 
 # Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
 # narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
@@ -72,7 +73,12 @@ Options:
   --accepted-risks <path>  Accepted-risk records (default: .sentinel-shield/accepted-risks.json).
                        An APPROVED, unexpired, owned record may suppress a
                        suppressible gate (unsafe_docker, medium_vulnerabilities).
+                       v0.1.8: records are FINDING-SCOPED by default (match rule_id+files);
+                       broad gate suppression requires explicit "scope":"gate".
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
+  --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
+                       (default: <summary-dir>/raw/hadolint.json). If absent, finding-scope
+                       records cannot match and the gate fails on any unsafe_docker count.
   -h, --help           Show this help
 
 Outputs:
@@ -92,6 +98,7 @@ while [ $# -gt 0 ]; do
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
+		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; die_cfg "unknown argument: $1" ;;
 	esac
@@ -106,6 +113,10 @@ command_exists jq || die_cfg "jq is required for security-summary.json enforceme
 
 [ -f "$GATES_ENV_FILE" ] || die_cfg "gates env not found: '$GATES_ENV_FILE' (run scripts/resolve-gates.sh first)"
 [ -f "$SUMMARY" ] || die_cfg "security summary not found: '$SUMMARY' (a scanner workflow must produce it; see docs/security-summary-schema.md)"
+
+# Default the raw Hadolint report next to the summary (reports/raw/hadolint.json) unless
+# the caller pointed elsewhere. Used for unsafe_docker finding-scope matching (v0.1.8).
+[ -n "$RAW_HADOLINT" ] || RAW_HADOLINT="$(dirname "$SUMMARY")/raw/hadolint.json"
 
 # --- load the gates env SAFELY (validate; never blind-source) ----------------
 # Allowed line shape: SENTINEL_SHIELD_<UPPER_KEY>=<safe-value>
@@ -204,50 +215,78 @@ if [ "$STRICT_SUMMARY" -eq 1 ]; then
 	fi
 fi
 
-# --- accepted-risk suppression (explicit, owner-bound, expiring) -------------
-# Load APPROVED, unexpired, owned records that target a suppressible gate. The raw
-# count is never reduced; a suppressed gate is reported as "accepted-risk", not
-# "pass". pending/expired/invalid records never suppress.
+# --- accepted-risk suppression (v0.1.8: finding-scoped by default) -----------
+# Records are FINDING-SCOPED unless they explicitly declare "scope":"gate".
+#   - scope=="gate"    : BROAD — suppresses the whole gate (reported as broad).
+#   - scope=="finding" : suppresses only matching findings (rule_id + files).
+#                        Implemented for unsafe_docker (matches reports/raw/hadolint.json).
+#                        For other suppressible gates it is NOT YET implemented → warns,
+#                        does not suppress.
+#   - no scope AND no rule_id/files/rule_ids : legacy/ambiguous → WARN, never suppresses
+#                        (declare "scope":"gate" to opt into broad suppression).
+# Raw counts are NEVER reduced. secrets/expired_exceptions/missing_release_evidence are
+# never suppressible. pending/expired/invalid records never suppress.
 TODAY=$(date -u +%Y-%m-%d)
 AR_LOADED=0
 AR_PENDING=0
 AR_EXPIRED=0
 AR_INVALID=0
-SUPPRESSED_GATES=" "   # space-padded list of gate keys with a valid approved risk
-AR_APPLIED_DETAIL=""   # "gate|id" per applied suppression
+AR_LEGACY_WARN=0       # valid records that are ambiguous (no scope/rule_id/files): ignored
+GATE_SCOPE_SUPPRESSED=" "  # gate keys with a valid scope:gate (broad) record
+AR_BROAD_DETAIL=""     # "gate|id" per broad (scope:gate) suppression
+AR_FINDING_DETAIL=""   # "gate|id|rule_id|files-csv" per finding-scope record
 
 if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 	jq -e . "$ACCEPTED_RISKS_FILE" >/dev/null 2>&1 || die_cfg "accepted-risks file is not valid JSON: $ACCEPTED_RISKS_FILE"
 	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
 	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
 	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")
-	# Records that are approved + unexpired but missing owner/reason or targeting a
+	# Records approved + unexpired but missing owner/reason or targeting a
 	# non-suppressible gate are "invalid" and ignored.
 	AR_INVALID=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
 		($ok | split(" ")) as $S
 		| [ (.risks // [])[]
 			| select(.status == "approved" and ((.expires_at // "") >= $today))
 			| select(((.owner // "") == "") or ((.reason // "") == "") or (((.gate // "") | IN($S[])) | not)) ] | length' "$ACCEPTED_RISKS_FILE")
-	# Valid approved suppressions: status approved, unexpired, owner+reason set, gate suppressible.
-	_valid_gates=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
+	# Classify each VALID record (approved, unexpired, owner+reason, suppressible gate) by
+	# effective scope. Default scope is "finding".
+	_valid=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
 		($ok | split(" ")) as $S
 		| (.risks // [])[]
 		| select(.status == "approved" and ((.expires_at // "") >= $today) and ((.owner // "") != "") and ((.reason // "") != "") and (((.gate // "") | IN($S[]))))
-		| "\(.gate)|\(.id // "?")"' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
-	if [ -n "$_valid_gates" ]; then
-		AR_APPLIED_DETAIL="$_valid_gates"
-		while IFS='|' read -r _g _id; do
-			[ -n "$_g" ] || continue
-			case "$SUPPRESSED_GATES" in *" $_g "*) : ;; *) SUPPRESSED_GATES="${SUPPRESSED_GATES}${_g} " ;; esac
+		| (.scope // "finding") as $scope
+		| (has("rule_id") or has("files") or has("rule_ids")) as $hasmatch
+		| if $scope == "gate" then "gate|\(.gate)|\(.id // "?")"
+		  elif $hasmatch then "finding|\(.gate)|\(.id // "?")|\(.rule_id // "")|\((.files // []) | join(","))"
+		  else "legacy|\(.gate)|\(.id // "?")" end' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	if [ -n "$_valid" ]; then
+		while IFS='|' read -r _kind _g _id _rule _files; do
+			[ -n "$_kind" ] || continue
+			case "$_kind" in
+				gate)
+					case "$GATE_SCOPE_SUPPRESSED" in *" $_g "*) : ;; *) GATE_SCOPE_SUPPRESSED="${GATE_SCOPE_SUPPRESSED}${_g} " ;; esac
+					AR_BROAD_DETAIL="${AR_BROAD_DETAIL}${_g}|${_id}
+" ;;
+				finding)
+					AR_FINDING_DETAIL="${AR_FINDING_DETAIL}${_g}|${_id}|${_rule}|${_files}
+"
+					if [ "$_g" != "unsafe_docker" ]; then
+						log_warn "accepted-risks: finding-scope record '$_id' targets '$_g'; finding-scope is only implemented for unsafe_docker in v0.1.8 — NOT suppressing (use \"scope\":\"gate\" for broad)."
+					fi ;;
+				legacy)
+					AR_LEGACY_WARN=$((AR_LEGACY_WARN + 1))
+					log_warn "accepted-risks: record '$_id' (gate $_g) has no scope and no rule_id/files — ambiguous; NOT suppressing. Add \"scope\":\"finding\" + rule_id/files, or \"scope\":\"gate\" for broad." ;;
+			esac
 		done <<EOF
-$_valid_gates
+$_valid
 EOF
 	fi
-	log_info "accepted-risks: loaded $AR_LOADED (pending $AR_PENDING, expired $AR_EXPIRED, invalid $AR_INVALID ignored)"
+	log_info "accepted-risks: loaded $AR_LOADED (pending $AR_PENDING, expired $AR_EXPIRED, invalid $AR_INVALID, legacy-unscoped $AR_LEGACY_WARN ignored)"
 fi
 
-is_suppressed() {
-	case "$SUPPRESSED_GATES" in *" $1 "*) return 0 ;; *) return 1 ;; esac
+# Broad (scope:gate) suppression check.
+is_gate_suppressed() {
+	case "$GATE_SCOPE_SUPPRESSED" in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
 # --- evaluate gates ----------------------------------------------------------
@@ -281,7 +320,7 @@ eval_count_gate() {
 	esac
 	if [ "$_flag" = "true" ]; then
 		if [ "$_val" -gt 0 ]; then
-			if is_suppressed "$_key"; then
+			if is_gate_suppressed "$_key"; then
 				add_eval "$_key" true "$_val" "accepted-risk"
 				ACCEPTED="$ACCEPTED $_key"
 			else
@@ -292,6 +331,78 @@ eval_count_gate() {
 		fi
 	else
 		add_eval "$_key" false "$_val" skipped
+	fi
+}
+
+# unsafe_docker (v0.1.8): finding-scoped acceptance. A broad scope:gate record marks the
+# whole gate accepted-risk. Otherwise per-finding matching against the raw Hadolint report
+# (rule_id + file): the gate is accepted-risk ONLY when every finding is matched; any
+# unaccepted finding fails the gate. The summary count (total) is always preserved.
+UD_TOTAL=0; UD_ACCEPTED=0; UD_UNACCEPTED=0; UD_SCOPE="none"; UD_DETAIL="[]"
+eval_unsafe_docker() {
+	_key="unsafe_docker"
+	_flag=$(gate_flag "$_key")
+	_val=$(jqr ".summary.$_key"); case "$_val" in '' | *[!0-9]*) _val=0 ;; esac
+	UD_TOTAL=$_val
+	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
+	if [ "$_val" -eq 0 ]; then add_eval "$_key" true 0 pass; return; fi
+	# Broad scope:gate record → entire gate accepted-risk (reported as broad).
+	if is_gate_suppressed "$_key"; then
+		UD_SCOPE="gate"; UD_ACCEPTED=$_val; UD_UNACCEPTED=0
+		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
+		log_info "unsafe_docker: BROAD (scope:gate) accepted-risk — total $_val, all accepted."
+		return
+	fi
+	UD_SCOPE="finding"
+	# Finding-scope matching needs the raw Hadolint report. Without it we cannot confirm
+	# matches → fail closed (never broad-suppress implicitly).
+	if [ ! -f "$RAW_HADOLINT" ] || [ ! -s "$RAW_HADOLINT" ] || ! jq -e 'type=="array"' "$RAW_HADOLINT" >/dev/null 2>&1; then
+		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_warn "unsafe_docker: $_val finding(s) but raw report '$RAW_HADOLINT' missing/invalid — cannot match finding-scope accepted-risks; gate FAILS. (Declare \"scope\":\"gate\" for broad suppression.)"
+		return
+	fi
+	# Per-finding accounting: a finding is accepted iff some valid finding-scope record
+	# matches its rule_id (or rule absent) AND its file (or files absent).
+	_acct=$(jq -n --slurpfile risks "$ACCEPTED_RISKS_FILE" --slurpfile hado "$RAW_HADOLINT" --arg today "$TODAY" '
+		def norm: sub("^\\./"; "");
+		([ ($risks[0].risks // [])[]
+			| select(.gate == "unsafe_docker" and .status == "approved" and ((.expires_at // "") >= $today)
+				and ((.owner // "") != "") and ((.reason // "") != "")
+				and ((.scope // "finding") == "finding")
+				and (has("rule_id") or has("files") or has("rule_ids"))) ]) as $fs
+		| [ ($hado[0] // [])[]
+			| select((.level // "" | ascii_downcase) == "error" or (.level // "" | ascii_downcase) == "warning")
+			| { code: (.code // ""), file: ((.file // "") | norm), line: (.line // 0) } ] as $finds
+		| [ $finds[]
+			| . as $f
+			| ( ( first( $fs[]
+					| select(
+						( ((.rule_id // "") == "") or (.rule_id == $f.code) or (((.rule_ids // []) | index($f.code)) != null) )
+						and ( (((.files // []) | length) == 0)
+							or any((.files // [])[]; (. | norm) as $rf | ($f.file == $rf) or ($f.file | endswith("/" + $rf)) or (($f.file | split("/") | last) == $rf)) )
+					)
+					| .id ) ) // null ) as $rid
+			| { code: $f.code, file: $f.file, line: $f.line, accepted: ($rid != null), risk_id: ($rid // "") } ]
+		| { total: length,
+			accepted: ([ .[] | select(.accepted) ] | length),
+			unaccepted: ([ .[] | select(.accepted | not) ] | length),
+			detail: . }' 2>/dev/null || printf '')
+	if [ -z "$_acct" ]; then
+		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_warn "unsafe_docker: could not compute finding-scope accounting; gate FAILS (count $_val preserved)."
+		return
+	fi
+	UD_ACCEPTED=$(printf '%s' "$_acct" | jq '.accepted')
+	UD_UNACCEPTED=$(printf '%s' "$_acct" | jq '.unaccepted')
+	UD_DETAIL=$(printf '%s' "$_acct" | jq -c '.detail')
+	if [ "$UD_UNACCEPTED" -eq 0 ] && [ "$UD_ACCEPTED" -gt 0 ]; then
+		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
+		log_info "unsafe_docker: finding-scoped accepted-risk — total $_val, accepted $UD_ACCEPTED, unaccepted 0."
+	else
+		add_eval "$_key" true "$_val" fail
+		log_info "unsafe_docker: total $_val, accepted $UD_ACCEPTED, unaccepted $UD_UNACCEPTED → gate FAILS (unaccepted findings present)."
 	fi
 }
 
@@ -337,7 +448,7 @@ eval_count_gate "medium_vulnerabilities"
 eval_count_gate "architecture_violations"
 eval_count_gate "type_errors"
 eval_count_gate "test_failures"
-eval_count_gate "unsafe_docker"
+eval_unsafe_docker
 eval_count_gate "unsafe_github_actions"
 eval_missing_gate "missing_sbom" "evidence.sbom.present"
 eval_missing_gate "missing_release_evidence" "evidence.release_evidence.present"
@@ -392,6 +503,27 @@ json_list() {
 	done
 }
 
+json_broad_ids() {
+	# objects from AR_BROAD_DETAIL ("gate|id" lines)
+	_first=1
+	printf '%s' "$AR_BROAD_DETAIL" | while IFS='|' read -r _g _id; do
+		[ -n "$_g" ] || continue
+		if [ "$_first" -eq 1 ]; then _first=0; else printf ', '; fi
+		printf '{ "gate": "%s", "id": "%s" }' "$(json_escape "$_g")" "$(json_escape "$_id")"
+	done
+}
+
+json_finding_ids() {
+	# objects from AR_FINDING_DETAIL ("gate|id|rule|files-csv" lines)
+	_first=1
+	printf '%s' "$AR_FINDING_DETAIL" | while IFS='|' read -r _g _id _rule _files; do
+		[ -n "$_g" ] || continue
+		if [ "$_first" -eq 1 ]; then _first=0; else printf ', '; fi
+		printf '{ "gate": "%s", "id": "%s", "rule_id": "%s", "files": "%s" }' \
+			"$(json_escape "$_g")" "$(json_escape "$_id")" "$(json_escape "$_rule")" "$(json_escape "$_files")"
+	done
+}
+
 write_json() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
 	{
@@ -407,9 +539,14 @@ write_json() {
 		printf '    "file": "%s",\n' "$(json_escape "$ACCEPTED_RISKS_FILE")"
 		printf '    "loaded": %s,\n' "$AR_LOADED"
 		printf '    "applied_gates": [%s],\n' "$(json_list "$ACCEPTED")"
+		printf '    "applied_broad_gates": [%s],\n' "$(json_broad_ids)"
+		printf '    "applied_finding_scoped": [%s],\n' "$(json_finding_ids)"
 		printf '    "pending_ignored": %s,\n' "$AR_PENDING"
 		printf '    "expired_ignored": %s,\n' "$AR_EXPIRED"
-		printf '    "invalid_ignored": %s\n' "$AR_INVALID"
+		printf '    "invalid_ignored": %s,\n' "$AR_INVALID"
+		printf '    "legacy_unscoped_ignored": %s,\n' "$AR_LEGACY_WARN"
+		printf '    "unsafe_docker": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "findings": %s }\n' \
+			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED" "$UD_DETAIL"
 		printf '  },\n'
 		printf '  "evaluated_gates": [\n'
 		json_eval
@@ -477,20 +614,40 @@ write_markdown() {
 
 		printf '## Accepted risks\n\n'
 		printf -- '- File: `%s`\n' "$ACCEPTED_RISKS_FILE"
-		printf -- '- Loaded: %s | pending ignored: %s | expired ignored: %s | invalid ignored: %s\n' \
-			"$AR_LOADED" "$AR_PENDING" "$AR_EXPIRED" "$AR_INVALID"
-		if [ -n "$ACCEPTED" ]; then
-			printf -- '- Applied (gate marked accepted-risk, **count preserved, not zeroed, does not fail**):\n'
-			printf '%s' "$AR_APPLIED_DETAIL" | while IFS='|' read -r _g _id; do
+		printf -- '- Loaded: %s | pending ignored: %s | expired ignored: %s | invalid ignored: %s | legacy-unscoped ignored: %s\n' \
+			"$AR_LOADED" "$AR_PENDING" "$AR_EXPIRED" "$AR_INVALID" "$AR_LEGACY_WARN"
+		printf -- '- Broad (`scope: gate`) applied — **suppresses the WHOLE gate (discouraged)**:\n'
+		if [ -n "$AR_BROAD_DETAIL" ]; then
+			printf '%s' "$AR_BROAD_DETAIL" | while IFS='|' read -r _g _id; do
 				[ -n "$_g" ] || continue
 				printf -- '  - `%s` ← risk id `%s`\n' "$_g" "$_id"
 			done
 		else
-			printf -- '- Applied: none.\n'
+			printf -- '  - none.\n'
 		fi
-		printf -- '\n> Only APPROVED, unexpired, owner-bound records suppress, and only for\n'
-		printf -- '> suppressible gates (unsafe_docker, medium_vulnerabilities). secrets,\n'
-		printf -- '> expired_exceptions, and missing_release_evidence are never suppressed.\n\n'
+		printf -- '- Finding-scoped (`scope: finding`) records (match rule_id + files):\n'
+		if [ -n "$AR_FINDING_DETAIL" ]; then
+			printf '%s' "$AR_FINDING_DETAIL" | while IFS='|' read -r _g _id _rule _files; do
+				[ -n "$_g" ] || continue
+				printf -- '  - `%s` ← risk id `%s` (rule_id: `%s`, files: `%s`)\n' "$_g" "$_id" "${_rule:-any}" "${_files:-any}"
+			done
+		else
+			printf -- '  - none.\n'
+		fi
+		printf '\n'
+
+		printf '### Unsafe Docker findings (finding-scoped accounting)\n\n'
+		printf -- '- Scope: **%s** | total: %s | accepted: %s | unaccepted: %s\n\n' \
+			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED"
+		printf -- '| Rule | File | Line | Accepted | Risk id |\n| --- | --- | --- | --- | --- |\n'
+		printf '%s' "$UD_DETAIL" | jq -r '.[]? | "| \(.code) | \(.file) | \(.line) | \(if .accepted then "yes" else "**NO**" end) | \(.risk_id // "") |"' 2>/dev/null || printf -- '| _(no raw findings)_ | | | | |\n'
+		printf -- '\n> Unaccepted findings are **not hidden** — they fail the gate. Convert each into\n'
+		printf -- '> a fix or a finding-scoped accepted-risk (rule_id + files).\n\n'
+		printf -- '> Only APPROVED, unexpired, owner-bound records suppress, and only for\n'
+		printf -- '> suppressible gates (unsafe_docker, medium_vulnerabilities). Records are\n'
+		printf -- '> **finding-scoped by default** (v0.1.8); broad gate suppression requires\n'
+		printf -- '> explicit `scope: gate` and is discouraged. secrets, expired_exceptions, and\n'
+		printf -- '> missing_release_evidence are never suppressed.\n\n'
 
 		printf '## Next steps\n\n'
 		if [ -n "$FAILED" ]; then

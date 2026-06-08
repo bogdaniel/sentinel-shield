@@ -289,22 +289,96 @@ run_suppression_case() {
 run_suppression() {
 	log_info "suppression: accepted-risk gate suppression (unsafe_docker)"
 	_ad='.summary.unsafe_docker = 1'
-	_valid='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"approved"}]}'
-	_pending='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"pending"}]}'
-	_expired='{"version":"1.0","risks":[{"id":"d","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2000-01-01","status":"approved"}]}'
-	_secret='{"version":"1.0","risks":[{"id":"s","gate":"secrets","owner":"plat","severity":"high","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+	# v0.1.8: broad suppression requires explicit scope:gate. A legacy unscoped record no
+	# longer suppresses (see run_finding_scope for the legacy/finding cases).
+	_valid='{"version":"1.1","risks":[{"id":"d","gate":"unsafe_docker","scope":"gate","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"approved"}]}'
+	_pending='{"version":"1.1","risks":[{"id":"d","gate":"unsafe_docker","scope":"gate","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2999-12-31","status":"pending"}]}'
+	_expired='{"version":"1.1","risks":[{"id":"d","gate":"unsafe_docker","scope":"gate","owner":"plat","severity":"medium","reason":"hygiene","expires_at":"2000-01-01","status":"approved"}]}'
+	_secret='{"version":"1.1","risks":[{"id":"s","gate":"secrets","scope":"gate","owner":"plat","severity":"high","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
 
-	run_suppression_case "baseline + unsafe_docker=1 + no accepted risk -> fail"        baseline 1 "$_ad" '{"version":"1.0","risks":[]}'
-	run_suppression_case "baseline + unsafe_docker=1 + pending risk -> fail"            baseline 1 "$_ad" "$_pending"
-	run_suppression_case "baseline + unsafe_docker=1 + expired approved risk -> fail"   baseline 1 "$_ad" "$_expired"
-	run_suppression_case "baseline + unsafe_docker=1 + valid approved risk -> pass"     baseline 0 "$_ad" "$_valid"
-	run_suppression_case "baseline + secrets=1 + approved risk for secrets -> fail"     baseline 1 '.summary.secrets = 1' "$_secret"
+	run_suppression_case "baseline + unsafe_docker=1 + no accepted risk -> fail"             baseline 1 "$_ad" '{"version":"1.1","risks":[]}'
+	run_suppression_case "baseline + unsafe_docker=1 + pending risk -> fail"                 baseline 1 "$_ad" "$_pending"
+	run_suppression_case "baseline + unsafe_docker=1 + expired approved risk -> fail"        baseline 1 "$_ad" "$_expired"
+	run_suppression_case "baseline + unsafe_docker=1 + valid scope:gate risk -> pass"        baseline 0 "$_ad" "$_valid"
+	run_suppression_case "baseline + secrets=1 + approved scope:gate risk for secrets -> fail" baseline 1 '.summary.secrets = 1' "$_secret"
 
 	if [ "$SUP_FAILS" -ne 0 ]; then
 		log_error "suppression: $SUP_FAILS case(s) failed"
 		return 1
 	fi
 	log_info "suppression: OK (only approved/unexpired suppress; secrets never)"
+}
+
+# --- finding-scoped accepted-risk (v0.1.8) ----------------------------------
+FS_FAILS=0
+# run_fs_case <desc> <expected-exit> <summary-unsafe_docker> <hadolint-json> <risks-json> [expected-accepted] [expected-unaccepted]
+run_fs_case() {
+	_d=$(mktemp -d); mkdir -p "$_d/raw"
+	sh scripts/resolve-gates.sh --mode baseline --output-dir "$_d" --format env >/dev/null 2>&1
+	jq ".summary.unsafe_docker = $3" templates/security-summary.example.json > "$_d/security-summary.json"
+	printf '%s' "$4" > "$_d/raw/hadolint.json"
+	printf '%s' "$5" > "$_d/accepted-risks.json"
+	if sh scripts/enforce-gates.sh \
+		--gates-env "$_d/sentinel-shield-gates.env" \
+		--summary "$_d/security-summary.json" \
+		--accepted-risks "$_d/accepted-risks.json" \
+		--hadolint-raw "$_d/raw/hadolint.json" \
+		--output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	_ok=1
+	[ "$_rc" -eq "$2" ] || _ok=0
+	if [ -n "${6:-}" ]; then
+		_a=$(jq -r '.accepted_risks.unsafe_docker.accepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)
+		_u=$(jq -r '.accepted_risks.unsafe_docker.unaccepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)
+		[ "$_a" = "$6" ] || _ok=0
+		[ "$_u" = "$7" ] || _ok=0
+	fi
+	if [ "$_ok" -eq 1 ]; then
+		log_info "PASS: $1 (exit $_rc${6:+, accepted=$6, unaccepted=$7})"
+	else
+		log_error "FAIL: $1 (got exit $_rc, expected $2${6:+; accepted=$(jq -r '.accepted_risks.unsafe_docker.accepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)/$6 unaccepted=$(jq -r '.accepted_risks.unsafe_docker.unaccepted' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)/$7})"
+		FS_FAILS=$((FS_FAILS + 1))
+	fi
+	rm -rf "$_d"
+}
+
+run_finding_scope() {
+	log_info "finding-scope: v0.1.8 unsafe_docker per-finding suppression"
+	# Hadolint fixtures
+	_h_df='[{"file":"Dockerfile","line":2,"code":"DL3018","level":"warning"}]'
+	_h_prod='[{"file":"Dockerfile.prod","line":3,"code":"DL3018","level":"warning"}]'
+	_h_other='[{"file":"docker/8.3/Dockerfile","line":4,"code":"DL3008","level":"warning"}]'
+	_h_mix='[{"file":"Dockerfile","line":2,"code":"DL3018","level":"warning"},{"file":"Dockerfile.prod","line":3,"code":"DL3018","level":"warning"},{"file":"Dockerfile.prod","line":5,"code":"DL3018","level":"warning"},{"file":"docker/8.3/Dockerfile","line":4,"code":"DL3008","level":"warning"},{"file":"docker/8.3/Dockerfile","line":6,"code":"DL3016","level":"warning"},{"file":"docker/8.3/Dockerfile","line":7,"code":"DL4006","level":"warning"},{"file":"docker/Dockerfile.node","line":2,"code":"DL3008","level":"warning"}]'
+	# Risk records
+	_r_fs='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"finding","rule_id":"DL3018","files":["Dockerfile","Dockerfile.prod"],"owner":"plat","severity":"medium","reason":"brittle","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_legacy='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","owner":"plat","severity":"medium","reason":"brittle","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_gate='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"gate","owner":"plat","severity":"medium","reason":"brittle","expires_at":"2999-12-31","status":"approved"}]}'
+	_r_pending='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"finding","rule_id":"DL3018","files":["Dockerfile","Dockerfile.prod"],"owner":"plat","severity":"medium","reason":"brittle","expires_at":"2999-12-31","status":"pending"}]}'
+	_r_expired='{"version":"1.1","risks":[{"id":"r1","gate":"unsafe_docker","scope":"finding","rule_id":"DL3018","files":["Dockerfile","Dockerfile.prod"],"owner":"plat","severity":"medium","reason":"brittle","expires_at":"2000-01-01","status":"approved"}]}'
+	_r_secret='{"version":"1.1","risks":[{"id":"s","gate":"secrets","scope":"finding","rule_id":"X","files":["a"],"owner":"plat","severity":"high","reason":"x","expires_at":"2999-12-31","status":"approved"}]}'
+
+	run_fs_case "DL3018 in Dockerfile + matching finding-scope risk -> accepted-risk"        0 1 "$_h_df"   "$_r_fs"     1 0
+	run_fs_case "DL3018 in Dockerfile.prod + matching finding-scope risk -> accepted-risk"   0 1 "$_h_prod" "$_r_fs"     1 0
+	run_fs_case "DL3008 in docker/8.3/Dockerfile + only DL3018 risk -> fail"                 1 1 "$_h_other" "$_r_fs"    0 1
+	run_fs_case "mixed: 3 DL3018 accepted, 4 others unaccepted -> fail"                      1 7 "$_h_mix"  "$_r_fs"     3 4
+	run_fs_case "legacy risk without scope -> does NOT suppress (fail)"                      1 1 "$_h_df"   "$_r_legacy" 0 1
+	run_fs_case "legacy risk scope:gate -> suppresses whole gate (accepted-risk)"           0 7 "$_h_mix"  "$_r_gate"   7 0
+	run_fs_case "pending finding-scope risk -> no suppression (fail)"                        1 1 "$_h_df"   "$_r_pending" 0 1
+	run_fs_case "expired finding-scope risk -> no suppression (fail)"                        1 1 "$_h_df"   "$_r_expired" 0 1
+
+	# secrets can never be suppressed — even by a (finding- or gate-scope) record.
+	_sd=$(mktemp -d); mkdir -p "$_sd/raw"
+	sh scripts/resolve-gates.sh --mode baseline --output-dir "$_sd" --format env >/dev/null 2>&1
+	jq '.summary.secrets = 1' templates/security-summary.example.json > "$_sd/security-summary.json"
+	printf '%s' "$_r_secret" > "$_sd/accepted-risks.json"
+	if sh scripts/enforce-gates.sh --gates-env "$_sd/sentinel-shield-gates.env" --summary "$_sd/security-summary.json" --accepted-risks "$_sd/accepted-risks.json" --output-dir "$_sd" --format json >/dev/null 2>&1; then _src=0; else _src=$?; fi
+	if [ "$_src" -eq 1 ]; then log_info "PASS: secrets=1 + accepted-risk for secrets -> fail (never suppressed) (exit $_src)"; else log_error "FAIL: secrets suppression (got exit $_src, expected 1)"; FS_FAILS=$((FS_FAILS + 1)); fi
+	rm -rf "$_sd"
+
+	if [ "$FS_FAILS" -ne 0 ]; then
+		log_error "finding-scope: $FS_FAILS case(s) failed"
+		return 1
+	fi
+	log_info "finding-scope: OK (per-finding rule_id+file matching; legacy unscoped & secrets never broad-suppress)"
 }
 
 # --- third-party supply-chain scan ------------------------------------------
@@ -410,6 +484,7 @@ case "$SUB" in
 	fallback) run_fallback ;;
 	negative) run_negative ;;
 	suppression) run_suppression ;;
+	finding-scope) run_finding_scope ;;
 	third-party) run_third_party ;;
 	hadolint) run_hadolint ;;
 	all)
@@ -418,15 +493,16 @@ case "$SUB" in
 		run_fallback
 		run_negative
 		run_suppression
+		run_finding_scope
 		run_third_party
 		run_hadolint
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|third-party|hadolint|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|third-party|hadolint|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|all)"
 		exit 2
 		;;
 esac

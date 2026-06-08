@@ -1,4 +1,4 @@
-# Accepted-Risk Suppression (v0.1.3+)
+# Accepted-Risk Suppression (v0.1.3+; finding-scoped v0.1.8+)
 
 Sentinel Shield can suppress a **narrow, explicit** set of gate failures when a risk
 has been formally accepted — owner-bound, with a reason and an expiry. This exists so
@@ -9,6 +9,71 @@ still ship under `baseline`, **without weakening enforcement or hiding the findi
 > Only an **approved, unexpired, owner-bound** JSON record suppresses, and only for a
 > **suppressible** gate. The raw finding count is preserved and the suppression is
 > reported.
+
+## Finding-scoped by default (v0.1.8)
+
+Records are **finding-scoped by default**: a record suppresses **only the findings it
+matches** — not the whole gate. Match on `rule_id` + `files`. This is implemented for
+`unsafe_docker` (matched against `reports/raw/hadolint.json`).
+
+```json
+{
+  "version": "1.1",
+  "risks": [
+    {
+      "id": "dockerfile-prod-apk-unpinned",
+      "gate": "unsafe_docker",
+      "scope": "finding",
+      "rule_id": "DL3018",
+      "files": ["Dockerfile", "Dockerfile.prod"],
+      "owner": "Bogdan Olteanu / platform-team",
+      "severity": "medium",
+      "reason": "Alpine APK pinning is brittle for the Chromium/headless-browser stack.",
+      "mitigation": "Base images digest-pinned; Trivy + SBOM enabled; browser-stack split planned.",
+      "expires_at": "2026-07-06",
+      "status": "approved"
+    }
+  ]
+}
+```
+
+This record suppresses **only** `DL3018` in `Dockerfile` and `Dockerfile.prod`. It does
+**not** suppress `DL3008`/`DL3016`/`DL4006` in `docker/8.3/Dockerfile`, nor `DL3008` in
+`docker/Dockerfile.node` — those remain **unaccepted** and fail the gate until fixed or
+covered by their own finding-scoped record. (This fixes the v0.1.7 governance bug where
+one gate-level DL3018 acceptance hid unrelated Docker findings.)
+
+| Field | Meaning |
+| --- | --- |
+| `scope` | `finding` (default) or `gate`. `gate` is **broad** (whole gate) and **discouraged**. |
+| `rule_id` | Single rule to match (e.g. `DL3018`). Omit to match any rule in `files`. |
+| `rule_ids` | Optional list form of `rule_id`. |
+| `files` | Paths to match (exact, path-suffix, or basename). Omit to match any file for the rule. |
+| `components`, `fingerprints` | **Reserved** in v0.1.8 (declared in schema, not yet enforced). |
+
+**Matching is conjunctive:** a finding is accepted iff (`rule_id` absent or equal) **and**
+(`files` absent or one matches). A finding-scope record with **neither** `rule_id` nor
+`files` is ambiguous and **does not suppress** (warned). Finding scope is implemented for
+`unsafe_docker` **only**; a finding-scope record on another gate warns and does not
+suppress.
+
+### Broad (`scope: gate`) — discouraged
+
+```json
+{ "gate": "unsafe_docker", "scope": "gate", "owner": "...", "reason": "...", "expires_at": "...", "status": "approved" }
+```
+
+`scope: gate` suppresses the **entire** gate (every finding). It is reported as **broad**
+in the enforcement output and should be avoided — prefer a finding-scoped record that
+names `rule_id` + `files`.
+
+### Backward compatibility / migration
+
+A legacy record with only `gate`/`owner`/`reason`/`status`/`expires_at` (no `scope`, no
+`rule_id`/`files`) is **ambiguous** under v0.1.8 and **does not suppress** — the enforcer
+warns and the gate is evaluated normally. To restore suppression, either add
+`scope: finding` + `rule_id`/`files` (preferred), or add explicit `scope: gate` for broad
+suppression. Bump the file `version` to `"1.1"`.
 
 ## The file
 
@@ -67,10 +132,16 @@ When a gate is enabled and its finding count is > 0:
   it does **not** fail, the **raw count is preserved (not zeroed)**, and it is
   reported. Overall result stays `pass` if nothing else failed.
 
+For a **finding-scoped** `unsafe_docker` record, the gate is `accepted-risk` **only when
+every** finding is matched; if any finding is unaccepted, the gate **fails** (and the
+report shows which findings were unaccepted). The summary count remains the total.
+
 This is transparent in both reports:
 
 - `reports/sentinel-shield-enforcement.json` → `accepted_risks` object
-  (`loaded`, `applied_gates`, `pending_ignored`, `expired_ignored`, `invalid_ignored`)
+  (`loaded`, `applied_gates`, `applied_broad_gates`, `applied_finding_scoped`,
+  `pending_ignored`, `expired_ignored`, `invalid_ignored`, `legacy_unscoped_ignored`, and
+  an `unsafe_docker` sub-object with `scope`/`total`/`accepted`/`unaccepted`/`findings[]`)
   and the gate's `result: "accepted-risk"` in `evaluated_gates`.
 - `reports/sentinel-shield-enforcement.md` → an **Accepted risks** section listing
   applied gates + the risk id, plus pending/expired/invalid counts.

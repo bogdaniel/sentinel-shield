@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/accepted-risks.schema.json",
   "title": "Sentinel Shield accepted risks",
-  "description": "Explicit, owner-bound, expiring records that may suppress a SUPPRESSIBLE gate when status is approved and the record is unexpired. Consumed by scripts/enforce-gates.sh (v0.1.3+). Never suppresses secrets/expired_exceptions/missing_release_evidence.",
+  "description": "Explicit, owner-bound, expiring records that may suppress a SUPPRESSIBLE gate when status is approved and the record is unexpired. Consumed by scripts/enforce-gates.sh (v0.1.3+). v0.1.8+: records are FINDING-SCOPED by default (match rule_id+files; implemented for unsafe_docker against reports/raw/hadolint.json); broad gate-wide suppression requires explicit \"scope\":\"gate\" and is discouraged. Raw counts are never reduced. Never suppresses secrets/expired_exceptions/missing_release_evidence.",
   "type": "object",
   "required": ["version", "risks"],
   "additionalProperties": true,
@@ -30,6 +30,35 @@
               "unsafe_github_actions",
               "missing_sbom"
             ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["finding", "gate"],
+            "description": "v0.1.8+. 'finding' (DEFAULT): suppress only findings matching rule_id/files (implemented for unsafe_docker). 'gate': BROAD — suppress the whole gate (discouraged; reported as broad). A record with neither scope nor rule_id/files is ambiguous and does NOT suppress."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "v0.1.8+. Single tool rule to match for finding scope (e.g. Hadolint 'DL3018'). Omit to match any rule within the listed files."
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "v0.1.8+. Optional list form of rule_id (a finding matches if its code is in this list)."
+          },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "v0.1.8+. File paths the finding-scope record applies to (e.g. 'Dockerfile', 'Dockerfile.prod', 'docker/8.3/Dockerfile'). Matched by exact path, path suffix, or basename. Omit to match any file for the given rule."
+          },
+          "components": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "v0.1.8 RESERVED (not yet enforced). Component identifiers for non-Docker finding scoping."
+          },
+          "fingerprints": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "v0.1.8 RESERVED (not yet enforced). Stable per-finding fingerprints for exact matching."
           },
           "owner": { "type": "string", "minLength": 1 },
           "severity": {

@@ -88,13 +88,19 @@ maps each resolved `SENTINEL_SHIELD_FAIL_ON_*` flag onto its summary key:
 | 1 | one or more active gates fail |
 | 2 | configuration / input / parsing error (missing summary key, invalid JSON, missing `jq`, suspicious gates env line) |
 
-**Accepted-risk suppression (v0.1.3+).** An APPROVED, unexpired, owner-bound record
-in `.sentinel-shield/accepted-risks.json` may suppress a **suppressible** gate
-(`unsafe_docker`, `medium_vulnerabilities`): the gate is reported as `accepted-risk`
-(raw count preserved, not zeroed) and does not fail. `pending`/expired/invalid records
-never suppress; `secrets`, `expired_exceptions`, and `missing_release_evidence` are
-**never** suppressible. Baseline adoption still requires the human `status: approved`.
-See [`docs/accepted-risk-suppression.md`](docs/accepted-risk-suppression.md).
+**Accepted-risk suppression (v0.1.3+; finding-scoped v0.1.8).** An APPROVED, unexpired,
+owner-bound record in `.sentinel-shield/accepted-risks.json` may suppress a
+**suppressible** gate (`unsafe_docker`, `medium_vulnerabilities`): the gate is reported as
+`accepted-risk` (raw count preserved, not zeroed) and does not fail. **v0.1.8:** records
+are **finding-scoped by default** — for `unsafe_docker` a record matches `rule_id` +
+`files` against `reports/raw/hadolint.json`, and the gate is `accepted-risk` only when
+**every** finding is matched; **unaccepted findings still fail** (shown in the report).
+Broad gate-wide suppression requires explicit `scope: gate` (reported as broad,
+discouraged); a legacy record with no scope/rule_id/files no longer suppresses.
+`pending`/expired/invalid records never suppress; `secrets`, `expired_exceptions`, and
+`missing_release_evidence` are **never** suppressible. Baseline adoption still requires
+the human `status: approved`. See
+[`docs/accepted-risk-suppression.md`](docs/accepted-risk-suppression.md).
 
 **Evidence requirements.** `missing_sbom` (strict/regulated) expects
 `evidence.sbom.present == true` (path e.g. `reports/sbom.spdx.json`);

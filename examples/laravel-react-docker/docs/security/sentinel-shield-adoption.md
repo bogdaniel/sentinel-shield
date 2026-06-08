@@ -328,9 +328,20 @@ temporarily, a Markdown draft alone does **not** suppress the gate — create an
 3. The release gate reads it automatically (`enforce-gates.sh` default path) and
    marks the gate **accepted-risk** (count preserved, reported, does not fail).
 
+**Finding-scoped by default (v0.1.8+).** Prefer a **finding-scoped** record — set
+`scope: finding` (default) + `rule_id` + `files` so it suppresses **only** those
+findings. For Docker, that usually means `rule_id` (e.g. `DL3018`) + the exact `files`
+(`Dockerfile`, `Dockerfile.prod`). This is matched against `reports/raw/hadolint.json`,
+so a DL3018 acceptance for `Dockerfile`/`Dockerfile.prod` will **not** hide unrelated
+findings (e.g. `DL3008` in `docker/8.3/Dockerfile`) — those stay visible and fail until
+fixed or separately accepted. Broad gate-wide suppression requires explicit
+`scope: gate` and is **discouraged**; a legacy record with no scope/rule_id/files no
+longer suppresses (it warns). Bump the file `version` to `"1.1"`.
+
 `secrets`, `expired_exceptions`, and `missing_release_evidence` are **never**
-suppressible; `pending`/expired records do not suppress. Requires Sentinel Shield
-**≥ v0.1.3**. See the upstream `docs/accepted-risk-suppression.md`.
+suppressible; `pending`/expired records do not suppress. Finding-scope requires Sentinel
+Shield **≥ v0.1.8** (suppression itself ≥ v0.1.3). See the upstream
+`docs/accepted-risk-suppression.md`.
 
 ## Known missing adapters / tools
 

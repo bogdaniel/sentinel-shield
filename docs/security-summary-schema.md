@@ -86,8 +86,11 @@ Disabled gates (flag `false`) are recorded as `skipped` and never fail the build
 A gate that would fail may instead be marked **`accepted-risk`** (v0.1.3+) when an
 approved, unexpired accepted-risk record covers it (only `unsafe_docker` /
 `medium_vulnerabilities`; never `secrets`/`expired_exceptions`/
-`missing_release_evidence`). The raw count is preserved. See
-[`accepted-risk-suppression.md`](accepted-risk-suppression.md).
+`missing_release_evidence`). The raw count is preserved. **v0.1.8:** records are
+**finding-scoped by default** — for `unsafe_docker` a record matches `rule_id` + `files`
+(read from `reports/raw/hadolint.json`) and the gate is `accepted-risk` only when **every**
+finding is matched; unaccepted findings still fail. Broad gate-wide suppression needs
+explicit `scope: gate`. See [`accepted-risk-suppression.md`](accepted-risk-suppression.md).
 
 ---
 

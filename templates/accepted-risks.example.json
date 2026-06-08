@@ -1,14 +1,32 @@
 {
-  "version": "1.0",
-  "//": "Copy to .sentinel-shield/accepted-risks.json. Only APPROVED, unexpired, owner-bound records suppress, and only for suppressible gates (unsafe_docker, medium_vulnerabilities). secrets/expired_exceptions/missing_release_evidence are NEVER suppressed. Suppression is reported, and the raw count is preserved (not zeroed). A Markdown draft alone does NOT suppress anything.",
+  "version": "1.1",
+  "//": "Copy to .sentinel-shield/accepted-risks.json. Only APPROVED, unexpired, owner-bound records suppress, and only for suppressible gates (unsafe_docker, medium_vulnerabilities). secrets/expired_exceptions/missing_release_evidence are NEVER suppressed. Suppression is reported and the raw count is preserved (not zeroed). A Markdown draft alone does NOT suppress anything.",
+  "//scope": "v0.1.8+: records are FINDING-SCOPED by default — set rule_id + files to suppress only matching findings (implemented for unsafe_docker against reports/raw/hadolint.json). Broad gate-wide suppression requires explicit \"scope\":\"gate\" and is discouraged. A record with neither scope nor rule_id/files is ambiguous and does NOT suppress.",
   "risks": [
     {
       "id": "dockerfile-apk-unpinned",
       "gate": "unsafe_docker",
+      "scope": "finding",
+      "rule_id": "DL3018",
+      "files": [
+        "Dockerfile",
+        "Dockerfile.prod"
+      ],
       "owner": "platform-team",
       "severity": "medium",
-      "reason": "Alpine package pinning is brittle for the Chromium image; reviewed as a hygiene risk, not an exploitable CVE.",
-      "mitigation": "Base image is pinned; image is scanned by Trivy; revisit package pinning later.",
+      "reason": "Alpine apk pinning is brittle for the Chromium/headless-browser stack; reviewed as a hygiene risk, not an exploitable CVE.",
+      "mitigation": "Base images are digest-pinned; images are scanned by Trivy; browser-stack split planned. Revisit before expiry.",
+      "expires_at": "2026-07-06",
+      "status": "pending"
+    },
+    {
+      "id": "EXAMPLE-broad-gate-discouraged",
+      "gate": "medium_vulnerabilities",
+      "scope": "gate",
+      "owner": "platform-team",
+      "severity": "medium",
+      "reason": "EXAMPLE ONLY of a BROAD (scope:gate) suppression — discouraged. Suppresses the WHOLE medium_vulnerabilities gate. Prefer finding-scoped records. Status 'pending' so this example never suppresses.",
+      "mitigation": "Replace with finding-scoped records once per-finding identifiers are available.",
       "expires_at": "2026-07-06",
       "status": "pending"
     }

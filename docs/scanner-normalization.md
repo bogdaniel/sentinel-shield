@@ -223,7 +223,11 @@ in baseline+, so it cannot be used to spoof a pass.
 Normalization never zeroes a finding. If a finding is intentionally accepted, that is
 handled at **enforcement** time (v0.1.3+) via an approved accepted-risk record, which
 marks the gate `accepted-risk` while **preserving** the raw count in the summary —
-the count is never reduced in `security-summary.json`. See
+the count is never reduced in `security-summary.json`. **v0.1.8:** acceptance is
+**finding-scoped** by default — for `unsafe_docker` the enforcer reads the raw
+`reports/raw/hadolint.json` and accepts only findings matching a record's `rule_id` +
+`files`; unaccepted findings still fail the gate. The collector and summary are
+unchanged (still the total). See
 [`accepted-risk-suppression.md`](accepted-risk-suppression.md).
 
 ### Fixtures and the self-test
