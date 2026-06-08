@@ -1,0 +1,41 @@
+# Sentinel Shield — SCHEDULED / NIGHTLY (v0.1.12). Heavier deep scans; report-only by default.
+# Trivy image, Grype SBOM, OpenSSF Scorecard, TruffleHog deep, Dockle. Optional ZAP baseline /
+# Nuclei on staging ONLY when DAST target+allowlist are configured (see sentinel-shield-dast.yml).
+name: sentinel-shield-scheduled
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+      - name: Deep scans (no-op if binary absent; never fake)
+        env:
+          SENTINEL_SHIELD_IMAGE: ${{ vars.SENTINEL_SHIELD_IMAGE }}
+        run: |
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/trufflehog.sh reports/raw/trufflehog.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/scorecard.sh reports/raw/scorecard.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
+          [ -n "${SENTINEL_SHIELD_IMAGE:-}" ] && sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dockle.sh reports/raw/dockle.json || true
+      - name: Build summary (report-only; nightly does not block merges)
+        run: |
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+      - uses: actions/upload-artifact@v4
+        with: { name: sentinel-shield-scheduled, path: reports/**, retention-days: 30, if-no-files-found: warn }

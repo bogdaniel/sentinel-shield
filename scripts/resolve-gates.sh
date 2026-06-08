@@ -19,7 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 
 # Canonical fail_on keys, in stable output order.
-FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
+FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
 
 VALID_MODES="report-only baseline strict regulated"
 
@@ -213,22 +213,35 @@ default_for() {
 			case "$2" in
 				# v1: third-party supply-chain findings are visible but non-blocking
 				# in baseline (and report-only) — they need triage tuning first.
+				# v0.1.12: in baseline, php_syntax_errors + dependency_policy_violations DO
+				# block (fall through to *); style/IaC/container/DAST/repo-health/AI stay
+				# visible but non-blocking (listed false below), as do third-party signals.
 				medium_vulnerabilities | missing_sbom | missing_release_evidence \
 				| third_party_suspicious_code | third_party_install_script_risk \
-				| third_party_obfuscation | third_party_network_behavior) printf 'false' ;;
+				| third_party_obfuscation | third_party_network_behavior \
+				| style_violations | iac_violations | dast_findings \
+				| container_image_violations | repository_health_warnings | ai_review_findings) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;
 		strict)
 			case "$2" in
-				# strict blocks only the higher-confidence third-party signals
-				# (install-script execution, outbound network behavior); generic
-				# suspicious-code and obfuscation-only signals stay visible/non-blocking.
-				missing_release_evidence | third_party_suspicious_code | third_party_obfuscation) printf 'false' ;;
+				# strict blocks higher-confidence third-party signals + (v0.1.12) style,
+				# IaC, and container-image checks (fall through to *). DAST + repo-health
+				# remain regulated-only; AI review is never gating by default.
+				missing_release_evidence | third_party_suspicious_code | third_party_obfuscation \
+				| dast_findings | repository_health_warnings | ai_review_findings) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;
-		regulated) printf 'true' ;;
+		regulated)
+			case "$2" in
+				# v0.1.12: AI review findings stay NON-gating even in regulated unless the
+				# profile explicitly sets gates.fail_on.ai_review_findings: true.
+				ai_review_findings) printf 'false' ;;
+				*) printf 'true' ;;
+			esac
+			;;
 	esac
 }
 

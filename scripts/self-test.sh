@@ -715,6 +715,82 @@ run_install_sync() {
 	log_info "install-sync: OK (dry-run safe; profile mode; managed vs project-local; accepted-risks never touched)"
 }
 
+# --- enterprise scanner matrix (v0.1.12) ------------------------------------
+SM_FAILS=0
+sm_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; SM_FAILS=$((SM_FAILS + 1)); fi; }
+
+run_scanner_matrix() {
+	log_info "scanner-matrix: collectors, resolver/enforcer gates, DAST safety, AI non-gating"
+	_d=$(mktemp -d); _r="$_d/raw"; mkdir -p "$_r"
+	C="$ROOT/scripts/collectors"
+
+	# --- collector parsing (fixtures -> expected key counts) ---
+	echo '{"summary":{"failed":2}}' > "$_r/checkov.json"
+	sm_check "checkov -> iac_violations" "$(sh "$C/checkov.sh" --input "$_r/checkov.json" | jq '.summary.iac_violations')" "2"
+	echo '{"matches":[{"vulnerability":{"severity":"Critical"}},{"vulnerability":{"severity":"Medium"}}]}' > "$_r/grype.json"
+	sm_check "grype -> critical" "$(sh "$C/grype.sh" --input "$_r/grype.json" | jq '.summary.critical_vulnerabilities')" "1"
+	echo '{"details":[{"level":"FATAL"},{"level":"INFO"}]}' > "$_r/dockle.json"
+	sm_check "dockle -> container_image_violations" "$(sh "$C/dockle.sh" --input "$_r/dockle.json" | jq '.summary.container_image_violations')" "1"
+	echo '[{"Verified":true},{"Verified":false}]' > "$_r/trufflehog.json"
+	sm_check "trufflehog -> secrets (verified only)" "$(sh "$C/trufflehog.sh" --input "$_r/trufflehog.json" | jq '.summary.secrets')" "1"
+	echo '{"errors":3}' > "$_r/php-syntax.json"
+	sm_check "php-syntax -> php_syntax_errors" "$(sh "$C/php-syntax.sh" --input "$_r/php-syntax.json" | jq '.summary.php_syntax_errors')" "3"
+	echo '{"site":[{"alerts":[{"riskcode":"3"},{"riskcode":"1"}]}]}' > "$_r/zap.json"
+	sm_check "zap -> dast_findings (riskcode>=2)" "$(sh "$C/zap.sh" --input "$_r/zap.json" | jq '.summary.dast_findings')" "1"
+	echo '{"checks":[{"name":"a","score":1},{"name":"b","score":9}]}' > "$_r/scorecard.json"
+	sm_check "scorecard -> repository_health_warnings" "$(sh "$C/scorecard.sh" --input "$_r/scorecard.json" | jq '.summary.repository_health_warnings')" "1"
+	echo '{"findings":[{"x":1},{"y":2}]}' > "$_r/ai-security-review.json"
+	sm_check "ai-review -> ai_review_findings, status warn" "$(sh "$C/ai-security-review.sh" --input "$_r/ai-security-review.json" | jq -r '"\(.summary.ai_review_findings):\(.status)"')" "2:warn"
+
+	# --- missing report -> unavailable, exit 0 ---
+	_rc=0; _o=$(sh "$C/grype.sh" --input "$_r/nope.json") || _rc=$?
+	sm_check "missing report exit 0" "$_rc" "0"
+	sm_check "missing report -> unavailable" "$(printf '%s' "$_o" | jq -r .status)" "unavailable"
+
+	# --- invalid JSON -> exit 2 ---
+	echo 'NOT JSON' > "$_r/bad.json"
+	_rc=0; sh "$C/checkov.sh" --input "$_r/bad.json" >/dev/null 2>&1 || _rc=$?; sm_check "invalid JSON exit 2" "$_rc" "2"
+
+	# --- resolver: new flags by mode (read each resolved file directly) ---
+	for _m in report-only baseline strict regulated; do
+		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format json --output-dir "$_d" >/dev/null 2>&1
+		cp "$_d/sentinel-shield-gates.json" "$_d/gates-$_m.json"
+	done
+	rg_flag() { jq -r ".fail_on.$2" "$_d/gates-$1.json"; }
+	sm_check "resolver report-only php_syntax=false" "$(rg_flag report-only php_syntax_errors)" "false"
+	sm_check "resolver baseline php_syntax=true"     "$(rg_flag baseline php_syntax_errors)"    "true"
+	sm_check "resolver baseline iac=false"           "$(rg_flag baseline iac_violations)"       "false"
+	sm_check "resolver strict iac=true"              "$(rg_flag strict iac_violations)"         "true"
+	sm_check "resolver strict dast=false"            "$(rg_flag strict dast_findings)"          "false"
+	sm_check "resolver regulated dast=true"          "$(rg_flag regulated dast_findings)"       "true"
+	sm_check "resolver regulated AI non-gating"      "$(rg_flag regulated ai_review_findings)"  "false"
+
+	# --- enforcer: new gates across modes ---
+	mkdir -p "$_d/eraw"; echo '{"errors":2}' > "$_d/eraw/php-syntax.json"; echo '{"summary":{"failed":1}}' > "$_d/eraw/checkov.json"; echo '{"findings":[{"x":1}]}' > "$_d/eraw/ai-security-review.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/eraw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	for _m in baseline strict regulated; do
+		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format env --output-dir "$_d" >/dev/null 2>&1
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1 || true
+		_E="$_d/sentinel-shield-enforcement.json"
+		eval "_e_$(echo "$_m" | tr '-' '_')=\"$(jq -r '[.evaluated_gates[]|select(.key=="iac_violations")][0].result' "$_E")|$(jq -r '[.evaluated_gates[]|select(.key=="ai_review_findings")][0].result' "$_E")\""
+	done
+	sm_check "enforcer baseline iac skipped"   "$(echo "$_e_baseline"  | cut -d'|' -f1)" "skipped"
+	sm_check "enforcer strict iac fail"        "$(echo "$_e_strict"    | cut -d'|' -f1)" "fail"
+	sm_check "enforcer AI skipped (regulated)" "$(echo "$_e_regulated" | cut -d'|' -f2)" "skipped"
+
+	# --- DAST safety ---
+	DG="$ROOT/scripts/runners"
+	_rc=0; ( unset SENTINEL_SHIELD_DAST_TARGET_URL; sh "$DG/zap-baseline.sh" "$_d/z.json" >/dev/null 2>&1 ) || _rc=$?; sm_check "DAST no target -> skip exit 0" "$_rc" "0"
+	_rc=0; ( SENTINEL_SHIELD_DAST_TARGET_URL=https://evil.test SENTINEL_SHIELD_DAST_ALLOWED_HOST=staging.app sh "$DG/nuclei.sh" "$_d/n.json" >/dev/null 2>&1 ) || _rc=$?; sm_check "DAST host mismatch -> fail closed exit 3" "$_rc" "3"
+	_rc=0; ( SENTINEL_SHIELD_DAST_TARGET_URL=https://staging.app/x SENTINEL_SHIELD_DAST_ALLOWED_HOST=staging.app sh "$DG/zap-baseline.sh" "$_d/z.json" >/dev/null 2>&1 ) || _rc=$?; sm_check "DAST allowlisted host -> exit 0" "$_rc" "0"
+
+	rm -rf "$_d"
+	if [ "$SM_FAILS" -ne 0 ]; then log_error "scanner-matrix: $SM_FAILS case(s) failed"; return 1; fi
+	log_info "scanner-matrix: OK (collectors, gates by mode, DAST fail-closed, AI non-gating)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -728,6 +804,7 @@ case "$SUB" in
 	phpstan-runner) run_phpstan_runner ;;
 	ud-multisource) run_ud_multisource ;;
 	install-sync) run_install_sync ;;
+	scanner-matrix) run_scanner_matrix ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -741,13 +818,14 @@ case "$SUB" in
 		run_phpstan_runner
 		run_ud_multisource
 		run_install_sync
+		run_scanner_matrix
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|all)"
 		exit 2
 		;;
 esac

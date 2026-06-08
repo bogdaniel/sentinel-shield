@@ -44,6 +44,16 @@ INT_SUMMARY_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_v
 # strict/regulated (see resolve-gates.sh).
 THIRD_PARTY_KEYS="third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
 
+# Enterprise scanner count gates (v0.1.12). Evaluated like count gates; optional (an
+# older summary that omits them reads as 0, not a config error). Mode defaults gate
+# these (see resolve-gates.sh): baseline blocks php_syntax_errors +
+# dependency_policy_violations; strict adds style/iac/container; regulated adds
+# dast/repository_health; ai_review_findings is non-gating unless explicitly enabled.
+# NOTE: finding-scoped accepted-risk remains implemented ONLY for unsafe_docker; these
+# keys support broad gate:<key> suppression only (reported as broad). secrets is never
+# suppressible and is unaffected.
+ENTERPRISE_COUNT_KEYS="php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
+
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
 SUMMARY="reports/security-summary.json"
@@ -479,6 +489,11 @@ eval_expired_gate
 # report-only/baseline). Evaluated like count gates; absent keys read as 0.
 for _tpk in $THIRD_PARTY_KEYS; do
 	eval_count_gate "$_tpk"
+done
+
+# Enterprise scanner count gates (v0.1.12). Evaluated like count gates; optional.
+for _eck in $ENTERPRISE_COUNT_KEYS; do
+	eval_count_gate "$_eck"
 done
 
 RESULT="pass"

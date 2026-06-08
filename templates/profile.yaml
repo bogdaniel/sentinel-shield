@@ -50,6 +50,19 @@ gates:
     third_party_install_script_risk: false
     third_party_obfuscation: false
     third_party_network_behavior: false
+    # Enterprise scanner gates (v0.1.12). Defaults by mode (see docs/enterprise-scanner-matrix.md):
+    #   baseline blocks php_syntax_errors + dependency_policy_violations;
+    #   strict adds style_violations + iac_violations + container_image_violations;
+    #   regulated adds dast_findings + repository_health_warnings.
+    #   ai_review_findings is NON-GATING in ALL modes unless you set it true here.
+    php_syntax_errors: true
+    style_violations: false
+    dependency_policy_violations: true
+    iac_violations: false
+    container_image_violations: false
+    dast_findings: false              # DAST is manual/controlled (docs/dast-policy.md)
+    repository_health_warnings: false
+    ai_review_findings: false         # assistive only (docs/ai-review-policy.md) — keep false
 
 # Third-party suspicious-code scan configuration (v0.1.5). This is a SEPARATE Semgrep
 # channel over dependency/vendored code — it does NOT change the normal application

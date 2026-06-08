@@ -1,0 +1,33 @@
+# Sentinel Shield — AI REVIEW (v0.1.12). ASSISTIVE, NON-DETERMINISTIC, NON-GATING by default.
+# Produces ai-security-review.json / kuzushi.json artifacts for human triage. This workflow is
+# NOT a release gate unless the project profile explicitly sets fail_on.ai_review_findings: true.
+name: sentinel-shield-ai-review
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: read
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  ai-review:
+    # Only on explicit opt-in (label) to avoid running on every PR.
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-review'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: AI security review (assistive; writes reports/raw/ai-security-review.json)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p reports/raw
+          echo "::notice::AI review is ASSISTIVE and NON-GATING by default. See docs/ai-review-policy.md."
+          # Run Claude Code Security Review / Kuzushi here; emit normalized JSON:
+          #   {"findings":[{"title":...,"severity":...,"file":...}]} -> reports/raw/ai-security-review.json
+          [ -f reports/raw/ai-security-review.json ] || echo '{"findings":[],"note":"no AI tool wired; non-gating"}' > reports/raw/ai-security-review.json
+      - uses: actions/upload-artifact@v4
+        with: { name: sentinel-shield-ai-review, path: reports/**, retention-days: 30, if-no-files-found: warn }

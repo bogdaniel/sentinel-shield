@@ -1,0 +1,50 @@
+# Sentinel Shield — MANUAL / CONTROLLED DAST (v0.1.12). NOT a PR check. workflow_dispatch only.
+# OWASP ZAP baseline/full + Nuclei. FAIL CLOSED without an allowlisted target. NEVER scans an
+# arbitrary target. Requires a completed templates/dast-scan-approval.md + nuclei-target-allowlist.md.
+name: sentinel-shield-dast
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Target URL (must match the allowlisted host)"
+        required: true
+      allowed_host:
+        description: "Allowlisted host (exact)"
+        required: true
+      scan:
+        description: "zap-baseline | zap-full | nuclei"
+        required: true
+        default: zap-baseline
+permissions:
+  contents: read
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    env:
+      SENTINEL_SHIELD_DAST_TARGET_URL: ${{ inputs.target_url }}
+      SENTINEL_SHIELD_DAST_ALLOWED_HOST: ${{ inputs.allowed_host }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+      - name: Run controlled DAST (guard fails closed on host mismatch)
+        run: |
+          mkdir -p reports/raw
+          case "${{ inputs.scan }}" in
+            zap-baseline) sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/zap-baseline.sh reports/raw/zap.json ;;
+            zap-full)     sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/zap-full.sh reports/raw/zap-full.json ;;
+            nuclei)       sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/nuclei.sh reports/raw/nuclei.json ;;
+            *) echo "unknown scan"; exit 2 ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with: { name: sentinel-shield-dast, path: reports/**, retention-days: 30, if-no-files-found: warn }

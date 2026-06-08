@@ -212,3 +212,10 @@ the managed `.github/workflows/sentinel-shield.yml`, and security doc templates.
 creates/overwrites `accepted-risks.json` or `phpstan-baseline.neon`. Full model +
 manifest format: [`profile-driven-adoption.md`](profile-driven-adoption.md). Supported
 profiles in v0.1.11: laravel, react, node, docker, laravel-react-docker.
+
+## v0.1.12 enterprise scanner matrix
+
+New gated summary keys (style_violations, php_syntax_errors, dependency_policy_violations,
+iac_violations, dast_findings, container_image_violations, repository_health_warnings,
+ai_review_findings) with conservative mode defaults; DAST manual + fail-closed; AI review
+assistive + non-gating by default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md).

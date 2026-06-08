@@ -2,21 +2,87 @@
   "$schema": "../profile.manifest.schema.json",
   "profile": "laravel-react-docker",
   "description": "Thin-consumer baseline for a Laravel + React + Docker project. Installs project config, the Sentinel Shield CI workflow, .semgrepignore, and governance doc templates. Project-local risk decisions (accepted-risks.json, phpstan-baseline.neon) are NEVER created or overwritten.",
-  "stacks": ["laravel", "react", "node", "docker"],
+  "stacks": [
+    "laravel",
+    "react",
+    "node",
+    "docker"
+  ],
   "files": [
-    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
-    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
-    { "source": "templates/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" }
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/accepted-risks.example.json",
+      "target": ".sentinel-shield/accepted-risks.example.json",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/.semgrepignore",
+      "target": ".semgrepignore",
+      "mode": "create-if-missing"
+    }
   ],
   "workflows": [
-    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+    {
+      "source": "templates/workflows/sentinel-shield.yml",
+      "target": ".github/workflows/sentinel-shield.yml",
+      "mode": "overwrite-if-force"
+    },
+    {
+      "source": "templates/workflows/sentinel-shield-pr-fast.yml",
+      "target": ".github/workflows/sentinel-shield-pr-fast.yml",
+      "mode": "manual"
+    },
+    {
+      "source": "templates/workflows/sentinel-shield-main.yml",
+      "target": ".github/workflows/sentinel-shield-main.yml",
+      "mode": "manual"
+    },
+    {
+      "source": "templates/workflows/sentinel-shield-scheduled.yml",
+      "target": ".github/workflows/sentinel-shield-scheduled.yml",
+      "mode": "manual"
+    },
+    {
+      "source": "templates/workflows/sentinel-shield-dast.yml",
+      "target": ".github/workflows/sentinel-shield-dast.yml",
+      "mode": "manual"
+    },
+    {
+      "source": "templates/workflows/sentinel-shield-ai-review.yml",
+      "target": ".github/workflows/sentinel-shield-ai-review.yml",
+      "mode": "manual"
+    }
   ],
   "docs": [
-    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" },
-    { "source": "templates/sentinel-shield-rollout-status.md", "target": "docs/security/sentinel-shield-rollout-status.md", "mode": "create-if-missing" },
-    { "source": "templates/security-triage-report.md", "target": "docs/security/sentinel-shield-triage.md", "mode": "create-if-missing" },
-    { "source": "templates/pinned-ci-references.md", "target": "docs/security/pinned-ci-references.md", "mode": "create-if-missing" },
-    { "source": "templates/third-party-install-script-review.md", "target": "docs/security/third-party-install-script-review.md", "mode": "create-if-missing" }
+    {
+      "source": "templates/security-debt-register.md",
+      "target": "docs/security/security-debt-register.md",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/sentinel-shield-rollout-status.md",
+      "target": "docs/security/sentinel-shield-rollout-status.md",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/security-triage-report.md",
+      "target": "docs/security/sentinel-shield-triage.md",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/pinned-ci-references.md",
+      "target": "docs/security/pinned-ci-references.md",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/third-party-install-script-review.md",
+      "target": "docs/security/third-party-install-script-review.md",
+      "mode": "create-if-missing"
+    }
   ],
   "never_touch": [
     ".sentinel-shield/accepted-risks.json",
@@ -36,7 +102,29 @@
     "scripts/select-security-summary.sh"
   ],
   "recommended_raw_reports": [
-    "gitleaks.json", "semgrep.json", "trivy.json", "composer-audit.json", "npm-audit.json",
-    "phpstan.json", "tests.json", "hadolint.json", "docker-base-digest.json", "github-actions-pins.json"
+    "gitleaks.json",
+    "semgrep.json",
+    "trivy.json",
+    "composer-audit.json",
+    "npm-audit.json",
+    "phpstan.json",
+    "tests.json",
+    "hadolint.json",
+    "docker-base-digest.json",
+    "github-actions-pins.json",
+    "codeql.json",
+    "osv-scanner.json",
+    "grype.json",
+    "dependency-check.json",
+    "checkov.json",
+    "dockle.json",
+    "scorecard.json",
+    "trufflehog.json",
+    "php-syntax.json",
+    "php-style.json",
+    "psalm.json",
+    "zap.json",
+    "nuclei.json",
+    "ai-security-review.json"
   ]
 }

@@ -1,0 +1,46 @@
+# Sentinel Shield — MAIN BRANCH GATE (v0.1.12). Heavier but deterministic; trusted branch.
+# CodeQL, OSV-Scanner, Trivy fs, OWASP Dependency-Check, Grype, Deptrac, architecture tests,
+# Syft SBOM, and IaC (Checkov/Conftest/Terrascan) when IaC present.
+name: sentinel-shield-main
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write   # CodeQL upload
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  main-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+      - name: Dependency + container scanners (audit wrappers; no-op if binary absent)
+        run: |
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/osv-scanner.sh reports/raw/osv-scanner.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/checkov.sh reports/raw/checkov.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/conftest.sh reports/raw/conftest.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/terrascan.sh reports/raw/terrascan.json || true
+          # CodeQL via github/codeql-action; export SARIF -> reports/raw/codeql.json
+          # Syft SBOM -> reports/sbom.spdx.json ; Deptrac -> reports/raw/deptrac.json
+      - name: Build summary + enforce
+        run: |
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh --profile .sentinel-shield/profile.yaml --output-dir reports --format all
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
+      - uses: actions/upload-artifact@v4
+        with: { name: sentinel-shield-main, path: reports/**, retention-days: 30, if-no-files-found: warn }

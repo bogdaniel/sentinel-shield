@@ -102,7 +102,15 @@ ss_emit_collector() {
 				test_failures: 0,
 				unsafe_docker: 0,
 				unsafe_github_actions: 0,
-				expired_exceptions: 0
+				expired_exceptions: 0,
+				style_violations: 0,
+				php_syntax_errors: 0,
+				dependency_policy_violations: 0,
+				iac_violations: 0,
+				dast_findings: 0,
+				container_image_violations: 0,
+				repository_health_warnings: 0,
+				ai_review_findings: 0
 			} + $ov),
 			tool_report: $report
 		}'

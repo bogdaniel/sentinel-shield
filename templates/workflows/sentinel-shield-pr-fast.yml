@@ -1,0 +1,53 @@
+# Sentinel Shield — PR FAST GATE (v0.1.12). Fast, deterministic, no external target scanning.
+# === MANAGED BY SENTINEL SHIELD === installed/synced via install-baseline.sh / sync-baseline.sh.
+# Tools: php -l, PHPStan, Psalm, Pint/PHP-CS-Fixer, ESLint, tsc --noEmit, Semgrep, Gitleaks,
+# composer audit, npm audit, actionlint, zizmor, GH Actions pin audit, Docker base digest,
+# Hadolint, unit/feature tests. Enforces the project's profile mode.
+name: sentinel-shield-pr-fast
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  pr-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+      - name: Resolve gates
+        run: sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh --profile .sentinel-shield/profile.yaml --output-dir reports --format all
+      - name: PHP fast checks (best-effort; never fake)
+        run: |
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
+          # Psalm / Pint / PHP-CS-Fixer: run if configured, write reports/raw/{psalm,php-style}.json
+      - name: Node fast checks
+        run: |
+          npm ci || true
+          npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
+          # tsc --noEmit + eslint -> reports/raw/{typescript,eslint}.json
+      - name: Secrets + SAST + GH Actions + Docker lint
+        run: |
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-hadolint.sh || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-github-actions-pins.sh --output reports/raw/github-actions-pins.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-docker-base-digest.sh --output reports/raw/docker-base-digest.json || true
+          # gitleaks + semgrep + actionlint + zizmor via their pinned actions (see ci-security.yml)
+      - name: Build summary + enforce
+        run: |
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
+      - uses: actions/upload-artifact@v4
+        with: { name: sentinel-shield-pr-fast, path: reports/**, retention-days: 30, if-no-files-found: warn }

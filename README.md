@@ -551,3 +551,13 @@ files (the CI workflow) are synced; project-local decisions (`accepted-risks.jso
 `phpstan-baseline.neon`) are never touched. See
 [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md). (v0.1.11 covers
 Laravel/React/Node/Docker only — not full multi-stack onboarding yet.)
+
+## Enterprise scanner matrix (v0.1.12)
+
+Sentinel Shield normalizes 30+ tools into gated summary keys across four gate categories —
+PR fast, main-branch, nightly, and manual/controlled. New in v0.1.12: collectors for CodeQL,
+OSV-Scanner, Grype, Dependency-Check, Scorecard, TruffleHog, Checkov, Conftest, Terrascan,
+Dockle, PHP syntax/style, ZAP/Nuclei (DAST), and AI review (Claude Code Security Review /
+Kuzushi). DAST is manual + allowlisted (fail-closed); AI review is assistive + non-gating by
+default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md),
+[`docs/dast-policy.md`](docs/dast-policy.md), [`docs/ai-review-policy.md`](docs/ai-review-policy.md).

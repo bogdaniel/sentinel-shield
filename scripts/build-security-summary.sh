@@ -40,7 +40,23 @@ actionlint|actionlint.json|actionlint.sh|actionlint
 zizmor|zizmor.json|zizmor.sh|zizmor
 github-actions-pins|github-actions-pins.json|github-actions-pins.sh|github_actions_pins
 docker-base-digest|docker-base-digest.json|docker-base-digest.sh|docker_base_digest
-third-party-semgrep|third-party-semgrep.json|third-party-semgrep.sh|third_party_semgrep'
+third-party-semgrep|third-party-semgrep.json|third-party-semgrep.sh|third_party_semgrep
+codeql|codeql.json|codeql.sh|codeql
+php-syntax|php-syntax.json|php-syntax.sh|php_syntax
+php-style|php-style.json|php-style.sh|php_style
+osv-scanner|osv-scanner.json|osv-scanner.sh|osv_scanner
+grype|grype.json|grype.sh|grype
+dependency-check|dependency-check.json|dependency-check.sh|dependency_check
+scorecard|scorecard.json|scorecard.sh|scorecard
+trufflehog|trufflehog.json|trufflehog.sh|trufflehog
+checkov|checkov.json|checkov.sh|checkov
+conftest|conftest.json|conftest.sh|conftest
+terrascan|terrascan.json|terrascan.sh|terrascan
+dockle|dockle.json|dockle.sh|dockle
+zap|zap.json|zap.sh|zap
+nuclei|nuclei.json|nuclei.sh|nuclei
+ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_review
+kuzushi|kuzushi.json|kuzushi.sh|kuzushi'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -163,7 +179,10 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
 		 test_failures:0, unsafe_docker:0, unsafe_github_actions:0, expired_exceptions:0,
 		 third_party_suspicious_code:0, third_party_install_script_risk:0,
-		 third_party_obfuscation:0, third_party_network_behavior:0};
+		 third_party_obfuscation:0, third_party_network_behavior:0,
+		 style_violations:0, php_syntax_errors:0, dependency_policy_violations:0,
+		 iac_violations:0, dast_findings:0, container_image_violations:0,
+		 repository_health_warnings:0, ai_review_findings:0};
 		reduce ($c.summary | keys_unsorted[]) as $k (.; .[$k] = ((.[$k] // 0) + ($c.summary[$k] // 0)))
 	)')
 

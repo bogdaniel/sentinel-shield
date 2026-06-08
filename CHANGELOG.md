@@ -6,6 +6,44 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.12] — enterprise scanner expansion
+
+### Added
+- **Enterprise scanner matrix** (`docs/enterprise-scanner-matrix.md`) classifying every tool by
+  gate category (PR fast / main / nightly / manual) with honest before/after status.
+- **16 new collectors** (normalize tool output → summary keys; self-tested): codeql, php-syntax,
+  php-style, osv-scanner, grype, dependency-check, scorecard, trufflehog, checkov, conftest,
+  terrascan, dockle, zap, nuclei, ai-security-review, kuzushi.
+- **8 new summary keys**: style_violations, php_syntax_errors, dependency_policy_violations,
+  iac_violations, dast_findings, container_image_violations, repository_health_warnings,
+  ai_review_findings (+ gate flags, mode defaults, enforcement).
+- **DAST safety runners** (`scripts/runners/{dast-guard,zap-baseline,zap-full,nuclei}.sh`):
+  no target → skip; host not allowlisted → **fail closed**; never scans arbitrary targets.
+- **Audit wrappers** (`scripts/audits/*`) + `scripts/runners/php-syntax.sh` — run tool if present,
+  else report unavailable (never fake clean).
+- **Workflow templates**: sentinel-shield-{pr-fast,main,scheduled,dast,ai-review}.yml.
+- **Report templates**: ai-security-review-report, kuzushi-investigation-report,
+  dast-scan-approval, nuclei-target-allowlist, scheduled-scan-report, tool-exception-request.
+- **Docs**: dast-policy, ai-review-policy, scheduled-scans, dependency-policy,
+  tooling/scanner-enablement.
+- **Self-test suite** `scanner-matrix` (collectors, resolver/enforcer gates by mode, DAST
+  fail-closed, AI non-gating).
+
+### Changed
+- `resolve-gates.sh`: 8 new fail_on flags with conservative mode defaults (baseline blocks
+  php_syntax + dependency_policy; strict adds style/iac/container; regulated adds
+  dast/repo-health; **AI review never gating by default**).
+- `enforce-gates.sh`: evaluates the new count gates (optional, null-safe; finding-scoped
+  accepted-risk still ONLY for unsafe_docker; secrets never suppressible).
+- `build-security-summary.sh`, schema, example, `ss_emit_collector`: carry the 8 new keys.
+- profile manifest + `templates/profile.yaml`: new gates + manual workflow templates.
+
+### Notes
+- Collectors normalize/gate; scanner binaries run via workflow templates / audit wrappers
+  (not bundled). DAST/Nuclei are manual + allowlisted; AI review is assistive + non-gating.
+  Severity parsing (OSV/CodeQL) is best-effort. See enterprise-scanner-matrix.md.
+
+
 ## [0.1.11] — profile-driven adoption & sync
 
 ### Added

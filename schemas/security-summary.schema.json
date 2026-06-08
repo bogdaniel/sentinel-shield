@@ -67,7 +67,15 @@
         "third_party_suspicious_code": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party/supply-chain suspicious-code findings (separate channel from app SAST). Optional for backward compatibility." },
         "third_party_install_script_risk": { "type": "integer", "minimum": 0, "description": "v0.1.5+ dependency install-script (pre/post/install) risk findings. Optional." },
         "third_party_obfuscation": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party obfuscation indicators (decode→exec, packed blobs). Optional." },
-        "third_party_network_behavior": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party env-read / outbound-network indicators. Optional." }
+        "third_party_network_behavior": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party env-read / outbound-network indicators. Optional." },
+        "style_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ code-style violations (Pint / PHP-CS-Fixer / PHPCS). Optional." },
+        "php_syntax_errors": { "type": "integer", "minimum": 0, "description": "v0.1.12+ PHP lint (php -l) syntax errors. Optional." },
+        "dependency_policy_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ dependency-policy breaches (license/version/allowlist). Reserved; no default emitter — OSV/Grype/Dependency-Check map to *_vulnerabilities. Optional." },
+        "iac_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ IaC misconfigurations (Checkov / Conftest / Terrascan). Optional." },
+        "dast_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ DAST findings (ZAP / Nuclei). Manual/controlled. Optional." },
+        "container_image_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ built-image checks (Dockle), distinct from Dockerfile lint (unsafe_docker). Optional." },
+        "repository_health_warnings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ OpenSSF Scorecard low-scoring checks. Optional." },
+        "ai_review_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional." }
       }
     },
     "tools": {

@@ -27,24 +27,90 @@
     "third_party_suspicious_code": 0,
     "third_party_install_script_risk": 0,
     "third_party_obfuscation": 0,
-    "third_party_network_behavior": 0
+    "third_party_network_behavior": 0,
+    "style_violations": 0,
+    "php_syntax_errors": 0,
+    "dependency_policy_violations": 0,
+    "iac_violations": 0,
+    "dast_findings": 0,
+    "container_image_violations": 0,
+    "repository_health_warnings": 0,
+    "ai_review_findings": 0
   },
   "tools": {
-    "gitleaks": { "status": "pass", "findings": 0 },
-    "semgrep": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
-    "composer_audit": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
-    "npm_audit": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
-    "trivy": { "status": "pass", "critical": 0, "high": 0, "medium": 0 },
-    "phpstan": { "status": "pass", "errors": 0 },
-    "psalm": { "status": "pass", "errors": 0 },
-    "typescript": { "status": "pass", "errors": 0 },
-    "eslint": { "status": "pass", "errors": 0, "warnings": 0, "security_errors": 0 },
-    "deptrac": { "status": "pass", "violations": 0 },
-    "tests": { "status": "pass", "failures": 0 },
-    "hadolint": { "status": "pass", "violations": 0 },
-    "zizmor": { "status": "pass", "violations": 0 },
-    "actionlint": { "status": "pass", "violations": 0 },
-    "third_party_semgrep": { "status": "unavailable", "suspicious_code": 0, "install_script_risk": 0, "obfuscation": 0, "network_behavior": 0 }
+    "gitleaks": {
+      "status": "pass",
+      "findings": 0
+    },
+    "semgrep": {
+      "status": "pass",
+      "critical": 0,
+      "high": 0,
+      "medium": 0
+    },
+    "composer_audit": {
+      "status": "pass",
+      "critical": 0,
+      "high": 0,
+      "medium": 0
+    },
+    "npm_audit": {
+      "status": "pass",
+      "critical": 0,
+      "high": 0,
+      "medium": 0
+    },
+    "trivy": {
+      "status": "pass",
+      "critical": 0,
+      "high": 0,
+      "medium": 0
+    },
+    "phpstan": {
+      "status": "pass",
+      "errors": 0
+    },
+    "psalm": {
+      "status": "pass",
+      "errors": 0
+    },
+    "typescript": {
+      "status": "pass",
+      "errors": 0
+    },
+    "eslint": {
+      "status": "pass",
+      "errors": 0,
+      "warnings": 0,
+      "security_errors": 0
+    },
+    "deptrac": {
+      "status": "pass",
+      "violations": 0
+    },
+    "tests": {
+      "status": "pass",
+      "failures": 0
+    },
+    "hadolint": {
+      "status": "pass",
+      "violations": 0
+    },
+    "zizmor": {
+      "status": "pass",
+      "violations": 0
+    },
+    "actionlint": {
+      "status": "pass",
+      "violations": 0
+    },
+    "third_party_semgrep": {
+      "status": "unavailable",
+      "suspicious_code": 0,
+      "install_script_risk": 0,
+      "obfuscation": 0,
+      "network_behavior": 0
+    }
   },
   "exceptions": {
     "active": 0,
