@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/profile.manifest.schema.json",
+  "title": "Sentinel Shield profile manifest",
+  "description": "Declares the files a profile installs/syncs into a consuming project. Consumed by scripts/install-baseline.sh and scripts/sync-baseline.sh (v0.1.11+).",
+  "type": "object",
+  "required": ["profile", "files"],
+  "additionalProperties": true,
+  "properties": {
+    "profile": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "stacks": { "type": "array", "items": { "type": "string" } },
+    "files": { "$ref": "#/$defs/entryList" },
+    "workflows": { "$ref": "#/$defs/entryList" },
+    "docs": { "$ref": "#/$defs/entryList" },
+    "never_touch": { "type": "array", "items": { "type": "string" }, "description": "Project-local paths the installer/sync MUST never create or overwrite (e.g. accepted-risks.json, phpstan-baseline.neon)." },
+    "required_scripts": { "type": "array", "items": { "type": "string" }, "description": "Upstream Sentinel Shield scripts the installed workflow calls (informational; they live in Sentinel Shield, not copied)." },
+    "recommended_raw_reports": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "entryList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "mode"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string", "description": "Path relative to the Sentinel Shield repo root." },
+          "target": { "type": "string", "description": "Path relative to the consuming project root." },
+          "mode": {
+            "type": "string",
+            "enum": ["create-if-missing", "overwrite-if-force", "sync-managed-block", "manual"],
+            "description": "create-if-missing: write only if absent (project owns it after). overwrite-if-force: managed; create if absent, overwrite only with --force. sync-managed-block: managed marker block updated in place (reserved). manual: never auto-written; printed for the maintainer to handle."
+          }
+        }
+      }
+    }
+  }
+}

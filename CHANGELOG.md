@@ -6,6 +6,51 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.11] — profile-driven adoption & sync
+
+### Added
+
+- **Profile manifests** (`profiles/<name>/profile.manifest.json`,
+  `profiles/combinations/laravel-react-docker.manifest.json`) + schema
+  (`profiles/profile.manifest.schema.json`). A manifest declares `files`/`workflows`/`docs`
+  entries (`source`, `target`, `mode`), `never_touch`, `required_scripts`,
+  `recommended_raw_reports`. File modes: `create-if-missing`, `overwrite-if-force`,
+  `sync-managed-block` (reserved), `manual`.
+- **Thin-consumer workflow template** `templates/workflows/sentinel-shield.yml` — uses the
+  upstream runner/adapters/audits (`runners/laravel-phpstan.sh`,
+  `adapters/{phpunit,vitest}-to-tests-json.*`, `run-hadolint.sh`,
+  `audit-{github-actions-pins,docker-base-digest}.sh`, `build-security-summary.sh`,
+  `enforce-gates.sh`); minimal permissions; uploads raw reports + downloads them in
+  release-gate for finding-scoped accepted-risk matching; never fakes reports.
+- `templates/.semgrepignore`, `docs/profile-driven-adoption.md`.
+- Self-test `install-sync` suite (temp dirs, no network): dry-run writes nothing; `--apply`
+  creates expected files + stamps profile mode; never creates/overwrites
+  `accepted-risks.json`; `--force` overwrites managed files only (not project-owned);
+  sync reports drift, updates managed files, preserves project-local; detect-stack
+  identifies Laravel/React/Docker.
+
+### Changed
+
+- **`install-baseline.sh`** is now profile-manifest-driven: `--profile` (default
+  `laravel-react-docker`), `--mode` (default `report-only`, stamped into `profile.yaml`),
+  dry-run by default, `--apply`, `--force` (managed files only), `--target`. Installs
+  profile.yaml + accepted-risks.example + workflow + .semgrepignore + security doc
+  templates. **Never** creates/overwrites `accepted-risks.json` / `phpstan-baseline.neon`.
+- **`sync-baseline.sh`** now updates a consumer from a newer release without destroying
+  local decisions: `--dry-run` default, `--apply`, `--force` (managed only), `--target`,
+  `--profile`. Reports created/updated/up-to-date/manual-review-needed/project-local-preserved.
+  Never overwrites `accepted-risks.json`, `phpstan-baseline.neon`, project-owned files, or code.
+- **Example** `examples/laravel-react-docker/` now represents installer output: workflow ==
+  the managed template (upstream scripts), README explains generation + sync + the migration;
+  removed the superseded local normalizers (`scripts/sentinel/*`).
+
+### Notes
+
+- Profiles cover **Laravel, React, Node, Docker** (and the combination) only — full
+  multi-stack project onboarding is **not** solved yet. Project-local risk decisions stay
+  local and are never overwritten.
+
+
 ## [0.1.10] — Larastan PHPStan runner robustness; multi-source unsafe_docker enforcement
 
 ### Changed

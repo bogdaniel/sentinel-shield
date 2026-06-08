@@ -1,0 +1,17 @@
+{
+  "$schema": "../profile.manifest.schema.json",
+  "profile": "node",
+  "description": "Node stack. npm audit + Jest/Vitest test adapters. tsconfig/eslint are project-local.",
+  "stacks": ["node"],
+  "files": [
+    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" }
+  ],
+  "workflows": [
+    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+  ],
+  "docs": [],
+  "never_touch": [".sentinel-shield/accepted-risks.json"],
+  "required_scripts": ["scripts/adapters/jest-to-tests-json.mjs", "scripts/adapters/vitest-to-tests-json.mjs", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
+  "recommended_raw_reports": ["npm-audit.json", "tests.json", "gitleaks.json", "semgrep.json"]
+}

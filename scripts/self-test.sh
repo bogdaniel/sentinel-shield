@@ -651,6 +651,70 @@ run_ud_multisource() {
 	log_info "ud-multisource: OK (hadolint + docker-base-digest; DL3018 never suppresses base-digest; unaccounted fails closed)"
 }
 
+# --- profile-driven install/sync (v0.1.11) ----------------------------------
+IS_FAILS=0
+is_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; IS_FAILS=$((IS_FAILS + 1)); fi; }
+
+run_install_sync() {
+	log_info "install-sync: profile-driven install/sync + detect-stack (temp dirs, no network)"
+
+	# --- detect-stack on a Laravel+React+Docker fixture ---
+	_p=$(mktemp -d)
+	: > "$_p/artisan"
+	printf '{"dependencies":{"react":"^18"}}' > "$_p/package.json"
+	printf 'FROM alpine\n' > "$_p/Dockerfile"
+	_stacks=$(sh scripts/detect-stack.sh "$_p" 2>/dev/null | sed -n 's/^detected: //p' | sort | tr '\n' ' ')
+	is_check "detect-stack finds laravel" "$(printf '%s' "$_stacks" | grep -c laravel)" "1"
+	is_check "detect-stack finds react" "$(printf '%s' "$_stacks" | grep -c react)" "1"
+	is_check "detect-stack finds docker" "$(printf '%s' "$_stacks" | grep -c docker)" "1"
+	rm -rf "$_p"
+
+	# --- install dry-run creates nothing ---
+	_t=$(mktemp -d)
+	sh scripts/install-baseline.sh --target "$_t" >/dev/null 2>&1
+	is_check "install dry-run writes no files" "$(find "$_t" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+	# --- install --apply --mode report-only creates expected files + stamps mode ---
+	sh scripts/install-baseline.sh --target "$_t" --apply --mode report-only >/dev/null 2>&1
+	is_check "install --apply creates profile.yaml" "$([ -f "$_t/.sentinel-shield/profile.yaml" ] && echo yes || echo no)" "yes"
+	is_check "install --apply creates workflow" "$([ -f "$_t/.github/workflows/sentinel-shield.yml" ] && echo yes || echo no)" "yes"
+	is_check "install --apply creates accepted-risks EXAMPLE" "$([ -f "$_t/.sentinel-shield/accepted-risks.example.json" ] && echo yes || echo no)" "yes"
+	is_check "install --apply creates .semgrepignore" "$([ -f "$_t/.semgrepignore" ] && echo yes || echo no)" "yes"
+	is_check "profile mode written = report-only" "$(grep -m1 '^  mode:' "$_t/.sentinel-shield/profile.yaml" | sed -E 's/.*mode:[[:space:]]*//')" "report-only"
+	is_check "install NEVER created accepted-risks.json" "$([ -f "$_t/.sentinel-shield/accepted-risks.json" ] && echo yes || echo no)" "no"
+
+	# --- install never overwrites a real accepted-risks.json (even with --force) ---
+	printf '{"version":"1.1","risks":[{"id":"KEEPME"}]}' > "$_t/.sentinel-shield/accepted-risks.json"
+	sh scripts/install-baseline.sh --target "$_t" --apply --force >/dev/null 2>&1
+	is_check "install --force preserves real accepted-risks.json" "$(grep -c KEEPME "$_t/.sentinel-shield/accepted-risks.json")" "1"
+
+	# --- install --force overwrites MANAGED workflow only (not project-owned profile.yaml) ---
+	printf '\n# PROJECT_EDIT\n' >> "$_t/.github/workflows/sentinel-shield.yml"
+	# project-owned profile.yaml: change mode to baseline; --force must NOT revert it
+	awk '/^  mode: report-only$/{sub(/report-only/,"baseline")} {print}' "$_t/.sentinel-shield/profile.yaml" > "$_t/.sentinel-shield/profile.yaml.x" && mv "$_t/.sentinel-shield/profile.yaml.x" "$_t/.sentinel-shield/profile.yaml"
+	sh scripts/install-baseline.sh --target "$_t" --apply --force >/dev/null 2>&1
+	is_check "install --force overwrites managed workflow" "$(grep -c PROJECT_EDIT "$_t/.github/workflows/sentinel-shield.yml")" "0"
+	is_check "install --force does NOT touch project-owned profile.yaml" "$(grep -m1 '^  mode:' "$_t/.sentinel-shield/profile.yaml" | sed -E 's/.*mode:[[:space:]]*//')" "baseline"
+
+	# --- sync dry-run reports drift on a mutated managed workflow ---
+	printf '\n# DRIFT\n' >> "$_t/.github/workflows/sentinel-shield.yml"
+	_dr=$(sh scripts/sync-baseline.sh --target "$_t" 2>/dev/null | grep -c 'manual-review-needed (managed drift')
+	is_check "sync dry-run reports managed drift" "$_dr" "1"
+	is_check "sync dry-run does NOT modify (drift still present)" "$(grep -c DRIFT "$_t/.github/workflows/sentinel-shield.yml")" "1"
+
+	# --- sync --apply --force updates managed file ---
+	sh scripts/sync-baseline.sh --target "$_t" --apply --force >/dev/null 2>&1
+	is_check "sync --apply --force updates managed workflow" "$(grep -c DRIFT "$_t/.github/workflows/sentinel-shield.yml")" "0"
+
+	# --- sync never overwrites accepted-risks.json ---
+	sh scripts/sync-baseline.sh --target "$_t" --apply --force >/dev/null 2>&1
+	is_check "sync preserves real accepted-risks.json" "$(grep -c KEEPME "$_t/.sentinel-shield/accepted-risks.json")" "1"
+
+	rm -rf "$_t"
+	if [ "$IS_FAILS" -ne 0 ]; then log_error "install-sync: $IS_FAILS case(s) failed"; return 1; fi
+	log_info "install-sync: OK (dry-run safe; profile mode; managed vs project-local; accepted-risks never touched)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -663,6 +727,7 @@ case "$SUB" in
 	adapters) run_adapters ;;
 	phpstan-runner) run_phpstan_runner ;;
 	ud-multisource) run_ud_multisource ;;
+	install-sync) run_install_sync ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -675,13 +740,14 @@ case "$SUB" in
 		run_adapters
 		run_phpstan_runner
 		run_ud_multisource
+		run_install_sync
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|all)"
 		exit 2
 		;;
 esac

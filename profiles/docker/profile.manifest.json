@@ -1,0 +1,20 @@
+{
+  "$schema": "../profile.manifest.schema.json",
+  "profile": "docker",
+  "description": "Docker stack. Multi-Dockerfile Hadolint + base-image digest audit run from Sentinel Shield. Dockerfiles + hadolint.yaml are project-local.",
+  "stacks": ["docker"],
+  "files": [
+    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
+    { "source": "profiles/docker/hadolint.yaml", "target": "hadolint.yaml", "mode": "create-if-missing" }
+  ],
+  "workflows": [
+    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+  ],
+  "docs": [
+    { "source": "templates/pinned-ci-references.md", "target": "docs/security/pinned-ci-references.md", "mode": "create-if-missing" }
+  ],
+  "never_touch": [".sentinel-shield/accepted-risks.json"],
+  "required_scripts": ["scripts/run-hadolint.sh", "scripts/audit-docker-base-digest.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
+  "recommended_raw_reports": ["hadolint.json", "docker-base-digest.json", "trivy.json", "gitleaks.json"]
+}

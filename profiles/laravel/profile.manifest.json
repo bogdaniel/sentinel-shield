@@ -1,0 +1,21 @@
+{
+  "$schema": "../profile.manifest.schema.json",
+  "profile": "laravel",
+  "description": "Laravel/PHP stack. Project config (PHPStan/Larastan, Deptrac, Pint) + .semgrepignore. PHPStan runs via the upstream Laravel runner; phpstan.neon/phpstan-baseline.neon are project-local and NEVER overwritten.",
+  "stacks": ["laravel"],
+  "files": [
+    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
+    { "source": "profiles/laravel/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" },
+    { "source": "profiles/laravel/phpstan.neon", "target": "phpstan.neon", "mode": "manual" }
+  ],
+  "workflows": [
+    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+  ],
+  "docs": [
+    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" }
+  ],
+  "never_touch": [".sentinel-shield/accepted-risks.json", "phpstan-baseline.neon", "phpstan.neon"],
+  "required_scripts": ["scripts/runners/laravel-phpstan.sh", "scripts/adapters/phpunit-to-tests-json.php", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
+  "recommended_raw_reports": ["phpstan.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json"]
+}

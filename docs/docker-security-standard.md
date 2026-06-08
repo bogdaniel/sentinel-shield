@@ -185,3 +185,10 @@ by finding-scoped accepted-risk records **independently** of Hadolint DL3018/DL3
 DL3018 record cannot suppress an un-digested-base finding. Prefer digest-pinning the base;
 accept narrowly (rule_id `SS_DOCKER_BASE_DIGEST` + `files`) only if deferred. See
 [`accepted-risk-suppression.md`](accepted-risk-suppression.md).
+
+## Profile-driven adoption (v0.1.11)
+
+Consuming projects install/sync this via `scripts/install-baseline.sh` /
+`scripts/sync-baseline.sh` from a profile manifest (the managed workflow calls the upstream
+runners/adapters/audits). Project-local files (`accepted-risks.json`, `phpstan-baseline.neon`)
+are never overwritten. See [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).

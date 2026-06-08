@@ -196,3 +196,19 @@ Consuming projects should call Sentinel Shield's scripts rather than re-implemen
 
 Project-specific items stay local: `profile.yaml`, `accepted-risks.json`, baselines, code
 fixes. See [`consolidation-v0.1.9.md`](consolidation-v0.1.9.md) and `docs/remediation/`.
+
+## Profile-driven install/sync (v0.1.11)
+
+Instead of hand-copying the workflow from `examples/`, install from a profile manifest:
+
+```sh
+sh scripts/install-baseline.sh --target <project> --apply            # profile laravel-react-docker, mode report-only
+sh scripts/install-baseline.sh --target <project> --profile laravel --mode baseline --apply
+sh scripts/sync-baseline.sh    --target <project> --apply --force    # update managed files later
+```
+
+Installs `.sentinel-shield/profile.yaml`, `accepted-risks.example.json`, `.semgrepignore`,
+the managed `.github/workflows/sentinel-shield.yml`, and security doc templates. It NEVER
+creates/overwrites `accepted-risks.json` or `phpstan-baseline.neon`. Full model +
+manifest format: [`profile-driven-adoption.md`](profile-driven-adoption.md). Supported
+profiles in v0.1.11: laravel, react, node, docker, laravel-react-docker.

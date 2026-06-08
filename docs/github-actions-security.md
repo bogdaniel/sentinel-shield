@@ -123,3 +123,10 @@ refs to `unsafe_github_actions` (complementary to actionlint/zizmor). It flags
 `uses: owner/action@vN|@main|@master|@tag|(no ref)` and un-digested
 `container:`/`image:`/`docker://`; it allows full 40-char commit SHAs, `@sha256:` digests,
 and local (`./`) actions. Remediation: [`remediation/github-actions-sha-pinning.md`](remediation/github-actions-sha-pinning.md).
+
+## Profile-driven adoption (v0.1.11)
+
+Consuming projects install/sync this via `scripts/install-baseline.sh` /
+`scripts/sync-baseline.sh` from a profile manifest (the managed workflow calls the upstream
+runners/adapters/audits). Project-local files (`accepted-risks.json`, `phpstan-baseline.neon`)
+are never overwritten. See [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).

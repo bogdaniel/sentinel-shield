@@ -535,3 +535,19 @@ holder to your organization on adoption.
 Sentinel Shield (formerly the internal working name `zenchron-engineering-baseline`)
 is intended to be adopted, forked, and tuned per organization. Treat every config
 in this repository as a safe default to be reviewed, not as an untouchable rule.
+
+## Profile-driven adoption (v0.1.11)
+
+Adopt Sentinel Shield in a Laravel/React/Docker project with one command:
+
+```sh
+sh scripts/install-baseline.sh --target <project> --apply     # dry-run without --apply
+sh scripts/sync-baseline.sh    --target <project> --apply --force   # update managed files later
+```
+
+Profile manifests (`profiles/<name>/profile.manifest.json`, `profiles/combinations/*.manifest.json`)
+declare what gets installed; the consumer no longer copies workflow logic by hand. Managed
+files (the CI workflow) are synced; project-local decisions (`accepted-risks.json`,
+`phpstan-baseline.neon`) are never touched. See
+[`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md). (v0.1.11 covers
+Laravel/React/Node/Docker only — not full multi-stack onboarding yet.)

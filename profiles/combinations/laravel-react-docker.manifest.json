@@ -1,0 +1,42 @@
+{
+  "$schema": "../profile.manifest.schema.json",
+  "profile": "laravel-react-docker",
+  "description": "Thin-consumer baseline for a Laravel + React + Docker project. Installs project config, the Sentinel Shield CI workflow, .semgrepignore, and governance doc templates. Project-local risk decisions (accepted-risks.json, phpstan-baseline.neon) are NEVER created or overwritten.",
+  "stacks": ["laravel", "react", "node", "docker"],
+  "files": [
+    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
+    { "source": "templates/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" }
+  ],
+  "workflows": [
+    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+  ],
+  "docs": [
+    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" },
+    { "source": "templates/sentinel-shield-rollout-status.md", "target": "docs/security/sentinel-shield-rollout-status.md", "mode": "create-if-missing" },
+    { "source": "templates/security-triage-report.md", "target": "docs/security/sentinel-shield-triage.md", "mode": "create-if-missing" },
+    { "source": "templates/pinned-ci-references.md", "target": "docs/security/pinned-ci-references.md", "mode": "create-if-missing" },
+    { "source": "templates/third-party-install-script-review.md", "target": "docs/security/third-party-install-script-review.md", "mode": "create-if-missing" }
+  ],
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json",
+    "phpstan-baseline.neon",
+    "phpstan.neon"
+  ],
+  "required_scripts": [
+    "scripts/runners/laravel-phpstan.sh",
+    "scripts/adapters/phpunit-to-tests-json.php",
+    "scripts/adapters/vitest-to-tests-json.mjs",
+    "scripts/run-hadolint.sh",
+    "scripts/audit-github-actions-pins.sh",
+    "scripts/audit-docker-base-digest.sh",
+    "scripts/build-security-summary.sh",
+    "scripts/enforce-gates.sh",
+    "scripts/resolve-gates.sh",
+    "scripts/select-security-summary.sh"
+  ],
+  "recommended_raw_reports": [
+    "gitleaks.json", "semgrep.json", "trivy.json", "composer-audit.json", "npm-audit.json",
+    "phpstan.json", "tests.json", "hadolint.json", "docker-base-digest.json", "github-actions-pins.json"
+  ]
+}

@@ -1,56 +1,57 @@
 # Example integration — Laravel + React + Docker
 
-This directory is a **reference integration package**: the files Sentinel Shield adds
-to a real Laravel + React + Docker project, laid out exactly as they'd sit in that
-project's repository. Copy these into your project and adapt (do not run them from
-inside the Sentinel Shield repo).
+This directory shows **the output of the profile installer** for a Laravel + React + Docker
+project — i.e. what you get from:
 
-## Layout
-
-```txt
-.sentinel-shield/profile.yaml                  # adoption mode + gate policy (report-only)
-.github/workflows/sentinel-shield.yml          # CI pipeline (external Sentinel Shield checkout)
-composer.json                                  # illustrative: sentinel:* scripts + dev deps
-package.json                                   # illustrative: sentinel:* scripts + dev deps
-scripts/sentinel/phpunit-to-tests-json.php     # PHPUnit JUnit -> reports/raw/tests.json
-scripts/sentinel/vitest-to-tests-json.mjs      # Vitest/Jest JSON -> reports/raw/tests.json
-docs/security/sentinel-shield-adoption.md      # how it works + migration plan
-docs/security/github-fixture-run.md            # run it on a GitHub runner (fixture)
-docs/security/github-preflight-checklist.md    # checklist before the first run
-docs/security/release-evidence-template.md     # release readiness evidence template
-.gitignore                                     # ignore generated reports, keep .gitkeep
-reports/.gitkeep, reports/raw/.gitkeep         # output dirs
+```sh
+sh scripts/install-baseline.sh --target /path/to/project --profile laravel-react-docker --apply
 ```
 
-## Quick start
+It is **not** a hand-maintained special case. The installed/managed files are generated
+from Sentinel Shield templates + the `laravel-react-docker` profile manifest
+(`profiles/combinations/laravel-react-docker.manifest.json`). See
+[`docs/profile-driven-adoption.md`](../../docs/profile-driven-adoption.md).
 
-1. Copy this tree into your project (merge `composer.json` / `package.json` blocks
-   into your existing files — do not overwrite them).
-2. Set `PROJECT_NAME_HERE` in `.sentinel-shield/profile.yaml`.
-3. In `.github/workflows/sentinel-shield.yml`, set `SENTINEL_SHIELD_REPOSITORY` and
-   pin `SENTINEL_SHIELD_REF` (tag for first adoption; full commit SHA before
-   production), then pin all third-party action `uses:` to commit SHAs.
-4. Read [`docs/security/sentinel-shield-adoption.md`](docs/security/sentinel-shield-adoption.md)
-   — start in `report-only`, then follow the migration plan to `baseline` → `strict`
-   → `regulated`.
+## What the installer produces
 
-## Run it on GitHub (fixture)
+| File | Mode | Notes |
+| --- | --- | --- |
+| `.github/workflows/sentinel-shield.yml` | **managed** | == `templates/workflows/sentinel-shield.yml`; updated by `sync-baseline.sh --apply --force`. Uses the **upstream** runner/adapters/audits. |
+| `.sentinel-shield/profile.yaml` | project-owned | adoption mode (stamped from `--mode`) + gate policy |
+| `.sentinel-shield/accepted-risks.example.json` | project-owned | copy to `accepted-risks.json` only when accepting a risk |
+| `.semgrepignore` | project-owned | SAST scoping |
+| `docs/security/*.md` | project-owned | governance templates to fill in |
 
-To validate the plumbing on a real runner before touching a real app, follow
-[`docs/security/github-fixture-run.md`](docs/security/github-fixture-run.md) (after
-[`docs/security/github-preflight-checklist.md`](docs/security/github-preflight-checklist.md)).
+## What stays project-specific (never installed/overwritten)
 
-**Minimal fixture mode** needs no app: the workflow skips the PHP/Node/Docker jobs
-(with warnings) when `composer.json`/`package.json`/a Dockerfile are absent, while
-`security-scan` still runs. The builder marks skipped tools `unavailable` — nothing
-is faked — and `report-only` passes unless a real secret is found.
+- `.sentinel-shield/accepted-risks.json` — your owner-approved, time-boxed risk decisions.
+- `phpstan.neon` / `phpstan-baseline.neon` — your PHPStan config + debt baseline.
+- Project code, Dockerfiles, and remediation docs.
 
-## Source strategy
+## Migration note (v0.1.9 → v0.1.11)
 
-**External checkout** is wired: the workflow checks Sentinel Shield out into
-`tools/sentinel-shield` (`SENTINEL_SHIELD_PATH`) at a pinned ref and calls its
-scripts. Vendoring is documented as a fallback only if CI cannot reach the Sentinel
-Shield repo — see the adoption doc.
+Earlier versions of this example carried **local** test normalizers
+(`scripts/sentinel/phpunit-to-tests-json.php`, `vitest-to-tests-json.mjs`) and relied on
+project `composer run sentinel:quality` / `npm run sentinel:*` scripts. Those are
+**superseded** by Sentinel Shield's upstream pieces and have been **removed** from this
+example:
 
-> First integration is intentionally migration-safe (`report-only`): only secrets and
-> expired exceptions block until you tighten the mode.
+- PHPStan → `scripts/runners/laravel-phpstan.sh` (upstream runner; measured, never faked).
+- PHPUnit → `scripts/adapters/phpunit-to-tests-json.php` (upstream adapter).
+- Vitest → `scripts/adapters/vitest-to-tests-json.mjs` (upstream adapter).
+- Multi-Dockerfile Hadolint → `scripts/run-hadolint.sh`; base-digest → `scripts/audit-docker-base-digest.sh`;
+  GitHub Actions pins → `scripts/audit-github-actions-pins.sh`.
+
+The workflow checks out Sentinel Shield at a pinned `SENTINEL_SHIELD_REF` and calls these
+directly. `composer.json` / `package.json` here remain **illustrative** (showing dev deps /
+optional project hooks); a thin consumer does not need local scanner scripts.
+
+## Updating
+
+```sh
+sh scripts/sync-baseline.sh --target /path/to/project            # drift report
+sh scripts/sync-baseline.sh --target /path/to/project --apply --force   # update managed files
+```
+
+`sync-baseline.sh` updates **managed** files (the workflow) and **never** overwrites
+`accepted-risks.json`, `phpstan-baseline.neon`, or your project-owned config.

@@ -407,3 +407,10 @@ running `enforce-gates.sh` (the reusable workflows do this via
 `pattern: sentinel-shield-raw-security*` + `merge-multiple`). A source whose raw report is
 missing is treated as **unaccepted** (fail-closed) — finding-scope never silently passes a
 source it cannot read.
+
+## Profile-driven adoption (v0.1.11)
+
+Consuming projects install/sync this via `scripts/install-baseline.sh` /
+`scripts/sync-baseline.sh` from a profile manifest (the managed workflow calls the upstream
+runners/adapters/audits). Project-local files (`accepted-risks.json`, `phpstan-baseline.neon`)
+are never overwritten. See [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).
