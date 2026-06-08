@@ -92,3 +92,10 @@ code fixes. The workflow checks out Sentinel Shield at a pinned ref and calls it
 - `accepted-risks.json` and `phpstan-baseline.neon` are **hard-protected** — never created
   or overwritten by install or sync, regardless of flags.
 - `sync` reports `created / updated / up-to-date / manual-review-needed / project-local-preserved`.
+
+## Maturity (v0.1.13)
+
+The install/sync engine and the laravel-react-docker profile are **proven** (self-tested +
+fixture round-trip). Scanner integrations carry maturity labels — see
+[`production-readiness-audit.md`](production-readiness-audit.md). Adopt in `report-only` first,
+pin tool refs ([`pinned-tool-references.md`](pinned-tool-references.md)), then tighten.

@@ -6,6 +6,35 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.13] — production readiness hardening
+
+### Added
+- **Production readiness audit** (`docs/production-readiness-audit.md`) — per-tool A–F status
+  (proven-live / fixture-only / collector-only / template-only / documented-only / not-ready).
+- **Fixture consumer projects** (`tests/fixtures/projects/{laravel-react-docker,node-react,docker-only,php-library}`)
+  — minimal, offline.
+- **Self-test suites** `fixtures` (detect-stack + install/sync round-trip + profile resolution +
+  enforcement) and `workflow-sanity` (no pull_request_target trigger, permissions present, DAST
+  allowlist required, AI review non-gating). Both BLOCKING in ci-self-test.yml.
+- Docs: `workflow-template-validation.md`, `pinned-tool-references.md` (real upstream SHAs
+  resolved 2026-06-09), `raw-report-contract.md`, `sentinel-shield-release-process.md`,
+  `ci-runtime-budget.md`.
+- Maturity labels (proven/supported/experimental/template-only/manual/non-gating) across README,
+  enterprise-scanner-matrix, profile-driven-adoption.
+
+### Changed
+- `ci-self-test.yml`: actions **SHA-pinned** (checkout v4.2.2, upload-artifact v4.6.2) + new
+  BLOCKING `full-self-test` job (sh -n all scripts, self-test all, workflow-sanity, fixtures).
+- `scripts/self-test.sh`: +`fixtures`, +`workflow-sanity`; all suites wired into `all`.
+
+### v0.1.12 correction (honesty)
+v0.1.12 expanded scanner BREADTH but the integrations are **not equally mature**. The new
+collectors are deterministic-fixture-validated, **not live-validated**; severity parsing for
+OSV/CodeQL is coarse; DAST/Nuclei are manual+allowlisted; AI review is non-gating. Sentinel
+Shield is production-ready as a **release-gate engine**, not as a turnkey "all scanners proven"
+product. See production-readiness-audit.md.
+
+
 ## [0.1.12] — enterprise scanner expansion
 
 ### Added

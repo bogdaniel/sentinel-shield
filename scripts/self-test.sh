@@ -791,6 +791,98 @@ run_scanner_matrix() {
 	log_info "scanner-matrix: OK (collectors, gates by mode, DAST fail-closed, AI non-gating)"
 }
 
+# --- fixture consumer projects (v0.1.13) ------------------------------------
+FX_FAILS=0
+fx_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; FX_FAILS=$((FX_FAILS + 1)); fi; }
+
+run_fixtures() {
+	log_info "fixtures: detect-stack + install/sync + profile resolution + enforcement over offline fixtures"
+	FXB="$ROOT/tests/fixtures/projects"
+	[ -d "$FXB" ] || { log_error "fixtures: $FXB missing"; return 1; }
+
+	# detect-stack per fixture (sorted detected stacks)
+	ds() { sh "$ROOT/scripts/detect-stack.sh" "$FXB/$1" 2>/dev/null | sed -n 's/^detected: //p' | sort | tr '\n' ' ' | sed 's/ $//'; }
+	fx_check "detect laravel-react-docker" "$(ds laravel-react-docker)" "docker laravel node react"
+	fx_check "detect node-react"           "$(ds node-react)"           "node react"
+	fx_check "detect docker-only"          "$(ds docker-only)"          "docker"
+	fx_check "detect php-library"          "$(ds php-library)"          "php"
+
+	# install/sync round-trip on a COPY of the laravel-react-docker fixture (never mutate the fixture)
+	_t=$(mktemp -d); cp -R "$FXB/laravel-react-docker/." "$_t/"
+	sh "$ROOT/scripts/install-baseline.sh" --target "$_t" >/dev/null 2>&1
+	fx_check "install dry-run writes nothing new" "$([ -f "$_t/.sentinel-shield/profile.yaml" ] && echo yes || echo no)" "no"
+	sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --apply --mode baseline >/dev/null 2>&1
+	fx_check "install --apply creates profile.yaml" "$([ -f "$_t/.sentinel-shield/profile.yaml" ] && echo yes || echo no)" "yes"
+	fx_check "install --apply creates managed workflow" "$([ -f "$_t/.github/workflows/sentinel-shield.yml" ] && echo yes || echo no)" "yes"
+	fx_check "profile mode = baseline" "$(grep -m1 '^  mode:' "$_t/.sentinel-shield/profile.yaml" | sed -E 's/.*mode:[[:space:]]*//')" "baseline"
+	fx_check "install did NOT create accepted-risks.json" "$([ -f "$_t/.sentinel-shield/accepted-risks.json" ] && echo yes || echo no)" "no"
+
+	# profile resolution against the installed fixture profile
+	sh "$ROOT/scripts/resolve-gates.sh" --profile "$_t/.sentinel-shield/profile.yaml" --output-dir "$_t/r" --format json >/dev/null 2>&1
+	fx_check "resolve baseline secrets=true" "$(jq -r '.fail_on.secrets' "$_t/r/sentinel-shield-gates.json" 2>/dev/null)" "true"
+
+	# enforcement with the example summary (clean) -> pass
+	sh "$ROOT/scripts/resolve-gates.sh" --profile "$_t/.sentinel-shield/profile.yaml" --output-dir "$_t/r" --format env >/dev/null 2>&1
+	sh "$ROOT/scripts/enforce-gates.sh" --summary "$ROOT/templates/security-summary.example.json" --gates-env "$_t/r/sentinel-shield-gates.env" --output-dir "$_t/r" --format json >/dev/null 2>&1 || true
+	fx_check "enforce example summary = pass" "$(jq -r .result "$_t/r/sentinel-shield-enforcement.json" 2>/dev/null)" "pass"
+
+	# sync: clean copy is up-to-date; mutate managed workflow -> drift -> update
+	sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" >/dev/null 2>&1; fx_check "sync dry-run exit 0" "$?" "0"
+	printf '\n# DRIFT\n' >> "$_t/.github/workflows/sentinel-shield.yml"
+	_dr=$(sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" 2>/dev/null | grep -c 'manual-review-needed (managed drift')
+	fx_check "sync detects managed drift" "$_dr" "1"
+	sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" --apply --force >/dev/null 2>&1
+	fx_check "sync --apply --force clears drift" "$(grep -c DRIFT "$_t/.github/workflows/sentinel-shield.yml")" "0"
+
+	# node-react fixture: install dry-run with react profile lists files, writes nothing
+	_t2=$(mktemp -d); cp -R "$FXB/node-react/." "$_t2/"
+	sh "$ROOT/scripts/install-baseline.sh" --target "$_t2" --profile react >/dev/null 2>&1
+	fx_check "node-react dry-run writes nothing" "$([ -f "$_t2/.sentinel-shield/profile.yaml" ] && echo yes || echo no)" "no"
+
+	rm -rf "$_t" "$_t2"
+	if [ "$FX_FAILS" -ne 0 ]; then log_error "fixtures: $FX_FAILS case(s) failed"; return 1; fi
+	log_info "fixtures: OK (detect-stack, install/sync round-trip, profile resolution, enforcement)"
+}
+
+# --- workflow sanity (v0.1.13) ----------------------------------------------
+WS_FAILS=0
+ws_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; WS_FAILS=$((WS_FAILS + 1)); fi; }
+
+run_workflow_sanity() {
+	log_info "workflow-sanity: no pull_request_target trigger, permissions present, DAST allowlist, AI non-gating"
+	WF_GH="$ROOT/github/workflows"; WF_TPL="$ROOT/templates/workflows"
+
+	# 1. No ACTUAL pull_request_target TRIGGER anywhere (comments are fine).
+	_prt=$(grep -rlE '^[[:space:]]+pull_request_target:' "$WF_GH" "$WF_TPL" 2>/dev/null | wc -l | tr -d ' ')
+	ws_check "no pull_request_target trigger" "$_prt" "0"
+
+	# 2. Every workflow has a permissions: block.
+	_noperm=0
+	for f in "$WF_GH"/*.yml "$WF_TPL"/*.yml; do
+		[ -f "$f" ] || continue
+		grep -qE '^permissions:|^[[:space:]]+permissions:' "$f" || { log_error "  no permissions block: $f"; _noperm=$((_noperm + 1)); }
+	done
+	ws_check "all workflows declare permissions" "$_noperm" "0"
+
+	# 3. DAST template requires the allowlist env + uses the guarded runners.
+	_dast="$WF_TPL/sentinel-shield-dast.yml"
+	ws_check "DAST template references ALLOWED_HOST" "$(grep -c 'SENTINEL_SHIELD_DAST_ALLOWED_HOST' "$_dast" 2>/dev/null)" "1"
+	ws_check "DAST template uses guarded runners" "$([ "$(grep -cE 'runners/(zap-baseline|zap-full|nuclei)\.sh' "$_dast" 2>/dev/null)" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# 4. AI review template is non-gating by default (labeled, no fail_on ai true).
+	_ai="$WF_TPL/sentinel-shield-ai-review.yml"
+	ws_check "AI review template marked NON-GATING" "$([ "$(grep -c 'NON-GATING' "$_ai" 2>/dev/null)" -ge 1 ] && echo yes || echo no)" "yes"
+	# Ignore comment lines (a doc note that says "to enable, set ... true" is fine);
+	# only an ACTIVE (non-comment) enable would be a violation.
+	ws_check "AI review template does not force-enable ai gate" "$(grep -vE '^[[:space:]]*#' "$_ai" 2>/dev/null | grep -c 'fail_on.ai_review_findings: true')" "0"
+
+	# 5. DAST/AI templates are not PR-triggered by default (manual/controlled).
+	ws_check "DAST template is workflow_dispatch-only (no pull_request:)" "$(grep -cE '^[[:space:]]*pull_request:' "$_dast" 2>/dev/null)" "0"
+
+	if [ "$WS_FAILS" -ne 0 ]; then log_error "workflow-sanity: $WS_FAILS case(s) failed"; return 1; fi
+	log_info "workflow-sanity: OK (no PRT trigger, permissions present, DAST allowlisted, AI non-gating)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -805,6 +897,8 @@ case "$SUB" in
 	ud-multisource) run_ud_multisource ;;
 	install-sync) run_install_sync ;;
 	scanner-matrix) run_scanner_matrix ;;
+	fixtures) run_fixtures ;;
+	workflow-sanity) run_workflow_sanity ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -819,13 +913,15 @@ case "$SUB" in
 		run_ud_multisource
 		run_install_sync
 		run_scanner_matrix
+		run_fixtures
+		run_workflow_sanity
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|all)"
 		exit 2
 		;;
 esac

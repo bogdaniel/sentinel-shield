@@ -1,4 +1,18 @@
-# Enterprise Scanner Matrix (v0.1.12)
+# Enterprise Scanner Matrix
+
+> **v0.1.13 maturity note (read first).** v0.1.12 added scanner *breadth*; the integrations
+> are NOT equally mature. See [`production-readiness-audit.md`](production-readiness-audit.md)
+> for the brutally-honest per-tool A–F status. **Maturity labels:**
+> **proven** (validated on a real consumer / full fixture) ·
+> **supported** (runner/collector/self-test exists, no live consumer yet) ·
+> **experimental** (noisy/limited parser — e.g. OSV/CodeQL severity is coarse) ·
+> **template-only** (workflow/docs exist, not executed by default) ·
+> **manual** (needs explicit target/approval — DAST) ·
+> **non-gating** (report-only unless explicitly enabled — AI review).
+> Proven today: the original core (Gitleaks, app-Semgrep, PHPStan, PHPUnit, composer audit,
+> Hadolint, base-digest, GH-pins, Trivy-fs) via the zenchron pilot. Most v0.1.12 additions are
+> **supported/experimental**, not proven.
+
 
 Status of every tool in the Sentinel Shield scanner matrix. **Honesty:** "Integration"
 means the Sentinel Shield side — a **collector** that normalizes the tool's raw report into

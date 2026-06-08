@@ -25,11 +25,36 @@ concurrency:
 
 jobs:
   # --------------------------------------------------------------------------
+  # BLOCKING comprehensive gate (v0.1.13): runs the entire self-test matrix,
+  # including collector fixtures (scanner-matrix), install/sync, fixture consumer
+  # projects, and workflow-sanity. This job MUST pass before a release tag.
+  full-self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+      - name: Shell syntax (all scripts)
+        run: |
+          for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh scripts/runners/*.sh scripts/audits/*.sh; do
+            sh -n "$f" || exit 1
+          done
+      - name: self-test.sh all (BLOCKING)
+        run: sh scripts/self-test.sh all
+      - name: Workflow sanity (BLOCKING — no PRT, perms, DAST allowlist, AI non-gating)
+        run: sh scripts/self-test.sh workflow-sanity
+      - name: Fixture consumer projects (BLOCKING)
+        run: sh scripts/self-test.sh fixtures
+
+  # --------------------------------------------------------------------------
   syntax:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
@@ -72,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
@@ -85,7 +110,7 @@ jobs:
 
       - name: Upload self-test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sentinel-shield-self-test-reports
           path: reports
@@ -97,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
@@ -115,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
@@ -134,7 +159,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 

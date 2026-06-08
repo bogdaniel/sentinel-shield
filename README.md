@@ -561,3 +561,13 @@ Dockle, PHP syntax/style, ZAP/Nuclei (DAST), and AI review (Claude Code Security
 Kuzushi). DAST is manual + allowlisted (fail-closed); AI review is assistive + non-gating by
 default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md),
 [`docs/dast-policy.md`](docs/dast-policy.md), [`docs/ai-review-policy.md`](docs/ai-review-policy.md).
+
+## Maturity & production readiness (v0.1.13)
+
+Not every integration is equally mature. **Labels:** `proven` · `supported` · `experimental`
+· `template-only` · `manual` · `non-gating`. The **release-gate engine** (resolver, enforcer,
+summary builder, install/sync, self-test) is **proven** and self-gated; **most v0.1.12 scanner
+integrations are `supported`/`experimental`** — collector + deterministic self-test, but not yet
+live-validated against a real consumer. DAST is `manual`; AI review is `non-gating`. Full
+per-tool status: [`docs/production-readiness-audit.md`](docs/production-readiness-audit.md).
+Pin tool images/actions before production: [`docs/pinned-tool-references.md`](docs/pinned-tool-references.md).
