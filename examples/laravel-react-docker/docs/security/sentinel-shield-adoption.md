@@ -350,3 +350,19 @@ Shield **≥ v0.1.8** (suppression itself ≥ v0.1.3). See the upstream
 - `knip` and other Node tools are not yet collected.
 - This integration has **not** been executed on a GitHub runner yet; run it once and
   review real scanner output before trusting the gates.
+
+## Use upstream adapters/runners (v0.1.9)
+
+This example consumes Sentinel Shield-provided tooling rather than carrying local copies:
+
+- **Tests:** produce a JUnit/JSON report, then convert with the adapters
+  (`scripts/adapters/phpunit-to-tests-json.php`, `vitest-to-tests-json.mjs`,
+  `jest-to-tests-json.mjs`) → `reports/raw/tests.json`.
+- **Laravel PHPStan:** `scripts/runners/laravel-phpstan.sh` (no local CI-bootstrap copy).
+- **GitHub Actions pins:** `scripts/audit-github-actions-pins.sh` → `unsafe_github_actions`.
+- **Docker base digests:** `scripts/audit-docker-base-digest.sh` → `unsafe_docker`.
+
+Keep project-specific items local: `.sentinel-shield/profile.yaml`,
+`.sentinel-shield/accepted-risks.json`, `phpstan-baseline.neon`, Dockerfiles, and code
+fixes. Generate `docs/security/*` from `templates/*.md`, then fill in. See
+`docs/consolidation-v0.1.9.md` and `docs/remediation/`.

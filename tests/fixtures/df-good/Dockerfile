@@ -1,0 +1,2 @@
+FROM php:8.3-fpm-alpine@sha256:1b440e9804209491713035c4859d434f55e5cf8b0fb8c88a58f2f73d8e18b420 AS base
+FROM base AS final

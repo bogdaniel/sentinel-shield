@@ -38,6 +38,8 @@ tests|tests.json|tests.sh|tests
 hadolint|hadolint.json|hadolint.sh|hadolint
 actionlint|actionlint.json|actionlint.sh|actionlint
 zizmor|zizmor.json|zizmor.sh|zizmor
+github-actions-pins|github-actions-pins.json|github-actions-pins.sh|github_actions_pins
+docker-base-digest|docker-base-digest.json|docker-base-digest.sh|docker_base_digest
 third-party-semgrep|third-party-semgrep.json|third-party-semgrep.sh|third_party_semgrep'
 
 # --- defaults / CLI ----------------------------------------------------------

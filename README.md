@@ -259,6 +259,15 @@ discovers and lints **all** Dockerfiles (`Dockerfile`, `Dockerfile.*`, `docker/*
 Consuming projects should call this script, **not** re-implement per-Dockerfile logic.
 See [`docs/docker-security-standard.md`](docs/docker-security-standard.md).
 
+**Reusable adapters/runners/audits (v0.1.9).** Sentinel Shield owns the reusable tooling
+promoted from the pilot: test adapters (`scripts/adapters/` — PHPUnit/Vitest/Jest →
+`tests.json`), a Laravel PHPStan runner (`scripts/runners/laravel-phpstan.sh`), a GitHub
+Actions pin audit and a Docker base-image digest detector
+(`scripts/audit-*.sh` → `unsafe_github_actions` / `unsafe_docker`), plus remediation
+guides (`docs/remediation/`) and governance templates (`templates/*.md`). Consuming
+projects keep only their `profile.yaml`, `accepted-risks.json`, baselines, and code fixes.
+See [`docs/consolidation-v0.1.9.md`](docs/consolidation-v0.1.9.md).
+
 **Semgrep scoping (v0.1.4+).** Semgrep scans **application source** only — copy a
 [`.semgrepignore` template](profiles/laravel/.semgrepignore) to your repo root to
 exclude vendored/generated/cache assets (`vendor/`, `node_modules/`,

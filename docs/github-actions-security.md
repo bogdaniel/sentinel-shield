@@ -114,3 +114,12 @@ Split responsibilities so a compromised test job cannot deploy:
 
 See [`../github/workflows`](../github/workflows) for templates that already follow
 these rules.
+
+## Pin audit (v0.1.9)
+
+`scripts/audit-github-actions-pins.sh` scans workflow files and writes
+`reports/raw/github-actions-pins.json`; the `github-actions-pins` collector maps unpinned
+refs to `unsafe_github_actions` (complementary to actionlint/zizmor). It flags
+`uses: owner/action@vN|@main|@master|@tag|(no ref)` and un-digested
+`container:`/`image:`/`docker://`; it allows full 40-char commit SHAs, `@sha256:` digests,
+and local (`./`) actions. Remediation: [`remediation/github-actions-sha-pinning.md`](remediation/github-actions-sha-pinning.md).

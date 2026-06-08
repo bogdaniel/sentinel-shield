@@ -6,6 +6,49 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.9] — consolidation: promote pilot lessons upstream
+
+Reusable pieces discovered during the `zenchron-tools` pilot are now owned by Sentinel
+Shield so consuming projects stop duplicating scanner/tooling logic. See
+[`docs/consolidation-v0.1.9.md`](docs/consolidation-v0.1.9.md) for the full classification.
+
+### Added
+
+- **Test adapters** → canonical `reports/raw/tests.json` (`{failures, errors}`), fail
+  clearly on missing/invalid input (never fake success):
+  `scripts/adapters/phpunit-to-tests-json.php` (JUnit XML),
+  `scripts/adapters/vitest-to-tests-json.mjs`, `scripts/adapters/jest-to-tests-json.mjs`.
+- **Laravel PHPStan runner** `scripts/runners/laravel-phpstan.sh` — handles the Laravel CI
+  pitfalls (APP_ENV/APP_KEY, writable dirs, `package:discover`, memory limit), always
+  writes the raw report on non-zero exit, and marks the tool **unavailable** (not a fake
+  clean report) when PHPStan is absent. Env: `SENTINEL_SHIELD_PHPSTAN_{MEMORY_LIMIT,CONFIG,PATHS,BIN}`.
+- **GitHub Actions pin audit** `scripts/audit-github-actions-pins.sh` +
+  collector `scripts/collectors/github-actions-pins.sh` → `unsafe_github_actions`. Flags
+  tag/branch/no-ref `uses:` and un-digested `container:`/`image:`/`docker://`; allows full
+  40-char SHAs, `@sha256:` digests, and local (`./`) actions. Complementary to
+  actionlint/zizmor (the builder SUMS the gate).
+- **Docker base-image digest detector** `scripts/audit-docker-base-digest.sh` +
+  collector `scripts/collectors/docker-base-digest.sh` → `unsafe_docker`. Flags
+  `FROM image:tag` (and implicit `:latest`); allows `@sha256:` and multi-stage aliases.
+  Distinct from Hadolint DL3018/DL3008 (package pinning).
+- **Remediation guides** under `docs/remediation/`: react-dangerously-set-inner-html,
+  phpstan-baseline-strategy, docker-dl3018-decision-tree, browser-stack-isolation,
+  third-party-install-script-review, github-actions-sha-pinning, docker-base-digest-pinning.
+- **Governance templates**: `templates/security-debt-register.md`,
+  `sentinel-shield-rollout-status.md`, `security-triage-report.md`,
+  `third-party-install-script-review.md`, `pinned-ci-references.md` (generic, not
+  project-specific).
+- Self-test `adapters` subcommand (in `all`): adapter parsing + fail-closed, runner
+  unavailable-not-fake, pin audit flag/pass, base-digest flag/pass, template existence.
+
+### Notes
+
+- Promoting these capabilities does **not** move a project's debt or accepted-risk
+  decisions upstream — those stay in the consuming project (`profile.yaml`,
+  `accepted-risks.json`, baselines, code fixes). Class **D** in the consolidation doc.
+- The PHP adapter is validated by `php -l` + fixture parse (run via local PHP or Docker);
+  CI/self-test skip it cleanly when PHP is absent.
+
 ## [0.1.8] — finding-scoped accepted-risk suppression
 
 ### Added

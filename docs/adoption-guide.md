@@ -182,3 +182,17 @@ and pair it with an exception record where it weakens a gate.
 - **Treating AI review as a gate.** It is assistive only — deterministic scanners
   block, humans approve high-risk changes.
 - **Silently disabling a gate.** Use a formal, time-boxed exception instead.
+
+## Reusable adapters & runners (v0.1.9)
+
+Consuming projects should call Sentinel Shield's scripts rather than re-implementing them:
+
+- **Tests → `reports/raw/tests.json`:** `scripts/adapters/phpunit-to-tests-json.php`
+  (JUnit XML), `scripts/adapters/vitest-to-tests-json.mjs`,
+  `scripts/adapters/jest-to-tests-json.mjs`.
+- **Laravel PHPStan:** `scripts/runners/laravel-phpstan.sh` (handles Laravel CI bootstrap;
+  marks the tool unavailable rather than faking clean when PHPStan is absent).
+- **Audits:** `scripts/audit-github-actions-pins.sh`, `scripts/audit-docker-base-digest.sh`.
+
+Project-specific items stay local: `profile.yaml`, `accepted-risks.json`, baselines, code
+fixes. See [`consolidation-v0.1.9.md`](consolidation-v0.1.9.md) and `docs/remediation/`.

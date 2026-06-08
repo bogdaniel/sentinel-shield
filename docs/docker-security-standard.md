@@ -167,3 +167,13 @@ services:
 See [`../profiles/docker/Dockerfile.standard.md`](../profiles/docker/Dockerfile.standard.md)
 and [`../profiles/docker/compose.security.md`](../profiles/docker/compose.security.md)
 for full reference implementations.
+
+## Base-image digest detection (v0.1.9)
+
+`scripts/audit-docker-base-digest.sh` flags `FROM image:tag` base images that are not
+pinned by an `@sha256:` digest (across all discovered Dockerfiles), writing
+`reports/raw/docker-base-digest.json`; the `docker-base-digest` collector maps the count
+to `unsafe_docker`. This is **distinct** from Hadolint DL3018/DL3008 (apk/apt package
+pinning) — it is about base-image reproducibility. Allows `@sha256:` and multi-stage
+`FROM <stage>` aliases. Remediation:
+[`remediation/docker-base-digest-pinning.md`](remediation/docker-base-digest-pinning.md).

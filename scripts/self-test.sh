@@ -478,6 +478,85 @@ JSON
 	log_info "hadolint: OK (multi-Dockerfile discovery, exclusions, merge, collector mapping)"
 }
 
+# --- consolidation pieces (v0.1.9): adapters, runner, audits, templates -----
+AD_FAILS=0
+ad_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; AD_FAILS=$((AD_FAILS + 1)); fi; }
+
+run_adapters() {
+	log_info "consolidation: test adapters, runner, pin audit, base-digest detector, templates"
+	_d=$(mktemp -d)
+
+	# --- test adapters -> {failures, errors} ---
+	# Vitest / Jest (Node).
+	if command -v node >/dev/null 2>&1; then
+		printf '%s' '{"numFailedTests":2,"numFailedTestSuites":1}' > "$_d/vitest.json"
+		node scripts/adapters/vitest-to-tests-json.mjs "$_d/vitest.json" "$_d/tv.json" >/dev/null 2>&1
+		ad_check "vitest adapter parses JSON (failures)" "$(jq -r '.failures' "$_d/tv.json" 2>/dev/null)" "2"
+		ad_check "vitest adapter parses JSON (errors)"   "$(jq -r '.errors' "$_d/tv.json" 2>/dev/null)" "1"
+		printf '%s' '{"numFailedTests":3,"numRuntimeErrorTestSuites":1}' > "$_d/jest.json"
+		node scripts/adapters/jest-to-tests-json.mjs "$_d/jest.json" "$_d/tj.json" >/dev/null 2>&1
+		ad_check "jest adapter parses JSON (failures)" "$(jq -r '.failures' "$_d/tj.json" 2>/dev/null)" "3"
+		if printf 'not json' | node scripts/adapters/vitest-to-tests-json.mjs - "$_d/x.json" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+		ad_check "vitest adapter fails on invalid input (no fake)" "$_rc" "2"
+	else
+		log_warn "node not found; SKIPPING vitest/jest adapter tests"
+	fi
+	# PHPUnit (PHP).
+	if command -v php >/dev/null 2>&1; then
+		printf '%s' '<?xml version="1.0"?><testsuites tests="3" failures="1" errors="1"><testsuite failures="1" errors="1"/></testsuites>' > "$_d/junit.xml"
+		php scripts/adapters/phpunit-to-tests-json.php "$_d/junit.xml" "$_d/tp.json" >/dev/null 2>&1
+		ad_check "phpunit adapter parses JUnit XML (failures)" "$(jq -r '.failures' "$_d/tp.json" 2>/dev/null)" "1"
+		ad_check "phpunit adapter parses JUnit XML (errors)"   "$(jq -r '.errors' "$_d/tp.json" 2>/dev/null)" "1"
+	else
+		log_warn "php not found; SKIPPING phpunit adapter test (validate with: php -l / docker php)"
+	fi
+
+	# --- Laravel PHPStan runner: missing PHPStan -> unavailable, no fake report ---
+	_pd=$(mktemp -d)
+	( cd "$_pd" && SENTINEL_SHIELD_PHPSTAN_BIN="" sh "$OLDPWD/scripts/runners/laravel-phpstan.sh" --output reports/raw/phpstan.json >/dev/null 2>&1 ) || true
+	if [ -f "$_pd/reports/raw/phpstan.json" ]; then
+		ad_check "laravel-phpstan runner: no PHPStan -> NO fake report" "exists" "absent"
+	else
+		ad_check "laravel-phpstan runner: no PHPStan -> NO fake report (unavailable)" "absent" "absent"
+	fi
+	rm -rf "$_pd"
+
+	# --- GitHub Actions pin audit ---
+	mkdir -p "$_d/wf"
+	printf 'on: [push]\njobs:\n  a:\n    container: node:20-alpine\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@main\n' > "$_d/wf/bad.yml"
+	printf 'on: [push]\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n      - uses: ./.github/actions/x\n' > "$_d/wf/good.yml"
+	sh scripts/audit-github-actions-pins.sh --output "$_d/ghbad.json" "$_d/wf/bad.yml" >/dev/null 2>&1
+	ad_check "GH pin audit flags tag/branch/container refs" "$(jq 'length' "$_d/ghbad.json" 2>/dev/null)" "3"
+	sh scripts/audit-github-actions-pins.sh --output "$_d/ghgood.json" "$_d/wf/good.yml" >/dev/null 2>&1
+	ad_check "GH pin audit passes SHA + local refs" "$(jq 'length' "$_d/ghgood.json" 2>/dev/null)" "0"
+	ad_check "GH pin collector -> unsafe_github_actions" "$(sh scripts/collectors/github-actions-pins.sh --input "$_d/ghbad.json" 2>/dev/null | jq -r '.summary.unsafe_github_actions')" "3"
+
+	# --- Docker base digest detector ---
+	mkdir -p "$_d/dfbad" "$_d/dfgood"
+	printf 'FROM php:8.3-fpm-alpine AS base\nRUN echo x\n' > "$_d/dfbad/Dockerfile"
+	printf 'FROM php:8.3-fpm-alpine@sha256:1b440e9804209491713035c4859d434f55e5cf8b0fb8c88a58f2f73d8e18b420 AS base\nFROM base AS final\n' > "$_d/dfgood/Dockerfile"
+	( cd "$_d/dfbad" && sh "$OLDPWD/scripts/audit-docker-base-digest.sh" --output db.json >/dev/null 2>&1 )
+	ad_check "Docker base-digest flags tag-only FROM" "$(jq 'length' "$_d/dfbad/db.json" 2>/dev/null)" "1"
+	( cd "$_d/dfgood" && sh "$OLDPWD/scripts/audit-docker-base-digest.sh" --output db.json >/dev/null 2>&1 )
+	ad_check "Docker base-digest passes digest FROM + stage alias" "$(jq 'length' "$_d/dfgood/db.json" 2>/dev/null)" "0"
+	ad_check "Docker base-digest collector -> unsafe_docker" "$(sh scripts/collectors/docker-base-digest.sh --input "$_d/dfbad/db.json" 2>/dev/null | jq -r '.summary.unsafe_docker')" "1"
+
+	# --- templates / guides exist ---
+	for t in templates/security-debt-register.md templates/sentinel-shield-rollout-status.md \
+		templates/security-triage-report.md templates/third-party-install-script-review.md \
+		templates/pinned-ci-references.md \
+		docs/remediation/react-dangerously-set-inner-html.md docs/remediation/phpstan-baseline-strategy.md \
+		docs/remediation/docker-dl3018-decision-tree.md docs/remediation/browser-stack-isolation.md \
+		docs/remediation/third-party-install-script-review.md docs/remediation/github-actions-sha-pinning.md \
+		docs/remediation/docker-base-digest-pinning.md; do
+		ad_check "template/guide exists: $t" "$([ -f "$t" ] && echo yes || echo no)" "yes"
+	done
+
+	rm -rf "$_d"
+	if [ "$AD_FAILS" -ne 0 ]; then log_error "consolidation: $AD_FAILS case(s) failed"; return 1; fi
+	log_info "consolidation: OK (adapters, runner, audits, detectors, templates/guides)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -487,6 +566,7 @@ case "$SUB" in
 	finding-scope) run_finding_scope ;;
 	third-party) run_third_party ;;
 	hadolint) run_hadolint ;;
+	adapters) run_adapters ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -496,13 +576,14 @@ case "$SUB" in
 		run_finding_scope
 		run_third_party
 		run_hadolint
+		run_adapters
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|all)"
 		exit 2
 		;;
 esac

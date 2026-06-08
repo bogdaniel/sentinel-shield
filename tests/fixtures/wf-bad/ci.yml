@@ -1,0 +1,9 @@
+on: [push]
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    container: node:20-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@main
+      - uses: docker://alpine:latest

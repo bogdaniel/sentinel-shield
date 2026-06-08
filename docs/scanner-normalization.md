@@ -39,7 +39,7 @@ Default raw input: `reports/raw/`. Expected artifacts (all optional by default):
 ```txt
 gitleaks.json  semgrep.json  trivy.json  composer-audit.json  npm-audit.json
 phpstan.json   psalm.json    deptrac.json  tests.json  hadolint.json
-actionlint.json  zizmor.json
+actionlint.json  zizmor.json  github-actions-pins.json  docker-base-digest.json
 ```
 
 A **missing** artifact (in non-strict mode) is not an error: the tool is recorded as
@@ -96,6 +96,8 @@ Rules:
 | `hadolint` | array; level error/warning | `unsafe_docker` (v0.1.7: produced by `scripts/run-hadolint.sh`, which discovers ALL Dockerfiles — `Dockerfile`, `Dockerfile.*`, `docker/**`, `.docker/**` — and merges their findings into one `hadolint.json`; the collector is unchanged and counts error+warning across the merged array) |
 | `actionlint` | `{ "errors" }` or error array | `unsafe_github_actions` |
 | `zizmor` | array / `.findings[]` | `unsafe_github_actions` |
+| `github_actions_pins` (v0.1.9) | array from `scripts/audit-github-actions-pins.sh` | `unsafe_github_actions` (unpinned `uses:`/images; complementary to actionlint/zizmor — counts are SUMMED) |
+| `docker_base_digest` (v0.1.9) | array from `scripts/audit-docker-base-digest.sh` | `unsafe_docker` (un-digested `FROM image:tag`; distinct from Hadolint DL3018/DL3008 — counts are SUMMED) |
 | `third_party_semgrep` | `.results[].extra.metadata.sentinel_shield_category` (separate dependency scan; see [`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md)) | `third_party_install_script_risk` / `third_party_obfuscation` / `third_party_network_behavior`; missing category → `third_party_suspicious_code`. **Never** mixed into app `*_vulnerabilities`. |
 
 TypeScript and ESLint normalization (including the conservative ESLint
