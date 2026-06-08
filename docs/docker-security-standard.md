@@ -8,6 +8,37 @@ the requirement and why it exists.
 
 ---
 
+## Hadolint scanning — global multi-Dockerfile discovery (v0.1.7)
+
+Sentinel Shield lints **every** Dockerfile in a project, not just a root `Dockerfile`.
+[`scripts/run-hadolint.sh`](../scripts/run-hadolint.sh) discovers and scans:
+
+```txt
+./Dockerfile        ./Dockerfile.*
+docker/**/Dockerfile    docker/**/Dockerfile.*
+.docker/**/Dockerfile   .docker/**/Dockerfile.*
+```
+
+(generated/cache dirs — `node_modules`, `vendor`, `dist`, `build`, `coverage`, `.git` —
+are pruned). It runs Hadolint on each file and **merges the results into one
+`reports/raw/hadolint.json`** (per-finding `.file` path preserved) that the `hadolint`
+collector normalizes into `unsafe_docker` exactly as before. No Dockerfiles → it skips
+cleanly and the tool is `unavailable`; an unexpected Hadolint failure leaves the report
+absent (never a faked empty `[]`).
+
+The reusable workflows (`ci-docker.yml`, `ci-pipeline.yml`, the example
+`sentinel-shield.yml`) call this script.
+
+> **Do not duplicate global scanner behavior in a consuming project.** Multi-Dockerfile
+> discovery is a *Sentinel Shield* responsibility — do not re-add project-local Hadolint
+> multi-file loops, per-Dockerfile steps, or report-merging in your project workflow.
+> Bump your `SENTINEL_SHIELD_REF` to v0.1.7+ and call the script. A consuming project
+> should keep only **project-specific** Docker security artifacts: its Dockerfiles, its
+> `hadolint.yaml`/config, and its own **accepted-risk** decisions
+> (`.sentinel-shield/accepted-risks.json`) — never a copy of the scanner mechanics.
+
+---
+
 ## 1. Non-root user
 
 Run the application as a dedicated unprivileged user. A compromised process should

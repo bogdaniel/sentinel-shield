@@ -176,6 +176,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Checkout Sentinel Shield (for the Hadolint runner script)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
       - name: Detect Docker files
         id: detect
         run: |
@@ -187,14 +194,13 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::warning::no Docker files; skipping Docker security"
           fi
-      - name: Hadolint (JSON)
-        if: steps.detect.outputs.present == 'true' && hashFiles('Dockerfile') != ''
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          format: json
-          output-file: reports/raw/hadolint.json
-          no-fail: true
+      - name: Hadolint (all Dockerfiles → reports/raw/hadolint.json)
+        # v0.1.7: global multi-Dockerfile discovery from Sentinel Shield — scans
+        # Dockerfile, Dockerfile.*, docker/**, .docker/** and merges into one report.
+        # This REPLACES any project-local multi-Dockerfile workaround; do not re-add
+        # custom Hadolint logic here. Self-skips when no Dockerfiles exist.
+        if: steps.detect.outputs.present == 'true'
+        run: sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-hadolint.sh
       - name: Trivy filesystem (JSON)
         if: steps.detect.outputs.present == 'true'
         uses: aquasecurity/trivy-action@v0.36.0

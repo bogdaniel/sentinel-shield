@@ -249,6 +249,12 @@ coverage. See [`docs/scanner-normalization.md`](docs/scanner-normalization.md) a
 for the Node/React mappings, [`docs/node-react-normalization.md`](docs/node-react-normalization.md).
 Clean input examples live in [`templates/raw/`](templates/raw/).
 
+**Multi-Dockerfile Hadolint (v0.1.7+).** [`scripts/run-hadolint.sh`](scripts/run-hadolint.sh)
+discovers and lints **all** Dockerfiles (`Dockerfile`, `Dockerfile.*`, `docker/**`,
+`.docker/**`) and merges them into one `reports/raw/hadolint.json` → `unsafe_docker`.
+Consuming projects should call this script, **not** re-implement per-Dockerfile logic.
+See [`docs/docker-security-standard.md`](docs/docker-security-standard.md).
+
 **Semgrep scoping (v0.1.4+).** Semgrep scans **application source** only — copy a
 [`.semgrepignore` template](profiles/laravel/.semgrepignore) to your repo root to
 exclude vendored/generated/cache assets (`vendor/`, `node_modules/`,

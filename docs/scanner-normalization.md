@@ -93,7 +93,7 @@ Rules:
 | `tests` | `{ "failures", "errors" }` | `test_failures` |
 | `typescript` | `{ "errors": N }` (normalized) | `type_errors` |
 | `eslint` | native ESLint JSON array | `type_errors` (errorCount), `medium_vulnerabilities` (warningCount), `high_vulnerabilities` (security severity-2) |
-| `hadolint` | array; level error/warning | `unsafe_docker` |
+| `hadolint` | array; level error/warning | `unsafe_docker` (v0.1.7: produced by `scripts/run-hadolint.sh`, which discovers ALL Dockerfiles — `Dockerfile`, `Dockerfile.*`, `docker/**`, `.docker/**` — and merges their findings into one `hadolint.json`; the collector is unchanged and counts error+warning across the merged array) |
 | `actionlint` | `{ "errors" }` or error array | `unsafe_github_actions` |
 | `zizmor` | array / `.findings[]` | `unsafe_github_actions` |
 | `third_party_semgrep` | `.results[].extra.metadata.sentinel_shield_category` (separate dependency scan; see [`third-party-supply-chain-scan.md`](third-party-supply-chain-scan.md)) | `third_party_install_script_risk` / `third_party_obfuscation` / `third_party_network_behavior`; missing category → `third_party_suspicious_code`. **Never** mixed into app `*_vulnerabilities`. |

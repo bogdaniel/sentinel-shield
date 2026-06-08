@@ -27,12 +27,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Hadolint (Dockerfile lint)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          config: hadolint.yaml
-          failure-threshold: warning
+      - name: Hadolint (all Dockerfiles — lint gate + raw report)
+        # Reusable multi-Dockerfile discovery (Dockerfile, Dockerfile.*, docker/**,
+        # .docker/**) — replaces the old single-Dockerfile step. Writes the merged
+        # reports/raw/hadolint.json AND enforces the warning-level lint gate here.
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          sh scripts/run-hadolint.sh
+          if [ -f reports/raw/hadolint.json ]; then
+            n=$(jq '[.[]? | (.level // "") | select(. == "error" or . == "warning")] | length' reports/raw/hadolint.json)
+            [ "$n" -eq 0 ] || { echo "::error::Hadolint: $n error/warning finding(s) across Dockerfiles"; exit 1; }
+          fi
 
       - name: Validate docker-compose
         run: |
@@ -68,16 +74,8 @@ jobs:
         if: always()
         run: mkdir -p reports/raw
 
-      - name: Hadolint (JSON → reports/raw/hadolint.json)
-        if: always()
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          config: hadolint.yaml
-          format: json
-          output-file: reports/raw/hadolint.json
-          no-fail: true
-
+      # (Hadolint raw report is already written by the lint-gate step above via
+      # scripts/run-hadolint.sh — no separate single-Dockerfile step needed.)
       - name: Trivy (JSON → reports/raw/trivy.json)
         if: always()
         uses: aquasecurity/trivy-action@v0.36.0

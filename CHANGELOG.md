@@ -6,6 +6,39 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.7] — global multi-Dockerfile Hadolint discovery
+
+### Added
+
+- `scripts/run-hadolint.sh` (POSIX sh): discovers all Dockerfile-like files
+  (`Dockerfile`, `Dockerfile.*`, `docker/**/Dockerfile[.*]`, `.docker/**/Dockerfile[.*]`),
+  runs Hadolint on each (local binary or `hadolint/hadolint` Docker image), and **merges
+  the JSON arrays into one `reports/raw/hadolint.json`** (per-finding `.file` path
+  preserved) that the existing `hadolint` collector parses unchanged. Prunes generated/
+  cache dirs (`node_modules`, `vendor`, `dist`, `build`, `coverage`, `.git`). `--list`
+  mode prints discovered files. Skips cleanly (writes nothing, exit 0) when no
+  Dockerfiles exist → collector marks hadolint `unavailable`. Never fakes an empty `[]`
+  on unexpected Hadolint failure (exit 1, no file written).
+
+### Changed
+
+- `ci-docker.yml`, `ci-pipeline.yml`, and the Laravel+React+Docker example workflow now
+  call `run-hadolint.sh` instead of the single-`Dockerfile` `hadolint-action`. The
+  example's docker-security job checks out Sentinel Shield to use the script.
+- **Removes the need for project-local Hadolint multi-file workarounds** — multi-file
+  discovery is now a global Sentinel Shield behavior. Project-specific accepted-risk
+  decisions stay in the consuming project (not moved into Sentinel Shield).
+- `unsafe_docker` normalization is unchanged (collector still counts error+warning).
+- Self-test `hadolint` subcommand (in `all`): discovery includes Dockerfile +
+  Dockerfile.prod + `docker/**`, excludes vendor/node_modules, handles "no Dockerfiles",
+  merged JSON stays valid, and the collector still maps `unsafe_docker`.
+
+### Notes
+
+- DL3018 is **not** hidden — findings from every discovered Dockerfile flow into
+  `unsafe_docker` (more files scanned can raise the count). Accepted-risk governance is
+  unchanged and remains the consuming project's responsibility.
+
 ## [0.1.6] — separate app vs third-party rule trees; high-confidence supply-chain rules
 
 ### Changed (rule layout — see migration note)

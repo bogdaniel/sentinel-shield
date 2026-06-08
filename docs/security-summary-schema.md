@@ -50,7 +50,7 @@ All keys are required. Integer keys are non-negative counts; two are booleans.
 | `architecture_violations` | integer | Deptrac / import-boundary violations. |
 | `type_errors` | integer | PHPStan/Psalm/tsc errors. |
 | `test_failures` | integer | Failing tests. |
-| `unsafe_docker` | integer | Hadolint/Trivy misconfig findings. |
+| `unsafe_docker` | integer | Hadolint/Trivy misconfig findings (v0.1.7: Hadolint scans ALL discovered Dockerfiles, merged into one report — see [`docker-security-standard.md`](docker-security-standard.md)). |
 | `unsafe_github_actions` | integer | actionlint/zizmor findings. |
 | `missing_sbom` | boolean | `true` if no SBOM was produced. |
 | `missing_release_evidence` | boolean | `true` if no readiness report. |

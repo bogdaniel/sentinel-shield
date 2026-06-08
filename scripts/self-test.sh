@@ -356,6 +356,54 @@ run_third_party() {
 	log_info "third-party: OK (separate channel; report-only non-blocking; regulated blocks)"
 }
 
+# --- hadolint multi-Dockerfile discovery (v0.1.7) ---------------------------
+HL_FAILS=0
+hl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; HL_FAILS=$((HL_FAILS + 1)); fi; }
+
+run_hadolint() {
+	log_info "hadolint: multi-Dockerfile discovery + merge (no real Hadolint needed)"
+	_rh="$PWD/scripts/run-hadolint.sh"
+	_d=$(mktemp -d)
+	# Fixture: root Dockerfile + Dockerfile.prod, a docker/** Dockerfile, and
+	# generated dirs that MUST be excluded.
+	mkdir -p "$_d/docker/php" "$_d/vendor" "$_d/node_modules/p"
+	printf 'FROM alpine:3.20\n' > "$_d/Dockerfile"
+	printf 'FROM alpine:3.20\n' > "$_d/Dockerfile.prod"
+	printf 'FROM php:8.3-fpm-alpine\n' > "$_d/docker/php/Dockerfile"
+	printf 'FROM x\n' > "$_d/vendor/Dockerfile"
+	printf 'FROM x\n' > "$_d/node_modules/p/Dockerfile"
+	_list=$( cd "$_d" && sh "$_rh" --list )
+	hl_check "discovery includes Dockerfile"        "$(printf '%s\n' "$_list" | grep -c '^\./Dockerfile$')" "1"
+	hl_check "discovery includes Dockerfile.prod"   "$(printf '%s\n' "$_list" | grep -c 'Dockerfile\.prod$')" "1"
+	hl_check "discovery includes docker/** Dockerfile" "$(printf '%s\n' "$_list" | grep -c 'docker/php/Dockerfile$')" "1"
+	hl_check "discovery EXCLUDES vendor/node_modules" "$(printf '%s\n' "$_list" | grep -c -E 'vendor/|node_modules/')" "0"
+
+	# Missing Dockerfiles -> --list prints nothing, exits 0.
+	_empty=$(mktemp -d)
+	_out=$( cd "$_empty" && sh "$_rh" --list ); _rc=$?
+	hl_check "no Dockerfiles -> empty list" "$(printf '%s' "$_out" | wc -c | tr -d ' ')" "0"
+	hl_check "no Dockerfiles -> exit 0" "$_rc" "0"
+
+	# Merged Hadolint JSON (two files) stays valid and the collector maps unsafe_docker.
+	mkdir -p "$_d/reports/raw"
+	cat > "$_d/reports/raw/hadolint.json" <<'JSON'
+[
+  {"file":"Dockerfile","line":2,"code":"DL3018","level":"warning","message":"Pin versions in apk add"},
+  {"file":"Dockerfile.prod","line":3,"code":"DL3018","level":"warning","message":"Pin versions in apk add"},
+  {"file":"Dockerfile.prod","line":5,"code":"DL3008","level":"info","message":"info-only"}
+]
+JSON
+	jq -e 'type=="array"' "$_d/reports/raw/hadolint.json" >/dev/null 2>&1 \
+		&& hl_check "merged hadolint.json is valid array" "ok" "ok" \
+		|| hl_check "merged hadolint.json is valid array" "bad" "ok"
+	_ud=$(sh scripts/collectors/hadolint.sh --input "$_d/reports/raw/hadolint.json" --tool-name hadolint | jq -r '.summary.unsafe_docker')
+	hl_check "collector maps merged findings -> unsafe_docker (2 warnings, info ignored)" "$_ud" "2"
+
+	rm -rf "$_d" "$_empty"
+	if [ "$HL_FAILS" -ne 0 ]; then log_error "hadolint: $HL_FAILS case(s) failed"; return 1; fi
+	log_info "hadolint: OK (multi-Dockerfile discovery, exclusions, merge, collector mapping)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -363,6 +411,7 @@ case "$SUB" in
 	negative) run_negative ;;
 	suppression) run_suppression ;;
 	third-party) run_third_party ;;
+	hadolint) run_hadolint ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -370,13 +419,14 @@ case "$SUB" in
 		run_negative
 		run_suppression
 		run_third_party
+		run_hadolint
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|third-party|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|third-party|hadolint|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|third-party|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|third-party|hadolint|all)"
 		exit 2
 		;;
 esac

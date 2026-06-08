@@ -121,6 +121,11 @@ output into the contract. Responsibilities stay separate:
 fatal (exit 1). The builder does **not** run scanners. **Enforcement begins only on
 `security-summary.json`** — see [`docs/scanner-normalization.md`](docs/scanner-normalization.md).
 
+**Hadolint (v0.1.7+):** `scripts/run-hadolint.sh` discovers and lints **all** Dockerfiles
+(`Dockerfile`, `Dockerfile.*`, `docker/**`, `.docker/**`) and merges them into one
+`reports/raw/hadolint.json` → `unsafe_docker`. No Dockerfiles → `unavailable`. Consuming
+projects call the script rather than re-implementing per-Dockerfile logic.
+
 **Semgrep scoping (v0.1.4+).** A project-local `.semgrepignore` (repo root; the
 workflows run Semgrep with `-w /src`) keeps SAST on application source and off
 vendored/generated assets. **SAST-only** — composer/npm audit, Trivy, Syft SBOM,

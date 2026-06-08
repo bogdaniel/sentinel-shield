@@ -301,6 +301,20 @@ audit / Gitleaks / SBOM (those still cover dependency CVEs and secrets).
 
 See the upstream `docs/third-party-supply-chain-scan.md`.
 
+## Docker linting — all Dockerfiles, globally (v0.1.7+)
+
+The `docker-security` job checks out Sentinel Shield and runs
+`scripts/run-hadolint.sh`, which discovers and lints **every** Dockerfile in the repo
+(`Dockerfile`, `Dockerfile.*`, `docker/**`, `.docker/**`) and merges the results into one
+`reports/raw/hadolint.json` → `unsafe_docker`. This replaces any project-local
+multi-Dockerfile workaround.
+
+> **Do not re-add custom Hadolint multi-file logic to this project's workflow.** That is
+> now a global Sentinel Shield behavior — bump `SENTINEL_SHIELD_REF` to v0.1.7+ and call
+> the script. Keep only **project-specific** Docker artifacts here: your Dockerfiles,
+> your `hadolint.yaml`, and your **accepted-risk** records (below). Scanning more
+> Dockerfiles can raise `unsafe_docker` — that is expected and visible, not hidden.
+
 ## Accepted-risk suppression (v0.1.3+)
 
 For a Docker DL3018 or similar hygiene finding, **prefer fixing**. If you accept it

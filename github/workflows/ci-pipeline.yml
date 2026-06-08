@@ -173,15 +173,13 @@ jobs:
           fi
           mkdir -p reports/raw
 
-      - name: Hadolint (JSON → reports/raw/hadolint.json)
-        if: steps.detect.outputs.present == 'true' && hashFiles('Dockerfile') != ''
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          config: hadolint.yaml
-          format: json
-          output-file: reports/raw/hadolint.json
-          no-fail: true
+      - name: Hadolint (all Dockerfiles → reports/raw/hadolint.json)
+        # Reusable multi-Dockerfile discovery (Dockerfile, Dockerfile.*, docker/**,
+        # .docker/**) merged into one report. Self-skips when no Dockerfiles exist
+        # (collector then marks hadolint unavailable). No project-local multi-file
+        # workaround needed — see docs/docker-security-standard.md.
+        if: steps.detect.outputs.present == 'true'
+        run: sh scripts/run-hadolint.sh
 
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
         if: steps.detect.outputs.present == 'true'
