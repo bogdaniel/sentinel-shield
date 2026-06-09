@@ -119,6 +119,21 @@ Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
 [`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md) and
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). DAST/Nuclei/AI unchanged (manual/non-gating).
 
+## v0.1.22 — workflow hardening + dedicated evidence workflow
+- **`if: always()` on every artifact upload** across pr-fast, main, scheduled, dast, ai-review (and
+  the combined `sentinel-shield.yml`) — a failing gate or scan step never erases the raw reports.
+- **Digest-override env vars exposed in all templates** that run scanner images
+  (`SENTINEL_SHIELD_SEMGREP_IMAGE`/`_GRYPE_IMAGE`/`_DOCKLE_IMAGE`) — readable tags by default, digest
+  pins in [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md).
+- **Minimal permissions** (`contents: read`, `+ security-events: write` only on main for CodeQL),
+  **no `pull_request_target`** trigger, and **workflow `name:` matches its filename** everywhere —
+  all enforced by `self-test workflow-sanity`.
+- **New `templates/workflows/sentinel-shield-dependency-check.yml`** — a dedicated, dispatch-only
+  EVIDENCE workflow whose single job runs OWASP Dependency-Check (monthly NVD `actions/cache`,
+  foreground, `timeout-minutes`, `if: always()` upload) to produce the **first real
+  `dependency-check.json` artifact**. Until it does, Dependency-Check stays **attempted, NOT
+  live-validated**. DAST/Nuclei/AI remain dispatch-only / non-gating (never a default gate).
+
 ## v0.1.21 — Dependency-Check nightly + scanner digest overrides
 `sentinel-shield-scheduled.yml` gains a dedicated cached `dependency-check` job (monthly NVD
 `actions/cache`, foreground, `if: always()` artifact upload). All templates now show **digest
