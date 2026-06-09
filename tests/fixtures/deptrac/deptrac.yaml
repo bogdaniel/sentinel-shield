@@ -1,0 +1,20 @@
+# Sentinel Shield test fixture — minimal valid Deptrac config.
+# Defines two layers and a ruleset so a Deptrac run has something to enforce.
+# This is a sample layout (Symfony/Laravel-style src/) for the readiness doc;
+# it is NOT a Deptrac JSON report (the collector consumes deptrac.json, not this).
+deptrac:
+  paths:
+    - ./src
+  layers:
+    - name: Controller
+      collectors:
+        - type: directory
+          value: src/Controller/.*
+    - name: Domain
+      collectors:
+        - type: directory
+          value: src/Domain/.*
+  ruleset:
+    Controller:
+      - Domain
+    Domain: ~
