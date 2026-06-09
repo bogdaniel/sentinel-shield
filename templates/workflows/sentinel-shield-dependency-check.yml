@@ -1,0 +1,62 @@
+# Sentinel Shield — DEPENDENCY-CHECK EVIDENCE workflow (v0.1.22). Single-purpose: run OWASP
+# Dependency-Check on a real consumer so a maintainer can produce the FIRST real
+# `dependency-check.json` artifact. UNTIL that artifact exists and a collector parses it,
+# Dependency-Check stays "attempted, NOT live-validated" — see docs/main-gate-live-evidence.md
+# and docs/dependency-check-nightly-strategy.md. This workflow does NOT promote the tool; it only
+# generates the evidence a maintainer must then download, verify, and cite.
+#
+# Foreground only — never `docker run -d` (a detached container ignores `timeout-minutes`). The
+# audit wrapper keeps valid JSON even on non-zero exit (findings) and discards partial output;
+# it NEVER fakes a clean report. Cold first run downloads the full NVD feed (slow); warm runs
+# restore the monthly cache and fetch only the delta (see the cold/warm doc section).
+name: sentinel-shield-dependency-check
+on:
+  workflow_dispatch:   # maintainer-triggered: produce the first real dependency-check.json artifact
+  # Optional weekly schedule — uncomment to keep the NVD cache warm and re-scan on a cadence.
+  # schedule:
+  #   - cron: "23 4 * * 1"   # Mondays 04:23 UTC (off-peak)
+permissions:
+  contents: read   # minimal — no pull_request_target, no write scopes
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
+  SENTINEL_SHIELD_REF: v0.1.22                            # pin to a full SHA before production
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+jobs:
+  dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+      - name: Compute NVD cache month stamp
+        id: month
+        run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - name: Restore NVD cache (monthly key; partial-reuse restore-keys)
+        uses: actions/cache@v4   # pin to a SHA before production
+        with:
+          path: .sentinel-shield/cache/dependency-check
+          key: nvd-${{ runner.os }}-${{ steps.month.outputs.ym }}
+          restore-keys: |
+            nvd-${{ runner.os }}-
+      - name: OWASP Dependency-Check (foreground; cached NVD; never fake)
+        # FOREGROUND only — timeout-minutes + SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT only work when
+        # the scanner is not detached. Exits non-zero on findings; the wrapper keeps the valid JSON.
+        timeout-minutes: 45
+        env:
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: enabled
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE: .sentinel-shield/cache/dependency-check
+          # No validated Dependency-Check digest yet — readable tag; pin by digest before production.
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT: 40m
+        run: |
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()   # scanner failure/findings must NOT erase the raw dependency-check.json
+        with: { name: sentinel-shield-dependency-check, path: reports/**, retention-days: 30, if-no-files-found: warn }

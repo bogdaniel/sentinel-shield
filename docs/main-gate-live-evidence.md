@@ -61,3 +61,15 @@ Digest pins were **resolved with Docker (not invented)** on 2026-06-10 — full 
 in [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md). Resolving a digest is a
 supply-chain hardening step, **not** a new live-validation; the promotions above stand on run
 27239206382. Dependency-Check stays unpromoted until a nightly run produces a real artifact recorded here.
+
+## v0.1.22 — Dependency-Check evidence placeholder (no artifact yet)
+
+Placeholder registry entry. **No new consumer run, no artifact, no run ID** — this records the
+*pending* state and the path to close it, nothing more.
+
+| Tool | Status (v0.1.22) | Workflow / Run ID | Artifact | Evidence / next step |
+|---|---|---|---|---|
+| **OWASP Dependency-Check** | **attempted, NOT live-validated** | `sentinel-shield-dependency-check.yml` / **PENDING** (no run yet) | **none — no real `dependency-check.json` exists** | A maintainer must run the dedicated evidence workflow [`templates/workflows/sentinel-shield-dependency-check.yml`](../templates/workflows/sentinel-shield-dependency-check.yml) on a real consumer (foreground, monthly NVD `actions/cache`), download the resulting `dependency-check.json`, and confirm `scripts/collectors/dependency-check.sh` parses it. Promotion requires that **real, cited artifact** recorded here. NOT promoted, NOT faked. |
+
+Until that artifact exists and is cited, Dependency-Check remains **attempted, NOT live-validated**.
+No run ID or artifact is invented to fill this row — the PENDING state is the honest record.

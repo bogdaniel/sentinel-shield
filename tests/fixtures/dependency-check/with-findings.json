@@ -1,0 +1,11 @@
+{
+  "dependencies": [
+    {
+      "fileName": "vulnerable-lib-1.0.0.jar",
+      "vulnerabilities": [
+        { "severity": "HIGH" },
+        { "severity": "CRITICAL" }
+      ]
+    }
+  ]
+}
