@@ -163,6 +163,22 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.23 — enterprise readiness burn-down (no promotions)
+Ten-lane sprint. No maturity promotions; blocker burn-down + evidence prep:
+- **Dependency-Check:** real consumer run **attempted** (gh auth + network confirmed) — blocked
+  because the evidence workflow is not yet deployed on the consumer; **still attempted, NOT
+  live-validated**. Plan + clean/warm fixtures added ([`dependency-check-evidence-plan.md`](dependency-check-evidence-plan.md)).
+- **Adoption:** Symfony install fixture; profile-compatibility table; install/sync reliability
+  (audit/rollback/troubleshooting/checklist).
+- **Strict/regulated:** gate-promotion policy + 24-gate readiness matrix (verified vs resolve-gates);
+  executable mode fixtures now enforced in self-test (strict fails style/iac/medium; regulated fails dast).
+- **DAST:** controlled-pilot readiness + approval template (DAST still never enabled; fail-closed proven in self-test incl. non-http rejection).
+- **IaC/architecture:** Terraform/k8s/compose/deptrac/architecture fixtures + readiness doc; collector mappings tested (experimental/only-if-configured).
+- **Supply-chain:** all 3 scanner digests re-verified live against Docker; reproducibility + version-update process; self-test asserts no validated scanner pinned to `:latest`.
+- **v1.0:** [`v1-readiness.md`](v1-readiness.md) defines the path — **v1.0 NOT reached**; Dependency-Check live validation is the chief outstanding blocker.
+- **Self-test:** 271 → **312 checks** (`v023-coverage`, `v023-regression`, `install-matrix`+symfony).
+- **No v1.0 claim.** Engine `proven`; most non-core scanners `supported`/`experimental`.
+
 ## v0.1.22 — acceleration sprint (adoption/evidence/hardening; no promotions)
 No maturity promotions. Closure work only:
 - **Dependency-Check:** still **attempted, NOT live-validated**. Added the dedicated evidence

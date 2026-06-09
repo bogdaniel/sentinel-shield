@@ -78,4 +78,14 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 **Overall:** the **engine, install/sync, contract, and PR-fast gate are `done`/`proven`**. The
 open frontier is **Phase 3 — live validation of main-gate tools**, currently `blocked` on a
 dispatchable validation strategy. Do not read a `partial`/`blocked` item as production-ready.
+
+## v0.1.23 — enterprise readiness burn-down (status update)
+- [x] `done` — v1.0 readiness definition ([`v1-readiness.md`](v1-readiness.md)) + product contract.
+- [x] `done` — Strict/regulated gate-promotion policy + 24-gate readiness matrix (enforced by `self-test v023-coverage`).
+- [x] `done` — Install/sync reliability (audit/rollback/troubleshooting/checklist) + Symfony adoption fixture + profile-compatibility table.
+- [x] `done` — Supply-chain reproducibility: 3 scanner digests re-verified live; no validated scanner pinned to `:latest` (self-test enforced).
+- [x] `done` — DAST controlled-pilot readiness + approval template; fail-closed proven (missing target/non-http/host-mismatch) — **DAST still never enabled**.
+- [x] `done` — IaC/Deptrac/architecture fixtures + readiness doc (collector mappings tested; remain `experimental`/only-if-configured).
+- [ ] `blocked` — **Dependency-Check live validation**: real run **attempted** (gh auth + network OK) but the evidence workflow is not yet deployed on the consumer; no artifact. **Still attempted, NOT live-validated** — chief remaining blocker.
+- [ ] `not-reached` — **v1.0**: explicitly NOT reached; see the outstanding list in `v1-readiness.md`.
 </content>

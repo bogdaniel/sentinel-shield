@@ -6,6 +6,38 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.23] — Enterprise Readiness Burn-Down Sprint
+
+Ten-lane parallel sprint (9 worktree-isolated agent lanes + release captain) merged via
+`release/v023-integration`. No new scanners; no gates weakened; no findings suppressed; no fake
+reports. **OWASP Dependency-Check remains attempted, NOT live-validated** — a real consumer run was
+attempted (gh auth + network confirmed) but the evidence workflow is not yet deployed on the
+consumer and no `dependency-check.json` artifact exists. No v1.0 claim. No consuming-project
+application code modified.
+
+### Added
+- **`docs/dependency-check-evidence-plan.md`** + fixtures `tests/fixtures/dependency-check/clean.json`
+  and `warm-cache/.nvd-cache-marker` (clean-scan parse path; real-run attempt documented as negative).
+- **`docs/install-sync-reliability.md`** — write-path audit, rollback, troubleshooting, release checklist.
+- **Symfony install fixture** (`tests/fixtures/projects/symfony/`) + **`docs/profile-compatibility.md`**
+  (compatibility table across all 8 profiles); symfony manifest tool-list fix.
+- **`docs/gate-promotion-policy.md`** + mode fixtures (`tests/fixtures/modes/*`) with a 24-gate
+  readiness matrix verified against `resolve-gates.sh`.
+- **`docs/dast-pilot-readiness.md`** + updated `templates/dast-scan-approval.md` (controlled-pilot prep; DAST never enabled).
+- **`docs/iac-architecture-readiness.md`** + IaC/deptrac/architecture fixtures (`tests/fixtures/{iac,deptrac,architecture}/*`).
+- **`docs/supply-chain-reproducibility.md`** — digest verify/rollback, version-update process (all 3 digests re-verified live against Docker).
+- **`docs/v1-readiness.md`** — v1.0 minimum capabilities (DONE/OUTSTANDING), non-goals, stable/experimental surfaces, migration/deprecation/graduation policy. v1.0 explicitly NOT reached.
+- Self-test suites **`v023-coverage`** (dep-check clean, strict/regulated mode enforcement, IaC/deptrac/architecture mappings, DAST fail-closed incl. non-http rejection, no-`:latest` check) and **`v023-regression`** (all fail_on flags, secrets non-suppressible, invalid→exit2/missing→unavailable, manifest validity, README links, changelog presence, no `.claude` tracked); `install-matrix` extended to symfony. `self-test all` PASS.
+
+### Changed
+- Docs refreshed by the captain: CHANGELOG, product-status, roadmap, product-readiness-checklist.
+
+### Not validated (honest)
+- **Dependency-Check: still attempted, NOT live-validated** — real run attempted, blocked by
+  workflow-not-deployed-on-consumer; nothing fabricated.
+- DAST/Nuclei remain manual/fail-closed (pilot prepared, not enabled). IaC/Deptrac/architecture
+  remain experimental/only-if-configured. No v1.0 readiness asserted.
+
 ## [0.1.22] — Acceleration Sprint: Adoption, Evidence, Hardening, Product Closure
 
 Parallel multi-lane sprint (worktree-isolated branches merged via `release/v022-integration`). No

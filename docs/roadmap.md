@@ -94,3 +94,12 @@ IaC scanners on a repo with `*.tf`. Semgrep image bumped to 1.165.0 (configurabl
 - **Still open:** the single biggest gap is **Dependency-Check live validation** — run the evidence
   workflow on a consumer with a warm NVD cache and cite the artifact in `main-gate-live-evidence.md`.
   Then: Deptrac on a layered project; IaC scanners on a repo with `*.tf`; refine OSV/CodeQL severity.
+
+## v0.1.23 — enterprise readiness burn-down
+Blocker burn-down + evidence prep (no promotions): Dependency-Check live run **attempted** (blocked:
+evidence workflow not deployed on consumer); Symfony adoption fixture; gate-promotion policy +
+readiness matrix with enforced mode fixtures; DAST controlled-pilot prep (still fail-closed/never
+enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (digests re-verified);
+[`v1-readiness.md`](v1-readiness.md) defining the path to v1.0 (NOT reached). Self-test 271→312.
+- **Top of the next backlog:** deploy `sentinel-shield-dependency-check.yml` on a consumer, warm the
+  NVD cache, and capture the first real `dependency-check.json` → promote to live-validated (v0.1.24).
