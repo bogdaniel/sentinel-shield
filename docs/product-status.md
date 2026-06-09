@@ -55,6 +55,7 @@ and infrastructure. Concretely it owns:
 | Raw-report contract + collectors (core 14) | `proven` | Self-test fixtures + zenchron pilot |
 | PR-fast gate (`sentinel-shield-pr-fast.yml`) | `proven` | zenchron run 27170148123 (baseline PASS, no regression) |
 | Main-branch gate (`sentinel-shield-main.yml`) | `template-only` | `workflow_dispatch`-only; not dispatchable from a feature branch; never live-run |
+| Main-gate validation harness (`run-main-gate-validation.sh`) | `proven` (engine) | Self-test `main-gate-harness`; runs main-gate wrappers branch-safely, unavailable-not-fake. **Running scanners ≠ live-validated** |
 | Profile system (Laravel/React/Node/Docker) | `supported` | Manifests + dry-run; only laravel-react-docker has a full fixture round-trip |
 | Scheduled / nightly gate | `template-only` | Not executed by default |
 | DAST (ZAP/Nuclei) | `manual` | Fail-closed guard + collector self-test; never live-run |
@@ -98,9 +99,11 @@ output). To promote: run on a consumer that configures them and cite the run.
 
 ## 7. Known product gaps
 
-- **Main-gate has no live validation path.** `sentinel-shield-main.yml` is `workflow_dispatch`-only
-  and cannot be dispatched from a feature branch before merge — so its scanners cannot be promoted
-  past `experimental`. Needs a product-level validation strategy (Phase 3 in the roadmap).
+- **Main-gate live runs still pending.** v0.1.17 adds a **branch-safe validation path**
+  (`run-main-gate-validation.sh` — see [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md)),
+  which removes the `workflow_dispatch` blocker. But **no main-gate scanner is `live-validated` yet** —
+  the harness makes validation *possible*; a tool is promoted only when it actually runs and produces
+  a real report with cited evidence (Phase 3).
 - **Install/sync covers four stacks, not arbitrary onboarding.** No `php-library` /`node-react`
   *named combination* manifest historically (php-library added in v0.1.16; node-react uses the
   `react` profile). Symfony/Go/Python have profiles but no install manifests.

@@ -28,13 +28,16 @@ definition of done, and risks.
 - **Risks:** sync clobbering project-local decisions. Mitigated by hard protections + dry-run default.
 
 ## Phase 3 — Live validation of main-gate tools
-**Status: pending (highest priority).**
+**Status: in progress — branch-safe harness delivered (v0.1.17); live runs pending.**
 
 - **Goal:** promote main-gate scanners from `experimental` to `proven`.
-- **Required work:** a **dispatchable validation strategy** for `sentinel-shield-main.yml` (it is
-  `workflow_dispatch`-only and not runnable from a feature branch today). Run CodeQL, OSV, Grype,
-  Dependency-Check, Trivy, Syft, IaC on a real consumer; refine OSV/CodeQL severity parsing; pin
-  digests; record evidence in [`pilot-consumers.md`](pilot-consumers.md).
+- **Delivered (v0.1.17):** the dispatch blocker is solved by a Sentinel-Shield-owned harness,
+  `scripts/run-main-gate-validation.sh`, which runs the main-gate wrappers from any branch/PR (no
+  `workflow_dispatch`, no merge-first) and emits the same `reports/raw/*` contracts. See
+  [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md).
+- **Remaining work:** run CodeQL, OSV, Grype, Dependency-Check, Trivy, Syft, IaC on a real consumer
+  via the harness; refine OSV/CodeQL severity parsing; pin digests; record cited evidence in
+  [`pilot-consumers.md`](pilot-consumers.md). **The harness existing is not live validation.**
 - **Definition of done:** each main-gate tool has a cited consumer run with raw→summary-key
   evidence and a pinned ref; severities reviewed.
 - **Risks:** coarse severity → false gates; long runtimes blowing the CI budget

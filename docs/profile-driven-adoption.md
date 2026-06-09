@@ -93,6 +93,26 @@ code fixes. The workflow checks out Sentinel Shield at a pinned ref and calls it
   or overwritten by install or sync, regardless of flags.
 - `sync` reports `created / updated / up-to-date / manual-review-needed / project-local-preserved`.
 
+## Validating main-gate scanners before enabling the main workflow (v0.1.17)
+
+`sentinel-shield-main.yml` is `workflow_dispatch`/push only and cannot be dispatched from a feature
+branch until it exists on the default branch. **Do not merge it unvalidated.** Instead validate its
+scanners branch-safely first with the harness — no dispatch, no merge required:
+
+```sh
+# from a Sentinel Shield checkout (e.g. tools/sentinel-shield), targeting your project root:
+sh scripts/run-main-gate-validation.sh --target . --output-dir reports/raw --all
+sh scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json \
+    --project-name "$PWD" --project-type laravel
+sh scripts/resolve-gates.sh --profile .sentinel-shield/profile.yaml --format all
+sh scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env
+```
+
+Tools the runner cannot run are recorded `unavailable` (never faked) in
+`reports/raw/main-gate-validation-tools.json`. Only after a green branch run with real reports
+should `sentinel-shield-main.yml` be merged to the default branch. Full rationale:
+[`main-gate-validation-strategy.md`](main-gate-validation-strategy.md).
+
 ## Maturity (v0.1.13)
 
 The install/sync engine and the laravel-react-docker profile are **proven** (self-tested +

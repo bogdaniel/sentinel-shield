@@ -3,6 +3,13 @@
 > **v0.1.16:** the canonical maturity label per tool is in [`product-status.md`](product-status.md).
 > The A–F grades below map to those labels: **A→`proven`, B→`supported`, C→`experimental`,
 > D→`template-only`, F→`manual`/`non-gating`/`not-ready`.** Each tool has exactly one label there.
+>
+> **v0.1.17 — how to promote a C (main-gate) tool to live-validated.** Run it branch-safely via
+> `scripts/run-main-gate-validation.sh --tool <name>` on a real consumer (locally or in a
+> `pull_request` job), confirm it produced a real `reports/raw/<name>.json` (status `pass` in
+> `main-gate-validation-tools.json`), review the parsed summary key, then record the run +
+> raw→key evidence here and in [`pilot-consumers.md`](pilot-consumers.md). The harness running a tool
+> is **not** sufficient — the evidence (real report + reviewed severity) is what promotes it.
 
 Brutally honest status of every tool. **A tool is only "proven-live" if it ran in real CI
 (the zenchron-tools pilot) or is exercised by a deterministic self-test fixture with stable

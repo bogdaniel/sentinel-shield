@@ -937,6 +937,72 @@ run_feature_completion() {
 	log_info "feature-completion: OK (dependency-policy detector, arch-tests collector, runners/audits present, IaC clean-skip)"
 }
 
+# --- main-gate harness (v0.1.17) --------------------------------------------
+MGH_FAILS=0
+mgh_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MGH_FAILS=$((MGH_FAILS + 1)); fi; }
+
+run_main_gate_harness() {
+	log_info "main-gate-harness: branch-safe main-gate wrappers; missing->unavailable (no fake), tool selection, JSON contract"
+	H="$ROOT/scripts/run-main-gate-validation.sh"
+	FX="$ROOT/tests/fixtures/projects/laravel-react-docker"
+	[ -f "$H" ] || { log_error "main-gate-harness: $H missing"; return 1; }
+
+	# unknown tool / no selection -> exit 2 (clear error)
+	_rc=0; sh "$H" --target "$FX" --tool bogus >/dev/null 2>&1 || _rc=$?
+	mgh_check "unknown tool -> exit 2" "$_rc" "2"
+	_rc=0; sh "$H" --target "$FX" >/dev/null 2>&1 || _rc=$?
+	mgh_check "no --all/--tool -> exit 2" "$_rc" "2"
+
+	# NO DAST/Nuclei/AI tool is selectable (they are not in the harness)
+	for bad in zap zap-baseline zap-full nuclei ai-security-review kuzushi; do
+		_rc=0; sh "$H" --target "$FX" --tool "$bad" >/dev/null 2>&1 || _rc=$?
+		mgh_check "DAST/AI tool '$bad' rejected" "$_rc" "2"
+	done
+
+	# --tool selection: selected processed, others skipped; output dir + valid JSON contract
+	_o="$(mktemp -d)/raw"
+	sh "$H" --target "$FX" --output-dir "$_o" --tool codeql-export >/dev/null 2>&1
+	J="$_o/main-gate-validation-tools.json"
+	mgh_check "output dir created" "$([ -d "$_o" ] && echo yes || echo no)" "yes"
+	mgh_check "tools JSON version 1.0" "$(jq -r .version "$J" 2>/dev/null)" "1.0"
+	mgh_check "selected tool processed" "$(jq -r '.tools["codeql-export"].status' "$J" 2>/dev/null)" "unavailable"
+	mgh_check "unselected tool -> skipped" "$(jq -r '.tools["osv-scanner"].status' "$J" 2>/dev/null)" "skipped"
+	mgh_check "no fake codeql.json on unavailable" "$([ -f "$_o/codeql.json" ] && echo wrote || echo none)" "none"
+
+	# --all: every deterministic main-gate tool present, none skipped; dockle deterministically
+	# unavailable without an image and writes no fake report
+	_o2="$(mktemp -d)/raw"
+	sh "$H" --target "$FX" --output-dir "$_o2" --all >/dev/null 2>&1
+	J2="$_o2/main-gate-validation-tools.json"
+	mgh_check "--all -> 12 tools" "$(jq -r '.tools | keys | length' "$J2" 2>/dev/null)" "12"
+	mgh_check "--all none skipped" "$(jq -r '[ .tools[] | select(.status == "skipped") ] | length' "$J2" 2>/dev/null)" "0"
+	mgh_check "dockle unavailable (no image)" "$(jq -r '.tools.dockle.status' "$J2" 2>/dev/null)" "unavailable"
+	mgh_check "no fake dockle.json" "$([ -f "$_o2/dockle.json" ] && echo wrote || echo none)" "none"
+
+	# fake-binary PASS path: a stub osv-scanner that honors --output proves the pass branch + report
+	_bin=$(mktemp -d)
+	cat > "$_bin/osv-scanner" <<'STUB'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac; done
+[ -n "$out" ] && printf '{"results":[]}' > "$out"
+exit 0
+STUB
+	chmod +x "$_bin/osv-scanner"
+	_o3="$(mktemp -d)/raw"
+	PATH="$_bin:$PATH" sh "$H" --target "$FX" --output-dir "$_o3" --tool osv-scanner >/dev/null 2>&1
+	mgh_check "fake osv-scanner -> pass" "$(jq -r '.tools["osv-scanner"].status' "$_o3/main-gate-validation-tools.json" 2>/dev/null)" "pass"
+	mgh_check "osv report written" "$([ -s "$_o3/osv-scanner.json" ] && echo yes || echo no)" "yes"
+
+	# build-security-summary consumes the harness output dir -> schema-valid summary
+	_sum="$(dirname "$_o2")/security-summary.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_o2" --output "$_sum" --project-name demo --project-type laravel >/dev/null 2>&1
+	mgh_check "builder consumes harness raw-dir" "$(jq -r '.summary | type' "$_sum" 2>/dev/null)" "object"
+
+	rm -rf "$(dirname "$_o")" "$(dirname "$_o2")" "$(dirname "$_o3")" "$_bin"
+	if [ "$MGH_FAILS" -ne 0 ]; then log_error "main-gate-harness: $MGH_FAILS case(s) failed"; return 1; fi
+	log_info "main-gate-harness: OK (branch-safe wrappers, unavailable-not-fake, tool selection, JSON contract, builder-compatible)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -954,6 +1020,7 @@ case "$SUB" in
 	fixtures) run_fixtures ;;
 	workflow-sanity) run_workflow_sanity ;;
 	feature-completion) run_feature_completion ;;
+	main-gate-harness) run_main_gate_harness ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -971,13 +1038,14 @@ case "$SUB" in
 		run_fixtures
 		run_workflow_sanity
 		run_feature_completion
+		run_main_gate_harness
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|all)"
 		exit 2
 		;;
 esac

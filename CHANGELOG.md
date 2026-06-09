@@ -6,6 +6,43 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.17] — main-gate validation harness
+
+Solves the dispatchability blocker that kept main-gate scanners `experimental`. **No new scanners.
+No weakened gates. No faked reports. No live-validation claims without artifact evidence.**
+
+### Added
+- **`scripts/run-main-gate-validation.sh`** — branch-safe main-gate validation harness (POSIX sh).
+  Runs the deterministic main-gate wrappers/audits (codeql-export, osv-scanner, trivy-fs, syft,
+  grype, dependency-check, deptrac, architecture-tests, checkov, conftest, terrascan, dockle) from
+  **any branch/PR** — no `workflow_dispatch`, no merge-first. Produces the same `reports/raw/*`
+  contracts the summary builder consumes. `--target`, `--output-dir`, `--profile`, `--all`,
+  repeatable `--tool`. Missing binary / unmet precondition → `unavailable`, **no file written**
+  (never fake-clean); an unexpected wrapper crash → `fail` (exit 1). **No DAST/Nuclei/AI.**
+- **`reports/raw/main-gate-validation-tools.json`** — per-tool `{status,reason,report}` descriptor
+  (status ∈ `pass|fail|unavailable|skipped`), version 1.0.
+- **`docs/main-gate-validation-strategy.md`** — the dispatchability analysis (why `workflow_dispatch`
+  needs the workflow on the default branch first), Options A–E compared, and the recommended
+  strategy (D for first validation, A for steady-state).
+- **Self-test suite `main-gate-harness`** (wired into `all`): unknown-tool/no-selection → exit 2;
+  DAST/AI tool names rejected; `--tool` selection vs `skipped`; `--all` → 12 tools; unavailable
+  writes no fake report; fake-binary proves the `pass` branch; builder consumes harness output.
+
+### Changed
+- `templates/workflows/sentinel-shield-main.yml`, `docs/workflow-template-inventory.md`,
+  `docs/profile-driven-adoption.md`: document validating main-gate scanners **branch-safely first**
+  with the harness, then merge the workflow (never merge unvalidated).
+- Docs updated for the harness + promotion path: product-status, product-readiness-checklist,
+  roadmap (Phase 3 now in-progress), raw-report-contract, enterprise-scanner-matrix,
+  production-readiness-audit, docs/README.
+
+### Honest status (unchanged)
+The harness makes branch-safe validation **possible**; it does **not** make any main-gate scanner
+`live-validated`. No main-gate tool has a cited consumer run yet — promotion still requires a real
+report + reviewed severity (roadmap Phase 3). Engine + PR-fast gate remain `proven`; main-gate
+scanners remain `experimental`/`template-only`. DAST stays `manual`; AI stays `non-gating`.
+
+
 ## [0.1.16] — product completion & stabilization
 
 A documentation + stabilization release. **No new scanners. No weakened gates. No new maturity

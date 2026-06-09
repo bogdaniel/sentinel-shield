@@ -42,3 +42,19 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 
 All collectors are exercised by `scripts/self-test.sh` (`scanner-matrix` for v0.1.12 tools,
 named suites for the mature core). Severity fidelity caveats: see production-readiness-audit.md.
+
+## Main-gate validation harness output (v0.1.17)
+
+[`scripts/run-main-gate-validation.sh`](../scripts/run-main-gate-validation.sh) produces the **same**
+raw paths above (it just runs the deterministic main-gate wrappers from any branch). It additionally
+writes one **descriptive** (not collector-consumed) file:
+
+| Path | Producer | Shape | Consumed by |
+|---|---|---|---|
+| main-gate-validation-tools.json | run-main-gate-validation.sh | `{version, target, output_dir, tools:{<tool>:{status,reason,report}}}` where status ∈ `pass\|fail\|unavailable\|skipped` | humans / CI (not the summary builder) |
+
+The summary builder ignores files outside its tool table, so this descriptor coexists with the raw
+reports in the same `reports/raw/` directory. Note the **filename mapping**: `--tool trivy-fs` writes
+`trivy.json` (matching the `trivy` collector) and `--tool syft` writes the SBOM to
+`<reports>/sbom.spdx.json` (where the builder reads it), not into `raw/`. Exercised by the
+`main-gate-harness` self-test suite.

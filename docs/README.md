@@ -28,6 +28,8 @@ need.
 ## Scanner matrix
 - [`enterprise-scanner-matrix.md`](enterprise-scanner-matrix.md) — every tool, gate category, summary key.
 - [`production-readiness-audit.md`](production-readiness-audit.md) — per-tool A–F readiness grades.
+- [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md) — branch-safe main-gate
+  validation via `run-main-gate-validation.sh` (solves the `workflow_dispatch` blocker).
 - [`tooling/scanner-enablement.md`](tooling/scanner-enablement.md) — which tools per stack + how to enable.
 - [`workflow-template-inventory.md`](workflow-template-inventory.md) — the six workflow templates.
 - [`semgrep-scoping.md`](semgrep-scoping.md) — SAST scope; curated rules, never `--config=auto`.

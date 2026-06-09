@@ -1,6 +1,15 @@
 # Sentinel Shield — MAIN BRANCH GATE (v0.1.12). Heavier but deterministic; trusted branch.
 # CodeQL, OSV-Scanner, Trivy fs, OWASP Dependency-Check, Grype, Deptrac, architecture tests,
 # Syft SBOM, and IaC (Checkov/Conftest/Terrascan) when IaC present.
+#
+# FIRST-TIME VALIDATION (v0.1.17). This workflow is workflow_dispatch + push only, so it cannot be
+# dispatched from a feature branch until it already exists on the default branch (chicken-and-egg).
+# Do NOT merge it unvalidated. Validate the SAME main-gate scanners from a branch/PR first with the
+# branch-safe harness (no dispatch, no merge required):
+#   sh scripts/run-main-gate-validation.sh --target . --output-dir reports/raw --all
+# Then build/resolve/enforce and review the real reports/raw/*. Only after that is green should this
+# workflow be merged to the default branch, where workflow_dispatch/push take over. See
+# docs/main-gate-validation-strategy.md.
 name: sentinel-shield-main
 on:
   push:

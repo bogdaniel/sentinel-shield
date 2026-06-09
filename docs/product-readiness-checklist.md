@@ -37,7 +37,10 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 - [x] `done` — Single canonical maturity table in [`product-status.md`](product-status.md).
 - [x] `done` — Core PR-fast scanners `proven` (zenchron run 27170148123).
 - [ ] `partial` — Main-gate scanners `experimental`; severity parsing coarse for OSV/CodeQL.
-- [ ] `blocked` — Main-gate live validation blocked on a dispatchable strategy (roadmap Phase 3).
+- [x] `done` — **Branch-safe main-gate validation path** (`run-main-gate-validation.sh` + self-test
+  `main-gate-harness`) — removes the `workflow_dispatch` blocker (v0.1.17).
+- [ ] `partial` — Main-gate **live runs** still pending: harness enables them, but no scanner is
+  `live-validated` yet (needs cited consumer runs — roadmap Phase 3).
 
 ## Accepted-risk governance
 - [x] `done` — Schema, approval/expiry/owner enforcement, never-suppressible gates.

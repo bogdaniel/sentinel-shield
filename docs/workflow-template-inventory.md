@@ -49,7 +49,10 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Safe for PR?** Heavy → main only, not PR.
 - **Tool maturity:** **`template-only` / `experimental`** — `workflow_dispatch`+push, never live-run;
   OSV/CodeQL severity parsing coarse.
-- **Known limitations:** not dispatchable from a feature branch → blocks live validation (roadmap Phase 3).
+- **Known limitations:** not dispatchable from a feature branch until it exists on the default branch
+  (chicken-and-egg). **v0.1.17:** validate the same scanners branch-safely **first** with
+  `scripts/run-main-gate-validation.sh --all` ([`main-gate-validation-strategy.md`](main-gate-validation-strategy.md)),
+  then merge; do not merge unvalidated.
 - **Pinning status:** unpinned by default.
 
 ## `templates/workflows/sentinel-shield-scheduled.yml`

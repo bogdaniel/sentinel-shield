@@ -8,6 +8,12 @@
 > composer audit, php-syntax, Hadolint, base-digest, GH-pins, Trivy-fs) plus php-style, TypeScript,
 > and the dependency-policy detector (zenchron run 27170148123). Everything else is
 > supported/experimental/manual/template-only/non-gating.
+>
+> **v0.1.17 — branch-safe validation.** The MAIN-category tools below can now be run from any
+> branch/PR with [`scripts/run-main-gate-validation.sh`](../scripts/run-main-gate-validation.sh)
+> (no `workflow_dispatch`, no merge-first), producing the same raw reports. This unblocks live
+> validation; it does **not** by itself promote any tool to `proven` — that still needs a cited
+> consumer run. See [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md).
 
 > **v0.1.13 maturity note (read first).** v0.1.12 added scanner *breadth*; the integrations
 > are NOT equally mature. See [`production-readiness-audit.md`](production-readiness-audit.md)
