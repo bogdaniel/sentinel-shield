@@ -1,0 +1,40 @@
+{
+  "_readme": [
+    "This file is a minimal offline fixture lockfile for Sentinel Shield self-tests.",
+    "It exists so dependency-policy sees a lockfile beside composer.json (no network install)."
+  ],
+  "content-hash": "0000000000000000000000000000fixt",
+  "packages": [
+    {
+      "name": "symfony/console",
+      "version": "v7.0.0",
+      "type": "library"
+    },
+    {
+      "name": "symfony/framework-bundle",
+      "version": "v7.0.0",
+      "type": "symfony-bundle"
+    },
+    {
+      "name": "symfony/runtime",
+      "version": "v7.0.0",
+      "type": "composer-plugin"
+    },
+    {
+      "name": "symfony/yaml",
+      "version": "v7.0.0",
+      "type": "library"
+    }
+  ],
+  "packages-dev": [],
+  "aliases": [],
+  "minimum-stability": "stable",
+  "stability-flags": [],
+  "prefer-stable": true,
+  "prefer-lowest": false,
+  "platform": {
+    "php": ">=8.3"
+  },
+  "platform-dev": [],
+  "plugin-api-version": "2.6.0"
+}
