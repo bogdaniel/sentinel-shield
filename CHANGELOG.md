@@ -6,6 +6,46 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.22] — Acceleration Sprint: Adoption, Evidence, Hardening, Product Closure
+
+Parallel multi-lane sprint (worktree-isolated branches merged via `release/v022-integration`). No
+new scanners; no gates weakened; no findings suppressed; no fake reports; **OWASP Dependency-Check
+remains attempted, NOT live-validated** (no real `dependency-check.json` artifact exists). No v1.0
+claim. No zenchron-tools application code modified.
+
+### Added
+- **`templates/workflows/sentinel-shield-dependency-check.yml`** — dedicated dispatch-only EVIDENCE
+  workflow (monthly NVD `actions/cache`, foreground, `timeout-minutes`, `if: always()` upload) to
+  produce the first real `dependency-check.json` artifact.
+- **`tests/fixtures/dependency-check/with-findings.json`** — findings fixture; self-test proves a
+  non-zero-exit valid-JSON report parses (critical/high counts).
+- **`profiles/symfony/profile.manifest.json`** + **`profiles/combinations/node-react.manifest.json`**;
+  all 8 manifests enriched with `recommended_pr_fast_tools` / `recommended_main_gate_tools` /
+  `recommended_scheduled_tools` + `recommended_raw_reports`. `profiles/docker` clarified as docker-only.
+- **`docs/strict-mode-readiness.md`**, **`docs/regulated-mode-readiness.md`** — pre-flight checklists
+  and honest "too-immature-to-gate-by-default" lists.
+- **`docs/product-contract.md`** — pre-1.0 stability contract (stable vs experimental surfaces, raw
+  report + profile-manifest compatibility promises, migration policy). README links core docs.
+- **`docs/install-sync-guide.md`** — managed-file marker strategy, protected files, manual post-install steps.
+- Self-test suites: **`install-matrix`** (docker/php-library/node-react round-trips), **`mode-readiness`**
+  (strict gates fire; report-only/baseline don't inherit strict-only gates), **`v022-fixtures`**
+  (IaC-no-binary, deptrac-absent, dependency-policy lockfiles, dep-check findings, grype SBOM-first,
+  dockle image-required, summary-key coverage, raw-JSON validity). `self-test all` = 271 checks PASS.
+
+### Changed
+- **Workflow hardening:** `if: always()` on every consumer-template artifact upload (pr-fast, main,
+  scheduled, dast, ai-review, combined); scanner-image digest-override env vars exposed across
+  templates; `workflow-sanity` self-test extended to enforce if:always uploads, name==filename,
+  digest-override presence, and the dependency-check evidence workflow shape.
+- Docs refreshed: workflow-template-inventory, main-gate-live-evidence (v0.1.22 placeholder),
+  dependency-check-nightly-strategy (cold vs warm run expectations), README, product-status, roadmap.
+
+### Not validated (honest)
+- **OWASP Dependency-Check: still attempted, NOT live-validated** — the evidence workflow is the
+  *path* to the first artifact; until one exists it is not promoted and not faked.
+- No new live consumer run in this release; Grype/Dockle stay live-validated and Semgrep
+  consumer-verified on the v0.1.20 run. No v1.0 readiness asserted.
+
 ## [0.1.21] — Dependency-Check nightly & scanner digest pinning
 
 Product hardening (no consumer remediation). No new scanners; no gates weakened; no findings

@@ -163,6 +163,21 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.22 — acceleration sprint (adoption/evidence/hardening; no promotions)
+No maturity promotions. Closure work only:
+- **Dependency-Check:** still **attempted, NOT live-validated**. Added the dedicated evidence
+  workflow `sentinel-shield-dependency-check.yml` (the path to the first real artifact). Not faked.
+- **Adoption:** new `symfony` + `node-react` profile manifests; all manifests enriched with
+  recommended PR-fast/main-gate/scheduled tool lists; install/sync productization guide.
+- **Strict/regulated readiness:** `strict-mode-readiness.md` + `regulated-mode-readiness.md` define
+  pre-flight conditions and name the gates too immature to enable by default (OSV/CodeQL coarse
+  severity, Dependency-Check attempted, Deptrac/IaC only-if-configured, DAST/AI manual/non-gating).
+- **Product contract:** `product-contract.md` declares stable vs experimental surfaces + pre-1.0
+  migration policy. README links the core docs.
+- **Hardening:** `if: always()` uploads + digest-override env vars across all templates; self-test
+  grown to 271 checks (install-matrix, mode-readiness, v022-fixtures, workflow-sanity hardening).
+- **No v1.0 claim.** Engine stays `proven`; most non-core scanners stay `supported`/`experimental`.
+
 - **Scanner image digests resolved (not invented), 2026-06-10:** Semgrep 1.165.0
   (`sha256:f4791a54…bfed1b`, consumer-verified), Grype v0.114.0 (`sha256:7a9fc7f8…01dd28`,
   live-validated), Dockle v0.4.15 (`sha256:eade932f…7abe6b9`, live-validated). Templates keep
