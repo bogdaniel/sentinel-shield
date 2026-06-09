@@ -698,7 +698,7 @@ run_install_sync() {
 
 	# --- sync dry-run reports drift on a mutated managed workflow ---
 	printf '\n# DRIFT\n' >> "$_t/.github/workflows/sentinel-shield.yml"
-	_dr=$(sh scripts/sync-baseline.sh --target "$_t" 2>/dev/null | grep -c 'manual-review-needed (managed drift')
+	_dr=$(sh scripts/sync-baseline.sh --target "$_t" 2>/dev/null | grep -c 'manual-review-needed (managed drift' || true)
 	is_check "sync dry-run reports managed drift" "$_dr" "1"
 	is_check "sync dry-run does NOT modify (drift still present)" "$(grep -c DRIFT "$_t/.github/workflows/sentinel-shield.yml")" "1"
 
@@ -879,8 +879,40 @@ run_workflow_sanity() {
 	# 5. DAST/AI templates are not PR-triggered by default (manual/controlled).
 	ws_check "DAST template is workflow_dispatch-only (no pull_request:)" "$(grep -cE '^[[:space:]]*pull_request:' "$_dast" 2>/dev/null)" "0"
 
+	# 6. (v0.1.22) Every consumer template that uploads artifacts does so with `if: always()`
+	#    so a failing gate/scan never erases the raw reports.
+	_noalways=0
+	for f in "$WF_TPL"/*.yml; do
+		[ -f "$f" ] || continue
+		grep -q 'upload-artifact' "$f" || continue
+		grep -q 'if: always()' "$f" || { log_error "  upload without if: always(): $(basename "$f")"; _noalways=$((_noalways + 1)); }
+	done
+	ws_check "all artifact uploads use if: always()" "$_noalways" "0"
+
+	# 7. (v0.1.22) workflow `name:` matches its filename (stem).
+	_namemismatch=0
+	for f in "$WF_TPL"/*.yml; do
+		[ -f "$f" ] || continue
+		_stem=$(basename "$f" .yml); _name=$(grep -m1 '^name:' "$f" | sed -E 's/^name:[[:space:]]*//')
+		[ "$_stem" = "$_name" ] || { log_error "  name '$_name' != filename '$_stem'"; _namemismatch=$((_namemismatch + 1)); }
+	done
+	ws_check "workflow name matches filename" "$_namemismatch" "0"
+
+	# 8. (v0.1.22) Scanner-image digest override env vars are exposed across templates.
+	ws_check "templates expose SEMGREP image override" "$([ "$(grep -rl 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$WF_TPL" | wc -l | tr -d ' ')" -ge 1 ] && echo yes || echo no)" "yes"
+	ws_check "templates expose GRYPE image override"   "$([ "$(grep -rl 'SENTINEL_SHIELD_GRYPE_IMAGE' "$WF_TPL" | wc -l | tr -d ' ')" -ge 1 ] && echo yes || echo no)" "yes"
+	ws_check "templates expose DOCKLE image override"  "$([ "$(grep -rl 'SENTINEL_SHIELD_DOCKLE_IMAGE' "$WF_TPL" | wc -l | tr -d ' ')" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# 9. (v0.1.22) Dedicated Dependency-Check evidence workflow: dispatch-only, cached, foreground, always-upload.
+	_dce="$WF_TPL/sentinel-shield-dependency-check.yml"
+	ws_check "dep-check evidence workflow exists" "$([ -f "$_dce" ] && echo yes || echo no)" "yes"
+	ws_check "dep-check evidence has workflow_dispatch" "$(grep -cE '^[[:space:]]*workflow_dispatch:' "$_dce" 2>/dev/null)" "1"
+	ws_check "dep-check evidence uses actions/cache" "$([ "$(grep -c 'uses: actions/cache' "$_dce" 2>/dev/null)" -ge 1 ] && echo yes || echo no)" "yes"
+	ws_check "dep-check evidence uploads if: always()" "$([ "$(grep -c 'if: always()' "$_dce" 2>/dev/null)" -ge 1 ] && echo yes || echo no)" "yes"
+	ws_check "dep-check evidence has no pull_request_target" "$(grep -cE '^[[:space:]]*pull_request_target:' "$_dce" 2>/dev/null)" "0"
+
 	if [ "$WS_FAILS" -ne 0 ]; then log_error "workflow-sanity: $WS_FAILS case(s) failed"; return 1; fi
-	log_info "workflow-sanity: OK (no PRT trigger, permissions present, DAST allowlisted, AI non-gating)"
+	log_info "workflow-sanity: OK (no PRT, permissions, DAST allowlisted, AI non-gating, if:always uploads, name==file, digest overrides, dep-check evidence wf)"
 }
 
 # --- feature completion (v0.1.14) -------------------------------------------
@@ -1174,6 +1206,145 @@ FAKE
 	log_info "main-gate-exec: OK (grype sbom/fs, dep-check disabled/enabled/preserve/no-fake, dockle, semgrep-verify, cache+digest pinning, tools v1.1)"
 }
 
+# --- install-matrix (v0.1.22): round-trip docker-only / php-library / node-react -----------
+IM_FAILS=0
+im_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; IM_FAILS=$((IM_FAILS + 1)); fi; }
+run_install_matrix() {
+	log_info "install-matrix: install/sync round-trip for docker, php-library, node-react (temp dirs, no network)"
+	for _prof in docker php-library node-react; do
+		_t=$(mktemp -d)
+		# dry-run writes nothing
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" >/dev/null 2>&1
+		im_check "$_prof: dry-run writes no files" "$(find "$_t" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+		# apply creates the managed workflow + profile.yaml, never accepted-risks.json
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" --apply --mode report-only >/dev/null 2>&1
+		im_check "$_prof: apply creates profile.yaml" "$([ -f "$_t/.sentinel-shield/profile.yaml" ] && echo yes || echo no)" "yes"
+		im_check "$_prof: apply creates workflow" "$([ -f "$_t/.github/workflows/sentinel-shield.yml" ] && echo yes || echo no)" "yes"
+		im_check "$_prof: NEVER created accepted-risks.json" "$([ -f "$_t/.sentinel-shield/accepted-risks.json" ] && echo yes || echo no)" "no"
+		# a real accepted-risks.json is preserved even with --force
+		printf '{"version":"1.1","risks":[{"id":"KEEP_%s"}]}' "$_prof" > "$_t/.sentinel-shield/accepted-risks.json"
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" --apply --force >/dev/null 2>&1
+		im_check "$_prof: --force preserves accepted-risks.json" "$(grep -c "KEEP_$_prof" "$_t/.sentinel-shield/accepted-risks.json")" "1"
+		# sync after a clean install reports no managed drift
+		_drift=$(sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" --profile "$_prof" 2>/dev/null | grep -c 'manual-review-needed (managed drift' || true)
+		im_check "$_prof: sync reports no managed drift after install" "$_drift" "0"
+		rm -rf "$_t"
+	done
+	if [ "$IM_FAILS" -ne 0 ]; then log_error "install-matrix: $IM_FAILS case(s) failed"; return 1; fi
+	log_info "install-matrix: OK (docker/php-library/node-react round-trip; accepted-risks never touched)"
+}
+
+# --- mode-readiness (v0.1.22): strict gates fire; report-only/baseline don't inherit them ---
+MR_FAILS=0
+mr_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MR_FAILS=$((MR_FAILS + 1)); fi; }
+run_mode_readiness() {
+	log_info "mode-readiness: strict fails on strict-only violations; report-only/baseline do not inherit them"
+	_d=$(mktemp -d)
+	# resolve fail_on flags per mode
+	for _m in report-only baseline strict regulated; do
+		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format json --output-dir "$_d" >/dev/null 2>&1
+		cp "$_d/sentinel-shield-gates.json" "$_d/gates-$_m.json"
+	done
+	flag() { jq -r ".fail_on.$2" "$_d/gates-$1.json"; }
+	# 38: report-only and baseline must NOT inherit strict-only gates (style_violations, iac_violations)
+	mr_check "report-only style_violations not gated" "$(flag report-only style_violations)" "false"
+	mr_check "report-only iac_violations not gated"   "$(flag report-only iac_violations)"   "false"
+	mr_check "baseline style_violations not gated"    "$(flag baseline style_violations)"    "false"
+	mr_check "baseline iac_violations not gated"      "$(flag baseline iac_violations)"      "false"
+	# strict DOES gate them
+	mr_check "strict gates style_violations"          "$(flag strict style_violations)"      "true"
+	mr_check "strict gates iac_violations"            "$(flag strict iac_violations)"        "true"
+	# 37: a summary with strict-only violations FAILS strict enforcement but PASSES baseline
+	mkdir -p "$_d/raw"
+	printf '{"files":[{"name":"a.php","violations":["x"]}]}' > "$_d/raw/php-style.json"
+	printf '{"summary":{"failed":3}}' > "$_d/raw/checkov.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	mr_check "summary has style_violations>0" "$([ "$(jq '.summary.style_violations // 0' "$_d/sum.json")" -gt 0 ] && echo yes || echo no)" "yes"
+	mr_check "summary has iac_violations>0"   "$([ "$(jq '.summary.iac_violations // 0' "$_d/sum.json")" -gt 0 ] && echo yes || echo no)" "yes"
+	for _m in baseline strict; do
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format env --output-dir "$_d" >/dev/null 2>&1
+		if sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1; then _r=pass; else _r=fail; fi
+		eval "_res_$_m=$_r"
+	done
+	mr_check "baseline PASSES strict-only violations" "$_res_baseline" "pass"
+	mr_check "strict FAILS strict-only violations" "$_res_strict" "fail"
+	rm -rf "$_d"
+	if [ "$MR_FAILS" -ne 0 ]; then log_error "mode-readiness: $MR_FAILS case(s) failed"; return 1; fi
+	log_info "mode-readiness: OK (strict gates fire; report-only/baseline do not inherit; strict fails, baseline passes)"
+}
+
+# --- v022-fixtures (v0.1.22): IaC-no-binary, deptrac-absent, dep-policy lockfiles, dep-check
+#     findings, grype SBOM fake, dockle image-required, summary builder key coverage ----------
+KV_FAILS=0
+kv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; KV_FAILS=$((KV_FAILS + 1)); fi; }
+run_v022_fixtures() {
+	log_info "v022-fixtures: IaC-no-binary, deptrac-absent, dep-policy lockfiles, dep-check findings, summary keys"
+	_d=$(mktemp -d); _b=$(mktemp -d)
+	ln -s "$(command -v jq)" "$_b/jq" 2>/dev/null || cp "$(command -v jq)" "$_b/jq"
+
+	# 47: IaC files present but NO checkov binary -> audit no-ops (no file) -> collector unavailable.
+	mkdir -p "$_d/iac"; printf 'resource "x" {}\n' > "$_d/iac/main.tf"
+	( cd "$_d/iac" && PATH="$_b:/usr/bin:/bin" sh "$ROOT/scripts/audits/checkov.sh" "$_d/iac/checkov.json" >/dev/null 2>&1 )
+	kv_check "IaC-no-binary: checkov writes no fake file" "$([ -f "$_d/iac/checkov.json" ] && echo file || echo none)" "none"
+	kv_check "IaC-no-binary: collector reports unavailable" "$(sh "$ROOT/scripts/collectors/checkov.sh" --input "$_d/iac/checkov.json" 2>/dev/null | jq -r .status)" "unavailable"
+
+	# 48: deptrac/architecture config absent -> no deptrac.json -> collector unavailable (not fake-clean).
+	kv_check "deptrac-absent: collector unavailable" "$(sh "$ROOT/scripts/collectors/deptrac.sh" --input "$_d/nope-deptrac.json" 2>/dev/null | jq -r .status)" "unavailable"
+
+	# 49: dependency-policy — manifest present WITHOUT a lockfile = violation; WITH lockfile = clean.
+	mkdir -p "$_d/nolock"; printf '{}' > "$_d/nolock/composer.json"
+	sh "$ROOT/scripts/audits/dependency-policy.sh" "$_d/nolock/dp.json" "$_d/nolock" >/dev/null 2>&1
+	kv_check "dep-policy missing lockfile -> >=1 violation" "$([ "$(jq '.count' "$_d/nolock/dp.json")" -ge 1 ] && echo yes || echo no)" "yes"
+	kv_check "dep-policy collector maps violations" "$([ "$(sh "$ROOT/scripts/collectors/dependency-policy.sh" --input "$_d/nolock/dp.json" 2>/dev/null | jq '.summary.dependency_policy_violations')" -ge 1 ] && echo yes || echo no)" "yes"
+	mkdir -p "$_d/lock"; printf '{}' > "$_d/lock/composer.json"; printf '{}' > "$_d/lock/composer.lock"
+	sh "$ROOT/scripts/audits/dependency-policy.sh" "$_d/lock/dp.json" "$_d/lock" >/dev/null 2>&1
+	kv_check "dep-policy with lockfile -> 0 violations" "$(jq '.count' "$_d/lock/dp.json")" "0"
+
+	# 6 (Lane 1): the committed Dependency-Check findings fixture parses to critical/high counts.
+	DCFIX="$ROOT/tests/fixtures/dependency-check/with-findings.json"
+	kv_check "dep-check findings fixture parses" "$(sh "$ROOT/scripts/collectors/dependency-check.sh" --input "$DCFIX" 2>/dev/null | jq -r '"\(.status):\(.summary.critical_vulnerabilities):\(.summary.high_vulnerabilities)"')" "fail:1:1"
+
+	# 50: SBOM-first Grype with a fake binary writes a valid report from the SBOM.
+	_gb=$(mktemp -d); cp "$_b/jq" "$_gb/jq" 2>/dev/null || true
+	cat > "$_gb/grype" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--file" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"matches":[]}' > "$out"
+FAKE
+	chmod +x "$_gb/grype"; printf '{"SPDXID":"x"}' > "$_d/sbom.spdx.json"
+	( cd "$_d" && PATH="$_gb:/usr/bin:/bin" SENTINEL_SHIELD_GRYPE_MODE=sbom SENTINEL_SHIELD_GRYPE_SBOM_PATH="$_d/sbom.spdx.json" sh "$ROOT/scripts/audits/grype.sh" "$_d/grype.json" >/dev/null 2>&1 )
+	kv_check "grype SBOM-first fake binary -> valid report" "$([ -s "$_d/grype.json" ] && jq -e . "$_d/grype.json" >/dev/null 2>&1 && echo valid || echo no)" "valid"
+
+	# 51: Dockle requires a built image — no SENTINEL_SHIELD_IMAGE -> unavailable, no file.
+	( unset SENTINEL_SHIELD_IMAGE; PATH="$_b:/usr/bin:/bin" sh "$ROOT/scripts/audits/dockle.sh" "$_d/dockle.json" >/dev/null 2>&1 )
+	kv_check "dockle image-required -> no file" "$([ -f "$_d/dockle.json" ] && echo file || echo none)" "none"
+
+	# 54: summary builder emits every canonical summary key.
+	mkdir -p "$_d/raw"; printf '[]' > "$_d/raw/gitleaks.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	_missingkeys=0
+	for _k in secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities \
+		architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions \
+		expired_exceptions style_violations php_syntax_errors dependency_policy_violations \
+		iac_violations dast_findings container_image_violations repository_health_warnings ai_review_findings; do
+		[ "$(jq "has(\"summary\") and (.summary|has(\"$_k\"))" "$_d/sum.json" 2>/dev/null)" = "true" ] || { log_error "  summary missing key: $_k"; _missingkeys=$((_missingkeys + 1)); }
+	done
+	kv_check "summary builder emits all canonical keys" "$_missingkeys" "0"
+
+	# 52: every templates/raw/*.json fixture is valid JSON.
+	_badjson=0
+	for _f in "$ROOT"/templates/raw/*.json; do
+		[ -f "$_f" ] || continue
+		jq -e . "$_f" >/dev/null 2>&1 || { log_error "  invalid templates/raw JSON: $_f"; _badjson=$((_badjson + 1)); }
+	done
+	kv_check "templates/raw/*.json all valid" "$_badjson" "0"
+
+	rm -rf "$_d" "$_b" "$_gb"
+	if [ "$KV_FAILS" -ne 0 ]; then log_error "v022-fixtures: $KV_FAILS case(s) failed"; return 1; fi
+	log_info "v022-fixtures: OK (IaC-no-binary, deptrac-absent, dep-policy lockfiles, dep-check findings, grype/dockle, summary keys, raw JSON)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1194,6 +1365,9 @@ case "$SUB" in
 	main-gate-harness) run_main_gate_harness ;;
 	main-gate-evidence) run_main_gate_evidence ;;
 	main-gate-exec) run_main_gate_exec ;;
+	install-matrix) run_install_matrix ;;
+	mode-readiness) run_mode_readiness ;;
+	v022-fixtures) run_v022_fixtures ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1214,13 +1388,16 @@ case "$SUB" in
 		run_main_gate_harness
 		run_main_gate_evidence
 		run_main_gate_exec
+		run_install_matrix
+		run_mode_readiness
+		run_v022_fixtures
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|all)"
 		exit 2
 		;;
 esac
