@@ -1,0 +1,1 @@
+Simulated populated NVD data dir marker — presence asserts the warm-cache (monthly actions/cache hit) path in self-tests; it is NOT a real NVD database and produces no findings on its own.

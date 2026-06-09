@@ -1,0 +1,25 @@
+{
+  "reportSchema": "1.1",
+  "scanInfo": {
+    "engineVersion": "9.2.0"
+  },
+  "projectInfo": {
+    "name": "warm-cache-clean-scan",
+    "reportDate": "2026-06-10T00:00:00Z"
+  },
+  "dependencies": [
+    {
+      "isVirtual": false,
+      "fileName": "clean-lib-2.3.4.jar",
+      "filePath": "/src/clean-lib-2.3.4.jar",
+      "md5": "0123456789abcdef0123456789abcdef",
+      "sha1": "0123456789abcdef0123456789abcdef01234567",
+      "evidenceCollected": {
+        "vendorEvidence": [],
+        "productEvidence": [],
+        "versionEvidence": []
+      },
+      "vulnerabilities": []
+    }
+  ]
+}
