@@ -1,0 +1,16 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "GHSA-xxxx-medium-0001",
+        "severity": "Medium",
+        "description": "Example MEDIUM severity advisory used as a mode fixture."
+      },
+      "artifact": {
+        "name": "example/medium-pkg",
+        "version": "1.2.3",
+        "type": "composer"
+      }
+    }
+  ]
+}
