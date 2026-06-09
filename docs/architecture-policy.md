@@ -8,3 +8,9 @@ Architectural boundaries (Deptrac) + architecture tests → `architecture_violat
   (e.g. Pest arch tests) → `architecture-tests.json` `{violations:N}` → collector → architecture_violations.
 - Missing config/command → unavailable (never fake). Triage:
   [`remediation/deptrac-architecture-triage.md`](remediation/deptrac-architecture-triage.md).
+
+## Status (v0.1.18) — honest
+Deptrac is **not live-validated**: the pilot (zenchron-tools) has no `deptrac.yaml`, so the runner
+correctly reported `unavailable` (no fake). **Profile guidance:** Laravel/Symfony projects should
+add `deptrac.yaml` **only when architecture layers are actually defined** — an empty/placeholder
+config produces meaningless results. Promote Deptrac only after a real cited run on a layered project.

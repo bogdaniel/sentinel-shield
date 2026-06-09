@@ -24,7 +24,7 @@ jobs:
     container:
       # Maintained Semgrep image. Pin to a digest (image: semgrep/semgrep@sha256:...)
       # for reproducibility in sensitive pipelines.
-      image: semgrep/semgrep:latest
+      image: semgrep/semgrep:1.165.0   # SENTINEL_SHIELD_SEMGREP_IMAGE default; pin by digest before prod
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,7 +137,7 @@ jobs:
         # is honored (excludes vendored/generated assets — SAST only; dependency
         # scanners below are unaffected). See docs/semgrep-scoping.md.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep/app || true
         continue-on-error: true
@@ -163,7 +163,7 @@ jobs:
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh semgrep/semgrep:latest -c \
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true

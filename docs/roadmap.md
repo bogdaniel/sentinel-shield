@@ -79,3 +79,8 @@ definition of done, and risks.
 **Guiding constraint:** no new scanners, no weakened gates, no claimed maturity without cited
 evidence. Breadth is frozen until depth (live validation) catches up.
 </content>
+
+## v0.1.18 — main-gate promotions
+CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM promoted to live-validated (zenchron run 27214865086).
+Next: Grype/Dependency-Check/Dockle via container on a consumer; Deptrac on a layered project;
+IaC scanners on a repo with `*.tf`. Semgrep image bumped to 1.165.0 (configurable).

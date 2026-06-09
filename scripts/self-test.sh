@@ -1003,6 +1003,40 @@ STUB
 	log_info "main-gate-harness: OK (branch-safe wrappers, unavailable-not-fake, tool selection, JSON contract, builder-compatible)"
 }
 
+# --- main-gate evidence + Semgrep strategy (v0.1.18) ------------------------
+MGE_FAILS=0
+mge_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MGE_FAILS=$((MGE_FAILS + 1)); fi; }
+
+run_main_gate_evidence() {
+	log_info "main-gate-evidence: Semgrep image strategy, no --config=auto, no DAST/AI in main, evidence registry"
+	PRF="$ROOT/templates/workflows/sentinel-shield-pr-fast.yml"
+	COMBINED="$ROOT/templates/workflows/sentinel-shield.yml"
+	MAIN="$ROOT/templates/workflows/sentinel-shield-main.yml"
+	REG="$ROOT/docs/main-gate-live-evidence.md"
+
+	# 1. Semgrep image variable is used (overridable), not a hardcoded :latest in app-scan run blocks.
+	mge_check "pr-fast template uses SENTINEL_SHIELD_SEMGREP_IMAGE" "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$PRF")" "1"
+	mge_check "combined template uses SENTINEL_SHIELD_SEMGREP_IMAGE" "$([ "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$COMBINED")" -ge 1 ] && echo yes || echo no)" "yes"
+	mge_check "no semgrep :latest in pr-fast/combined run blocks" "$(grep -hE 'docker run.*semgrep/semgrep:latest' "$PRF" "$COMBINED" | wc -l | tr -d ' ')" "0"
+
+	# 2. No ACTIVE --config=auto app scan (comments / step-names saying "never auto" are fine).
+	mge_check "no active --config=auto in templates" "$(grep -rhE 'semgrep[^#]*--config[= ]auto' "$ROOT/templates/workflows" 2>/dev/null | grep -vE '^[[:space:]]*#' | wc -l | tr -d ' ')" "0"
+
+	# 3. Main-gate template runs no DAST/Nuclei/AI (defense-in-depth: must not gate on those).
+	mge_check "main template has no ZAP/Nuclei/AI runner calls" "$(grep -ciE 'runners/(zap|nuclei)|zap-baseline|nuclei\.sh|ai-security-review\.sh|kuzushi\.sh' "$MAIN")" "0"
+
+	# 4. Evidence registry contains the four promoted main-gate tools + the run ID.
+	for t in CodeQL OSV-Scanner Trivy Syft; do
+		mge_check "evidence registry cites $t" "$([ "$(grep -c "$t" "$REG")" -ge 1 ] && echo yes || echo no)" "yes"
+	done
+	mge_check "evidence registry cites run 27214865086" "$([ "$(grep -c '27214865086' "$REG")" -ge 1 ] && echo yes || echo no)" "yes"
+	# 5. Baseline-failure (npm critical) documented as correct gate behavior, not suppressed.
+	mge_check "registry documents baseline FAIL run 27214863297" "$([ "$(grep -c '27214863297' "$REG")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	if [ "$MGE_FAILS" -ne 0 ]; then log_error "main-gate-evidence: $MGE_FAILS case(s) failed"; return 1; fi
+	log_info "main-gate-evidence: OK (Semgrep var, no auto/DAST/AI, registry cites CodeQL/OSV/Trivy/Syft + runs)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1021,6 +1055,7 @@ case "$SUB" in
 	workflow-sanity) run_workflow_sanity ;;
 	feature-completion) run_feature_completion ;;
 	main-gate-harness) run_main_gate_harness ;;
+	main-gate-evidence) run_main_gate_evidence ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1039,13 +1074,14 @@ case "$SUB" in
 		run_workflow_sanity
 		run_feature_completion
 		run_main_gate_harness
+		run_main_gate_evidence
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|all)"
 		exit 2
 		;;
 esac

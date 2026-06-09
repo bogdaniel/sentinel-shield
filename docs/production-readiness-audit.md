@@ -95,3 +95,13 @@ no fake). CodeQL, OSV, Trivy-fs, Syft, Grype, Dependency-Check, Checkov/Conftest
 Dockle — `sentinel-shield-main-validation.yml` is workflow_dispatch-only and not dispatchable
 from a feature branch until merged to default; **not live-validated this pass.** DAST (ZAP/
 Nuclei) + AI review remain manual/non-gating, **not validated.**
+
+---
+
+## v0.1.18 main-gate promotions (evidence run 27214865086)
+Promoted to **A / live-validated** (zenchron-tools, sentinel-shield-main-validation): CodeQL
+(codeql.json → 0/0/11 medium), OSV-Scanner (→ 1 high), Trivy-fs (→ clean), Syft SBOM
+(sbom.spdx.json valid). NOT promoted (no live evidence): Grype, OWASP Dependency-Check, Dockle
+(binary/image absent), Deptrac (no deptrac.yaml), Checkov/Conftest/Terrascan (no IaC). Baseline
+run 27214863297 FAILED on a real npm critical — correct gate behavior, not suppressed. Canonical:
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md).

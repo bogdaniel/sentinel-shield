@@ -421,3 +421,10 @@ New gated summary keys (style_violations, php_syntax_errors, dependency_policy_v
 iac_violations, dast_findings, container_image_violations, repository_health_warnings,
 ai_review_findings) with conservative mode defaults; DAST manual + fail-closed; AI review
 assistive + non-gating by default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md).
+
+## Evidence: the gate blocks real criticals (zenchron run 27214863297)
+A real npm critical (`shell-quote` via `concurrently@9.2.1`) made the consuming project's baseline
+release-gate **FAIL** on `critical_vulnerabilities=2`. This is the gate working as designed — a
+critical dependency advisory blocks the release. Remediation is the consuming project's (upgrade/
+replace the dependency); Sentinel Shield does not suppress or downgrade criticals. See
+[`docs/main-gate-live-evidence.md`](docs/main-gate-live-evidence.md).

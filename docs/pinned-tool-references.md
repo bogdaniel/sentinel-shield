@@ -57,3 +57,8 @@ aquasecurity/trivy-action v0.36.0 `ed142fd0673e97e23eac54620cfb913e5ce36c25`,
 anchore/sbom-action v0.20.7 `d8a2c0130026bf585de5c176ab8f7ce62d75bf04`,
 google/osv-scanner-action v1.9.0 `19ec1116569a47416e11a45848722b1af31a857b`.
 Semgrep image used as `semgrep/semgrep:1.90.0` (tag) — pin by digest before production.
+
+## v0.1.18 — Semgrep image
+Default bumped `semgrep/semgrep:1.90.0` → **`1.165.0`** (PHP parser fix). Overridable via
+`SENTINEL_SHIELD_SEMGREP_IMAGE`; the `ci-security.yml` job `container:` is pinned to `1.165.0`
+(can't shell-expand). **Pin by digest before production** (`semgrep/semgrep@sha256:…`).

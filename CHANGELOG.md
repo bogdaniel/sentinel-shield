@@ -6,6 +6,41 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.18] — main-gate live-validation hardening
+
+> v0.1.17 (already tagged) is the *branch-safe main-gate harness*. This release (v0.1.18) is the
+> evidence-based **promotion + Semgrep strategy** pass that builds on it. Earlier tags unchanged.
+
+### Added
+- **`docs/main-gate-live-evidence.md`** — canonical live-validation evidence registry (tool,
+  consumer, run ID, artifact, mapping, maturity, limitations, next target). Source of truth for
+  promotions; other maturity docs defer to it.
+- **`docs/remediation/semgrep-parser-errors.md`** — findings-vs-parser-errors triage, when to
+  upgrade the Semgrep image, why NOT to `.semgrepignore` application code.
+- **`docs/tooling/main-gate-tool-installation.md`** — how to run Grype / OWASP Dependency-Check /
+  Dockle via action/container (main gate / nightly, never PR-fast), with honest-unavailable contract.
+- **Self-test `main-gate-evidence`** (wired into `all`): Semgrep image variable present in
+  templates; no `--config=auto` for app scan; main-gate template has no DAST/Nuclei/AI; evidence
+  registry contains CodeQL/OSV/Trivy/Syft.
+
+### Changed
+- **Promoted with cited evidence (zenchron run 27214865086): CodeQL, OSV-Scanner, Trivy-fs, Syft
+  SBOM → live-validated.** Updated product-status, production-readiness-audit, enterprise-scanner-matrix,
+  pilot-consumers, raw-report-contract, roadmap. Grype/Dep-Check/Dockle/Deptrac/IaC stay
+  experimental/not-configured (no evidence).
+- **Documented baseline run 27214863297 FAIL as correct gate behavior** (real npm critical:
+  shell-quote via concurrently). NOT suppressed/accepted/downgraded — consuming-project fix.
+- **Semgrep image strategy**: default `semgrep/semgrep:1.90.0` → **`1.165.0`** (PHP parser fix),
+  overridable via **`SENTINEL_SHIELD_SEMGREP_IMAGE`** across pr-fast/combined templates +
+  ci-security/ci-pipeline; never `:latest` silently. Pin by digest before prod.
+- Deptrac/IaC status clarified (not-validated-unless-configured; skip honestly).
+
+### Honest status
+No new scanners. No gates weakened. No findings suppressed. npm critical NOT fixed here (consumer's
+job). Grype/Dependency-Check/Dockle NOT live-validated. Semgrep 1.165.0 default is documented but
+**not live-tested in this pass** (no Docker/Semgrep locally).
+
+
 ## [0.1.17] — main-gate validation harness
 
 Solves the dispatchability blocker that kept main-gate scanners `experimental`. **No new scanners.

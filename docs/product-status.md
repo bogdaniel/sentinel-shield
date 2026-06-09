@@ -54,7 +54,7 @@ and infrastructure. Concretely it owns:
 | Install / sync engine (laravel-react-docker) | `proven` | Self-test `install-sync`, `fixtures` round-trip |
 | Raw-report contract + collectors (core 14) | `proven` | Self-test fixtures + zenchron pilot |
 | PR-fast gate (`sentinel-shield-pr-fast.yml`) | `proven` | zenchron run 27170148123 (baseline PASS, no regression) |
-| Main-branch gate (`sentinel-shield-main.yml`) | `template-only` | `workflow_dispatch`-only; not dispatchable from a feature branch; never live-run |
+| Main-branch gate (`sentinel-shield-main.yml`) | `supported` (partial) | CodeQL/OSV/Trivy-fs/Syft **live-validated** (run 27214865086); Grype/Dep-Check/Dockle/Deptrac/IaC still unproven |
 | Main-gate validation harness (`run-main-gate-validation.sh`) | `proven` (engine) | Self-test `main-gate-harness`; runs main-gate wrappers branch-safely, unavailable-not-fake. **Running scanners ≠ live-validated** |
 | Profile system (Laravel/React/Node/Docker) | `supported` | Manifests + dry-run; only laravel-react-docker has a full fixture round-trip |
 | Scheduled / nightly gate | `template-only` | Not executed by default |
@@ -77,12 +77,23 @@ Scanners live-validated on **bogdaniel/zenchron-tools** (run 27170148123, baseli
 - Promoted in v0.1.15 with cited raw→key evidence: **php-style** (Pint/PHP-CS-Fixer →
   `style_violations`=88), **TypeScript `--noEmit`** (`type_errors`=0), **dependency-policy lockfile
   detector** (`dependency_policy_violations`=0).
+- **Promoted in v0.1.18 — main-gate tools, live evidence run 27214865086** (see
+  [`main-gate-live-evidence.md`](main-gate-live-evidence.md)): **CodeQL** (`codeql.json` 669 KB
+  SARIF → 0/0/11 medium), **OSV-Scanner** (`osv-scanner.json` → 1 high), **Trivy-fs** (`trivy.json`
+  308 KB → clean), **Syft SBOM** (`sbom.spdx.json` 964 KB → `missing_sbom=false`). Severity for
+  CodeQL/OSV remains coarse (limitation noted in the registry).
+
+> **Baseline gate working (run 27214863297).** The zenchron-tools main baseline **FAILED** on
+> `critical_vulnerabilities=2` — a real npm critical (`shell-quote` via `concurrently@9.2.1`).
+> This is **correct release-gate behavior**, NOT a Sentinel Shield bug. The consuming project
+> fixes the dependency in its own PR; Sentinel Shield does not suppress, accept-risk, or
+> downgrade it. See [`pilot-consumers.md`](pilot-consumers.md) and [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 
 ## 5. Supported but not yet proven
 
 Collector + deterministic self-test fixture exists; **no live consumer run** yet:
 
-- npm audit, ESLint, Vitest/Jest adapters, Deptrac, Syft (SBOM evidence), Psalm,
+- npm audit, ESLint, Vitest/Jest adapters, Deptrac, Psalm,
   third-party Semgrep channel.
 
 These were `not-configured` on the pilot (the runners correctly reported `unavailable` — no fake
@@ -90,8 +101,8 @@ output). To promote: run on a consumer that configures them and cite the run.
 
 ## 6. Experimental / template-only capabilities
 
-- **Experimental** (coarse parser, live-validate before trusting severity): CodeQL (SARIF
-  `level→severity`), OSV-Scanner (all→high unless normalized), Grype, OWASP Dependency-Check,
+- **Experimental** (coarse parser, live-validate before trusting severity):
+  Grype, OWASP Dependency-Check,
   OpenSSF Scorecard, TruffleHog, Checkov, Conftest/OPA, Terrascan, Dockle, Trivy-image.
   actionlint/zizmor run **advisory** in self-test.
 - **Template-only**: `sentinel-shield-main.yml`, `sentinel-shield-scheduled.yml` (and the
@@ -99,11 +110,13 @@ output). To promote: run on a consumer that configures them and cite the run.
 
 ## 7. Known product gaps
 
-- **Main-gate live runs still pending.** v0.1.17 adds a **branch-safe validation path**
-  (`run-main-gate-validation.sh` — see [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md)),
-  which removes the `workflow_dispatch` blocker. But **no main-gate scanner is `live-validated` yet** —
-  the harness makes validation *possible*; a tool is promoted only when it actually runs and produces
-  a real report with cited evidence (Phase 3).
+- **Main-gate live validation underway.** v0.1.17 added the branch-safe path
+  (`run-main-gate-validation.sh`); v0.1.18 promotes the **first four** main-gate tools with cited
+  evidence (run 27214865086): **CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM**. Still **not**
+  live-validated: **Grype, OWASP Dependency-Check, Dockle** (binary/image absent on the pilot —
+  see [`tooling/main-gate-tool-installation.md`](tooling/main-gate-tool-installation.md)),
+  **Deptrac** (no `deptrac.yaml`), **Checkov/Conftest/Terrascan** (no IaC). Promotion requires a
+  real cited run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 - **Install/sync covers four stacks, not arbitrary onboarding.** No `php-library` /`node-react`
   *named combination* manifest historically (php-library added in v0.1.16; node-react uses the
   `react` profile). Symfony/Go/Python have profiles but no install manifests.

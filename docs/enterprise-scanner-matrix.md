@@ -101,3 +101,9 @@ declared, gated in baseline+, and reserved. See [`dependency-policy.md`](depende
 - **AI review is assistive, non-deterministic, and non-gating by default** — even in regulated
   mode — unless the profile explicitly sets `gates.fail_on.ai_review_findings: true`. See
   [`ai-review-policy.md`](ai-review-policy.md).
+
+## v0.1.18 — main-gate promotions (cited)
+**CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM** are now **live-validated** (zenchron run 27214865086;
+artifacts in [`main-gate-live-evidence.md`](main-gate-live-evidence.md)). Grype, OWASP
+Dependency-Check, Dockle, Deptrac, Checkov/Conftest/Terrascan remain **experimental/not-configured**
+(no live evidence). ZAP/Nuclei manual; AI review non-gating.

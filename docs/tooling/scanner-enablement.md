@@ -38,3 +38,9 @@ Use the **curated Sentinel Shield app rules** for the app SAST scan:
 (honored via `-w /src`). **Do NOT use `--config=auto`** — validated on zenchron-tools
 (run 27170148123) to be noisy (7 critical / 16 high false-positives + 341 scan errors vs
 0/0 + 118 with curated rules). The pr-fast workflow template uses curated rules by default.
+
+## Semgrep image (v0.1.18)
+Default `semgrep/semgrep:1.165.0` (was 1.90.0, which emitted 118 PartialParsing errors on modern
+PHP application code — see [`../remediation/semgrep-parser-errors.md`](../remediation/semgrep-parser-errors.md)).
+Override with **`SENTINEL_SHIELD_SEMGREP_IMAGE`**; **pin by digest** before production. Always use
+curated `<SS>/semgrep/app` rules — **never `--config=auto`**.

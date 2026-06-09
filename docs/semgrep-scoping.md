@@ -86,3 +86,8 @@ scan over dependency code (config `semgrep/supply-chain/third-party`) — see
 
 > Do not exclude application source to silence findings — fix them or use a narrow,
 > justified `nosemgrep`. Path exclusions are for code you do not author.
+
+## Image version (v0.1.18)
+Use `SENTINEL_SHIELD_SEMGREP_IMAGE` (default `semgrep/semgrep:1.165.0`). The older 1.90.0 PHP
+parser produced PartialParsing errors on modern PHP — `.semgrepignore` does NOT fix those (they
+are app-source, not vendored). See [`remediation/semgrep-parser-errors.md`](remediation/semgrep-parser-errors.md).

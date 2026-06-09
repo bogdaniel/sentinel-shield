@@ -58,3 +58,9 @@ reports in the same `reports/raw/` directory. Note the **filename mapping**: `--
 `trivy.json` (matching the `trivy` collector) and `--tool syft` writes the SBOM to
 `<reports>/sbom.spdx.json` (where the builder reads it), not into `raw/`. Exercised by the
 `main-gate-harness` self-test suite.
+
+## v0.1.18 — main-gate live-validated raw reports
+`codeql.json`, `osv-scanner.json`, `trivy.json`, `sbom.spdx.json` are now produced + parsed
+against a real consumer (zenchron run 27214865086) — see
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). Missing/invalid behavior unchanged
+(unavailable / exit 2).

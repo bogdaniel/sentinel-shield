@@ -287,7 +287,7 @@ jobs:
         # composer/npm audit, Trivy, Syft, Gitleaks, Hadolint are unaffected.
         # Pin the image to a digest before production.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
         continue-on-error: true
@@ -310,7 +310,7 @@ jobs:
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh semgrep/semgrep:latest -c \
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true
