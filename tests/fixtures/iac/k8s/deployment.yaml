@@ -1,0 +1,35 @@
+# Sentinel Shield test fixture — minimal Kubernetes Deployment.
+# Parseable k8s manifest so IaC scanners (Checkov/Conftest) have a target.
+# Not for production use.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-shield-fixture
+  labels:
+    app: sentinel-shield-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentinel-shield-fixture
+  template:
+    metadata:
+      labels:
+        app: sentinel-shield-fixture
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true

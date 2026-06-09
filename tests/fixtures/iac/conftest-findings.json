@@ -1,0 +1,21 @@
+[
+  {
+    "filename": "k8s/deployment.yaml",
+    "namespace": "main",
+    "successes": 3,
+    "failures": [
+      {
+        "msg": "Containers must not run as root",
+        "metadata": {
+          "details": "securityContext.runAsNonRoot must be true"
+        }
+      },
+      {
+        "msg": "Containers must set resource limits",
+        "metadata": {
+          "details": "resources.limits is required"
+        }
+      }
+    ]
+  }
+]

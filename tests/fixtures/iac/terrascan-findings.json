@@ -1,0 +1,34 @@
+{
+  "results": {
+    "violations": [
+      {
+        "rule_name": "s3EnforceUserACL",
+        "description": "S3 bucket Access is allowed to all AWS Account Users.",
+        "severity": "MEDIUM",
+        "category": "S3",
+        "resource_name": "fixture",
+        "resource_type": "aws_s3_bucket",
+        "file": "terraform/main.tf"
+      },
+      {
+        "rule_name": "s3EnforceServerSideEncryption",
+        "description": "Ensure S3 bucket has server-side encryption enabled.",
+        "severity": "HIGH",
+        "category": "S3",
+        "resource_name": "fixture",
+        "resource_type": "aws_s3_bucket",
+        "file": "terraform/main.tf"
+      }
+    ],
+    "skipped_violations": null,
+    "scan_summary": {
+      "file/folder": "terraform",
+      "iac_type": "terraform",
+      "policies_validated": 100,
+      "violated_policies": 2,
+      "low": 0,
+      "medium": 1,
+      "high": 1
+    }
+  }
+}
