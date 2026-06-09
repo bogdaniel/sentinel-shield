@@ -39,6 +39,9 @@ env:
   # v0.1.0 is acceptable for first adoption; pin to a FULL COMMIT SHA before production.
   SENTINEL_SHIELD_REF: v0.1.0
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
+  # Scanner image override — readable tag by default; pin by digest in production
+  # (docs/scanner-image-digest-pinning.md). The Semgrep steps below honor this env var.
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep:1.165.0   # or semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
 
 jobs:
   # --------------------------------------------------------------------------

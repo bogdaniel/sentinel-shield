@@ -84,3 +84,13 @@ evidence. Breadth is frozen until depth (live validation) catches up.
 CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM promoted to live-validated (zenchron run 27214865086).
 Next: Grype/Dependency-Check/Dockle via container on a consumer; Deptrac on a layered project;
 IaC scanners on a repo with `*.tf`. Semgrep image bumped to 1.165.0 (configurable).
+
+## v0.1.20–0.1.22 — execution depth + adoption closure
+- v0.1.20: Grype + Dockle live-validated; Semgrep 1.165.0 consumer-verified (run 27239206382).
+- v0.1.21: Dependency-Check nightly/cached strategy + scanner digest pinning (real digests).
+- v0.1.22: dependency-check **evidence workflow** (path to first artifact); `symfony`/`node-react`
+  manifests + recommended tool lists; strict/regulated readiness guides; product contract; workflow
+  hardening (if:always uploads, digest overrides); self-test grown to 271 checks.
+- **Still open:** the single biggest gap is **Dependency-Check live validation** — run the evidence
+  workflow on a consumer with a warm NVD cache and cite the artifact in `main-gate-live-evidence.md`.
+  Then: Deptrac on a layered project; IaC scanners on a repo with `*.tf`; refine OSV/CodeQL severity.

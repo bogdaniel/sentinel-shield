@@ -121,3 +121,32 @@ Run the scheduled job (warm cache) on a real consumer, download the resulting
 run ID + artifact in [`main-gate-live-evidence.md`](main-gate-live-evidence.md). Only then does
 Dependency-Check move from *attempted* to *live-validated* in
 [`product-status.md`](product-status.md).
+
+## Cold run vs warm run expectations
+
+Dependency-Check runtime is dominated by the **state of the NVD data directory**, not by the size of
+the project tree. Know which of the three states a given run is in before you read its duration:
+
+- **Cold run (empty cache).** The first run on a fresh runner with no cache hit downloads and indexes
+  the **entire NVD feed** (network DB, hundreds of MB). This is slow — **many minutes**, network- and
+  NVD-API-dependent — and can **approach the 45-minute `timeout-minutes` cap**. That cap is a feature,
+  not a bug: it bounds a stuck cold download so the job fails cleanly instead of hanging, and (because
+  the wrapper discards partial output) it reports `unavailable` rather than fake-clean. A cold run is
+  expected only once per consumer (first ever run) or once per calendar month (see below). Budget the
+  CI minutes accordingly — a cold run can consume most of the 45-minute window on its own.
+- **Warm run (exact monthly cache hit).** Every run within the same `YYYY-MM` restores the cache under
+  the exact key `nvd-<os>-<YYYY-MM>` and fetches only the **NVD delta** since the cache was built. This
+  is **fast** — typically a few minutes of analysis, no full-feed download — so warm runs fit
+  comfortably inside the cap with wide margin. This is the steady-state cost of the nightly/evidence job.
+- **Partial-warm run (first run of a new month).** On the first run after the month rolls over there is
+  no exact key hit, so the `restore-keys` prefix (`nvd-<os>-`) restores the **most recent prior month's**
+  cache. The run is therefore **never fully cold**: it seeds from last month's data and fetches the
+  accumulated delta. Expect a duration **between** warm and cold — longer than a same-month warm run,
+  but far short of a true cold download. `actions/cache` then saves the refreshed data under the new
+  month's exact key, so the rest of that month's runs are warm again.
+
+CI-minute guidance: budget for **one cold-ish run per month** (the partial-warm rollover) plus
+**fast warm runs** for everything else. The very first run on a brand-new consumer pays the full cold
+cost once. In all three cases the 45-minute cap protects the job: a run that cannot finish inside the
+window is terminated, the partial report is discarded, and the result is an honest `unavailable` — it
+is never reported as a clean pass.

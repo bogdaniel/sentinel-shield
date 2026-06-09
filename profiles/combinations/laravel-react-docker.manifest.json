@@ -101,6 +101,36 @@
     "scripts/resolve-gates.sh",
     "scripts/select-security-summary.sh"
   ],
+  "recommended_pr_fast_tools": [
+    "php-syntax",
+    "phpstan",
+    "composer-audit",
+    "npm-audit",
+    "eslint",
+    "typescript",
+    "hadolint",
+    "gitleaks",
+    "semgrep",
+    "tests"
+  ],
+  "recommended_main_gate_tools": [
+    "codeql",
+    "osv-scanner",
+    "trivy-fs",
+    "trivy-image",
+    "syft",
+    "grype",
+    "deptrac",
+    "checkov",
+    "dependency-check"
+  ],
+  "recommended_scheduled_tools": [
+    "trufflehog",
+    "scorecard",
+    "dockle",
+    "dependency-check",
+    "grype-fs"
+  ],
   "recommended_raw_reports": [
     "gitleaks.json",
     "semgrep.json",

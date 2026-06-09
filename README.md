@@ -518,6 +518,17 @@ that checks Sentinel Shield out into `tools/sentinel-shield`, `composer`/`npm`
 docs, and a migration plan from `report-only` → `baseline` → `strict` → `regulated`).
 Copy and adapt it; see its [README](examples/laravel-react-docker/README.md).
 
+## Core documentation
+
+Start at the documentation index ([`docs/README.md`](docs/README.md)). The core
+product docs:
+
+- **Product contract** (stability / pre-1.0 surfaces) — [`docs/product-contract.md`](docs/product-contract.md).
+- **Product status** (canonical maturity, source of truth) — [`docs/product-status.md`](docs/product-status.md).
+- **Roadmap** (maturity-ordered plan) — [`docs/roadmap.md`](docs/roadmap.md).
+- **Product readiness checklist** — [`docs/product-readiness-checklist.md`](docs/product-readiness-checklist.md).
+- **Profile-driven adoption** (install/sync) — [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).
+
 ## Contributing, changelog, make targets
 
 - Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md) (shell standards, commit

@@ -1,7 +1,7 @@
 {
   "$schema": "../profile.manifest.schema.json",
   "profile": "docker",
-  "description": "Docker stack. Multi-Dockerfile Hadolint + base-image digest audit run from Sentinel Shield. Dockerfiles + hadolint.yaml are project-local.",
+  "description": "Docker-only profile: containers and IaC, no application language. Multi-Dockerfile Hadolint + base-image digest audit run from Sentinel Shield, container image + filesystem scanning (Trivy/Dockle/Checkov). Dockerfiles + hadolint.yaml are project-local. Use this when the repo ships only container/IaC assets; pair with an app-language profile (or a combination) when it also ships application code.",
   "stacks": ["docker"],
   "files": [
     { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
@@ -16,5 +16,8 @@
   ],
   "never_touch": [".sentinel-shield/accepted-risks.json"],
   "required_scripts": ["scripts/run-hadolint.sh", "scripts/audit-docker-base-digest.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_raw_reports": ["hadolint.json", "docker-base-digest.json", "trivy.json", "gitleaks.json"]
+  "recommended_pr_fast_tools": ["hadolint", "docker-base-digest", "gitleaks", "semgrep"],
+  "recommended_main_gate_tools": ["trivy-fs", "trivy-image", "syft", "grype", "checkov"],
+  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dockle", "grype-fs"],
+  "recommended_raw_reports": ["hadolint.json", "docker-base-digest.json", "trivy.json", "checkov.json", "dockle.json", "gitleaks.json", "semgrep.json"]
 }
