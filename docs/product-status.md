@@ -102,8 +102,8 @@ output). To promote: run on a consumer that configures them and cite the run.
 ## 6. Experimental / template-only capabilities
 
 - **Experimental** (coarse parser, live-validate before trusting severity):
-  Grype, OWASP Dependency-Check,
-  OpenSSF Scorecard, TruffleHog, Checkov, Conftest/OPA, Terrascan, Dockle, Trivy-image.
+  OWASP Dependency-Check,
+  OpenSSF Scorecard, TruffleHog, Checkov, Conftest/OPA, Terrascan, Trivy-image.
   actionlint/zizmor run **advisory** in self-test.
 - **Template-only**: `sentinel-shield-main.yml`, `sentinel-shield-scheduled.yml` (and the
   combined `sentinel-shield.yml` against a real consumer pipeline).
@@ -147,3 +147,11 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
 `1.165.0` is **fixture-verified** (0 parser errors on modern PHP via `verify-semgrep-image.sh`),
 **not** consumer-verified. Deptrac/IaC stay not-configured-unless-provided. See
 [`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md).
+
+## v0.1.20 — main-gate execution-path promotions (zenchron run 27239206382)
+**Promoted to live-validated** with real artifacts (see [`main-gate-live-evidence.md`](main-gate-live-evidence.md)):
+- **Grype** (SBOM-first; `grype.json` valid, collector → `*_vulnerabilities`).
+- **Dockle** (built `base` image; `dockle.json` valid → `container_image_violations`=1).
+- **Semgrep 1.165.0**: fixture-verified → **consumer-verified** — **0 parser errors on real app code** (was 118 on 1.90.0); 25 medium findings visible for triage.
+
+**Still NOT promoted:** **OWASP Dependency-Check** (attempted; cold NVD exceeds CI budget — run nightly with a warm cache). Deptrac/IaC remain not-configured. No Sentinel Shield bug surfaced; all wrappers/collectors parsed real artifacts correctly.

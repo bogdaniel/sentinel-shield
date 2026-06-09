@@ -74,3 +74,8 @@ A second consumer is what promotes `supported` tools to `proven`. To onboard one
   `concurrently@9.2.1`. The release gate **correctly blocked**. This is a consuming-project
   dependency finding — fixed in zenchron's own PR. Sentinel Shield does **not** suppress,
   accept-risk, or downgrade it. PHPStan 0, tests 0, unsafe_docker 5/0, gh-actions 0 — unchanged.
+
+## zenchron-tools — main-gate execution-path evidence (run 27239206382, 2026-06-10)
+- **Semgrep 1.165.0 on real code → 0 parser errors** (1.90.0 had 118), 25 medium findings visible. Consumer-verified.
+- **Grype SBOM-first** → grype.json valid (0 matches). **Dockle** (built `base` image) → dockle.json valid (container_image_violations=1). Both **live-validated**.
+- **Dependency-Check** attempted, not live-validated (cold NVD exceeds CI budget; detached container ignored the step timeout). Run nightly with a warm cache. Not faked.

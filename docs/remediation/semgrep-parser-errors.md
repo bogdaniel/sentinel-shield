@@ -46,3 +46,9 @@ disguised as "clean"). Parser errors are fixed by the tool version, not by ignor
 appears. **Result:** `semgrep/semgrep:1.165.0` (verified, output `.version`=1.165.0) → **0 parser
 errors** on the fixture (1.90.0 produced 118 on the pilot's real code). **Fixture verification is
 not live consumer validation** — re-run on the consumer's real codebase to confirm the drop.
+
+## Consumer-verified (v0.1.20)
+`semgrep/semgrep:1.165.0` was run on **real consumer code** (zenchron-tools, run 27239206382):
+`semgrep.json` `.version`=1.165.0, **0 PartialParsing/Syntax errors** across `Modules/**/app`
+(the same paths that produced **118** errors on 1.90.0). The parser-error fix is confirmed on
+real code, not just the fixture. (25 INFO findings → medium; visible for triage, not suppressed.)

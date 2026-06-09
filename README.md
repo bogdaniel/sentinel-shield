@@ -612,3 +612,9 @@ main-gate tool summary (duration/executor/valid_json). Added `scripts/verify-sem
 `semgrep/semgrep:1.165.0` is **fixture-verified** to parse modern PHP with **0 parser errors**
 (1.90.0 produced 118). These tools remain **supported, not live-validated** — see
 [`docs/main-gate-execution-hardening-v0.1.19.md`](docs/main-gate-execution-hardening-v0.1.19.md).
+
+## v0.1.20 — main-gate live evidence
+Real zenchron-tools evidence (run 27239206382): **Semgrep 1.165.0 consumer-verified** (0 parser
+errors on real code, vs 118 on 1.90.0), **Grype** (SBOM-first) and **Dockle** (built image) promoted
+to **live-validated**. **Dependency-Check** attempted but not live-validated (cold NVD exceeds CI
+budget — nightly with a warm cache). See [`docs/main-gate-live-evidence.md`](docs/main-gate-live-evidence.md).

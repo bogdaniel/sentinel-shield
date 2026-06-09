@@ -40,3 +40,10 @@ collector then reports `status: unavailable` (counts 0). This is NOT a clean res
 Honest-unavailable contract unchanged: missing binary/precondition → no file written, collector
 reports `unavailable`. None are live-validated until a real consumer run produces an artifact
 (see [`main-gate-live-evidence.md`](../main-gate-live-evidence.md)).
+
+## v0.1.20 — what is now live-validated
+**Grype (SBOM-first)** and **Dockle (built image)** are live-validated (zenchron run 27239206382).
+**Dependency-Check** is still NOT — cold NVD download exceeds the CI budget and the detached
+container ignored a step `timeout-minutes`. Recommendation: run Dependency-Check **only on a
+nightly job** with a persisted/warm NVD cache (`actions/cache` keyed on a monthly rotation), never
+in PR-fast or a one-shot evidence run.

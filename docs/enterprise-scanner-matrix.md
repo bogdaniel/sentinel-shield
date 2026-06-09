@@ -114,3 +114,6 @@ have hardened execution paths + env vars, but are **NOT promoted** (no live cons
 Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
 [`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md) and
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). DAST/Nuclei/AI unchanged (manual/non-gating).
+
+## v0.1.20 — execution-path promotions (cited)
+**Grype** (SBOM-first) and **Dockle** (built image) are now **live-validated** (zenchron run 27239206382; artifacts in [`main-gate-live-evidence.md`](main-gate-live-evidence.md)). **Semgrep 1.165.0** is **consumer-verified** (0 parser errors on real code). **Dependency-Check** remains experimental (attempted, NVD exceeds CI budget). Deptrac/IaC not-configured.

@@ -6,6 +6,34 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.20] — main-gate live evidence run
+
+Real-consumer evidence (bogdaniel/zenchron-tools, `sentinel-shield-main-gate-evidence`,
+**run 27239206382**). No new scanners; no gates weakened; no findings suppressed; npm critical
+NOT touched (consuming-project issue).
+
+### Changed — promotions (with downloaded artifacts + verified collector mappings)
+- **Semgrep 1.165.0: fixture-verified → CONSUMER-VERIFIED** — **0 PartialParsing errors on real
+  `Modules/**/app`** (vs **118** on 1.90.0); 25 INFO→medium findings, visible for triage (not suppressed).
+- **Grype → live-validated** — SBOM-first (`grype sbom:` off the Syft SBOM); `grype.json` valid,
+  collector maps severities to `*_vulnerabilities` (0 matches this run).
+- **Dockle → live-validated** — scanned a real built `base` image stage; `dockle.json` valid,
+  collector → `container_image_violations`=1 (1 WARN + 3 INFO).
+
+### Not promoted (honest)
+- **OWASP Dependency-Check: attempted, NOT live-validated** — cold NVD download exceeds the CI
+  budget and the detached scanner container ignored a step `timeout-minutes` (would burn the job +
+  lose artifacts). Recommended on a **nightly** job with a warm NVD cache. NOT faked.
+- Deptrac / Checkov/Conftest/Terrascan remain not-configured (no consumer config/IaC).
+
+### Notes
+No Sentinel Shield code bug surfaced — every v0.1.19 wrapper/collector behaved correctly on real
+artifacts. Docs updated: main-gate-live-evidence, product-status, production-readiness-audit,
+enterprise-scanner-matrix, pilot-consumers, tooling/main-gate-tool-installation,
+remediation/semgrep-parser-errors. Scanner image tags used in the evidence run (anchore/grype
+v0.114.0, goodwithtech/dockle v0.4.15, semgrep 1.165.0) — pin by digest before production.
+
+
 ## [0.1.19] — main-gate execution hardening
 
 ### Added
