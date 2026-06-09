@@ -21,7 +21,7 @@
   ],
   "never_touch": [".sentinel-shield/accepted-risks.json", "phpstan-baseline.neon", "phpstan.neon"],
   "required_scripts": ["scripts/adapters/phpunit-to-tests-json.php", "scripts/runners/deptrac.sh", "scripts/runners/php-syntax.sh", "scripts/runners/php-style.sh", "scripts/runners/psalm.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["php-syntax", "phpstan", "psalm", "composer-audit", "gitleaks", "semgrep", "tests"],
+  "recommended_pr_fast_tools": ["php-syntax", "phpstan", "psalm", "php-style", "composer-audit", "gitleaks", "semgrep", "tests"],
   "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "deptrac", "dependency-check"],
   "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
   "recommended_raw_reports": ["php-syntax.json", "phpstan.json", "psalm.json", "deptrac.json", "php-style.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json"]

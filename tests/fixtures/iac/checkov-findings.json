@@ -1,0 +1,26 @@
+{
+  "summary": {
+    "passed": 5,
+    "failed": 2,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "resource_count": 3
+  },
+  "results": {
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_18",
+        "check_name": "Ensure the S3 bucket has access logging enabled",
+        "resource": "aws_s3_bucket.fixture",
+        "file_path": "/terraform/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_21",
+        "check_name": "Ensure all data stored in the S3 bucket have versioning enabled",
+        "resource": "aws_s3_bucket.fixture",
+        "file_path": "/terraform/main.tf"
+      }
+    ],
+    "passed_checks": []
+  }
+}

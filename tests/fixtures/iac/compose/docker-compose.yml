@@ -1,0 +1,14 @@
+# Sentinel Shield test fixture — minimal Docker Compose file.
+# Parseable compose manifest so IaC scanners have a target. Not for production.
+services:
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    read_only: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

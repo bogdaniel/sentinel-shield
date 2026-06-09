@@ -1211,7 +1211,7 @@ IM_FAILS=0
 im_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; IM_FAILS=$((IM_FAILS + 1)); fi; }
 run_install_matrix() {
 	log_info "install-matrix: install/sync round-trip for docker, php-library, node-react (temp dirs, no network)"
-	for _prof in docker php-library node-react; do
+	for _prof in docker php-library node-react symfony; do
 		_t=$(mktemp -d)
 		# dry-run writes nothing
 		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" >/dev/null 2>&1
@@ -1345,6 +1345,147 @@ FAKE
 	log_info "v022-fixtures: OK (IaC-no-binary, deptrac-absent, dep-policy lockfiles, dep-check findings, grype/dockle, summary keys, raw JSON)"
 }
 
+# --- v023-coverage: dep-check clean, mode fixtures, IaC fixtures, DAST guard, supply-chain --
+CV_FAILS=0
+cv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; CV_FAILS=$((CV_FAILS + 1)); fi; }
+run_v023_coverage() {
+	log_info "v023-coverage: dep-check clean fixture, strict/regulated mode fixtures, IaC/deptrac/arch, DAST guard, no-latest"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; _d=$(mktemp -d)
+	_b=$(mktemp -d); ln -s "$(command -v jq)" "$_b/jq" 2>/dev/null || cp "$(command -v jq)" "$_b/jq"
+
+	# --- Dependency-Check clean fixture: valid report, 0 findings -> status pass (NOT unavailable) ---
+	cv_check "dep-check clean fixture -> pass 0/0/0" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/clean.json" 2>/dev/null | jq -r '"\(.status):\(.summary.critical_vulnerabilities):\(.summary.high_vulnerabilities):\(.summary.medium_vulnerabilities)"')" "pass:0:0:0"
+	cv_check "dep-check warm-cache marker fixture exists" "$([ -f "$F/dependency-check/warm-cache/.nvd-cache-marker" ] && echo yes || echo no)" "yes"
+
+	# --- Mode fixtures (Agent D): collector mappings ---
+	cv_check "mode style fixture -> style_violations=2" "$(sh "$C/php-style.sh" --input "$F/modes/style-violation/php-style.json" 2>/dev/null | jq '.summary.style_violations')" "2"
+	cv_check "mode medium-vuln fixture -> medium_vulnerabilities=1" "$(sh "$C/grype.sh" --input "$F/modes/medium-vuln/grype.json" 2>/dev/null | jq '.summary.medium_vulnerabilities')" "1"
+	cv_check "mode iac fixture -> iac_violations=2" "$(sh "$C/checkov.sh" --input "$F/modes/iac-violation/checkov.json" 2>/dev/null | jq '.summary.iac_violations')" "2"
+	cv_check "mode dast fixture -> dast_findings=1" "$(sh "$C/zap.sh" --input "$F/modes/dast-finding/zap.json" 2>/dev/null | jq '.summary.dast_findings')" "1"
+
+	# --- Strict gates fire where baseline does not (style+iac+medium) ---
+	mkdir -p "$_d/raw"
+	cp "$F/modes/style-violation/php-style.json" "$_d/raw/php-style.json"
+	cp "$F/modes/medium-vuln/grype.json" "$_d/raw/grype.json"
+	cp "$F/modes/iac-violation/checkov.json" "$_d/raw/checkov.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
+	enforce_mode() { # <mode> -> echo pass|fail
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
+		if sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1; then echo pass; else echo fail; fi
+	}
+	cv_check "baseline PASSES style+iac+medium" "$(enforce_mode baseline "$_d/sum.json")" "pass"
+	cv_check "strict FAILS style+iac+medium" "$(enforce_mode strict "$_d/sum.json")" "fail"
+	# --- Regulated gates fire where strict does not (dast) ---
+	rm -rf "$_d/r2"; mkdir -p "$_d/r2/raw"; cp "$F/modes/dast-finding/zap.json" "$_d/r2/raw/zap.json"
+	# Isolate dast_findings: provide a real SBOM + release evidence next to the output so the
+	# strict-gated missing_sbom/missing_release_evidence are clean — the ONLY non-clean gate is dast.
+	printf '{"SPDXID":"SPDXRef-DOCUMENT"}' > "$_d/r2/sbom.spdx.json"
+	printf 'release evidence\n' > "$_d/r2/release-evidence.md"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t >/dev/null 2>&1
+	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
+	cv_check "regulated FAILS dast finding" "$(enforce_mode regulated "$_d/r2/sum2.json")" "fail"
+
+	# --- IaC fixtures (Agent F): collector mappings ---
+	cv_check "iac checkov-findings -> iac_violations=2" "$(sh "$C/checkov.sh" --input "$F/iac/checkov-findings.json" 2>/dev/null | jq '.summary.iac_violations')" "2"
+	cv_check "iac conftest-findings -> iac_violations>=1" "$([ "$(sh "$C/conftest.sh" --input "$F/iac/conftest-findings.json" 2>/dev/null | jq '.summary.iac_violations')" -ge 1 ] && echo yes || echo no)" "yes"
+	cv_check "iac terrascan-findings -> iac_violations>=1" "$([ "$(sh "$C/terrascan.sh" --input "$F/iac/terrascan-findings.json" 2>/dev/null | jq '.summary.iac_violations')" -ge 1 ] && echo yes || echo no)" "yes"
+	# IaC with tf files present but NO checkov binary -> no fake report -> unavailable.
+	mkdir -p "$_d/tf"; cp "$F/iac/terraform/main.tf" "$_d/tf/main.tf"
+	( cd "$_d/tf" && PATH="$_b:/usr/bin:/bin" sh "$ROOT/scripts/audits/checkov.sh" "$_d/tf/checkov.json" >/dev/null 2>&1 )
+	cv_check "IaC tf + no checkov binary -> no fake file" "$([ -f "$_d/tf/checkov.json" ] && echo file || echo none)" "none"
+	cv_check "IaC no-binary -> collector unavailable" "$(sh "$C/checkov.sh" --input "$_d/tf/checkov.json" 2>/dev/null | jq -r .status)" "unavailable"
+	# No IaC files at all + no binary -> still unavailable (never fake-clean).
+	( cd "$_d" && PATH="$_b:/usr/bin:/bin" sh "$ROOT/scripts/audits/checkov.sh" "$_d/noiac.json" >/dev/null 2>&1 )
+	cv_check "IaC no-files -> collector unavailable" "$(sh "$C/checkov.sh" --input "$_d/noiac.json" 2>/dev/null | jq -r .status)" "unavailable"
+
+	# --- Deptrac + architecture fixtures ---
+	cv_check "deptrac config fixture is valid YAML" "$(ruby -ryaml -e 'YAML.load_stream(File.read(ARGV[0]));print "ok"' "$F/deptrac/deptrac.yaml" 2>/dev/null)" "ok"
+	cv_check "deptrac absent report -> unavailable" "$(sh "$C/deptrac.sh" --input "$_d/no-deptrac.json" 2>/dev/null | jq -r .status)" "unavailable"
+	cv_check "architecture-tests fixture -> architecture_violations=0 pass" "$(sh "$C/architecture-tests.sh" --input "$F/architecture/architecture-tests.json" 2>/dev/null | jq -r '"\(.status):\(.summary.architecture_violations)"')" "pass:0"
+
+	# --- DAST guard (runners; no scan ever runs) ---
+	DG="$ROOT/scripts/runners"
+	_rc=0; ( unset SENTINEL_SHIELD_DAST_TARGET_URL; sh "$DG/zap-baseline.sh" "$_d/z.json" >/dev/null 2>&1 ) || _rc=$?
+	cv_check "DAST missing target -> skip exit 0" "$_rc" "0"
+	_rc=0; ( SENTINEL_SHIELD_DAST_TARGET_URL=ftp://x SENTINEL_SHIELD_DAST_ALLOWED_HOST=x sh "$DG/zap-baseline.sh" "$_d/z.json" >/dev/null 2>&1 ) || _rc=$?
+	cv_check "DAST non-http(s) -> fail closed exit 3" "$_rc" "3"
+	_rc=0; ( SENTINEL_SHIELD_DAST_TARGET_URL=https://evil.test/x SENTINEL_SHIELD_DAST_ALLOWED_HOST=staging.app sh "$DG/zap-baseline.sh" "$_d/z.json" >/dev/null 2>&1 ) || _rc=$?
+	cv_check "DAST host mismatch -> fail closed exit 3" "$_rc" "3"
+	_rc=0; ( SENTINEL_SHIELD_DAST_TARGET_URL=https://evil.test/x SENTINEL_SHIELD_DAST_ALLOWED_HOST=staging.app sh "$DG/nuclei.sh" "$_d/n.json" >/dev/null 2>&1 ) || _rc=$?
+	cv_check "Nuclei host mismatch -> fail closed exit 3" "$_rc" "3"
+
+	# --- Supply-chain: no template pins a validated scanner to :latest ---
+	_latest=$(grep -rlE '(semgrep/semgrep|anchore/grype|goodwithtech/dockle):latest' "$ROOT/templates/workflows" 2>/dev/null | wc -l | tr -d ' ')
+	cv_check "no validated scanner pinned to :latest" "$_latest" "0"
+
+	rm -rf "$_d" "$_b"
+	if [ "$CV_FAILS" -ne 0 ]; then log_error "v023-coverage: $CV_FAILS case(s) failed"; return 1; fi
+	log_info "v023-coverage: OK (dep-check clean, strict/regulated fixtures, IaC/deptrac/arch, DAST fail-closed, no :latest)"
+}
+
+# --- v023-regression: cross-cutting invariants ------------------------------------------------
+RG_FAILS=0
+rg_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; RG_FAILS=$((RG_FAILS + 1)); fi; }
+run_v023_regression() {
+	log_info "v023-regression: fail_on flags, secrets non-suppressible, invalid/missing collectors, manifests, docs, changelog, .claude"
+	C="$ROOT/scripts/collectors"; _d=$(mktemp -d)
+
+	# 117: every expected fail_on flag is present in resolved gates (regulated).
+	sh "$ROOT/scripts/resolve-gates.sh" --profile /dev/null --mode regulated --format json --output-dir "$_d" >/dev/null 2>&1
+	_missing=0
+	for _k in secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities \
+		architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions \
+		expired_exceptions style_violations php_syntax_errors dependency_policy_violations \
+		iac_violations dast_findings container_image_violations repository_health_warnings \
+		ai_review_findings missing_release_evidence missing_sbom; do
+		[ "$(jq "has(\"fail_on\") and (.fail_on|has(\"$_k\"))" "$_d/sentinel-shield-gates.json" 2>/dev/null)" = "true" ] || { log_error "  fail_on missing: $_k"; _missing=$((_missing + 1)); }
+	done
+	rg_check "all expected fail_on flags present" "$_missing" "0"
+
+	# 118: secrets are NEVER suppressible by accepted-risk.
+	mkdir -p "$_d/raw"; printf '[{"Description":"leak","Secret":"x"}]' > "$_d/raw/gitleaks.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	rg_check "gitleaks fixture -> secrets=1" "$(jq '.summary.secrets' "$_d/sum.json")" "1"
+	sh "$ROOT/scripts/resolve-gates.sh" --profile /dev/null --mode baseline --format env --output-dir "$_d" >/dev/null 2>&1
+	printf '{"version":"1.1","risks":[{"id":"s","gate":"secrets","scope":"gate","owner":"p","severity":"high","reason":"x","expires_at":"2999-12-31","status":"approved"}]}' > "$_d/ar.json"
+	if sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --accepted-risks "$_d/ar.json" --output-dir "$_d" --format json >/dev/null 2>&1; then _sr=pass; else _sr=fail; fi
+	rg_check "secrets NOT suppressible (still fails)" "$_sr" "fail"
+
+	# 121/122: invalid JSON -> exit 2; missing report -> unavailable (sample collectors).
+	printf 'NOT JSON' > "$_d/bad.json"
+	_rc=0; sh "$C/grype.sh" --input "$_d/bad.json" >/dev/null 2>&1 || _rc=$?; rg_check "invalid JSON -> exit 2 (grype)" "$_rc" "2"
+	_rc=0; sh "$C/checkov.sh" --input "$_d/bad.json" >/dev/null 2>&1 || _rc=$?; rg_check "invalid JSON -> exit 2 (checkov)" "$_rc" "2"
+	rg_check "missing report -> unavailable (grype)" "$(sh "$C/grype.sh" --input "$_d/nope.json" 2>/dev/null | jq -r .status)" "unavailable"
+	rg_check "missing report -> unavailable (zap)" "$(sh "$C/zap.sh" --input "$_d/nope.json" 2>/dev/null | jq -r .status)" "unavailable"
+
+	# 126: every profile manifest is valid JSON with required fields + valid modes.
+	_badman=0
+	for _m in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.manifest.json; do
+		[ -f "$_m" ] || continue
+		jq -e 'has("profile") and has("files")' "$_m" >/dev/null 2>&1 || { log_error "  manifest missing keys: $_m"; _badman=$((_badman + 1)); continue; }
+		[ "$(jq '[(.files+ (.workflows//[]) + (.docs//[]))[]|select(.mode|test("^(create-if-missing|overwrite-if-force|sync-managed-block|manual)$")|not)]|length' "$_m")" = "0" ] || { log_error "  manifest bad mode: $_m"; _badman=$((_badman + 1)); }
+	done
+	rg_check "all profile manifests valid" "$_badman" "0"
+
+	# 127: README links the core docs.
+	_nolink=0
+	for _doc in product-status.md roadmap.md product-readiness-checklist.md product-contract.md; do
+		grep -q "$_doc" "$ROOT/README.md" || { log_error "  README missing link: $_doc"; _nolink=$((_nolink + 1)); }
+	done
+	rg_check "README links core docs" "$_nolink" "0"
+
+	# 128: CHANGELOG has the v0.1.23 entry.
+	rg_check "CHANGELOG has 0.1.23 entry" "$([ "$(grep -c '0.1.23' "$ROOT/CHANGELOG.md")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# 129: .claude/ is not tracked by git.
+	rg_check "no .claude tracked" "$(git -C "$ROOT" ls-files .claude | wc -l | tr -d ' ')" "0"
+
+	rm -rf "$_d"
+	if [ "$RG_FAILS" -ne 0 ]; then log_error "v023-regression: $RG_FAILS case(s) failed"; return 1; fi
+	log_info "v023-regression: OK (fail_on flags, secrets never suppressed, invalid/missing collectors, manifests, README, changelog, .claude)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1368,6 +1509,8 @@ case "$SUB" in
 	install-matrix) run_install_matrix ;;
 	mode-readiness) run_mode_readiness ;;
 	v022-fixtures) run_v022_fixtures ;;
+	v023-coverage) run_v023_coverage ;;
+	v023-regression) run_v023_regression ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1391,13 +1534,15 @@ case "$SUB" in
 		run_install_matrix
 		run_mode_readiness
 		run_v022_fixtures
+		run_v023_coverage
+		run_v023_regression
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|all)"
 		exit 2
 		;;
 esac
