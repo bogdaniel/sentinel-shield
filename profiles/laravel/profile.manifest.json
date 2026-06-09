@@ -17,5 +17,8 @@
   ],
   "never_touch": [".sentinel-shield/accepted-risks.json", "phpstan-baseline.neon", "phpstan.neon"],
   "required_scripts": ["scripts/runners/laravel-phpstan.sh", "scripts/adapters/phpunit-to-tests-json.php", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_raw_reports": ["phpstan.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json"]
+  "recommended_pr_fast_tools": ["php-syntax", "phpstan", "composer-audit", "gitleaks", "semgrep", "tests"],
+  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "deptrac", "dependency-check"],
+  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
+  "recommended_raw_reports": ["phpstan.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json", "deptrac.json"]
 }

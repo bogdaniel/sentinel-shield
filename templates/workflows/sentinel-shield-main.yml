@@ -62,4 +62,5 @@ jobs:
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
       - uses: actions/upload-artifact@v4
+        if: always()   # preserve raw reports even when the gate fails on real findings
         with: { name: sentinel-shield-main, path: reports/**, retention-days: 30, if-no-files-found: warn }

@@ -1,0 +1,28 @@
+{
+  "$schema": "../profile.manifest.schema.json",
+  "profile": "symfony",
+  "description": "Symfony 6/7 PHP stack (PHP 8.3+, PSR-12, app code in src/). PHPStan (+ Symfony/Doctrine extensions), Psalm with taint tracking, Deptrac architecture boundaries, PHP-CS-Fixer, Rector, composer audit + PHPUnit adapter. phpstan.neon/phpstan-baseline.neon and the profile config files are project-local and NEVER overwritten.",
+  "stacks": ["symfony", "php"],
+  "files": [
+    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
+    { "source": "profiles/laravel/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" },
+    { "source": "profiles/symfony/phpstan.neon", "target": "phpstan.neon", "mode": "manual" },
+    { "source": "profiles/symfony/psalm.xml", "target": "psalm.xml", "mode": "manual" },
+    { "source": "profiles/symfony/deptrac.yaml", "target": "deptrac.yaml", "mode": "manual" },
+    { "source": "profiles/symfony/php-cs-fixer.php", "target": ".php-cs-fixer.dist.php", "mode": "manual" },
+    { "source": "profiles/symfony/rector.php", "target": "rector.php", "mode": "manual" }
+  ],
+  "workflows": [
+    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+  ],
+  "docs": [
+    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" }
+  ],
+  "never_touch": [".sentinel-shield/accepted-risks.json", "phpstan-baseline.neon", "phpstan.neon"],
+  "required_scripts": ["scripts/adapters/phpunit-to-tests-json.php", "scripts/runners/deptrac.sh", "scripts/runners/php-syntax.sh", "scripts/runners/php-style.sh", "scripts/runners/psalm.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
+  "recommended_pr_fast_tools": ["php-syntax", "phpstan", "psalm", "composer-audit", "gitleaks", "semgrep", "tests"],
+  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "deptrac", "dependency-check"],
+  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
+  "recommended_raw_reports": ["php-syntax.json", "phpstan.json", "psalm.json", "deptrac.json", "php-style.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json"]
+}

@@ -30,4 +30,5 @@ jobs:
           #   {"findings":[{"title":...,"severity":...,"file":...}]} -> reports/raw/ai-security-review.json
           [ -f reports/raw/ai-security-review.json ] || echo '{"findings":[],"note":"no AI tool wired; non-gating"}' > reports/raw/ai-security-review.json
       - uses: actions/upload-artifact@v4
+        if: always()   # advisory artifacts preserved regardless of step outcome
         with: { name: sentinel-shield-ai-review, path: reports/**, retention-days: 30, if-no-files-found: warn }
