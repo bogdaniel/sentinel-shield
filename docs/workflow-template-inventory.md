@@ -56,16 +56,23 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Pinning status:** unpinned by default.
 
 ## `templates/workflows/sentinel-shield-scheduled.yml`
-- **Purpose:** nightly deep scans (Trivy image, Grype SBOM, OpenSSF Scorecard, TruffleHog deep,
-  Dockle); optional ZAP/Nuclei on staging only when a target+allowlist is configured.
+- **Purpose:** nightly deep scans. Job `nightly` (Grype fs, OpenSSF Scorecard, TruffleHog deep,
+  Dockle) + a dedicated job `dependency-check` running the slow NVD-backed OWASP Dependency-Check
+  with a **persisted monthly NVD cache** (`actions/cache`, foreground only). Optional ZAP/Nuclei on
+  staging only when a target+allowlist is configured.
 - **Gate category:** NIGHT.
-- **Required inputs:** `SENTINEL_SHIELD_IMAGE` (Trivy image/Dockle); repo token (Scorecard).
+- **Required inputs:** `SENTINEL_SHIELD_IMAGE` (Dockle); repo token (Scorecard).
 - **Required secrets:** repo token for Scorecard; DAST target/allowlist if ZAP/Nuclei enabled.
 - **Default enabled?** No (installed `manual`); report-only by default.
 - **Safe for PR?** N/A — scheduled.
 - **Tool maturity:** **`experimental`** (deep scanners) / **`manual`** (optional DAST).
-- **Known limitations:** needs a built image + repo token; not live-validated.
-- **Pinning status:** unpinned by default.
+  Dependency-Check: **attempted, NOT live-validated** — nightly/cached is its validation path
+  ([`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)).
+- **Known limitations:** needs a built image + repo token; not live-validated. Dependency-Check's
+  first run pays the cold NVD download once; the cache rotates monthly.
+- **Pinning status:** scanner images carry **readable tags + digest overrides in `env`** (Grype,
+  Dockle); upload steps use `if: always()`. Pin by digest before production
+  ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
 
 ## `templates/workflows/sentinel-shield-dast.yml`
 - **Purpose:** controlled DAST (OWASP ZAP baseline/full + Nuclei) against an allowlisted target.
@@ -111,3 +118,10 @@ have hardened execution paths + env vars, but are **NOT promoted** (no live cons
 Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
 [`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md) and
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). DAST/Nuclei/AI unchanged (manual/non-gating).
+
+## v0.1.21 — Dependency-Check nightly + scanner digest overrides
+`sentinel-shield-scheduled.yml` gains a dedicated cached `dependency-check` job (monthly NVD
+`actions/cache`, foreground, `if: always()` artifact upload). All templates now show **digest
+override** env vars for validated scanner images (Semgrep/Grype/Dockle) — readable tags by default,
+digest pins documented in [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md).
+Dependency-Check remains **attempted, not live-validated**; the cached nightly is its validation path.

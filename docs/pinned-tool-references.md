@@ -67,3 +67,19 @@ Default bumped `semgrep/semgrep:1.90.0` → **`1.165.0`** (PHP parser fix). Over
 `semgrep/semgrep:1.165.0` was run (via Docker, output `.version`=1.165.0) against the modern-PHP
 fixture by `scripts/verify-semgrep-image.sh` → **0 parser errors**. Pin by digest before prod;
 override via `SENTINEL_SHIELD_SEMGREP_IMAGE`. Live consumer re-validation still required.
+
+## v0.1.21 — validated scanner image digests (resolved, not invented)
+Digests resolved with `docker buildx imagetools inspect` on **2026-06-10** (multi-arch manifest-list
+digests). These are the validated images from the v0.1.20 evidence run; see
+[`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md) for verify/update/rollback.
+
+| Image | Tag (validation) | Resolved digest (2026-06-10) | Status |
+|---|---|---|---|
+| semgrep/semgrep | 1.165.0 | `sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b` | consumer-verified (run 27239206382); pin in consumer |
+| anchore/grype | v0.114.0 | `sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28` | live-validated (run 27239206382); pin in consumer |
+| goodwithtech/dockle | v0.4.15 | `sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9` | live-validated (run 27239206382); pin in consumer |
+
+Override env vars (templates keep readable tags; pin by digest in the consumer before production):
+`SENTINEL_SHIELD_SEMGREP_IMAGE`, `SENTINEL_SHIELD_GRYPE_IMAGE`, `SENTINEL_SHIELD_DOCKLE_IMAGE`.
+**OWASP Dependency-Check is deliberately NOT digest-pinned** — *attempted, not live-validated*; no
+digest is resolved for an unvalidated image (see [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)).

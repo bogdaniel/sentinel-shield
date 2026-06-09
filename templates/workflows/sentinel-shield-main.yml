@@ -20,8 +20,11 @@ permissions:
   security-events: write   # CodeQL upload
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
+  # Scanner images — readable tags by default; pin by digest in production
+  # (see docs/scanner-image-digest-pinning.md). Override with the digest form:
+  SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype:v0.114.0     # or anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
 jobs:
   main-gate:
     runs-on: ubuntu-latest

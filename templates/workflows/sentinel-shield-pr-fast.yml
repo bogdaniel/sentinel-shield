@@ -11,8 +11,11 @@ permissions:
   contents: read
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
+  # Semgrep scanner image — readable tag by default; pin by digest in production (see
+  # docs/scanner-image-digest-pinning.md). Override with the digest form to harden supply chain:
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep:1.165.0   # or semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
 jobs:
   pr-fast:
     runs-on: ubuntu-latest

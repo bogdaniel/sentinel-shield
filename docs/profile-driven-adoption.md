@@ -113,6 +113,23 @@ Tools the runner cannot run are recorded `unavailable` (never faked) in
 should `sentinel-shield-main.yml` be merged to the default branch. Full rationale:
 [`main-gate-validation-strategy.md`](main-gate-validation-strategy.md).
 
+## Pinning scanner images by digest (v0.1.21)
+
+Templates ship validated scanner images as **readable tags**, overridable by digest. In production,
+pin by digest — override the env var with the `<image>@sha256:…` form (keep the tag as a comment):
+
+```yaml
+env:
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GRYPE_IMAGE:   anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28      # v0.114.0
+  SENTINEL_SHIELD_DOCKLE_IMAGE:  goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
+```
+
+Resolve/verify/rollback procedure: [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md).
+OWASP Dependency-Check is **not** digest-pinned (attempted, not live-validated) — run it via the
+cached nightly job ([`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)),
+never PR-fast.
+
 ## Maturity (v0.1.13)
 
 The install/sync engine and the laravel-react-docker profile are **proven** (self-tested +

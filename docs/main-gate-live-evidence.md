@@ -46,3 +46,18 @@ Consumer **bogdaniel/zenchron-tools**, workflow `sentinel-shield-main-gate-evide
 | **OWASP Dependency-Check** | — (no artifact) | — | **ATTEMPTED, NOT live-validated** | cold NVD download exceeds CI budget; the detached container ignored a step timeout. Run on a dedicated **nightly** job with a warm cache (see [`tooling/main-gate-tool-installation.md`](tooling/main-gate-tool-installation.md)). NOT faked, NOT promoted. |
 
 **Headline:** the v0.1.18 Semgrep 1.165.0 fixture verification is now **confirmed on real consumer code** — the 118 PartialParsing errors are **gone (0)**. No Sentinel Shield bug surfaced; every wrapper/collector behaved correctly on real artifacts.
+
+## v0.1.21 — Dependency-Check nightly path + scanner digest pins (no new live validation)
+No new consumer run in v0.1.21. Truth restated and hardened:
+
+| Tool | Status (v0.1.21) | Evidence / next step |
+|---|---|---|
+| **Semgrep 1.165.0** | **consumer-verified** (run 27239206382) | digest resolved `sha256:f4791a54…bfed1b` — pin in consumer |
+| **Grype** (SBOM-first) | **live-validated** (run 27239206382) | digest resolved `sha256:7a9fc7f8…01dd28` — pin in consumer |
+| **Dockle** (built image) | **live-validated** (run 27239206382) | digest resolved `sha256:eade932f…7abe6b9` — pin in consumer |
+| **OWASP Dependency-Check** | **attempted, NOT live-validated** | **no real `dependency-check.json` artifact exists.** Next validation path: the cached **nightly** job (`sentinel-shield-scheduled.yml`, monthly NVD `actions/cache`, foreground) — see [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). NOT promoted, NOT faked. |
+
+Digest pins were **resolved with Docker (not invented)** on 2026-06-10 — full table + verify/rollback
+in [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md). Resolving a digest is a
+supply-chain hardening step, **not** a new live-validation; the promotions above stand on run
+27239206382. Dependency-Check stays unpromoted until a nightly run produces a real artifact recorded here.

@@ -155,3 +155,17 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
 - **Semgrep 1.165.0**: fixture-verified → **consumer-verified** — **0 parser errors on real app code** (was 118 on 1.90.0); 25 medium findings visible for triage.
 
 **Still NOT promoted:** **OWASP Dependency-Check** (attempted; cold NVD exceeds CI budget — run nightly with a warm cache). Deptrac/IaC remain not-configured. No Sentinel Shield bug surfaced; all wrappers/collectors parsed real artifacts correctly.
+
+## v0.1.21 — Dependency-Check nightly hardening + scanner digest pinning (no promotions)
+- **OWASP Dependency-Check:** still **attempted, NOT live-validated** — no real `dependency-check.json`
+  exists. v0.1.21 builds the validation *path*: a cached nightly job (monthly NVD `actions/cache`,
+  foreground execution, `if: always()` artifact upload) and a hardened audit wrapper that preserves a
+  valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
+  [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
+  requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+- **Scanner image digests resolved (not invented), 2026-06-10:** Semgrep 1.165.0
+  (`sha256:f4791a54…bfed1b`, consumer-verified), Grype v0.114.0 (`sha256:7a9fc7f8…01dd28`,
+  live-validated), Dockle v0.4.15 (`sha256:eade932f…7abe6b9`, live-validated). Templates keep
+  readable tags + digest overrides; consumers pin by digest before production
+  ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)). This is supply-chain
+  hardening, **not** a maturity change — Grype/Dockle/Semgrep stay as promoted in v0.1.20.

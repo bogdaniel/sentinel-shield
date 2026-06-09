@@ -1015,7 +1015,7 @@ run_main_gate_evidence() {
 	REG="$ROOT/docs/main-gate-live-evidence.md"
 
 	# 1. Semgrep image variable is used (overridable), not a hardcoded :latest in app-scan run blocks.
-	mge_check "pr-fast template uses SENTINEL_SHIELD_SEMGREP_IMAGE" "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$PRF")" "1"
+	mge_check "pr-fast template uses SENTINEL_SHIELD_SEMGREP_IMAGE" "$([ "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$PRF")" -ge 1 ] && echo yes || echo no)" "yes"
 	mge_check "combined template uses SENTINEL_SHIELD_SEMGREP_IMAGE" "$([ "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$COMBINED")" -ge 1 ] && echo yes || echo no)" "yes"
 	mge_check "no semgrep :latest in pr-fast/combined run blocks" "$(grep -hE 'docker run.*semgrep/semgrep:latest' "$PRF" "$COMBINED" | wc -l | tr -d ' ')" "0"
 
@@ -1074,6 +1074,37 @@ FAKE
 	fb2=$(_mx_fakebin)
 	( SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled PATH="$fb2:/usr/bin:/bin" sh "$DC" "$_d/dc2.json" >/dev/null 2>&1 )
 	mx_check "dep-check enabled no-binary -> no file" "$([ -f "$_d/dc2.json" ] && echo file || echo none)" "none"
+	# enabled + fake dependency-check producing VALID JSON (exit 0) -> report kept + collector parses
+	fb4=$(_mx_fakebin)
+	cat > "$fb4/dependency-check" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--out" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"dependencies":[{"vulnerabilities":[{"severity":"HIGH"}]}]}' > "$out"
+FAKE
+	chmod +x "$fb4/dependency-check"
+	( cd "$_d" && PATH="$fb4:/usr/bin:/bin" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled sh "$DC" "$_d/dc3.json" >/dev/null 2>&1 )
+	mx_check "dep-check fake valid JSON -> report" "$([ -s "$_d/dc3.json" ] && jq -e . "$_d/dc3.json" >/dev/null 2>&1 && echo valid || echo no)" "valid"
+	mx_check "dep-check collector parses fake report" "$(sh "$ROOT/scripts/collectors/dependency-check.sh" --input "$_d/dc3.json" | jq -r '"\(.status):\(.summary.high_vulnerabilities)"')" "fail:1"
+	# enabled + fake dependency-check VALID JSON but NON-ZERO exit (findings) -> report preserved
+	fb5=$(_mx_fakebin)
+	cat > "$fb5/dependency-check" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--out" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"dependencies":[{"vulnerabilities":[{"severity":"CRITICAL"}]}]}' > "$out"
+exit 1
+FAKE
+	chmod +x "$fb5/dependency-check"
+	( cd "$_d" && PATH="$fb5:/usr/bin:/bin" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled sh "$DC" "$_d/dc4.json" >/dev/null 2>&1 )
+	mx_check "dep-check non-zero exit + valid JSON preserved" "$([ -s "$_d/dc4.json" ] && jq -e '.dependencies[0].vulnerabilities[0].severity' "$_d/dc4.json" >/dev/null 2>&1 && echo kept || echo gone)" "kept"
+	# enabled + fake dependency-check that exits WITHOUT producing JSON -> no fake-clean (no file)
+	fb6=$(_mx_fakebin)
+	cat > "$fb6/dependency-check" <<'FAKE'
+#!/bin/sh
+exit 1
+FAKE
+	chmod +x "$fb6/dependency-check"
+	( cd "$_d" && PATH="$fb6:/usr/bin:/bin" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled sh "$DC" "$_d/dc5.json" >/dev/null 2>&1 )
+	mx_check "dep-check no-JSON exit -> no fake report" "$([ -f "$_d/dc5.json" ] && echo file || echo none)" "none"
 
 	# --- Dockle: missing SENTINEL_SHIELD_IMAGE -> unavailable ---
 	( unset SENTINEL_SHIELD_IMAGE; sh "$DK" "$_d/dk.json" >/dev/null 2>&1 )
@@ -1122,9 +1153,25 @@ FAKE
 	mx_check "harness tools JSON version 1.1" "$(jq -r .version "$J" 2>/dev/null)" "1.1"
 	mx_check "harness grype has duration_seconds field" "$(jq 'has("tools") and (.tools.grype|has("duration_seconds") and has("executor") and has("valid_json"))' "$J" 2>/dev/null)" "true"
 
-	rm -rf "$_d" "$fb" "$fb2" "$fb3" "$fbv" "$fbe" "$fbs"
+	# --- v0.1.21: scheduled workflow cache + always-upload; digest-pinning docs + template overrides ---
+	SCHED="$ROOT/templates/workflows/sentinel-shield-scheduled.yml"
+	mx_check "scheduled has actions/cache" "$([ "$(grep -c 'uses: actions/cache' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "scheduled cache key has month stamp" "$([ "$(grep -c 'steps.month.outputs.ym' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "scheduled cache restore-keys (partial reuse)" "$([ "$(grep -c 'restore-keys' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "scheduled uploads with if: always()" "$([ "$(grep -c 'if: always()' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "scheduled runs dependency-check audit" "$([ "$(grep -c 'audits/dependency-check.sh' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+	PIN="$ROOT/docs/scanner-image-digest-pinning.md"
+	for _img in semgrep/semgrep anchore/grype goodwithtech/dockle; do
+		mx_check "digest-pinning doc names $_img" "$([ "$(grep -c "$_img" "$PIN")" -ge 1 ] && echo yes || echo no)" "yes"
+	done
+	mx_check "digest-pinning doc has sha256 digests" "$([ "$(grep -c 'sha256:' "$PIN")" -ge 3 ] && echo yes || echo no)" "yes"
+	mx_check "pr-fast template allows semgrep digest override" "$([ "$(grep -c 'SENTINEL_SHIELD_SEMGREP_IMAGE' "$ROOT/templates/workflows/sentinel-shield-pr-fast.yml")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "main template allows grype digest override" "$([ "$(grep -c 'SENTINEL_SHIELD_GRYPE_IMAGE' "$ROOT/templates/workflows/sentinel-shield-main.yml")" -ge 1 ] && echo yes || echo no)" "yes"
+	mx_check "scheduled template shows digest override comments" "$([ "$(grep -c '@sha256:' "$SCHED")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	rm -rf "$_d" "$fb" "$fb2" "$fb3" "$fb4" "$fb5" "$fb6" "$fbv" "$fbe" "$fbs"
 	if [ "$MX_FAILS" -ne 0 ]; then log_error "main-gate-exec: $MX_FAILS case(s) failed"; return 1; fi
-	log_info "main-gate-exec: OK (grype sbom/fs, dep-check disabled-default, dockle image-gated, semgrep-verify, tools v1.1)"
+	log_info "main-gate-exec: OK (grype sbom/fs, dep-check disabled/enabled/preserve/no-fake, dockle, semgrep-verify, cache+digest pinning, tools v1.1)"
 }
 
 case "$SUB" in

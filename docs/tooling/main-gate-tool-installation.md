@@ -47,3 +47,15 @@ reports `unavailable`. None are live-validated until a real consumer run produce
 container ignored a step `timeout-minutes`. Recommendation: run Dependency-Check **only on a
 nightly job** with a persisted/warm NVD cache (`actions/cache` keyed on a monthly rotation), never
 in PR-fast or a one-shot evidence run.
+
+## v0.1.21 — Dependency-Check nightly path + digest pins
+The nightly path is now shipped: `templates/workflows/sentinel-shield-scheduled.yml` has a dedicated
+`dependency-check` job with a monthly NVD `actions/cache`, **foreground** execution
+(`SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT` + step `timeout-minutes` actually apply — no detached
+container), and `if: always()` artifact upload. The wrapper preserves a valid-JSON report even on a
+non-zero (findings) exit and discards partial output — never fake-clean. Full strategy:
+[`dependency-check-nightly-strategy.md`](../dependency-check-nightly-strategy.md). Validated scanner
+images (Grype/Dockle/Semgrep) have **resolved digests** for consumer pinning
+([`scanner-image-digest-pinning.md`](../scanner-image-digest-pinning.md)); Dependency-Check is **not**
+digest-pinned (attempted, not live-validated). Still NOT live-validated until a nightly run produces a
+real artifact recorded in [`main-gate-live-evidence.md`](../main-gate-live-evidence.md).

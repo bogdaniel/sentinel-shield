@@ -6,6 +6,43 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.21] — Dependency-Check nightly & scanner digest pinning
+
+Product hardening (no consumer remediation). No new scanners; no gates weakened; no findings
+suppressed; no zenchron-tools application code touched. **OWASP Dependency-Check is NOT claimed
+live-validated** — no real `dependency-check.json` artifact was produced this release.
+
+### Added
+- **`docs/dependency-check-nightly-strategy.md`** — why Dependency-Check is not PR-fast, why the cold
+  NVD download fails CI budgets, `actions/cache` usage, monthly cache rotation, `workflow_dispatch`,
+  artifact preservation on findings, honest-unavailable + no-fake-clean rules, promotion path.
+- **`docs/scanner-image-digest-pinning.md`** — resolved digests (Docker, not invented; 2026-06-10)
+  for Semgrep 1.165.0 / Grype v0.114.0 / Dockle v0.4.15, resolution/verify/update/rollback procedure.
+- **`templates/raw/dependency-check.example.json`** — clean raw fixture for the contract.
+- Scheduled template `dependency-check` job: monthly NVD `actions/cache` (key `nvd-<os>-YYYY-MM`,
+  partial-reuse restore-keys), foreground execution, `timeout-minutes`, `if: always()` artifact upload.
+- Self-tests (`main-gate-exec`): dep-check disabled→no-fake, enabled-missing-tool→unavailable, fake
+  tool valid JSON→collector parses, valid-JSON-with-non-zero-exit→preserved, exit-without-JSON→no
+  fake report; scheduled `actions/cache` + `if: always()`; digest-pinning doc image names; template
+  digest-override env vars.
+
+### Changed
+- **`scripts/audits/dependency-check.sh`** hardened: foreground only (no detached container), optional
+  `SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT` via `timeout`, keeps valid JSON even on non-zero exit,
+  discards partial/empty/invalid output and reports `unavailable` (never fake-clean).
+- Digest-override examples added to `sentinel-shield-{pr-fast,main,scheduled}.yml`
+  (`SENTINEL_SHIELD_SEMGREP_IMAGE` / `_GRYPE_IMAGE` / `_DOCKLE_IMAGE`); templates keep readable tags.
+- Docs refreshed: pinned-tool-references, workflow-template-inventory, profile-driven-adoption,
+  raw-report-contract, main-gate-live-evidence, product-status, production-readiness-audit,
+  enterprise-scanner-matrix, tooling/main-gate-tool-installation.
+
+### Not validated (honest)
+- **OWASP Dependency-Check: attempted, NOT live-validated** — no artifact. Next path: the cached
+  nightly job. Dependency-Check is deliberately **not** digest-pinned (no validated image).
+- Digest resolution is supply-chain hardening, **not** a new live-validation: Grype/Dockle stay
+  live-validated and Semgrep consumer-verified on the v0.1.20 evidence run (27239206382); consumers
+  must still pin by digest before production.
+
 ## [0.1.20] — main-gate live evidence run
 
 Real-consumer evidence (bogdaniel/zenchron-tools, `sentinel-shield-main-gate-evidence`,

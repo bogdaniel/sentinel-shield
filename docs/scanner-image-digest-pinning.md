@@ -1,0 +1,94 @@
+# Scanner Image Digest Pinning (v0.1.21)
+
+Validated Sentinel Shield scanner images are **tag-pinned** in the templates for readability, but a
+tag is mutable — the same `:v0.114.0` can point at a different image tomorrow. For supply-chain
+integrity, consuming projects should pin scanner images by **digest** (`@sha256:…`). This doc gives
+the real, resolved digests for the three live-validated/validated scanner images and the procedure
+to verify, update, and roll them back.
+
+> Digests below were **resolved with Docker, not invented** — `docker buildx imagetools inspect`
+> on **2026-06-10**. They are the multi-arch **manifest-list** digests (what you pin); Docker
+> resolves the right per-arch image at pull time.
+
+## Resolved digests (2026-06-10)
+
+| Image | Tag (validation) | Resolved digest | Validated in |
+|---|---|---|---|
+| `semgrep/semgrep` | `1.165.0` | `sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b` | consumer-verified, zenchron run 27239206382 (0 parser errors) |
+| `anchore/grype` | `v0.114.0` | `sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28` | live-validated (SBOM-first), zenchron run 27239206382 |
+| `goodwithtech/dockle` | `v0.4.15` | `sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9` | live-validated (built image), zenchron run 27239206382 |
+
+Digest-pinned forms (paste these into your workflow env):
+
+```yaml
+env:
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GRYPE_IMAGE:   anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28      # v0.114.0
+  SENTINEL_SHIELD_DOCKLE_IMAGE:  goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
+```
+
+> OWASP Dependency-Check is intentionally **not** listed here — it is *attempted, not
+> live-validated* (see [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)).
+> We do not pin a digest for an image we have not validated. Resolve and pin it only once a nightly
+> run produces a real artifact.
+
+## Digest resolution command
+
+```sh
+docker buildx imagetools inspect semgrep/semgrep:1.165.0
+docker buildx imagetools inspect anchore/grype:v0.114.0
+docker buildx imagetools inspect goodwithtech/dockle:v0.4.15
+# digest only:
+docker buildx imagetools inspect semgrep/semgrep:1.165.0 --format '{{.Manifest.Digest}}'
+```
+
+## How to verify a digest still matches the expected version
+
+A digest must always resolve back to the **same version** you validated. To confirm before trusting
+a pinned digest:
+
+```sh
+# 1. The tag must still resolve to the pinned digest (tag has not been re-pushed to a new image):
+docker buildx imagetools inspect anchore/grype:v0.114.0 --format '{{.Manifest.Digest}}'
+#    -> must equal sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
+
+# 2. The image, run by digest, must report the expected version:
+docker run --rm anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28 version | grep -i '0.114.0'
+docker run --rm goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 --version
+docker run --rm semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b semgrep --version   # -> 1.165.0
+```
+
+If step 1 mismatches, the tag was re-pushed — **do not** silently adopt the new digest; treat it as
+an update (below) and re-validate.
+
+## How to update safely
+
+1. Pick the new version tag; resolve its digest with `docker buildx imagetools inspect <image>:<tag>`.
+2. Run the verify steps above against the **new** digest (confirm version output).
+3. Re-run the relevant validation:
+   - Semgrep: `sh scripts/verify-semgrep-image.sh tests/fixtures/semgrep/php-modern reports/raw/semgrep-image-verify.json` (expect 0 parser errors).
+   - Grype/Dockle: run on a consumer and confirm the collector parses the artifact.
+4. Update the digest + date in this file **and** in [`pinned-tool-references.md`](pinned-tool-references.md).
+5. Update the override examples in the workflow templates (tags stay readable; digest in the comment).
+6. Record the new validation run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
+## How consuming projects should pin
+
+- Override the scanner image env var with the **digest** form (`<image>@sha256:…`), keeping the
+  human tag as a trailing `# comment` for readability.
+- Pin once, in the workflow `env:` (or a repo/org variable) so every job inherits it.
+- The Sentinel Shield wrappers accept the override transparently: `SENTINEL_SHIELD_SEMGREP_IMAGE`,
+  `SENTINEL_SHIELD_GRYPE_IMAGE`, `SENTINEL_SHIELD_DOCKLE_IMAGE`.
+- Do **not** replace the readable tag in the upstream Sentinel Shield templates with a digest — the
+  digest is a consumer-side production decision; templates stay readable + overridable.
+
+## Rollback process
+
+If a newly-pinned digest misbehaves (false positives, crashes, version drift):
+
+1. Revert the env override to the **previous known-good digest** from the table above (these are the
+   validated baselines).
+2. Re-run the gate; confirm green.
+3. File the regression against the scanner upstream; keep the old digest pinned until fixed.
+4. Because the old digests are immutable, rollback is deterministic — the exact validated image is
+   always retrievable by its `@sha256:` reference even if the tag has moved on.

@@ -117,3 +117,11 @@ Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
 
 ## v0.1.20 — execution-path promotions (cited)
 **Grype** (SBOM-first) and **Dockle** (built image) are now **live-validated** (zenchron run 27239206382; artifacts in [`main-gate-live-evidence.md`](main-gate-live-evidence.md)). **Semgrep 1.165.0** is **consumer-verified** (0 parser errors on real code). **Dependency-Check** remains experimental (attempted, NVD exceeds CI budget). Deptrac/IaC not-configured.
+
+## v0.1.21 — Dependency-Check nightly + scanner digest pinning
+**OWASP Dependency-Check** moves to gate category **NIGHT** as its reliable home (cached monthly NVD,
+foreground), still **experimental — attempted, not live-validated** (no artifact). Validated scanner
+images (Semgrep/Grype/Dockle) now have **resolved digests** (2026-06-10, not invented) with template
+override env vars — supply-chain hardening, no maturity change. See
+[`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md) and
+[`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md).

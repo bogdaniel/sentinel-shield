@@ -117,3 +117,14 @@ Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
 
 ## v0.1.20 execution-path promotions (evidence run 27239206382)
 Promoted to **A / live-validated**: **Grype** (SBOM-first, grype.json valid, collector → *_vulnerabilities), **Dockle** (built base image, dockle.json → container_image_violations=1). **Semgrep 1.165.0 consumer-verified** (0 parser errors on real `Modules/**/app`, vs 118 on 1.90.0; 25 medium visible). NOT promoted: **Dependency-Check** (attempted; cold NVD exceeds CI budget — nightly with warm cache). Deptrac/IaC not-configured. Canonical: [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
+## v0.1.21 — Dependency-Check nightly hardening + scanner digest pinning
+**OWASP Dependency-Check** stays **C / attempted, not live-validated** (no real artifact). v0.1.21
+delivers the reliable execution path, not a promotion: a cached nightly job (monthly NVD
+`actions/cache`, foreground, `if: always()` upload) + a hardened wrapper (keeps valid-JSON-on-non-zero,
+discards partial output, optional `timeout`). See
+[`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Validated scanner
+images got **resolved digests** (2026-06-10, not invented) + template override env vars — Semgrep
+`sha256:f4791a54…`, Grype `sha256:7a9fc7f8…`, Dockle `sha256:eade932f…`
+([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)). Supply-chain hardening; the
+A/C grades above are unchanged.

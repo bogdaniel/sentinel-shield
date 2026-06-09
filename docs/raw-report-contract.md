@@ -65,6 +65,22 @@ against a real consumer (zenchron run 27214865086) — see
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). Missing/invalid behavior unchanged
 (unavailable / exit 2).
 
+## v0.1.21 — Dependency-Check collector contract (unchanged mapping)
+`scripts/collectors/dependency-check.sh` is **unchanged** in v0.1.21 (no severity remap). Restated
+for the record:
+- **Input:** `reports/raw/dependency-check.json` — OWASP DC native JSON
+  (`{dependencies[].vulnerabilities[].severity}`) **or** a normalized `{critical,high,medium}` object.
+- **Severity mapping:** native `severity` is upper-cased and bucketed — `CRITICAL →
+  critical_vulnerabilities`, `HIGH → high_vulnerabilities`, `MEDIUM → medium_vulnerabilities`
+  (best-effort; severities outside these three are not counted). Consistent with OSV/Grype/Trivy.
+- **Summary keys emitted:** `critical_vulnerabilities`, `high_vulnerabilities`,
+  `medium_vulnerabilities` (all other contract keys default 0 via `ss_emit_collector`).
+- **Status:** any bucket > 0 → `fail`; all zero → `pass`.
+- **Missing/empty input → `unavailable`, exit 0. Invalid JSON → exit 2** (via `ss_collector_guard`).
+  The hardened audit wrapper guarantees a non-zero-exit-but-valid-JSON report is preserved for this
+  collector to parse, and discards partial/invalid output so it surfaces as `unavailable`, never
+  fake-clean. See [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md).
+
 ## v0.1.19 — main-gate execution notes
 - `grype.json`: produced from **SBOM** (`grype sbom:<spdx>`) by default, or **fs** (`grype dir:.`)
   when `SENTINEL_SHIELD_GRYPE_MODE=fs`. Same collector/severity mapping either way.
