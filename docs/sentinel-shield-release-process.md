@@ -1,15 +1,24 @@
-# Sentinel Shield Release Process (v0.1.13)
+# Sentinel Shield Release Process (v0.1.16)
 
 ## What must pass before a tag (BLOCKING)
-1. `for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh scripts/runners/*.sh scripts/audits/*.sh; do sh -n "$f"; done`
-2. `sh scripts/self-test.sh all` — **all 15 suites green** (incl. scanner-matrix, fixtures, workflow-sanity).
-3. JSON valid: schemas + templates + profiles.
-4. YAML valid: github + templates + examples + profiles + semgrep.
-5. `node --check scripts/adapters/*.mjs`.
-6. `ci-self-test.yml` green on the PR (the `full-self-test` job is blocking; actionlint/zizmor advisory).
+1. **Shell syntax:** `for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh scripts/runners/*.sh scripts/audits/*.sh; do sh -n "$f"; done`
+2. **Self-test all:** `sh scripts/self-test.sh all` — **all suites green**. This already includes:
+   - **Workflow sanity** (`workflow-sanity`): no `pull_request_target`, minimal permissions, DAST
+     allowlist required, AI review non-gating.
+   - **Fixture install/sync tests** (`fixtures` + `install-sync`): dry-run writes nothing, `--apply`
+     creates expected files, `accepted-risks.json` never created, sync drift detected/cleared.
+   - **Raw report contract tests** (`lifecycle` + `scanner-matrix`): collectors normalize
+     `templates/raw/*` into a schema-valid summary; missing artifact → `unavailable`, invalid → exit 2.
+3. **JSON valid:** schemas + templates + profiles (incl. all `profile.manifest.json`).
+4. **YAML valid:** github + templates + examples + profiles + semgrep.
+5. **Adapter syntax:** `node --check scripts/adapters/*.mjs`.
+6. **Changelog updated:** a new `CHANGELOG.md` version section exists; released sections untouched.
+7. **Tag immutability respected:** the new tag does not reuse/force an existing released tag.
+8. `ci-self-test.yml` green on the PR (the `full-self-test` job is blocking; actionlint/zizmor advisory).
 
-If any of 1–5 fails, do not tag. Docker/PHP/Node scanner binaries are NOT required for the
-gate (collectors are fixture-validated); state "skipped" if unavailable locally.
+If any of 1–7 fails, do not tag. Docker/PHP/Node scanner binaries are NOT required for the
+gate (collectors are fixture-validated); state "skipped" if unavailable locally. **No unstable
+scanner binary run is part of the engine's own release gate** — by design.
 
 ## How to cut a release
 1. Land changes on `master` via PR; ensure ci-self-test is green.

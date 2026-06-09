@@ -1,4 +1,8 @@
-# Production Readiness Audit (v0.1.13)
+# Production Readiness Audit (v0.1.13, maturity note v0.1.16)
+
+> **v0.1.16:** the canonical maturity label per tool is in [`product-status.md`](product-status.md).
+> The A–F grades below map to those labels: **A→`proven`, B→`supported`, C→`experimental`,
+> D→`template-only`, F→`manual`/`non-gating`/`not-ready`.** Each tool has exactly one label there.
 
 Brutally honest status of every tool. **A tool is only "proven-live" if it ran in real CI
 (the zenchron-tools pilot) or is exercised by a deterministic self-test fixture with stable

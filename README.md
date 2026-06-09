@@ -588,3 +588,19 @@ TypeScript, and the dependency-policy detector to **live-validated** based on ci
 CI evidence (run 27170148123); baseline stayed green with no regression. Most other v0.1.12/14
 integrations remain supported/experimental (not yet exercised on a consumer). See
 [`docs/production-readiness-audit.md`](docs/production-readiness-audit.md).
+
+## v0.1.16 — product completion & stabilization
+
+A documentation/stabilization release that rounds up Sentinel Shield as a reusable **product** (no
+new scanners, no weakened gates). Start at the **documentation index**
+([`docs/README.md`](docs/README.md)). New product docs: **canonical maturity**
+([`docs/product-status.md`](docs/product-status.md)), **boundaries**
+([`docs/product-boundaries.md`](docs/product-boundaries.md)), **pilot evidence**
+([`docs/pilot-consumers.md`](docs/pilot-consumers.md) — zenchron-tools is evidence, not a target),
+**roadmap** ([`docs/roadmap.md`](docs/roadmap.md)), **readiness checklist**
+([`docs/product-readiness-checklist.md`](docs/product-readiness-checklist.md)), **install/sync
+status** ([`docs/install-sync-status.md`](docs/install-sync-status.md)), and **workflow inventory**
+([`docs/workflow-template-inventory.md`](docs/workflow-template-inventory.md)). Added a
+`php-library` install profile so all four target stacks (laravel-react-docker, node-react,
+docker-only, php-library) are installable. **Honest status:** engine + PR-fast gate are
+`proven`; main-gate live validation is still pending (roadmap Phase 3).

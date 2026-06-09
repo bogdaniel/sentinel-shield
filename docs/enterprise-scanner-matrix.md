@@ -1,5 +1,14 @@
 # Enterprise Scanner Matrix
 
+> **v0.1.16 — canonical maturity lives elsewhere.** The single source of truth for a tool's
+> maturity label (`proven` / `supported` / `experimental` / `manual` / `template-only` /
+> `non-gating` / `not-ready`) is [`product-status.md`](product-status.md). This matrix maps tools
+> to gate categories and summary keys; if a label here disagrees with product-status, product-status
+> wins. **Proven today:** the core PR-fast set (Gitleaks, curated app-Semgrep, PHPStan, PHPUnit,
+> composer audit, php-syntax, Hadolint, base-digest, GH-pins, Trivy-fs) plus php-style, TypeScript,
+> and the dependency-policy detector (zenchron run 27170148123). Everything else is
+> supported/experimental/manual/template-only/non-gating.
+
 > **v0.1.13 maturity note (read first).** v0.1.12 added scanner *breadth*; the integrations
 > are NOT equally mature. See [`production-readiness-audit.md`](production-readiness-audit.md)
 > for the brutally-honest per-tool A–F status. **Maturity labels:**

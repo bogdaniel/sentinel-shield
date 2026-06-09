@@ -1,4 +1,8 @@
-# Scanner Enablement by Stack (v0.1.12)
+# Scanner Enablement by Stack (v0.1.12; maturity v0.1.16)
+
+> Maturity labels for every tool below are canonical in [`product-status.md`](../product-status.md).
+> Enabling a tool does not make it `proven` — most main/nightly tools are `experimental` until
+> live-validated on a consumer.
 
 Safe defaults: PR-fast tools enabled; DAST + Nuclei **off** unless a target+allowlist is
 configured; AI review **off / non-gating**. See docs/enterprise-scanner-matrix.md for the

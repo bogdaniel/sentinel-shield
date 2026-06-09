@@ -6,6 +6,43 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.16] — product completion & stabilization
+
+A documentation + stabilization release. **No new scanners. No weakened gates. No new maturity
+claims without cited evidence.** Goal: round Sentinel Shield up as a reusable product —
+understandable, installable, maintainable, ready for repeated adoption.
+
+### Added
+- **Product docs:** `docs/product-status.md` (canonical maturity — single source of truth),
+  `docs/product-boundaries.md` (product owns vs project owns + the upstream/keep-local rule),
+  `docs/pilot-consumers.md` (zenchron-tools recentered as pilot **evidence**, not a product target;
+  what it did and did not prove), `docs/roadmap.md` (maturity-phased, not tool-accumulation),
+  `docs/product-readiness-checklist.md` (done/partial/not-started/blocked, evidence-gated).
+- **Install/sync audit:** `docs/install-sync-status.md` — coverage for laravel-react-docker,
+  node-react, docker-only, php-library; gaps + manual steps + safe next improvements.
+- **Workflow inventory:** `docs/workflow-template-inventory.md` — all six templates with gate
+  category, inputs/secrets, default-enabled, PR-safety, maturity, limitations, pinning.
+- **Documentation index:** `docs/README.md` — categorized entry point for new teams.
+- **`profiles/php-library/profile.manifest.json`** — framework-free PHP install profile (generic
+  PHPStan, composer audit, PHPUnit adapter; no Larastan/Docker assumptions). Closes the
+  "no php-library manifest" gap. Validated: valid JSON + clean dry-run on the php-library fixture.
+
+### Changed
+- **Maturity canonicalized:** `enterprise-scanner-matrix.md`, `production-readiness-audit.md`,
+  `tooling/scanner-enablement.md`, and `README.md` now defer to `product-status.md` as the single
+  maturity source (A–F → label mapping documented). No tool carries conflicting labels.
+- **Release process** (`sentinel-shield-release-process.md`) made explicit: shell syntax, self-test
+  all (incl. workflow-sanity, fixture install/sync, raw-report-contract), JSON/YAML validity,
+  adapter syntax, changelog update, tag immutability. No unstable scanner run in the engine's gate.
+
+### Honest status (unchanged)
+Engine (resolver/enforcer/builder/install/sync/self-test) and the PR-fast gate remain `proven`
+(zenchron run 27170148123). **Main-gate scanners remain `experimental`/`template-only` — not
+live-validated; `sentinel-shield-main.yml` is still not dispatchable from a feature branch
+(roadmap Phase 3).** DAST stays `manual`+fail-closed; AI review stays `non-gating`. Severity
+parsing for OSV/CodeQL remains coarse. Sentinel Shield is **not** complete.
+
+
 ## [0.1.15] — live-validation hardening
 
 ### Changed
