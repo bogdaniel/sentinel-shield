@@ -604,3 +604,11 @@ status** ([`docs/install-sync-status.md`](docs/install-sync-status.md)), and **w
 `php-library` install profile so all four target stacks (laravel-react-docker, node-react,
 docker-only, php-library) are installable. **Honest status:** engine + PR-fast gate are
 `proven`; main-gate live validation is still pending (roadmap Phase 3).
+
+## v0.1.19 — main-gate execution hardening
+Grype (SBOM-first), OWASP Dependency-Check (disabled-default; nightly-recommended), and Dockle
+(image-gated) now run predictably via env-driven wrappers + container support, with a v1.1
+main-gate tool summary (duration/executor/valid_json). Added `scripts/verify-semgrep-image.sh`:
+`semgrep/semgrep:1.165.0` is **fixture-verified** to parse modern PHP with **0 parser errors**
+(1.90.0 produced 118). These tools remain **supported, not live-validated** — see
+[`docs/main-gate-execution-hardening-v0.1.19.md`](docs/main-gate-execution-hardening-v0.1.19.md).

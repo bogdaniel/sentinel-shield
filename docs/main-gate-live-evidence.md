@@ -24,3 +24,13 @@ exists, is valid, and its collector parsed it. No entry here is added from fixtu
 
 This registry is the source of truth for "what is live-validated." `product-status.md`,
 `production-readiness-audit.md`, and `enterprise-scanner-matrix.md` defer to it.
+
+## Semgrep image verification (v0.1.19 — FIXTURE, not live)
+| Image | Method | Fixture | Parser errors | Findings | Status |
+|---|---|---|---|---|---|
+| **semgrep/semgrep:1.165.0** (output `.version`=1.165.0, via Docker) | `scripts/verify-semgrep-image.sh` | `tests/fixtures/semgrep/php-modern` (readonly/enum/attributes/match/promotion/typed) | **0** (`errors: []`) | 0 (15 rules) | **fixture-verified** |
+
+This is a **fixture** result — it proves 1.165.0 parses modern PHP syntax that 1.90.0 failed on
+(118 errors on the pilot). It is **NOT** a live consumer validation: re-run on zenchron-tools'
+real `Modules/**/app` to confirm the 118 errors actually drop, then cite that run here. The
+prior 1.90.0 evidence (118 parser errors) stands as the contrast.

@@ -1,14 +1,45 @@
 #!/bin/sh
-# Sentinel Shield audit wrapper — grype. Runs the tool if installed and writes
-# reports/raw/grype.json; if the binary is absent it does NOT fake a report (logs
-# 'unavailable' and exits 0; the collector then reports status=unavailable).
-# Many of these are better run via a pinned GitHub Action — see templates/workflows/.
+# Sentinel Shield audit wrapper — Grype (v0.1.19). Main-gate / nightly only (never PR-fast).
+# Modes (SENTINEL_SHIELD_GRYPE_MODE): sbom (default) | fs.
+#   sbom: scan an existing Syft SBOM (SENTINEL_SHIELD_GRYPE_SBOM_PATH, default reports/sbom.spdx.json).
+#         If the SBOM is missing this is UNAVAILABLE (no fake) — set MODE=fs to scan the tree instead.
+#   fs:   scan the project root (explicit opt-in).
+# Executor: local `grype` binary if present, else a Docker image (SENTINEL_SHIELD_GRYPE_IMAGE).
+# Missing binary AND no usable image -> unavailable (exit 0, NO file written, never fake-clean).
+# Output: reports/raw/grype.json (Grype native JSON; collector maps severities).
 set -eu
 OUT="${1:-reports/raw/grype.json}"
 mkdir -p "$(dirname "$OUT")"
-if ! command -v grype >/dev/null 2>&1; then
-	echo "[sentinel-shield] grype not installed; skipping (collector will report unavailable). Prefer the pinned GitHub Action in CI." >&2
-	exit 0
+
+MODE="${SENTINEL_SHIELD_GRYPE_MODE:-sbom}"
+SBOM="${SENTINEL_SHIELD_GRYPE_SBOM_PATH:-reports/sbom.spdx.json}"
+IMAGE="${SENTINEL_SHIELD_GRYPE_IMAGE:-}"
+
+unavailable() { echo "[sentinel-shield] grype unavailable: $1 (no report written; collector reports unavailable)." >&2; exit 0; }
+
+# Resolve executor.
+if command -v grype >/dev/null 2>&1; then
+	EXEC="grype"
+elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
+	EXEC="docker run --rm -v $PWD:/src -w /src $IMAGE"
+else
+	unavailable "no local 'grype' binary and no SENTINEL_SHIELD_GRYPE_IMAGE+docker"
 fi
-grype dir:. -o json --file "$OUT" || true
+
+case "$MODE" in
+	sbom)
+		if [ ! -s "$SBOM" ]; then
+			unavailable "SBOM '$SBOM' not found (run Syft first, or set SENTINEL_SHIELD_GRYPE_MODE=fs)"
+		fi
+		echo "[sentinel-shield] grype: scanning SBOM $SBOM -> $OUT" >&2
+		# shellcheck disable=SC2086
+		$EXEC sbom:"$SBOM" -o json --file "$OUT" || true
+		;;
+	fs)
+		echo "[sentinel-shield] grype: filesystem scan (.) -> $OUT" >&2
+		# shellcheck disable=SC2086
+		$EXEC dir:. -o json --file "$OUT" || true
+		;;
+	*) unavailable "invalid SENTINEL_SHIELD_GRYPE_MODE='$MODE' (use sbom|fs)" ;;
+esac
 exit 0

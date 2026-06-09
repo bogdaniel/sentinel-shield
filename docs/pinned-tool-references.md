@@ -62,3 +62,8 @@ Semgrep image used as `semgrep/semgrep:1.90.0` (tag) — pin by digest before pr
 Default bumped `semgrep/semgrep:1.90.0` → **`1.165.0`** (PHP parser fix). Overridable via
 `SENTINEL_SHIELD_SEMGREP_IMAGE`; the `ci-security.yml` job `container:` is pinned to `1.165.0`
 (can't shell-expand). **Pin by digest before production** (`semgrep/semgrep@sha256:…`).
+
+## v0.1.19 — Semgrep 1.165.0 fixture-verified
+`semgrep/semgrep:1.165.0` was run (via Docker, output `.version`=1.165.0) against the modern-PHP
+fixture by `scripts/verify-semgrep-image.sh` → **0 parser errors**. Pin by digest before prod;
+override via `SENTINEL_SHIELD_SEMGREP_IMAGE`. Live consumer re-validation still required.

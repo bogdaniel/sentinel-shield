@@ -139,3 +139,11 @@ output). To promote: run on a consumer that configures them and cite the run.
 See [`roadmap.md`](roadmap.md) and [`product-readiness-checklist.md`](product-readiness-checklist.md).
 </content>
 </invoke>
+
+## v0.1.19 — main-gate execution hardening (no promotions)
+Grype (SBOM-first/fs + container), OWASP Dependency-Check (disabled-default, cache, nightly),
+and Dockle (built-image-gated) now run predictably from the harness/templates — but remain
+**supported / experimental, NOT live-validated** (no consumer artifact yet). Semgrep
+`1.165.0` is **fixture-verified** (0 parser errors on modern PHP via `verify-semgrep-image.sh`),
+**not** consumer-verified. Deptrac/IaC stay not-configured-unless-provided. See
+[`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md).

@@ -6,6 +6,37 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.19] — main-gate execution hardening
+
+### Added
+- **`scripts/verify-semgrep-image.sh`** + `tests/fixtures/semgrep/php-modern/` — verify the
+  configured `SENTINEL_SHIELD_SEMGREP_IMAGE` parses modern PHP 8.1+ syntax. **`semgrep/semgrep:1.165.0`
+  fixture-verified: 0 parser errors** (1.90.0 produced 118 on the pilot). Missing tool → unavailable
+  (exit 0); parser errors → exit 1; clean → exit 0. **Fixture verification ≠ live consumer validation.**
+- **`docs/main-gate-execution-hardening-v0.1.19.md`** + evidence-registry + tool-installation env-var
+  tables.
+- **Self-test `main-gate-exec`** (fake binaries, no network): grype sbom missing→unavailable / sbom+
+  fake→report; dep-check disabled→unavailable, enabled-no-binary→unavailable; dockle no-image→
+  unavailable, image+fake→report; semgrep-verify no-tool→unavailable / parser-error→exit 1 / clean→
+  exit 0; main-gate tools JSON v1.1 fields.
+
+### Changed
+- **Grype** (`audits/grype.sh`): SBOM-first (default) / fs modes; local binary **or** container;
+  `SENTINEL_SHIELD_GRYPE_MODE/IMAGE/SBOM_PATH`. Harness exports the Syft SBOM path so SBOM-first works.
+- **OWASP Dependency-Check** (`audits/dependency-check.sh`): **disabled by default**; `enabled` mode;
+  cache dir; container image; nightly-recommended. Documented slow + duplicates OSV/Trivy/Grype.
+- **Dockle** (`audits/dockle.sh`): built-image-gated (`SENTINEL_SHIELD_IMAGE`), local or container
+  (`SENTINEL_SHIELD_DOCKLE_IMAGE`, `_EXIT_CODE`); never builds/scans-arbitrary.
+- **`run-main-gate-validation.sh`**: tools JSON **v1.1** — adds `duration_seconds`, `executor`,
+  `valid_json` (additive; v1.0 consumers unaffected). main/scheduled templates wire the new env vars.
+- All honest: missing binary/precondition → unavailable, no file, never fake-clean.
+
+### Honest status
+No new scanners. No gates weakened. No findings suppressed. **Grype/Dependency-Check/Dockle are
+NOT live-validated** (no consumer artifact). Semgrep 1.165.0 is **fixture-verified, not
+consumer-verified** — the 118 errors were on the consumer's real code, not the fixture.
+
+
 ## [0.1.18] — main-gate live-validation hardening
 
 > v0.1.17 (already tagged) is the *branch-safe main-gate harness*. This release (v0.1.18) is the

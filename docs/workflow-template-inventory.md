@@ -104,3 +104,10 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 | sentinel-shield-dast.yml | MANUAL | no | **no** | manual (fail-closed) |
 | sentinel-shield-ai-review.yml | AI | no | advisory | non-gating |
 </content>
+
+## v0.1.19 — main-gate execution hardening
+Grype (SBOM-first/fs/container), Dependency-Check (disabled-default; nightly), Dockle (image-gated)
+have hardened execution paths + env vars, but are **NOT promoted** (no live consumer artifact).
+Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
+[`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md) and
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). DAST/Nuclei/AI unchanged (manual/non-gating).

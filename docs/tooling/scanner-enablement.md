@@ -44,3 +44,10 @@ Default `semgrep/semgrep:1.165.0` (was 1.90.0, which emitted 118 PartialParsing 
 PHP application code — see [`../remediation/semgrep-parser-errors.md`](../remediation/semgrep-parser-errors.md)).
 Override with **`SENTINEL_SHIELD_SEMGREP_IMAGE`**; **pin by digest** before production. Always use
 curated `<SS>/semgrep/app` rules — **never `--config=auto`**.
+
+## v0.1.19 — main-gate execution hardening
+Grype (SBOM-first/fs/container), Dependency-Check (disabled-default; nightly), Dockle (image-gated)
+have hardened execution paths + env vars, but are **NOT promoted** (no live consumer artifact).
+Semgrep 1.165.0 fixture-verified (0 parser errors), not consumer-verified. See
+[`main-gate-execution-hardening-v0.1.19.md`](main-gate-execution-hardening-v0.1.19.md) and
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). DAST/Nuclei/AI unchanged (manual/non-gating).

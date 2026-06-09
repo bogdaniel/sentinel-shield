@@ -27,3 +27,10 @@ reproducible-build + supply-chain risk. Output `reports/raw/dependency-policy.js
 `dependency_policy_violations` (baseline+ gating). **License/version-allowlist policy is
 deferred** to a future release (doing it badly is worse than not at all). No manifests → 0
 (clean, honest); not fake.
+
+## OWASP Dependency-Check execution (v0.1.19)
+Dependency-Check is **disabled by default** (slow NVD download); enable via
+`SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled` with a cache dir
+(`SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE`). **Scheduled/nightly is the recommended home**, not
+PR-fast. It maps to `*_vulnerabilities` and may duplicate OSV/Trivy/Grype CVEs. Supported, **not
+live-validated**.

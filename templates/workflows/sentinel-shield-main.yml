@@ -35,7 +35,14 @@ jobs:
           ref: ${{ env.SENTINEL_SHIELD_REF }}
           path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
-      - name: Dependency + container scanners (audit wrappers; no-op if binary absent)
+      - name: Dependency + container scanners (audit wrappers; no-op if binary absent — never fake)
+        env:
+          # Grype (v0.1.19): SBOM-first by default — point it at the Syft SBOM produced above.
+          SENTINEL_SHIELD_GRYPE_MODE: sbom
+          SENTINEL_SHIELD_GRYPE_SBOM_PATH: reports/sbom.spdx.json
+          # SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype@sha256:...   # set for container execution
+          # Dependency-Check is DISABLED by default (slow NVD download); enable on the nightly job.
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: disabled
         run: |
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/osv-scanner.sh reports/raw/osv-scanner.json || true

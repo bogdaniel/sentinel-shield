@@ -28,3 +28,15 @@ Then `scripts/build-security-summary.sh` consumes the raw reports as usual. Run 
 If the binary/image is absent, the wrapper logs `unavailable` and writes **no** file; the
 collector then reports `status: unavailable` (counts 0). This is NOT a clean result — it means
 "not scanned." Promote a tool to live-validated only via `main-gate-live-evidence.md`.
+
+## v0.1.19 — execution env vars (Grype / Dependency-Check / Dockle)
+
+| Tool | Env vars | Default behavior |
+|---|---|---|
+| **Grype** | `SENTINEL_SHIELD_GRYPE_MODE` (sbom\|fs), `SENTINEL_SHIELD_GRYPE_SBOM_PATH` (default `reports/sbom.spdx.json`), `SENTINEL_SHIELD_GRYPE_IMAGE` | **SBOM-first**: scans the Syft SBOM if present; **fs** mode scans the tree (explicit). Local `grype` or container image. Missing SBOM in sbom mode → unavailable (not fake). |
+| **OWASP Dependency-Check** | `SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE` (disabled\|enabled), `SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE` (default `.sentinel-shield/cache/dependency-check`), `SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE` | **disabled by default** (PR-fast never; main optional; **nightly recommended**). First `enabled` run downloads the full NVD dataset (slow, 100s of MB) into the cache — reuse it. May duplicate OSV/Trivy/Grype CVEs (expected). |
+| **Dockle** | `SENTINEL_SHIELD_IMAGE` (REQUIRED built-image ref), `SENTINEL_SHIELD_DOCKLE_IMAGE`, `SENTINEL_SHIELD_DOCKLE_EXIT_CODE` (default 0) | Runs only when `SENTINEL_SHIELD_IMAGE` is set; never builds an image; never scans an arbitrary image silently. Local `dockle` or container. |
+
+Honest-unavailable contract unchanged: missing binary/precondition → no file written, collector
+reports `unavailable`. None are live-validated until a real consumer run produces an artifact
+(see [`main-gate-live-evidence.md`](../main-gate-live-evidence.md)).

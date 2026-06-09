@@ -199,3 +199,9 @@ New gated summary keys (style_violations, php_syntax_errors, dependency_policy_v
 iac_violations, dast_findings, container_image_violations, repository_health_warnings,
 ai_review_findings) with conservative mode defaults; DAST manual + fail-closed; AI review
 assistive + non-gating by default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md).
+
+## Dockle execution (v0.1.19)
+Dockle scans a **built image** only — set `SENTINEL_SHIELD_IMAGE` (the image ref). It never
+builds or scans an arbitrary image. Local `dockle` or `SENTINEL_SHIELD_DOCKLE_IMAGE` container;
+`SENTINEL_SHIELD_DOCKLE_EXIT_CODE` (default 0 — the Sentinel Shield gate decides). Maps to
+`container_image_violations`. Supported, **not live-validated** (no consumer image run yet).

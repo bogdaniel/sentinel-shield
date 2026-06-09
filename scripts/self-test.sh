@@ -964,7 +964,7 @@ run_main_gate_harness() {
 	sh "$H" --target "$FX" --output-dir "$_o" --tool codeql-export >/dev/null 2>&1
 	J="$_o/main-gate-validation-tools.json"
 	mgh_check "output dir created" "$([ -d "$_o" ] && echo yes || echo no)" "yes"
-	mgh_check "tools JSON version 1.0" "$(jq -r .version "$J" 2>/dev/null)" "1.0"
+	mgh_check "tools JSON version 1.1" "$(jq -r .version "$J" 2>/dev/null)" "1.1"
 	mgh_check "selected tool processed" "$(jq -r '.tools["codeql-export"].status' "$J" 2>/dev/null)" "unavailable"
 	mgh_check "unselected tool -> skipped" "$(jq -r '.tools["osv-scanner"].status' "$J" 2>/dev/null)" "skipped"
 	mgh_check "no fake codeql.json on unavailable" "$([ -f "$_o/codeql.json" ] && echo wrote || echo none)" "none"
@@ -1037,6 +1037,96 @@ run_main_gate_evidence() {
 	log_info "main-gate-evidence: OK (Semgrep var, no auto/DAST/AI, registry cites CodeQL/OSV/Trivy/Syft + runs)"
 }
 
+# --- main-gate execution hardening (v0.1.19) --------------------------------
+MX_FAILS=0
+mx_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MX_FAILS=$((MX_FAILS + 1)); fi; }
+# Build a controlled PATH dir: real jq symlinked in, plus any fake binaries we drop.
+_mx_fakebin() { _b=$(mktemp -d); ln -s "$(command -v jq)" "$_b/jq" 2>/dev/null || cp "$(command -v jq)" "$_b/jq"; echo "$_b"; }
+
+run_main_gate_exec() {
+	log_info "main-gate-exec: grype/dep-check/dockle execution modes + semgrep-image verify (fake binaries)"
+	GR="$ROOT/scripts/audits/grype.sh"; DC="$ROOT/scripts/audits/dependency-check.sh"
+	DK="$ROOT/scripts/audits/dockle.sh"; VS="$ROOT/scripts/verify-semgrep-image.sh"
+	_d=$(mktemp -d)
+
+	# --- Grype: sbom mode, missing SBOM -> unavailable, no file ---
+	_rc=0; ( cd "$_d" && SENTINEL_SHIELD_GRYPE_MODE=sbom SENTINEL_SHIELD_GRYPE_SBOM_PATH="$_d/nope.spdx.json" sh "$GR" "$_d/grype.json" >/dev/null 2>&1 ) || _rc=$?
+	mx_check "grype sbom missing-SBOM exit 0" "$_rc" "0"
+	mx_check "grype sbom missing-SBOM no file" "$([ -f "$_d/grype.json" ] && echo file || echo none)" "none"
+
+	# --- Grype: sbom mode + fixture SBOM + fake grype -> pass (file produced) ---
+	fb=$(_mx_fakebin)
+	cat > "$fb/grype" <<'FAKE'
+#!/bin/sh
+# fake grype: find --file arg, write minimal valid JSON
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--file" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"matches":[]}' > "$out"
+FAKE
+	chmod +x "$fb/grype"
+	echo '{"SPDXID":"x"}' > "$_d/sbom.spdx.json"
+	( cd "$_d" && PATH="$fb:/usr/bin:/bin" SENTINEL_SHIELD_GRYPE_MODE=sbom SENTINEL_SHIELD_GRYPE_SBOM_PATH="$_d/sbom.spdx.json" sh "$GR" "$_d/grype2.json" >/dev/null 2>&1 )
+	mx_check "grype sbom + fake binary -> report" "$([ -s "$_d/grype2.json" ] && jq -e . "$_d/grype2.json" >/dev/null 2>&1 && echo valid || echo no)" "valid"
+
+	# --- Dependency-Check: disabled (default) -> unavailable, no file ---
+	( sh "$DC" "$_d/dc.json" >/dev/null 2>&1 )
+	mx_check "dep-check disabled -> no file" "$([ -f "$_d/dc.json" ] && echo file || echo none)" "none"
+	# enabled but no binary + no image (restricted PATH, no docker) -> unavailable
+	fb2=$(_mx_fakebin)
+	( SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled PATH="$fb2:/usr/bin:/bin" sh "$DC" "$_d/dc2.json" >/dev/null 2>&1 )
+	mx_check "dep-check enabled no-binary -> no file" "$([ -f "$_d/dc2.json" ] && echo file || echo none)" "none"
+
+	# --- Dockle: missing SENTINEL_SHIELD_IMAGE -> unavailable ---
+	( unset SENTINEL_SHIELD_IMAGE; sh "$DK" "$_d/dk.json" >/dev/null 2>&1 )
+	mx_check "dockle no-image -> no file" "$([ -f "$_d/dk.json" ] && echo file || echo none)" "none"
+	# image set + fake dockle -> report pass
+	fb3=$(_mx_fakebin)
+	cat > "$fb3/dockle" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"summary":{"fatal":0},"details":[]}' > "$out"
+FAKE
+	chmod +x "$fb3/dockle"
+	( PATH="$fb3:/usr/bin:/bin" SENTINEL_SHIELD_IMAGE=example/app:latest sh "$DK" "$_d/dk2.json" >/dev/null 2>&1 )
+	mx_check "dockle + image + fake binary -> report" "$([ -s "$_d/dk2.json" ] && jq -e . "$_d/dk2.json" >/dev/null 2>&1 && echo valid || echo no)" "valid"
+
+	# --- Semgrep verify: missing tool (no semgrep, no docker) -> unavailable exit 0 ---
+	fbv=$(_mx_fakebin)
+	_rc=0; ( PATH="$fbv:/usr/bin:/bin" sh "$VS" "$ROOT/tests/fixtures/semgrep/php-modern" "$_d/sv.json" >/dev/null 2>&1 ) || _rc=$?
+	mx_check "semgrep-verify no-tool exit 0 (unavailable)" "$_rc" "0"
+
+	# --- Semgrep verify: fake semgrep emitting a PARSER ERROR -> fail (exit 1) ---
+	fbe=$(_mx_fakebin)
+	cat > "$fbe/semgrep" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--output" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"errors":[{"type":"PartialParsing"}],"results":[]}' > "$out"
+FAKE
+	chmod +x "$fbe/semgrep"
+	_rc=0; ( PATH="$fbe:/usr/bin:/bin" sh "$VS" "$ROOT/tests/fixtures/semgrep/php-modern" "$_d/sve.json" >/dev/null 2>&1 ) || _rc=$?
+	mx_check "semgrep-verify parser-error -> exit 1" "$_rc" "1"
+
+	# --- Semgrep verify: fake semgrep clean -> pass (exit 0) ---
+	fbs=$(_mx_fakebin)
+	cat > "$fbs/semgrep" <<'FAKE'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do [ "$1" = "--output" ] && out="$2"; shift; done
+[ -n "$out" ] && printf '{"errors":[],"results":[]}' > "$out"
+FAKE
+	chmod +x "$fbs/semgrep"
+	_rc=0; ( PATH="$fbs:/usr/bin:/bin" sh "$VS" "$ROOT/tests/fixtures/semgrep/php-modern" "$_d/svs.json" >/dev/null 2>&1 ) || _rc=$?
+	mx_check "semgrep-verify clean -> exit 0" "$_rc" "0"
+
+	# --- Harness tools JSON v1.1 fields ---
+	rm -rf "$_d/raw"; sh "$ROOT/scripts/run-main-gate-validation.sh" --target "$ROOT/tests/fixtures/projects/laravel-react-docker" --output-dir "$_d/raw" --tool grype >/dev/null 2>&1 || true
+	J="$_d/raw/main-gate-validation-tools.json"
+	mx_check "harness tools JSON version 1.1" "$(jq -r .version "$J" 2>/dev/null)" "1.1"
+	mx_check "harness grype has duration_seconds field" "$(jq 'has("tools") and (.tools.grype|has("duration_seconds") and has("executor") and has("valid_json"))' "$J" 2>/dev/null)" "true"
+
+	rm -rf "$_d" "$fb" "$fb2" "$fb3" "$fbv" "$fbe" "$fbs"
+	if [ "$MX_FAILS" -ne 0 ]; then log_error "main-gate-exec: $MX_FAILS case(s) failed"; return 1; fi
+	log_info "main-gate-exec: OK (grype sbom/fs, dep-check disabled-default, dockle image-gated, semgrep-verify, tools v1.1)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1056,6 +1146,7 @@ case "$SUB" in
 	feature-completion) run_feature_completion ;;
 	main-gate-harness) run_main_gate_harness ;;
 	main-gate-evidence) run_main_gate_evidence ;;
+	main-gate-exec) run_main_gate_exec ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1075,13 +1166,14 @@ case "$SUB" in
 		run_feature_completion
 		run_main_gate_harness
 		run_main_gate_evidence
+		run_main_gate_exec
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|all)"
 		exit 2
 		;;
 esac

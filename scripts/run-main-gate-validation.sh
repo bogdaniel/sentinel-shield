@@ -83,8 +83,17 @@ SBOM_PATH="$REPORTS_ROOT/sbom.spdx.json"
 is_selected() { case "$SELECTED" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 REC=$(mktemp); : > "$REC"; trap 'rm -f "$REC"' EXIT INT TERM
-record() { # tool status reason report
-	printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$REC"
+record() { # tool status reason report [duration] [executor] [valid_json]
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "${5:-0}" "${6:-none}" "${7:-false}" >> "$REC"
+}
+now_s() { date +%s 2>/dev/null || echo 0; }
+# Best-effort executor for a tool's primary binary: local if on PATH, else docker if present.
+executor_for() { if command -v "$1" >/dev/null 2>&1; then echo local; elif command -v docker >/dev/null 2>&1; then echo docker; else echo none; fi; }
+primary_bin() {
+	case "$1" in
+		trivy-fs) echo trivy ;; architecture-tests|codeql-export) echo sh ;;
+		*) echo "$1" ;;
+	esac
 }
 
 # Resolve a tool to: wrapper path, output file, and a human requirement string.
@@ -108,26 +117,31 @@ tool_meta() { # sets WRAP OUT REQ KIND for $1
 
 run_tool() { # $1=tool
 	tool="$1"; tool_meta "$tool"
+	_exec=$(executor_for "$(primary_bin "$tool")")
 	# dockle needs a built image ref; do not invoke its `:?` guard with set -eu (would look like a crash).
 	if [ "$KIND" = dockle ] && [ -z "${SENTINEL_SHIELD_IMAGE:-}" ]; then
-		record "$tool" unavailable "requires SENTINEL_SHIELD_IMAGE (built image ref); not set" ""
+		record "$tool" unavailable "requires SENTINEL_SHIELD_IMAGE (built image ref); not set" "" 0 none false
 		echo "[main-gate] $tool: unavailable (needs SENTINEL_SHIELD_IMAGE)" >&2
 		return
 	fi
-	rc=0
+	# v0.1.19: grype defaults to SBOM-first — point it at the SBOM Syft writes in this run.
+	[ "$tool" = grype ] && export SENTINEL_SHIELD_GRYPE_SBOM_PATH="${SENTINEL_SHIELD_GRYPE_SBOM_PATH:-$SBOM_PATH}"
+	_t0=$(now_s); rc=0
 	if [ "$KIND" = codeql ]; then
 		( cd "$TARGET_ABS" && sh "$ROOT/$WRAP" --output "$OUT" ) >&2 || rc=$?
 	else
 		( cd "$TARGET_ABS" && sh "$ROOT/$WRAP" "$OUT" ) >&2 || rc=$?
 	fi
+	_dur=$(( $(now_s) - _t0 )); [ "$_dur" -ge 0 ] 2>/dev/null || _dur=0
 	if [ -s "$OUT" ]; then
-		record "$tool" pass "ran; report produced" "$OUT"
-		echo "[main-gate] $tool: pass -> $OUT" >&2
+		if jq -e . "$OUT" >/dev/null 2>&1; then _vj=true; else _vj=false; fi
+		record "$tool" pass "ran; report produced" "$OUT" "$_dur" "$_exec" "$_vj"
+		echo "[main-gate] $tool: pass -> $OUT (${_dur}s, $_exec, valid_json=$_vj)" >&2
 	elif [ "$rc" -eq 0 ]; then
-		record "$tool" unavailable "$REQ; no report written" ""
+		record "$tool" unavailable "$REQ; no report written" "" "$_dur" "$_exec" false
 		echo "[main-gate] $tool: unavailable ($REQ)" >&2
 	else
-		record "$tool" fail "wrapper exited $rc" ""
+		record "$tool" fail "wrapper exited $rc" "" "$_dur" "$_exec" false
 		echo "[main-gate] $tool: FAIL (wrapper exit $rc)" >&2
 	fi
 }
@@ -147,7 +161,7 @@ done
 TOOLS_JSON="$OUTDIR_ABS/main-gate-validation-tools.json"
 jq -Rn --arg target "$TARGET_ABS" --arg outdir "$OUTDIR_ABS" --arg profile "${PROFILE:-}" '
 	{
-		version: "1.0",
+		version: "1.1",
 		generated_by: "run-main-gate-validation.sh",
 		target: $target,
 		output_dir: $outdir,
@@ -155,7 +169,14 @@ jq -Rn --arg target "$TARGET_ABS" --arg outdir "$OUTDIR_ABS" --arg profile "${PR
 		tools: (
 			[ inputs | split("\t")
 			  | { key: .[0],
-			      value: { status: .[1], reason: .[2], report: (.[3] | select(. != "") // null) } } ]
+			      value: {
+			        status: .[1],
+			        reason: .[2],
+			        report: (.[3] | select(. != "") // null),
+			        duration_seconds: ((.[4] // "0") | tonumber? // 0),
+			        executor: (.[5] // "none"),
+			        valid_json: ((.[6] // "false") == "true")
+			      } } ]
 			| from_entries
 		)
 	}

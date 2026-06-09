@@ -28,11 +28,17 @@ jobs:
       - name: Deep scans (no-op if binary absent; never fake)
         env:
           SENTINEL_SHIELD_IMAGE: ${{ vars.SENTINEL_SHIELD_IMAGE }}
+          # Nightly is the RECOMMENDED home for the slow NVD-backed Dependency-Check.
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: enabled
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE: .sentinel-shield/cache/dependency-check
+          SENTINEL_SHIELD_GRYPE_MODE: fs   # nightly has no prior SBOM in this job; scan the tree
         run: |
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/trufflehog.sh reports/raw/trufflehog.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/scorecard.sh reports/raw/scorecard.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
+          # Dependency-Check (slow; cached). Duplicates some OSV/Trivy/Grype CVEs — expected.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
           [ -n "${SENTINEL_SHIELD_IMAGE:-}" ] && sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dockle.sh reports/raw/dockle.json || true
       - name: Build summary (report-only; nightly does not block merges)
         run: |

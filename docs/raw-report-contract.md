@@ -64,3 +64,12 @@ reports in the same `reports/raw/` directory. Note the **filename mapping**: `--
 against a real consumer (zenchron run 27214865086) — see
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). Missing/invalid behavior unchanged
 (unavailable / exit 2).
+
+## v0.1.19 — main-gate execution notes
+- `grype.json`: produced from **SBOM** (`grype sbom:<spdx>`) by default, or **fs** (`grype dir:.`)
+  when `SENTINEL_SHIELD_GRYPE_MODE=fs`. Same collector/severity mapping either way.
+- `dependency-check.json`: only when `SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled` (slow; cached).
+- `dockle.json`: only when `SENTINEL_SHIELD_IMAGE` is set (built image).
+- `semgrep-image-verify.json` (+ `.log`): output of `scripts/verify-semgrep-image.sh` — a Semgrep
+  run over a modern-PHP fixture; `.errors[]` with `PartialParsing`/`Syntax` = parser failures.
+  Not a gated report; a tooling-verification artifact.

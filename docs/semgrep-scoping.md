@@ -91,3 +91,8 @@ scan over dependency code (config `semgrep/supply-chain/third-party`) — see
 Use `SENTINEL_SHIELD_SEMGREP_IMAGE` (default `semgrep/semgrep:1.165.0`). The older 1.90.0 PHP
 parser produced PartialParsing errors on modern PHP — `.semgrepignore` does NOT fix those (they
 are app-source, not vendored). See [`remediation/semgrep-parser-errors.md`](remediation/semgrep-parser-errors.md).
+
+## Image verification (v0.1.19)
+Run `sh scripts/verify-semgrep-image.sh` to check the configured `SENTINEL_SHIELD_SEMGREP_IMAGE`
+parses modern PHP cleanly. 1.165.0 is fixture-verified (0 parser errors). See
+[`remediation/semgrep-parser-errors.md`](remediation/semgrep-parser-errors.md).

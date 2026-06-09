@@ -39,3 +39,10 @@ disguised as "clean"). Parser errors are fixed by the tool version, not by ignor
 `node_modules/`, `public/build/`, `public/vendor/`, `storage/`, `bootstrap/cache/`, `dist/`,
 `build/`, `coverage/`, `*.min.js`. This reduces scope/time and avoids vendor noise — it will
 **not** reduce application-source parser errors (by design).
+
+## Verification (v0.1.19)
+`scripts/verify-semgrep-image.sh` runs the configured image against
+`tests/fixtures/semgrep/php-modern` and fails (exit 1) if any `PartialParsing`/`Syntax` error
+appears. **Result:** `semgrep/semgrep:1.165.0` (verified, output `.version`=1.165.0) → **0 parser
+errors** on the fixture (1.90.0 produced 118 on the pilot's real code). **Fixture verification is
+not live consumer validation** — re-run on the consumer's real codebase to confirm the drop.
