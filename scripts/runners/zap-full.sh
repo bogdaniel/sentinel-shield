@@ -1,8 +1,14 @@
 #!/bin/sh
 # Sentinel Shield — OWASP ZAP FULL (active) runner. CONTROLLED/MANUAL.
-# Enforces the DAST safety guard, then runs zap-baseline.py if available, writing
-# reports/raw/zap-full.json. If ZAP is absent it does NOT fake a scan — emits nothing and
-# exits 0 (the collector then reports 'unavailable'). NEVER scans arbitrary targets.
+# Enforces the DAST safety guard, then runs zap-full-scan.py if available, writing
+# reports/raw/zap-full.json (default OUT). If ZAP is absent it does NOT fake a scan —
+# emits nothing and exits 0 (the collector then reports 'unavailable'). NEVER scans
+# arbitrary targets.
+#
+# Collect the FULL report with the matching collector invocation:
+#   scripts/collectors/zap.sh --input reports/raw/zap-full.json
+# The collector auto-detects the "zap-full" basename and labels dast_findings under the
+# distinct "zap-full" tool (or pass --report-kind full explicitly).
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/dast-guard.sh"
