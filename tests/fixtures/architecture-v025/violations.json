@@ -1,0 +1,25 @@
+{
+  "tool": "architecture-tests",
+  "tests": 12,
+  "violations": 3,
+  "failures": [
+    {
+      "rule": "domain-must-not-depend-on-infrastructure",
+      "from": "App\\Domain\\Order\\Order",
+      "to": "App\\Infrastructure\\Persistence\\DoctrineOrderRepository",
+      "message": "Domain depends on Infrastructure (inward-only rule broken)"
+    },
+    {
+      "rule": "presentation-must-not-depend-on-infrastructure",
+      "from": "App\\Http\\Controller\\CheckoutController",
+      "to": "App\\Infrastructure\\Http\\StripeClient",
+      "message": "Presentation reaches Infrastructure directly instead of via Application"
+    },
+    {
+      "rule": "module-boundary-billing-private",
+      "from": "App\\Catalog\\PriceSync",
+      "to": "App\\Billing\\Internal\\Ledger",
+      "message": "Catalog uses Billing internals; only App\\Billing\\Api\\* is published"
+    }
+  ]
+}
