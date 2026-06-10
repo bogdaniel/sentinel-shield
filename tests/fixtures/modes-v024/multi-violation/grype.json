@@ -1,0 +1,28 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "GHSA-multi-medium-0001",
+        "severity": "Medium",
+        "description": "Example MEDIUM severity advisory (multi-violation fixture)."
+      },
+      "artifact": {
+        "name": "example/medium-pkg-a",
+        "version": "1.2.3",
+        "type": "composer"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "GHSA-multi-medium-0002",
+        "severity": "MEDIUM",
+        "description": "Second MEDIUM severity advisory (multi-violation fixture)."
+      },
+      "artifact": {
+        "name": "example/medium-pkg-b",
+        "version": "4.5.6",
+        "type": "composer"
+      }
+    }
+  ]
+}
