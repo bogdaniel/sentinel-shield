@@ -110,4 +110,16 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
 - [x] `done` — IaC/Deptrac/architecture fixtures + readiness doc (collector mappings tested; remain `experimental`/only-if-configured).
 - [ ] `blocked` — **Dependency-Check live validation**: real run **attempted** (gh auth + network OK) but the evidence workflow is not yet deployed on the consumer; no artifact. **Still attempted, NOT live-validated** — chief remaining blocker.
 - [ ] `not-reached` — **v1.0**: explicitly NOT reached; see the outstanding list in `v1-readiness.md`.
+
+## v0.1.26 — Dependency-Check live validation + strict consumer evidence
+- [x] `done` — **Dependency-Check live validation (execution path)**: first real `dependency-check.json`
+  produced with an **NVD API key** (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, `0600 --propertyfile`,
+  key never logged/committed/in-artifact). Valid (5 deps, 0 vulns), collector → `pass` 0/0/0, 153 s, **no
+  HTTP 429**. Evidence: `tests/fixtures/live-evidence/dependency-check-real.json`,
+  [`main-gate-live-evidence.md`](main-gate-live-evidence.md). **Caveat:** thin self-scan surface.
+- [ ] `partial` — **Strict-mode on a consumer**: real engine baseline-PASS / strict-FAIL **dry-run** on a
+  controlled fixture ([`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md));
+  a **live strict CI run on a real consumer** is still outstanding. Strict NOT production-ready.
+- [ ] `outstanding` — **Dependency-Check on a dependency-rich consumer** (non-zero CVE buckets).
+- [ ] `not-reached` — **v1.0**: still explicitly NOT reached; see `v1-readiness.md`.
 </content>

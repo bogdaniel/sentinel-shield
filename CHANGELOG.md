@@ -6,6 +6,33 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.26] — Dependency-Check Live Validation and Strict Consumer Evidence
+
+Closes the chief `v1.0` blocker's execution path. No new scanners; no gates weakened; no findings
+suppressed; no fake reports; **no v1.0 claim**.
+
+### Added
+- **First real `dependency-check.json` artifact** — produced by a real OWASP Dependency-Check run
+  authenticated with an NVD API key. Valid 4.2 KB native-schema JSON (5 deps, 0 vulns), collector
+  parsed to `pass` 0/0/0, runtime 153 s, NVD full dataset downloaded with the key (no HTTP 429).
+  Committed evidence: `tests/fixtures/live-evidence/dependency-check-real.json`. OWASP
+  Dependency-Check promoted `experimental → live-validated` (execution path; thin self-scan caveat).
+- **NVD API-key plumbing** in `scripts/audits/dependency-check.sh` via
+  `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, passed through a `0600 --propertyfile` (never on the
+  command line, never logged, never in the report, never committed).
+- **Strict-mode consumer evidence** ([`docs/strict-mode-consumer-evidence-v026.md`](docs/strict-mode-consumer-evidence-v026.md)):
+  real engine baseline-PASS / strict-FAIL dry-run on a controlled fixture. Strict NOT marked
+  production-ready.
+- Self-test `v026-live` (+22 checks): real NVD-backed artifact parse, leak-safe key
+  (off-argv / off-logs / propertyfile), preserve-on-nonzero, no-fake-clean on missing key, strict flip.
+
+### Changed
+- `.gitignore` now excludes local agent metadata (`.claude/`, `graphify-out/`) and scan caches
+  (`.sentinel-shield/`).
+- `docs/v1-readiness.md`, `docs/product-status.md`, `docs/main-gate-live-evidence.md`,
+  `docs/roadmap.md`: Dependency-Check chief-blocker execution path marked CLOSED (with thin-surface
+  caveat); strict blocker now PARTIAL (controlled-fixture dry-run). v1.0 still NOT reached.
+
 ## [0.1.25] — Live Evidence Closure Sprint
 
 15-lane sprint prioritizing **real evidence over task count**. No new scanners; no gates weakened;

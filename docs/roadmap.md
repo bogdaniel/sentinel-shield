@@ -125,3 +125,14 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 [`v1-readiness.md`](v1-readiness.md) defining the path to v1.0 (NOT reached). Self-test 271→312.
 - **Top of the next backlog:** deploy `sentinel-shield-dependency-check.yml` on a consumer, warm the
   NVD cache, and capture the first real `dependency-check.json` → promote to live-validated (v0.1.24).
+
+### v0.1.26 update — chief blocker execution path CLOSED
+- **OWASP Dependency-Check: first real artifact captured** (NVD-key authenticated, local self-scan,
+  2026-06-10). Valid `dependency-check.json` (5 deps, 0 vulns), collector-parsed, runtime 153 s, no
+  HTTP 429. Promoted `experimental → live-validated` (execution path). See
+  [`main-gate-live-evidence.md`](main-gate-live-evidence.md). **Caveat:** thin self-scan surface —
+  next: run on a dependency-rich consumer for non-zero CVE buckets.
+- **Strict-mode:** real engine baseline/strict dry-run on a controlled fixture
+  ([`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md)); a **live strict
+  CI run on a real consumer** remains the open item before the strict gate is `proven`.
+- Self-test 375 → 397. **v1.0 still NOT reached.**

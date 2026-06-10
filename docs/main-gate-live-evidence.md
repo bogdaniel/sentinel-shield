@@ -73,3 +73,58 @@ Placeholder registry entry. **No new consumer run, no artifact, no run ID** — 
 
 Until that artifact exists and is cited, Dependency-Check remains **attempted, NOT live-validated**.
 No run ID or artifact is invented to fill this row — the PENDING state is the honest record.
+
+## v0.1.26 — Dependency-Check FIRST REAL ARTIFACT (NVD-key live run) + strict consumer evidence
+
+**The chief v1.0 blocker is closed.** A real `dependency-check.json` now exists, produced by a real
+OWASP Dependency-Check run authenticated with an NVD API key. The v0.1.25 blocker was an external
+**NVD HTTP 429** (open rate limit on the first full-dataset pull); supplying
+`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY` raised the rate limit and the pull **completed**.
+
+| Field | Value |
+|---|---|
+| Tool | OWASP Dependency-Check (container `owasp/dependency-check`, digest `sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9`) |
+| Consumer | **sentinel-shield self-scan** (repo root) — thin dependency surface (security-tooling repo) |
+| Run | local, **2026-06-10**, foreground container, NVD-key authenticated |
+| Artifact | `reports/raw/dependency-check.json` (gitignored) → committed evidence copy **`tests/fixtures/live-evidence/dependency-check-real.json`** — **4.2 KB, valid JSON**, native schema (`dependencies`/`projectInfo`/`reportSchema`/`scanInfo`) |
+| Findings | **5 dependencies analyzed, 0 vulnerabilities** |
+| Collector mapping | `scripts/collectors/dependency-check.sh` → **status `pass`, 0 critical / 0 high / 0 medium** |
+| Runtime | **153 s** (NVD full dataset of **357,201 records** downloaded once with the key; cache now warm, **241 MB**) |
+| NVD behavior | **authenticated rate limit — no HTTP 429** (the v0.1.25 failure mode is gone); subsequent runs reuse the warm cache |
+| Key handling | passed via a **`0600 --propertyfile`** (NOT a CLI arg → not in the process list); **never logged, never written to the report, never committed** (verified: 0 occurrences in script, run log, and artifact) |
+| Promotion | **experimental → LIVE-VALIDATED** (execution path proven on a real NVD-backed artifact, collector-parsed) |
+| Caveat | clean result on a **thin self-scan** surface; the wrapper/collector/NVD path is proven, but non-zero severity mapping is **not** yet exercised on a dependency-rich consumer |
+| Next target | run the same path on a dependency-rich consumer (e.g. zenchron-tools) to exercise non-zero CVE buckets |
+
+**Redacted command shape** (key lives only in the mounted `0600` propertyfile):
+
+```sh
+docker run --rm \
+  -v "<repo>:/src" \
+  -v "<cache>:/usr/share/dependency-check/data" \
+  -v "<out>:/report" \
+  -v "<propdir>:/ss-secret:ro" \
+  owasp/dependency-check:latest \
+  --scan /src --format JSON --out /report/dependency-check.json \
+  --data /usr/share/dependency-check/data \
+  --propertyfile /ss-secret/dependency-check.properties   # contains: nvd.api.key=<redacted>
+```
+
+### Strict-mode consumer evidence (controlled-fixture dry-run)
+
+Real enforcement engine (`resolve-gates.sh` → `enforce-gates.sh`) over a controlled consumer fixture
+(`laravel-react-docker`-derived summary: baseline-clean, but carrying **3 `medium_vulnerabilities` +
+2 `style_violations`**). Full detail: [`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md).
+
+| Mode | Enforce exit | Result | Failed gates |
+|---|---|---|---|
+| `baseline` | 0 | **pass** | — |
+| `strict` | 1 | **fail** | `medium_vulnerabilities` (3), `style_violations` (2) |
+
+The strict failure is **expected and attributable** to the two documented strict-only blockers — not
+noise. Verified via the resolved gate-env diff: strict additionally turns on `medium_vulnerabilities`,
+`missing_sbom`, `style_violations`, `iac_violations`, `container_image_violations`,
+`third_party_install_script_risk`, `third_party_network_behavior`. **Nothing suppressed**
+(`accepted_risks.loaded = 0`). This is a **controlled-fixture dry-run**, NOT a live full-CI consumer
+run — strict mode is **adoptable once a consumer has triaged medium vulns and configured style**, and
+remains **NOT claimed production-ready** until a live strict CI run on a real consumer is cited here.

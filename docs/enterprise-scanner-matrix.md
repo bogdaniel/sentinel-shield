@@ -125,3 +125,11 @@ images (Semgrep/Grype/Dockle) now have **resolved digests** (2026-06-10, not inv
 override env vars — supply-chain hardening, no maturity change. See
 [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md) and
 [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md).
+
+## v0.1.26 — Dependency-Check live-validated (NVD-key)
+**OWASP Dependency-Check: `experimental` → `live-validated` (execution path).** First real
+`dependency-check.json` produced with an NVD API key (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`,
+`0600 --propertyfile`); valid 4.2 KB artifact (5 deps, 0 vulns), collector → `pass` 0/0/0, 153 s, no
+HTTP 429. Container `owasp/dependency-check@sha256:ad169904…cc77b9`. **Caveat:** thin self-scan
+surface — non-zero severity buckets not yet exercised on a dependency-rich consumer. Canonical:
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). Deptrac/IaC unchanged.

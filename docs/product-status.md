@@ -161,6 +161,27 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.26 — Dependency-Check live validation (NVD-key) + strict consumer evidence
+**Maturity change: OWASP Dependency-Check `experimental` → `live-validated` (execution path).**
+- **First real `dependency-check.json`.** A real OWASP Dependency-Check run, authenticated with an
+  **NVD API key** (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, passed via a `0600 --propertyfile`),
+  produced a **valid 4.2 KB artifact** (5 deps, 0 vulns), collector-parsed to `pass` 0/0/0. Runtime
+  **153 s**; NVD full dataset (357,201 records) downloaded with the key — **no HTTP 429** (the v0.1.25
+  blocker is gone). Committed evidence: `tests/fixtures/live-evidence/dependency-check-real.json`;
+  full record in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+  **Caveat:** thin **self-scan** surface — non-zero severity buckets not yet exercised on a
+  dependency-rich consumer, so the promotion is execution-path live-validation, not full severity proof.
+- **NVD key handling:** never logged, never in the report, never committed (verified). Leak-safe
+  plumbing regression-guarded by `self-test v026-live` (key off argv / off logs / propertyfile).
+- **Strict consumer evidence:** real engine baseline-PASS / strict-FAIL **dry-run** on a controlled
+  fixture (strict fails only on `medium_vulnerabilities` + `style_violations`, nothing suppressed) —
+  [`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md). **Strict is NOT
+  marked production-ready** (needs a live strict CI run on a real consumer).
+- Self-test **375 → 397** (`v026-live`: real NVD-backed artifact, leak-safe key, preserve-on-nonzero,
+  no-fake-clean, strict baseline/strict flip).
+- **v1.0 NOT reached.** Chief-blocker execution path CLOSED; remaining: DC on a dependency-rich
+  consumer, install/sync beyond `laravel-react-docker`, full default digest pinning, a live strict run.
+
 ## v0.1.25 — live evidence closure (real local scanner runs; no consumer-CI promotions)
 This sprint ran **real scanners** and produced **real artifacts** (a step beyond fixtures):
 - **Checkov 3.3.0** → 16 real iac_violations; **Grype 0.114.0** → 1 real medium; **Deptrac 4.6.1** →
