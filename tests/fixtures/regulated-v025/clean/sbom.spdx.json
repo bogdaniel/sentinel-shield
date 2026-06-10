@@ -1,0 +1,20 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "sentinel-shield-regulated-v025-clean-fixture-sbom",
+  "documentNamespace": "https://example.com/sentinel-shield/regulated-v025/clean-fixture",
+  "creationInfo": {
+    "created": "2026-06-10T00:00:00Z",
+    "creators": ["Tool: sentinel-shield-fixture"]
+  },
+  "packages": [
+    {
+      "name": "example/clean-app",
+      "SPDXID": "SPDXRef-Package-clean-app",
+      "versionInfo": "1.0.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "MIT"
+    }
+  ]
+}
