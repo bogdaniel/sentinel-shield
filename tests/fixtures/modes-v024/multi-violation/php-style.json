@@ -1,0 +1,19 @@
+{
+  "files": [
+    {
+      "name": "app/Http/Controllers/OrderController.php",
+      "appliedFixers": ["braces", "no_unused_imports"],
+      "diff": "@@ -1,6 +1,5 @@"
+    },
+    {
+      "name": "app/Services/PaymentService.php",
+      "appliedFixers": ["single_quote", "trailing_comma_in_multiline"],
+      "diff": "@@ -22,3 +22,3 @@"
+    },
+    {
+      "name": "app/Models/Invoice.php",
+      "appliedFixers": ["binary_operator_spaces"],
+      "diff": "@@ -8,2 +8,2 @@"
+    }
+  ]
+}
