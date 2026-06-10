@@ -1,0 +1,17 @@
+# Sentinel Shield v0.1.24 IaC fixture (intentionally insecure).
+# Docker Compose service running privileged, on the host network, with the
+# Docker socket mounted. Used to exercise IaC scanners — NOT for deployment.
+version: "3.8"
+services:
+  app:
+    image: nginx:latest # FINDING: mutable :latest tag
+    privileged: true # FINDING: privileged container
+    network_mode: host # FINDING: uses host network
+    pid: host # FINDING: shares host PID namespace
+    cap_add:
+      - ALL # FINDING: adds all Linux capabilities
+    volumes:
+      # FINDING: mounts the host Docker socket (container escape risk)
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "80:80"

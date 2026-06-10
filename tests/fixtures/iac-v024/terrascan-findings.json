@@ -1,0 +1,48 @@
+{
+  "results": {
+    "violations": [
+      {
+        "rule_name": "s3EnforceUserAcl",
+        "description": "S3 bucket Access is allowed to all AWS Account Users.",
+        "rule_id": "AWS.S3Bucket.DS.High.1043",
+        "severity": "HIGH",
+        "category": "S3",
+        "resource_name": "public_data",
+        "resource_type": "aws_s3_bucket",
+        "file": "terraform/insecure.tf",
+        "line": 13
+      },
+      {
+        "rule_name": "noUnrestrictedIngressToPort22",
+        "description": "Security group allows unrestricted ingress (0.0.0.0/0) to port 22.",
+        "rule_id": "AWS.SecurityGroup.NetworkSecurity.High.0094",
+        "severity": "HIGH",
+        "category": "Network Security",
+        "resource_name": "open_ssh",
+        "resource_type": "aws_security_group",
+        "file": "terraform/insecure.tf",
+        "line": 27
+      },
+      {
+        "rule_name": "blockPublicAcls",
+        "description": "S3 bucket public access block does not block public ACLs.",
+        "rule_id": "AWS.S3Bucket.DS.High.1044",
+        "severity": "MEDIUM",
+        "category": "S3",
+        "resource_name": "public_data",
+        "resource_type": "aws_s3_bucket_public_access_block",
+        "file": "terraform/insecure.tf",
+        "line": 18
+      }
+    ],
+    "scan_summary": {
+      "file_folder": "terraform",
+      "iac_type": "terraform",
+      "policies_validated": 24,
+      "violated_policies": 3,
+      "low": 0,
+      "medium": 1,
+      "high": 2
+    }
+  }
+}
