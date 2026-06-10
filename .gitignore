@@ -10,3 +10,10 @@
 sbom.cdx.json
 .phpstan.cache/
 .php-cs-fixer.cache
+
+# Local agent metadata (never commit)
+.claude/
+graphify-out/
+
+# Local scan caches / runtime state (never commit)
+.sentinel-shield/

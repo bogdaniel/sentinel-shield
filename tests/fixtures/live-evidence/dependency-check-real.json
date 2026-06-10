@@ -1,0 +1,106 @@
+{
+    "reportSchema": "1.1",
+    "scanInfo": {
+        "engineVersion": "12.2.2",
+        "dataSource": [
+{
+                "name": "NVD API Last Checked",
+                "timestamp": "2026-06-10T20:51:01Z"
+            }
+,{
+                "name": "NVD API Last Modified",
+                "timestamp": "2026-06-10T20:49:24Z"
+            }
+        ]
+
+
+    },
+    "projectInfo": {
+        "name": "",
+        "reportDate": "2026-06-10T20:51:06.729673266Z",
+        "credits": {
+            "NVD": "This product uses the NVD API but is not endorsed or certified by the NVD. This report contains data retrieved from the National Vulnerability Database: https://nvd.nist.gov",
+            "CISA": "This report may contain data retrieved from the CISA Known Exploited Vulnerability Catalog: https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+            "NPM": "This report may contain data retrieved from the Github Advisory Database (via NPM Audit API): https://github.com/advisories/",
+            "RETIREJS": "This report may contain data retrieved from the RetireJS community: https://retirejs.github.io/retire.js/",
+            "OSSINDEX": "This report may contain data retrieved from the Sonatype Guide OSS Index API: https://www.sonatype.com/products/sonatype-guide/oss-index-users"
+        }
+    },
+    "dependencies": [
+{
+            "isVirtual": false,
+            "fileName": "eslint.config.js",
+            "filePath": "\/src\/profiles\/node\/eslint.config.js"
+,"md5": "f2cc717a652b03c725fb092b9df0cba9",
+            "sha1": "3467224fa0bdd8050d1758f95dd2391cd8b02eb1",
+            "sha256": "67036f854d2f67457c139477c0addcfacdbc37e5008e7e5a4c8805e99f294af7"            ,"evidenceCollected": {
+                "vendorEvidence": [
+                ],
+                "productEvidence": [
+                ],
+                "versionEvidence": [
+                ]
+            }
+
+        },{
+            "isVirtual": false,
+            "fileName": "eslint.config.js",
+            "filePath": "\/src\/profiles\/react\/eslint.config.js"
+,"md5": "8a95a0ec757d992c15c9cd64e47d2cef",
+            "sha1": "c230506da277e51347a1ca1244fd022cc342fd29",
+            "sha256": "872043b9ab1c5f6209f85074806e9174b3dea294abf23e931d76b5f90c859b1c"            ,"evidenceCollected": {
+                "vendorEvidence": [
+                ],
+                "productEvidence": [
+                ],
+                "versionEvidence": [
+                ]
+            }
+
+        },{
+            "isVirtual": false,
+            "fileName": "package.json",
+            "filePath": "\/src\/examples\/laravel-react-docker\/package.json"
+,"md5": "baea1371ccf1fd210acc929b6095efb2",
+            "sha1": "b1d434c6169cb046316faecab40eb974af7a44d5",
+            "sha256": "067126f59a6e78d64c90ac62613471963366cec265f7a5af13d143c02121f1f9"            ,"evidenceCollected": {
+                "vendorEvidence": [
+                ],
+                "productEvidence": [
+                ],
+                "versionEvidence": [
+                ]
+            }
+
+        },{
+            "isVirtual": false,
+            "fileName": "package.json",
+            "filePath": "\/src\/tests\/fixtures\/projects\/laravel-react-docker\/package.json"
+,"md5": "f3f90cd9803c22c219339928b357676a",
+            "sha1": "d6e79906eed8fabeaf8bfe84a65524887c759b82",
+            "sha256": "5493aa055fa62fd84eb5c2707b886ed9d0a13389ab998bc4be3be2f4ad1c57ce"            ,"evidenceCollected": {
+                "vendorEvidence": [
+                ],
+                "productEvidence": [
+                ],
+                "versionEvidence": [
+                ]
+            }
+
+        },{
+            "isVirtual": false,
+            "fileName": "package.json",
+            "filePath": "\/src\/tests\/fixtures\/projects\/node-react\/package.json"
+,"md5": "22055660cfbac3f8e261d2ad2a5b3576",
+            "sha1": "dedca73e31b706bd0bc777c869723dcd3376c56b",
+            "sha256": "7b0fd95006efe30cc9b727cf0567d8d5dbce90b401266eb52385a74143cca720"            ,"evidenceCollected": {
+                "vendorEvidence": [
+                ],
+                "productEvidence": [
+                ],
+                "versionEvidence": [
+                ]
+            }
+
+        }    ]
+}

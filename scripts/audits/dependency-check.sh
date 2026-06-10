@@ -25,6 +25,14 @@ MODE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE:-disabled}"
 CACHE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE:-.sentinel-shield/cache/dependency-check}"
 IMAGE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE:-}"
 DC_TIMEOUT="${SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT:-}"
+# NVD API key (v0.1.26): raises the NVD rate limit so the first full dataset pull COMPLETES
+# instead of HTTP 429. The key is NEVER logged, NEVER written to the report, NEVER committed.
+# It is handed to Dependency-Check through a 0600 `--propertyfile` (NOT a CLI argument), so it
+# never appears in the process list either. Env var name is fixed by the v0.1.26 Lane A spec.
+NVD_API_KEY_VALUE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY:-}"
+PROPDIR=""
+cleanup_secret() { [ -n "$PROPDIR" ] && rm -rf "$PROPDIR" 2>/dev/null || true; }
+trap cleanup_secret EXIT INT TERM
 
 unavailable() { echo "[sentinel-shield] dependency-check unavailable: $1 (no report written)." >&2; exit 0; }
 
@@ -58,19 +66,38 @@ mkdir -p "$CACHE"
 OUTDIR=$(CDPATH= cd -- "$(dirname "$OUT")" && pwd)
 TO=$(timeout_prefix)
 
+# Build a 0600 propertyfile carrying the NVD API key, if one was provided. This keeps the key
+# OFF the command line (no process-list exposure) and out of every log line. Paths produced by
+# `mktemp -d` contain no spaces, so the SC2086-disabled unquoted expansions below are safe.
+DC_SECRET_ARG=""            # local-binary path: `--propertyfile <host-path>`
+DC_SECRET_MOUNT=""          # docker path: read-only bind mount `host:container:ro`
+DC_SECRET_CONTAINER_ARG=""  # docker path: `--propertyfile <container-path>`
+if [ -n "$NVD_API_KEY_VALUE" ]; then
+	PROPDIR=$(umask 077 && mktemp -d 2>/dev/null) || unavailable "could not create temp dir for the NVD API key"
+	( umask 077; printf 'nvd.api.key=%s\n' "$NVD_API_KEY_VALUE" > "$PROPDIR/dependency-check.properties" )
+	chmod 600 "$PROPDIR/dependency-check.properties"
+	DC_SECRET_ARG="--propertyfile $PROPDIR/dependency-check.properties"
+	DC_SECRET_MOUNT="$PROPDIR:/ss-secret:ro"
+	DC_SECRET_CONTAINER_ARG="--propertyfile /ss-secret/dependency-check.properties"
+	echo "[sentinel-shield] dependency-check: NVD API key provided — using the authenticated NVD rate limit (key redacted via 0600 propertyfile)." >&2
+else
+	echo "[sentinel-shield] dependency-check: no NVD API key (SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY unset) — open NVD rate limit; the first full dataset pull may HTTP 429." >&2
+fi
+
 # Run FOREGROUND so the step timeout/`timeout` actually applies. `|| true` keeps a valid JSON report
 # even when the tool exits non-zero (findings). We validate the output afterward.
 rc=0
 if command -v dependency-check >/dev/null 2>&1; then
 	echo "[sentinel-shield] dependency-check: scanning . (cache=$CACHE; first run downloads NVD — slow)" >&2
 	# shellcheck disable=SC2086
-	$TO dependency-check --scan . --format JSON --out "$OUT" --data "$CACHE" || rc=$?
+	$TO dependency-check --scan . --format JSON --out "$OUT" --data "$CACHE" $DC_SECRET_ARG || rc=$?
 elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	echo "[sentinel-shield] dependency-check (container $IMAGE): scanning . (cache mounted, foreground)" >&2
 	CACHE_ABS=$(CDPATH= cd -- "$CACHE" && pwd)
 	# shellcheck disable=SC2086
-	$TO docker run --rm -v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" "$IMAGE" \
-		--scan /src --format JSON --out /report/"$(basename "$OUT")" --data /usr/share/dependency-check/data || rc=$?
+	$TO docker run --rm -v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" \
+		${DC_SECRET_MOUNT:+-v} ${DC_SECRET_MOUNT:+$DC_SECRET_MOUNT} "$IMAGE" \
+		--scan /src --format JSON --out /report/"$(basename "$OUT")" --data /usr/share/dependency-check/data $DC_SECRET_CONTAINER_ARG || rc=$?
 else
 	unavailable "no local 'dependency-check' binary and no SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE+docker"
 fi
