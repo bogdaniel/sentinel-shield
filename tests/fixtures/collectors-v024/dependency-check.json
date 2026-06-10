@@ -1,0 +1,18 @@
+{
+  "reportSchema": "1.1",
+  "dependencies": [
+    {
+      "fileName": "log4j-core-2.14.1.jar",
+      "vulnerabilities": [
+        { "name": "CVE-2021-44228", "severity": "CRITICAL" },
+        { "name": "CVE-2021-45046", "severity": "HIGH" }
+      ]
+    },
+    {
+      "fileName": "jackson-databind-2.9.0.jar",
+      "vulnerabilities": [
+        { "name": "CVE-2019-12345", "severity": "MEDIUM" }
+      ]
+    }
+  ]
+}

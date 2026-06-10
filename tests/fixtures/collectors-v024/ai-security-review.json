@@ -1,0 +1,19 @@
+{
+  "tool": "claude-code-security-review",
+  "findings": [
+    {
+      "title": "Potential IDOR in order lookup",
+      "severity": "high",
+      "file": "src/Controller/OrderController.php",
+      "line": 56,
+      "description": "Order is fetched by user-supplied id without ownership check."
+    },
+    {
+      "title": "Missing CSRF protection on state-changing endpoint",
+      "severity": "medium",
+      "file": "src/Controller/SettingsController.php",
+      "line": 23,
+      "description": "POST handler does not validate a CSRF token."
+    }
+  ]
+}

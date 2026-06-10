@@ -1,0 +1,17 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "app:latest",
+  "Results": [
+    {
+      "Target": "app:latest (debian 12.4)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        { "VulnerabilityID": "CVE-2024-0001", "PkgName": "openssl", "Severity": "CRITICAL" },
+        { "VulnerabilityID": "CVE-2024-0002", "PkgName": "libcurl", "Severity": "HIGH" },
+        { "VulnerabilityID": "CVE-2024-0003", "PkgName": "zlib", "Severity": "HIGH" },
+        { "VulnerabilityID": "CVE-2024-0004", "PkgName": "bash", "Severity": "MEDIUM" }
+      ]
+    }
+  ]
+}

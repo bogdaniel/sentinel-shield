@@ -1,0 +1,15 @@
+{
+  "count": 2,
+  "violations": [
+    {
+      "package": "left-pad",
+      "rule": "banned-package",
+      "reason": "package is on the organization deny-list"
+    },
+    {
+      "package": "request",
+      "rule": "deprecated-package",
+      "reason": "package is deprecated and unmaintained"
+    }
+  ]
+}

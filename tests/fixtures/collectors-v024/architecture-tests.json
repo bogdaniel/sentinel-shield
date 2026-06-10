@@ -1,0 +1,7 @@
+{
+  "violations": 2,
+  "details": [
+    { "rule": "Domain must not depend on Infrastructure", "from": "App\\Domain\\User", "to": "App\\Infrastructure\\Db" },
+    { "rule": "Controllers must not depend on Repositories directly", "from": "App\\Http\\HomeController", "to": "App\\Repository\\UserRepository" }
+  ]
+}

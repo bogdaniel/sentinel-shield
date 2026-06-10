@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "source": { "path": "composer.lock", "type": "lockfile" },
+      "packages": [
+        {
+          "package": { "name": "symfony/http-kernel", "version": "5.4.0", "ecosystem": "Packagist" },
+          "vulnerabilities": [
+            { "id": "GHSA-xxxx-0001", "summary": "RCE in HttpKernel" },
+            { "id": "GHSA-xxxx-0002", "summary": "Open redirect" }
+          ]
+        }
+      ]
+    }
+  ]
+}

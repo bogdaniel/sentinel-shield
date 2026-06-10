@@ -1,0 +1,16 @@
+{
+  "findings": [
+    {
+      "ident": "template-injection",
+      "severity": "High",
+      "location": ".github/workflows/ci.yml:30",
+      "desc": "code injection via untrusted github context expansion"
+    },
+    {
+      "ident": "dangerous-triggers",
+      "severity": "Medium",
+      "location": ".github/workflows/pr.yml:2",
+      "desc": "use of pull_request_target with checkout of untrusted ref"
+    }
+  ]
+}

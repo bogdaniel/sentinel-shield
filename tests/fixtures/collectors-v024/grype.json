@@ -1,0 +1,8 @@
+{
+  "matches": [
+    { "vulnerability": { "id": "CVE-2024-1000", "severity": "Critical" }, "artifact": { "name": "openssl" } },
+    { "vulnerability": { "id": "CVE-2024-1001", "severity": "High" }, "artifact": { "name": "libxml2" } },
+    { "vulnerability": { "id": "CVE-2024-1002", "severity": "Medium" }, "artifact": { "name": "zlib" } },
+    { "vulnerability": { "id": "CVE-2024-1003", "severity": "Medium" }, "artifact": { "name": "curl" } }
+  ]
+}

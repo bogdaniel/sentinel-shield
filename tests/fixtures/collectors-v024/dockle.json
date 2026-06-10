@@ -1,0 +1,8 @@
+{
+  "summary": { "fatal": 1, "warn": 1, "info": 1, "pass": 20 },
+  "details": [
+    { "code": "CIS-DI-0001", "title": "Create a user for the container", "level": "FATAL", "alerts": ["Last user should not be root"] },
+    { "code": "CIS-DI-0005", "title": "Enable Content trust for Docker", "level": "WARN", "alerts": ["export DOCKER_CONTENT_TRUST=1 before docker pull/build"] },
+    { "code": "CIS-DI-0006", "title": "Add HEALTHCHECK instruction", "level": "INFO", "alerts": ["not found HEALTHCHECK statement"] }
+  ]
+}

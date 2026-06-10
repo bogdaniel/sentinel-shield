@@ -1,0 +1,26 @@
+{
+  "results": {
+    "violations": [
+      {
+        "rule_name": "s3EnforceUserACL",
+        "severity": "HIGH",
+        "resource_name": "data_bucket",
+        "file": "main.tf",
+        "line": 12
+      },
+      {
+        "rule_name": "noPublicIngress",
+        "severity": "HIGH",
+        "resource_name": "web_sg",
+        "file": "network.tf",
+        "line": 40
+      }
+    ],
+    "scan_summary": {
+      "file_folder": ".",
+      "iac_type": "terraform",
+      "policies_validated": 200,
+      "violated_policies": 2
+    }
+  }
+}
