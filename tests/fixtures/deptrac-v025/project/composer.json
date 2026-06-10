@@ -1,0 +1,17 @@
+{
+    "name": "sentinel-shield/deptrac-v025-fixture",
+    "description": "Minimal layered PHP fixture for a REAL Deptrac run (Sentinel Shield v0.1.25).",
+    "type": "project",
+    "license": "MIT",
+    "require-dev": {
+        "deptrac/deptrac": "^4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "config": {
+        "allow-plugins": {}
+    }
+}

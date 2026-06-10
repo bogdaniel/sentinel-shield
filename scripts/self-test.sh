@@ -1611,6 +1611,66 @@ run_v024_docs() {
 	log_info "v024-docs: OK (changelog, dep-check honesty, v1 not-reached, no cruft tags, .claude untracked)"
 }
 
+# --- v025-live: REAL scanner artifacts, zap-full fix, nuclei guard, deptrac/arch/regulated, wf rules
+VL_FAILS=0
+vl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VL_FAILS=$((VL_FAILS + 1)); fi; }
+run_v025_live() {
+	log_info "v025-live: real Checkov/Grype/Deptrac artifacts, zap-full fix, nuclei guard, regulated, workflow rules"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; LE="$F/live-evidence"; _d=$(mktemp -d)
+
+	# --- REAL scanner artifacts produced this sprint (parsed by the collectors) ---
+	vl_check "REAL checkov 3.3.0 artifact -> iac_violations=16" "$(sh "$C/checkov.sh" --input "$LE/checkov-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.iac_violations)"')" "fail:16"
+	vl_check "REAL grype 0.114.0 artifact -> medium=1" "$(sh "$C/grype.sh" --input "$LE/grype-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.medium_vulnerabilities)"')" "fail:1"
+	vl_check "Dependency-Check NVD-429 evidence excerpt present" "$([ -s "$LE/dependency-check-429-excerpt.log" ] && grep -q '429' "$LE/dependency-check-429-excerpt.log" && echo yes || echo no)" "yes"
+
+	# --- REAL Deptrac 4.6.1 artifacts (Lane E) ---
+	vl_check "REAL deptrac clean -> 0 pass" "$(sh "$C/deptrac.sh" --input "$F/deptrac-v025/deptrac-clean.json" 2>/dev/null | jq -r '"\(.status):\(.summary.architecture_violations)"')" "pass:0"
+	vl_check "REAL deptrac violations -> 2 fail" "$(sh "$C/deptrac.sh" --input "$F/deptrac-v025/deptrac-violations.json" 2>/dev/null | jq -r '"\(.status):\(.summary.architecture_violations)"')" "fail:2"
+	_rc=0; sh "$C/deptrac.sh" --input "$F/deptrac-v025/deptrac-invalid.json" >/dev/null 2>&1 || _rc=$?; vl_check "deptrac invalid -> exit 2" "$_rc" "2"
+
+	# --- Architecture-v025 (Lane F) ---
+	vl_check "architecture-v025 clean -> 0" "$(sh "$C/architecture-tests.sh" --input "$F/architecture-v025/clean.json" 2>/dev/null | jq '.summary.architecture_violations')" "0"
+	vl_check "architecture-v025 violations -> 3" "$(sh "$C/architecture-tests.sh" --input "$F/architecture-v025/violations.json" 2>/dev/null | jq '.summary.architecture_violations')" "3"
+	vl_check "architecture-v025 mixed -> 2" "$(sh "$C/architecture-tests.sh" --input "$F/architecture-v025/mixed.json" 2>/dev/null | jq '.summary.architecture_violations')" "2"
+
+	# --- ZAP-full fix (Lane H): baseline=1 (tool zap), full via --input=2 (tool zap-full), mixed=2 ---
+	vl_check "zap-v025 baseline -> zap:1" "$(sh "$C/zap.sh" --input "$F/dast-v025/zap-baseline.json" 2>/dev/null | jq -r '"\(.tool):\(.summary.dast_findings)"')" "zap:1"
+	vl_check "zap-v025 FULL via --input -> zap-full:2" "$(sh "$C/zap.sh" --input "$F/dast-v025/zap-full.json" 2>/dev/null | jq -r '"\(.tool):\(.summary.dast_findings)"')" "zap-full:2"
+	vl_check "zap-v025 mixed -> 2" "$(sh "$C/zap.sh" --input "$F/dast-v025/zap-mixed.json" 2>/dev/null | jq '.summary.dast_findings')" "2"
+
+	# --- Nuclei template-path guard (Lane I): code-enforced ---
+	nuc_guard() { ( . "$ROOT/scripts/runners/dast-guard.sh" >/dev/null 2>&1; eval "$1"; if ss_nuclei_template_check >/dev/null 2>&1; then echo 0; else echo $?; fi ); }
+	vl_check "nuclei guard: missing template -> 3" "$(nuc_guard 'SENTINEL_SHIELD_NUCLEI_TEMPLATES=')" "3"
+	vl_check "nuclei guard: path traversal -> 3" "$(nuc_guard 'SENTINEL_SHIELD_NUCLEI_TEMPLATES=../etc/passwd')" "3"
+	vl_check "nuclei guard: remote denied -> 3" "$(nuc_guard 'SENTINEL_SHIELD_NUCLEI_TEMPLATES=https://evil/t.yaml')" "3"
+	vl_check "nuclei guard: remote allowed -> 0" "$(nuc_guard 'SENTINEL_SHIELD_NUCLEI_TEMPLATES=https://x/t.yaml; SENTINEL_SHIELD_NUCLEI_ALLOW_REMOTE=1')" "0"
+	vl_check "nuclei guard: existing dir -> 0" "$(nuc_guard "SENTINEL_SHIELD_NUCLEI_TEMPLATES=$ROOT/scripts")" "0"
+	# ss_dast_check UNCHANGED (zap unaffected): no-target -> 10, host mismatch -> 3
+	dast_rc() { ( . "$ROOT/scripts/runners/dast-guard.sh" >/dev/null 2>&1; eval "$1"; if ss_dast_check >/dev/null 2>&1; then echo 0; else echo $?; fi ); }
+	vl_check "ss_dast_check unchanged: no-target -> 10" "$(dast_rc 'unset SENTINEL_SHIELD_DAST_TARGET_URL')" "10"
+	vl_check "ss_dast_check unchanged: host mismatch -> 3" "$(dast_rc 'SENTINEL_SHIELD_DAST_TARGET_URL=https://evil/x; SENTINEL_SHIELD_DAST_ALLOWED_HOST=ok')" "3"
+
+	# --- Dependency-Check medium/mixed fixtures (Lane B) ---
+	vl_check "dep-check medium fixture -> medium=1" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/medium.json" 2>/dev/null | jq '.summary.medium_vulnerabilities')" "1"
+	vl_check "dep-check mixed fixture -> crit+high+med>=3" "$([ "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/mixed.json" 2>/dev/null | jq '[.summary.critical_vulnerabilities,.summary.high_vulnerabilities,.summary.medium_vulnerabilities]|add')" -ge 3 ] && echo yes || echo no)" "yes"
+
+	# --- Regulated-v025 (Lane D) ---
+	vl_check "regulated-v025 dast -> dast_findings>=1" "$([ "$(sh "$C/zap.sh" --input "$F/regulated-v025/dast-finding/zap.json" 2>/dev/null | jq '.summary.dast_findings')" -ge 1 ] && echo yes || echo no)" "yes"
+	vl_check "regulated-v025 scorecard -> repo_health>=1" "$([ "$(sh "$C/scorecard.sh" --input "$F/regulated-v025/repo-health/scorecard.json" 2>/dev/null | jq '.summary.repository_health_warnings')" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# --- Workflow-sanity additions (Lane L specs) ---
+	WT="$ROOT/templates/workflows"
+	vl_check "nuclei runner referenced only in DAST template" "$(grep -rl 'runners/nuclei.sh' "$WT" | grep -v 'sentinel-shield-dast.yml' | wc -l | tr -d ' ')" "0"
+	vl_check "dependency-check audit NOT in pr-fast" "$(grep -c 'audits/dependency-check.sh' "$WT/sentinel-shield-pr-fast.yml" 2>/dev/null)" "0"
+	_noschdispatch=0
+	for _wf in "$WT"/*.yml; do grep -qE '^[[:space:]]*schedule:' "$_wf" || continue; grep -qE '^[[:space:]]*workflow_dispatch:' "$_wf" || { _noschdispatch=$((_noschdispatch+1)); }; done
+	vl_check "every scheduled template is also workflow_dispatch" "$_noschdispatch" "0"
+
+	rm -rf "$_d"
+	if [ "$VL_FAILS" -ne 0 ]; then log_error "v025-live: $VL_FAILS case(s) failed"; return 1; fi
+	log_info "v025-live: OK (real Checkov/Grype/Deptrac artifacts, NVD-429 evidence, zap-full fix, nuclei guard, regulated, workflow rules)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1639,6 +1699,7 @@ case "$SUB" in
 	v024-collectors) run_v024_collectors ;;
 	v024-coverage) run_v024_coverage ;;
 	v024-docs) run_v024_docs ;;
+	v025-live) run_v025_live ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1667,13 +1728,14 @@ case "$SUB" in
 		run_v024_collectors
 		run_v024_coverage
 		run_v024_docs
+		run_v025_live
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|all)"
 		exit 2
 		;;
 esac

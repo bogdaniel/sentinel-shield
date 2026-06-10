@@ -1,0 +1,40 @@
+{
+  "@version": "2.14.0",
+  "@generated": "2026-06-10",
+  "site": [
+    {
+      "@name": "https://app.example.com",
+      "@host": "app.example.com",
+      "alerts": [
+        {
+          "alertRef": "40012",
+          "name": "Cross Site Scripting (Reflected)",
+          "riskcode": "3",
+          "riskdesc": "High",
+          "confidence": "2"
+        },
+        {
+          "alertRef": "10202",
+          "name": "Absence of Anti-CSRF Tokens",
+          "riskcode": "2",
+          "riskdesc": "Medium",
+          "confidence": "2"
+        },
+        {
+          "alertRef": "10096",
+          "name": "Timestamp Disclosure",
+          "riskcode": "1",
+          "riskdesc": "Low",
+          "confidence": "1"
+        },
+        {
+          "alertRef": "10049",
+          "name": "Non-Storable Content",
+          "riskcode": "0",
+          "riskdesc": "Informational",
+          "confidence": "2"
+        }
+      ]
+    }
+  ]
+}

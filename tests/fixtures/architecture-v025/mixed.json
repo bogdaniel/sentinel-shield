@@ -1,0 +1,20 @@
+{
+  "tool": "architecture-tests",
+  "tests": 10,
+  "passed": 8,
+  "violations": 2,
+  "failures": [
+    {
+      "rule": "cqrs-query-must-not-depend-on-command",
+      "from": "App\\Application\\Query\\OrderSummaryHandler",
+      "to": "App\\Application\\Command\\PlaceOrderHandler",
+      "message": "Query path reaches into the write/command path"
+    },
+    {
+      "rule": "domain-must-be-framework-free",
+      "from": "App\\Domain\\Pricing\\Discount",
+      "to": "Illuminate\\Support\\Facades\\Cache",
+      "message": "Domain references a framework facade (must stay framework-free)"
+    }
+  ]
+}

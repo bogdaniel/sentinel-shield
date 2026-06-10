@@ -1,0 +1,34 @@
+{
+  "date": "2026-06-10",
+  "repo": {
+    "name": "github.com/example/clean-app",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "scorecard": {
+    "version": "v5.0.0",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "score": 6.4,
+  "checks": [
+    {
+      "name": "Branch-Protection",
+      "score": 2,
+      "reason": "branch protection not enabled on default branch"
+    },
+    {
+      "name": "Code-Review",
+      "score": 9,
+      "reason": "all changesets reviewed"
+    },
+    {
+      "name": "Token-Permissions",
+      "score": 8,
+      "reason": "tokens are read-only by default"
+    },
+    {
+      "name": "Pinned-Dependencies",
+      "score": -1,
+      "reason": "no dependencies found (inconclusive)"
+    }
+  ]
+}
