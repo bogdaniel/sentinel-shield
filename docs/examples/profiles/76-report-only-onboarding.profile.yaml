@@ -1,0 +1,37 @@
+# Example 76 — Report-only onboarding (recommended first step).
+#
+# gates.mode: report-only. This is the recommended starting point for adoption: scanners run
+# and produce a security summary, but NOTHING blocks the release. Use it to baseline existing
+# findings without breaking CI, then move report-only -> baseline once new code stops adding
+# risk. See docs/profile-adoption-guide.md and docs/product-status.md §8 (adoption path).
+#
+# install-baseline.sh stamps the mode from --mode (default report-only):
+#   sh scripts/install-baseline.sh --target . --profile node-react --apply --mode report-only
+
+project:
+  name: example-onboarding
+  type: node
+  criticality: medium
+  owner: platform-team
+
+profiles:
+  - node
+  - react
+
+gates:
+  mode: report-only
+  # No fail_on overrides: in report-only the resolver reports findings but does not block,
+  # so per-gate flags are advisory. Add overrides later when moving to baseline/strict.
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

@@ -1,0 +1,55 @@
+# Example 77 — Baseline onboarding (second step).
+#
+# gates.mode: baseline. Move here from report-only once new code stops adding risk. Baseline
+# blocks the high-signal, low-noise gates: secrets, critical/high vulnerabilities, architecture
+# violations, type errors, test failures, unsafe Docker/GitHub Actions, php_syntax_errors, and
+# dependency_policy_violations. Medium vulns, style, IaC, container-image, SBOM, DAST, AI stay
+# advisory by default. See docs/gate-resolution.md and docs/enterprise-scanner-matrix.md.
+#
+#   sh scripts/install-baseline.sh --target . --profile laravel --apply --mode baseline
+
+project:
+  name: example-baseline-app
+  type: laravel
+  criticality: high
+  owner: platform-team
+
+profiles:
+  - laravel
+  - react
+  - docker
+
+gates:
+  mode: baseline
+
+  # Shown for clarity; these mirror the baseline defaults (safe to omit and inherit).
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    medium_vulnerabilities: false
+    architecture_violations: true
+    type_errors: true
+    test_failures: true
+    unsafe_docker: true
+    unsafe_github_actions: true
+    php_syntax_errors: true
+    dependency_policy_violations: true
+    style_violations: false            # advisory in baseline; enable in strict
+    iac_violations: false
+    container_image_violations: false
+    dast_findings: false               # manual/controlled (docs/dast-policy.md)
+    ai_review_findings: false          # non-gating (docs/ai-review-policy.md)
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

@@ -1,0 +1,63 @@
+# Example 74 — Strict mode.
+#
+# gates.mode: strict. Adopt strict only AFTER the strict pre-flight
+# (docs/strict-mode-readiness.md). Strict's defaults add style_violations,
+# iac_violations, and container_image_violations on top of baseline, and block
+# third_party_install_script_risk + third_party_network_behavior. The keys below are
+# shown for clarity; with no fail_on block they inherit the strict defaults from the resolver.
+# See docs/gate-resolution.md and docs/enterprise-scanner-matrix.md.
+
+project:
+  name: example-app
+  type: laravel
+  criticality: critical
+  owner: platform-team
+
+profiles:
+  - laravel
+  - react
+  - docker
+
+gates:
+  mode: strict
+
+  # Explicit echo of strict intent (optional — inherited if omitted).
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    medium_vulnerabilities: false      # strict keeps medium advisory; set true to harden further
+    architecture_violations: true
+    type_errors: true
+    test_failures: true
+    unsafe_docker: true
+    unsafe_github_actions: true
+    style_violations: true             # strict adds this
+    iac_violations: true               # strict adds this
+    container_image_violations: true   # strict adds this
+    third_party_install_script_risk: true
+    third_party_network_behavior: true
+    dast_findings: false               # DAST stays manual/controlled (docs/dast-policy.md)
+    ai_review_findings: false          # non-gating (docs/ai-review-policy.md)
+
+supply_chain:
+  third_party_sast:
+    enabled: true
+    mode: strict
+    paths:
+      - vendor/**
+      - node_modules/**
+    high_confidence_blocking: true
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 60
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

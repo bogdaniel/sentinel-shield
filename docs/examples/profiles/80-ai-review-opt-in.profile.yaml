@@ -1,0 +1,50 @@
+# Example 80 — AI-review opt-in (non-gating).
+#
+# AI review (Claude Code Security Review / Kuzushi) is `non-gating` in docs/product-status.md:
+# it produces ADVISORY output only and NEVER blocks a release by default. The
+# ai_review_findings gate stays false in EVERY mode — including strict and regulated — unless an
+# operator deliberately sets it true here, which is discouraged because the findings are
+# assistive, not authoritative. See docs/ai-review-policy.md and
+# templates/workflows/sentinel-shield-ai-review.yml.
+#
+# This example "opts in" by running the AI-review workflow for advisory comments, while keeping
+# the gate non-gating (the recommended posture).
+
+project:
+  name: example-ai-review-app
+  type: node
+  criticality: medium
+  owner: platform-team
+
+profiles:
+  - node
+  - react
+
+gates:
+  mode: baseline
+
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    # AI review is assistive only — keep this false (the default in all modes).
+    # Setting it true makes advisory AI output block releases, which is NOT recommended.
+    ai_review_findings: false          # non-gating; see docs/ai-review-policy.md
+
+# Opt in to running the advisory AI-review workflow (output is non-gating).
+ai_review:
+  enabled: true                        # run the workflow for advisory PR comments
+  gating: false                        # MUST stay false — advisory only (docs/ai-review-policy.md)
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

@@ -1,0 +1,40 @@
+# Example 73 — Generic override scenario.
+#
+# Copy to .sentinel-shield/profile.yaml and edit. Based on templates/profile.yaml.
+# Demonstrates: inheriting a mode's defaults but overriding a few per-gate fail_on keys.
+# The resolver (scripts/resolve-gates.sh) reports every override explicitly — overrides are
+# never hidden. See docs/gate-resolution.md. Omit a key to inherit the mode default.
+
+project:
+  name: example-app
+  type: laravel          # laravel | symfony | node | react | docker | other
+  criticality: high      # low | medium | high | critical (informational)
+  owner: platform-team
+
+profiles:
+  - laravel
+  - react
+  - docker
+
+gates:
+  mode: baseline
+
+  # Only the keys below override the baseline defaults; everything else inherits.
+  fail_on:
+    medium_vulnerabilities: true       # stricter than baseline default (false)
+    missing_sbom: true                 # require an SBOM even in baseline
+    style_violations: false            # keep style advisory for now
+    ai_review_findings: false          # assistive only — keep false (docs/ai-review-policy.md)
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json
