@@ -304,3 +304,12 @@ thresholds, the graduation ladder, and governance — lives in
 [`v1-closure-v024.md`](v1-closure-v024.md). **v1.0 STATUS: NOT REACHED.** The chief remaining blocker
 is **OWASP Dependency-Check live validation** (no real artifact exists; a real run was *attempted* this
 sprint — see [`dependency-check-live-evidence-v024.md`](dependency-check-live-evidence-v024.md)).
+
+## v0.1.25 closure addendum
+Detailed blocker burn-down + readiness score (**5/7 hard gates**, v1.0 **NOT reached**) lives in
+[`v1-blocker-burndown-v025.md`](v1-blocker-burndown-v025.md). v0.1.25 produced **real local scanner
+validations** (Checkov 16, Grype 1, Deptrac 2 — collector-parsed) and a real strict-mode engine run
+([`live-evidence-v025.md`](live-evidence-v025.md)). The chief blocker, **Dependency-Check live
+validation, is now characterized as proven-blocked-by-external-constraint (NVD HTTP 429 / API-key
+requirement)** — the wrapper correctly refused to fake-clean. Unblock: supply an NVD API key and run
+to completion. **v1.0 STATUS: NOT REACHED.**

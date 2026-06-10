@@ -79,6 +79,16 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 open frontier is **Phase 3 — live validation of main-gate tools**, currently `blocked` on a
 dispatchable validation strategy. Do not read a `partial`/`blocked` item as production-ready.
 
+## v0.1.25 — live evidence closure (status update)
+- [x] `done` — **Real local scanner validations**: Checkov 3.3.0 (16 iac_violations), Grype 0.114.0 (1 medium), Deptrac 4.6.1 (2 violations) ran for real and were collector-parsed ([`live-evidence-v025.md`](live-evidence-v025.md)).
+- [x] `done` — Real strict-mode engine run (baseline pass / strict fail on 3 gates).
+- [x] `done` — **zap-full collector input gap CLOSED** (real code fix) + self-test.
+- [x] `done` — **Code-enforced Nuclei template-path guard** (missing/traversal/remote/host) + self-test; `ss_dast_check` unchanged.
+- [x] `done` — Supply-chain digests re-verified live (MATCH); install/sync consumer-safety + managed-file inventory (honest about no dirty-tree guard); consumer onboarding + multi-project rollout; workflow release-hardening (10 rules verified + 3 new self-tests).
+- [x] `done` — Self-test 349 → **375** (`v025-live`).
+- [ ] `blocked-external` — **Dependency-Check live validation**: real cold run **failed on NVD HTTP 429** (API key required); wrapper correctly reported unavailable (no fake-clean). **Attempted, NOT live-validated — proven blocked by external constraint.** Unblock: NVD API key.
+- [ ] `not-reached` — **v1.0**: 5/7 hard gates met (outstanding: Dependency-Check live, strict-on-consumer).
+
 ## v0.1.24 — enterprise production closure (status update)
 - [x] `done` — Complete 34-collector fixture library + `v024-collectors`/`v024-coverage`/`v024-docs` self-test suites.
 - [x] `done` — Per-profile install/sync productization matrix + quickstart; profile adoption guides + mode/onboarding override examples.

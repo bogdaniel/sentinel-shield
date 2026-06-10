@@ -161,6 +161,20 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.25 — live evidence closure (real local scanner runs; no consumer-CI promotions)
+This sprint ran **real scanners** and produced **real artifacts** (a step beyond fixtures):
+- **Checkov 3.3.0** → 16 real iac_violations; **Grype 0.114.0** → 1 real medium; **Deptrac 4.6.1** →
+  real deptrac.json (2 violations / 0 clean). All parsed by their collectors. Real **strict-mode
+  engine** run: baseline PASS / strict FAIL. See [`live-evidence-v025.md`](live-evidence-v025.md).
+  These are **local tool-execution validations**, NOT consumer-CI promotions (maturity labels unchanged).
+- **OWASP Dependency-Check:** real cold run **failed on NVD HTTP 429** (API key required); wrapper
+  correctly reported `unavailable` (no fake-clean). **Attempted, NOT live-validated — proven blocked
+  by an external constraint.** Anti-fake hardening confirmed under real failure.
+- **Real code fixes:** zap-full collector input gap CLOSED; code-enforced Nuclei template-path guard
+  (`ss_nuclei_template_check`; `ss_dast_check` unchanged).
+- Self-test 349 → **375** (`v025-live`: real artifacts, zap-full, nuclei guard, regulated, 3 workflow rules).
+- **v1.0 NOT reached** (5/7 hard gates; Dependency-Check live validation + strict-on-consumer outstanding).
+
 ## v0.1.24 — enterprise production closure (no promotions)
 Fifteen-agent sprint. No maturity promotions; blocker burn-down + evidence depth:
 - **Dependency-Check:** real live-evidence ATTEMPT — evidence workflow pushed to a non-default

@@ -94,6 +94,17 @@ IaC scanners on a repo with `*.tf`. Semgrep image bumped to 1.165.0 (configurabl
   workflow on a consumer with a warm NVD cache and cite the artifact in `main-gate-live-evidence.md`.
   Then: Deptrac on a layered project; IaC scanners on a repo with `*.tf`; refine OSV/CodeQL severity.
 
+## v0.1.25 — live evidence closure
+Real-evidence sprint. Ran real scanners locally: Checkov 3.3.0 (16 iac_violations), Grype 0.114.0
+(1 medium), Deptrac 4.6.1 (2 violations) — all collector-parsed; real strict-mode engine run
+(baseline pass / strict fail). **Dependency-Check real cold run blocked by NVD HTTP 429** (API key
+required) — wrapper correctly reported unavailable, no fake-clean; **proven blocked by external
+constraint, still NOT live-validated**. Closed two real code gaps (zap-full input, Nuclei
+template-path guard). Self-test 349→375. v1.0 NOT reached (5/7 hard gates).
+- **Top of next backlog (v0.1.26):** obtain an NVD API key and run Dependency-Check to completion
+  (local or consumer) → the first real `dependency-check.json` → promote to live-validated. This is
+  the last external blocker for the chief v1.0 gate. Then a live consumer-CI strict-mode run.
+
 ## v0.1.24 — enterprise production closure
 Fifteen-agent sprint, evidence-driven, no promotions. Dependency-Check live run **attempted for real**
 (evidence workflow pushed to a non-default consumer branch; dispatch blocked by GitHub's
