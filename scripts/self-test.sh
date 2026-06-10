@@ -1486,6 +1486,131 @@ run_v023_regression() {
 	log_info "v023-regression: OK (fail_on flags, secrets never suppressed, invalid/missing collectors, manifests, README, changelog, .claude)"
 }
 
+# --- v024-collectors: iterate the complete collector fixture library -------------------------
+CL_FAILS=0
+cl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; CL_FAILS=$((CL_FAILS + 1)); fi; }
+run_v024_collectors() {
+	log_info "v024-collectors: every collector parses its fixture-library sample + emits a normalized object"
+	LIB="$ROOT/tests/fixtures/collectors-v024"; C="$ROOT/scripts/collectors"
+	cl_check "fixture library present (>=30 fixtures)" "$([ "$(ls "$LIB"/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 30 ] && echo yes || echo no)" "yes"
+	_bad=0; _n=0
+	for _f in "$LIB"/*.json; do
+		[ -f "$_f" ] || continue
+		_name=$(basename "$_f" .json); _col="$C/$_name.sh"
+		[ -f "$_col" ] || { log_warn "  no collector for $_name (skip)"; continue; }
+		_n=$((_n + 1))
+		# Each collector must: exit 0, emit valid JSON, with .tool and a .status, and a .summary object.
+		_out=$(sh "$_col" --input "$_f" 2>/dev/null) || { log_error "  $_name collector exited non-zero"; _bad=$((_bad + 1)); continue; }
+		[ "$(printf '%s' "$_out" | jq -e 'has("tool") and has("status") and (.summary|type=="object")' 2>/dev/null)" = "true" ] || { log_error "  $_name bad shape"; _bad=$((_bad + 1)); }
+	done
+	cl_check "all library collectors emit normalized objects" "$_bad" "0"
+	cl_check "exercised a meaningful number of collectors (>=30)" "$([ "$_n" -ge 30 ] && echo yes || echo no)" "yes"
+	# Spot-check a few representative mapped counts from the library.
+	cl_check "grype fixture -> some vuln count" "$([ "$(sh "$C/grype.sh" --input "$LIB/grype.json" 2>/dev/null | jq '[.summary.critical_vulnerabilities,.summary.high_vulnerabilities,.summary.medium_vulnerabilities]|add')" -ge 1 ] && echo yes || echo no)" "yes"
+	cl_check "trufflehog fixture -> secrets (verified only)" "$([ "$(sh "$C/trufflehog.sh" --input "$LIB/trufflehog.json" 2>/dev/null | jq '.summary.secrets')" -ge 1 ] && echo yes || echo no)" "yes"
+	if [ "$CL_FAILS" -ne 0 ]; then log_error "v024-collectors: $CL_FAILS case(s) failed"; return 1; fi
+	log_info "v024-collectors: OK (complete collector fixture library iterated; normalized output verified)"
+}
+
+# --- v024-coverage: dep-check hardening, modes-v024, IaC/deptrac/arch v024, DAST, workflow ----
+VC_FAILS=0
+vc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VC_FAILS=$((VC_FAILS + 1)); fi; }
+run_v024_coverage() {
+	log_info "v024-coverage: dep-check fixtures, strict/regulated modes-v024, IaC/deptrac/arch, DAST incl zap-full input gap, workflow uploads"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; _d=$(mktemp -d)
+	_b=$(mktemp -d); ln -s "$(command -v jq)" "$_b/jq" 2>/dev/null || cp "$(command -v jq)" "$_b/jq"
+
+	# --- Dependency-Check hardening fixtures (Lane B) ---
+	vc_check "dep-check high.json -> high=1 fail" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/high.json" 2>/dev/null | jq -r '"\(.status):\(.summary.high_vulnerabilities)"')" "fail:1"
+	vc_check "dep-check critical.json -> critical=1 fail" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/critical.json" 2>/dev/null | jq -r '"\(.status):\(.summary.critical_vulnerabilities)"')" "fail:1"
+	vc_check "dep-check empty-deps.json -> pass 0" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/empty-deps.json" 2>/dev/null | jq -r '"\(.status):\(.summary.critical_vulnerabilities)"')" "pass:0"
+	vc_check "dep-check clean.json -> pass 0/0/0" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/clean.json" 2>/dev/null | jq -r '"\(.status):\(.summary.high_vulnerabilities)"')" "pass:0"
+	_rc=0; sh "$C/dependency-check.sh" --input "$F/dependency-check/malformed.json" >/dev/null 2>&1 || _rc=$?
+	vc_check "dep-check malformed.json -> exit 2" "$_rc" "2"
+
+	# --- Mode enforcement (Lane E fixtures) ---
+	enforce_mode() { # <mode> <summary> -> pass|fail
+		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
+		if sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1; then echo pass; else echo fail; fi
+	}
+	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
+	# multi-violation: build summary, isolate SBOM/release so only style+iac+medium are non-clean.
+	rm -rf "$_d/mv"; mkdir -p "$_d/mv/raw"; cp "$F/modes-v024/multi-violation/"*.json "$_d/mv/raw/"
+	printf '{"SPDXID":"x"}' > "$_d/mv/sbom.spdx.json"; printf 'rel\n' > "$_d/mv/release-evidence.md"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/mv/raw" --output "$_d/mv/sum.json" --project-name t >/dev/null 2>&1
+	vc_check "modes-v024 multi: baseline PASS" "$(enforce_mode baseline "$_d/mv/sum.json")" "pass"
+	vc_check "modes-v024 multi: strict FAIL" "$(enforce_mode strict "$_d/mv/sum.json")" "fail"
+	# clean: all evidence present -> every mode passes.
+	rm -rf "$_d/cl"; mkdir -p "$_d/cl/raw"; cp "$F/modes-v024/clean/gitleaks.json" "$_d/cl/raw/gitleaks.json"
+	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/cl/sbom.spdx.json"; cp "$F/modes-v024/clean/release-evidence.md" "$_d/cl/release-evidence.md"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t >/dev/null 2>&1
+	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
+	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
+	vc_check "modes-v024 clean: regulated PASS" "$(enforce_mode regulated "$_d/cl/sum.json")" "pass"
+	# dast-only: isolate evidence -> strict passes, regulated fails.
+	rm -rf "$_d/da"; mkdir -p "$_d/da/raw"; cp "$F/modes-v024/dast-finding/zap.json" "$_d/da/raw/zap.json"
+	printf '{"SPDXID":"x"}' > "$_d/da/sbom.spdx.json"; printf 'rel\n' > "$_d/da/release-evidence.md"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t >/dev/null 2>&1
+	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
+	vc_check "modes-v024 dast: regulated FAIL" "$(enforce_mode regulated "$_d/da/sum.json")" "fail"
+	# repo-health scorecard fixture maps to repository_health_warnings.
+	vc_check "modes-v024 scorecard -> repo_health>=1" "$([ "$(sh "$C/scorecard.sh" --input "$F/modes-v024/repo-health/scorecard.json" 2>/dev/null | jq '.summary.repository_health_warnings')" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# --- IaC-v024 (Lane H) ---
+	vc_check "iac-v024 checkov -> iac_violations>=2" "$([ "$(sh "$C/checkov.sh" --input "$F/iac-v024/checkov-findings.json" 2>/dev/null | jq '.summary.iac_violations')" -ge 2 ] && echo yes || echo no)" "yes"
+	vc_check "iac-v024 conftest -> iac_violations>=2" "$([ "$(sh "$C/conftest.sh" --input "$F/iac-v024/conftest-findings.json" 2>/dev/null | jq '.summary.iac_violations')" -ge 2 ] && echo yes || echo no)" "yes"
+	vc_check "iac-v024 terrascan -> iac_violations>=2" "$([ "$(sh "$C/terrascan.sh" --input "$F/iac-v024/terrascan-findings.json" 2>/dev/null | jq '.summary.iac_violations')" -ge 2 ] && echo yes || echo no)" "yes"
+
+	# --- Deptrac / architecture v024 (Lane I) ---
+	vc_check "deptrac-v024 clean -> 0 pass" "$(sh "$C/deptrac.sh" --input "$F/deptrac-v024/deptrac-clean.json" 2>/dev/null | jq -r '"\(.status):\(.summary.architecture_violations)"')" "pass:0"
+	vc_check "deptrac-v024 violations -> >=2 fail" "$([ "$(sh "$C/deptrac.sh" --input "$F/deptrac-v024/deptrac-violations.json" 2>/dev/null | jq '.summary.architecture_violations')" -ge 2 ] && echo yes || echo no)" "yes"
+	vc_check "architecture-v024 clean -> 0 pass" "$(sh "$C/architecture-tests.sh" --input "$F/architecture-v024/architecture-clean.json" 2>/dev/null | jq -r '"\(.status):\(.summary.architecture_violations)"')" "pass:0"
+	vc_check "architecture-v024 violations -> >=2 fail" "$([ "$(sh "$C/architecture-tests.sh" --input "$F/architecture-v024/architecture-violations.json" 2>/dev/null | jq '.summary.architecture_violations')" -ge 2 ] && echo yes || echo no)" "yes"
+
+	# --- DAST fixtures + the zap-full explicit-input gap (Lane F task 108) ---
+	vc_check "zap-baseline fixture -> dast_findings=1" "$(sh "$C/zap.sh" --input "$F/dast/zap-baseline.json" 2>/dev/null | jq '.summary.dast_findings')" "1"
+	vc_check "zap-FULL via explicit --input -> dast_findings=2" "$(sh "$C/zap.sh" --input "$F/dast/zap-full.json" 2>/dev/null | jq '.summary.dast_findings')" "2"
+	vc_check "nuclei fixture -> dast_findings=1 (info excluded)" "$(sh "$C/nuclei.sh" --input "$F/dast/nuclei.json" 2>/dev/null | jq '.summary.dast_findings')" "1"
+
+	# --- Workflow hardening (Lane K): EVERY upload step is if: always() (tighter than v0.1.22 check) ---
+	_unguarded=0
+	for _wf in "$ROOT"/templates/workflows/*.yml; do
+		_ups=$(grep -c 'uses: actions/upload-artifact' "$_wf" 2>/dev/null || echo 0)
+		_alw=$(grep -c 'if: always()' "$_wf" 2>/dev/null || echo 0)
+		[ "$_ups" -le "$_alw" ] || { log_error "  $(basename "$_wf"): $_ups uploads but only $_alw if:always()"; _unguarded=$((_unguarded + 1)); }
+	done
+	vc_check "every workflow upload guarded by if: always()" "$_unguarded" "0"
+
+	rm -rf "$_d" "$_b"
+	if [ "$VC_FAILS" -ne 0 ]; then log_error "v024-coverage: $VC_FAILS case(s) failed"; return 1; fi
+	log_info "v024-coverage: OK (dep-check hardening, modes-v024 strict/regulated, IaC/deptrac/arch, DAST+zap-full, all uploads guarded)"
+}
+
+# --- v024-docs: doc-consistency regression (audit-driven) -------------------------------------
+VD_FAILS=0
+vd_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VD_FAILS=$((VD_FAILS + 1)); fi; }
+run_v024_docs() {
+	log_info "v024-docs: changelog/version, Dependency-Check honesty, v1 not-reached, no stray tags, .claude untracked"
+	D="$ROOT/docs"
+	vd_check "CHANGELOG has 0.1.24 entry" "$([ "$(grep -c '0.1.24' "$ROOT/CHANGELOG.md")" -ge 1 ] && echo yes || echo no)" "yes"
+	# Dependency-Check honesty gate (precise, source-of-truth based): the live-evidence registry must
+	# NOT assert Dependency-Check is live-validated, and product-status must mark it attempted/NOT.
+	_overclaim=$(grep -hiE 'dependency-check' "$D/main-gate-live-evidence.md" 2>/dev/null | grep -iE 'live-validated' | grep -viE 'not|attempt|pending' | wc -l | tr -d ' ')
+	vd_check "live-evidence registry does NOT promote Dependency-Check" "$_overclaim" "0"
+	vd_check "product-status marks Dependency-Check attempted/NOT" "$([ "$(grep -iE 'dependency-check' "$D/product-status.md" | grep -ciE 'attempt|NOT live-validated')" -ge 1 ] && echo yes || echo no)" "yes"
+	# v1.0 not reached must be stated in v1-readiness.
+	vd_check "v1-readiness states NOT reached" "$([ "$(grep -ciE 'v1.0 (is )?not (yet )?reach|NOT REACHED' "$D/v1-readiness.md")" -ge 1 ] && echo yes || echo no)" "yes"
+	vd_check "v1-closure-v024 present + linked from v1-readiness" "$([ -f "$D/v1-closure-v024.md" ] && [ "$(grep -c 'v1-closure-v024' "$D/v1-readiness.md")" -ge 1 ] && echo yes || echo no)" "yes"
+	# No stray XML-ish cruft tags in the source-of-truth docs (audit finding C1).
+	_cruft=$(grep -rlE '</(content|invoke)>' "$D"/product-status.md "$D"/roadmap.md "$D"/v1-readiness.md 2>/dev/null | wc -l | tr -d ' ')
+	vd_check "no stray </content>|</invoke> tags in core docs" "$_cruft" "0"
+	# README links the new v0.1.24 product index docs.
+	vd_check "README links product-contract" "$([ "$(grep -c 'product-contract' "$ROOT/README.md")" -ge 1 ] && echo yes || echo no)" "yes"
+	vd_check "no .claude tracked" "$(git -C "$ROOT" ls-files .claude | wc -l | tr -d ' ')" "0"
+	if [ "$VD_FAILS" -ne 0 ]; then log_error "v024-docs: $VD_FAILS case(s) failed"; return 1; fi
+	log_info "v024-docs: OK (changelog, dep-check honesty, v1 not-reached, no cruft tags, .claude untracked)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1511,6 +1636,9 @@ case "$SUB" in
 	v022-fixtures) run_v022_fixtures ;;
 	v023-coverage) run_v023_coverage ;;
 	v023-regression) run_v023_regression ;;
+	v024-collectors) run_v024_collectors ;;
+	v024-coverage) run_v024_coverage ;;
+	v024-docs) run_v024_docs ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1536,13 +1664,16 @@ case "$SUB" in
 		run_v022_fixtures
 		run_v023_coverage
 		run_v023_regression
+		run_v024_collectors
+		run_v024_coverage
+		run_v024_docs
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|all)"
 		exit 2
 		;;
 esac

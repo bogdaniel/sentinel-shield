@@ -1,0 +1,23 @@
+{
+  "advisories": {
+    "symfony/http-kernel": [
+      {
+        "advisoryId": "PKSA-0001",
+        "title": "Remote code execution in HttpKernel",
+        "severity": "critical"
+      }
+    ],
+    "guzzlehttp/guzzle": [
+      {
+        "advisoryId": "PKSA-0002",
+        "title": "Cross-domain cookie leakage",
+        "severity": "high"
+      },
+      {
+        "advisoryId": "PKSA-0003",
+        "title": "Headers leak on redirect",
+        "severity": "moderate"
+      }
+    ]
+  }
+}

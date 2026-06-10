@@ -1,0 +1,12 @@
+{
+  "tool": "kuzushi",
+  "findings": [
+    {
+      "title": "Prompt-injection sink in LLM tool handler",
+      "severity": "medium",
+      "file": "src/Agent/ToolRouter.php",
+      "line": 71,
+      "description": "Untrusted model output is passed to a shell exec without validation."
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "totals": { "errors": 1, "file_errors": 3 },
+  "files": {
+    "src/Service/Billing.php": {
+      "errors": 3,
+      "messages": [
+        { "message": "Method foo() should return int but returns string.", "line": 21 },
+        { "message": "Undefined variable: $bar", "line": 33 },
+        { "message": "Call to an undefined method App\\Billing::charge().", "line": 40 }
+      ]
+    }
+  },
+  "errors": [
+    "Internal error: configuration mismatch"
+  ]
+}

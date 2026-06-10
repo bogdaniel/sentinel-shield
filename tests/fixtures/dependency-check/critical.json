@@ -1,0 +1,26 @@
+{
+  "reportSchema": "1.1",
+  "scanInfo": {
+    "engineVersion": "9.2.0"
+  },
+  "projectInfo": {
+    "name": "critical-severity-fixture",
+    "reportDate": "2026-06-10T00:00:00Z"
+  },
+  "dependencies": [
+    {
+      "isVirtual": false,
+      "fileName": "critical-vuln-lib-4.5.6.jar",
+      "filePath": "/src/critical-vuln-lib-4.5.6.jar",
+      "vulnerabilities": [
+        {
+          "name": "CVE-2026-0002",
+          "severity": "Critical",
+          "cvssv3": {
+            "baseScore": 9.8
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -78,7 +78,6 @@ definition of done, and risks.
 
 **Guiding constraint:** no new scanners, no weakened gates, no claimed maturity without cited
 evidence. Breadth is frozen until depth (live validation) catches up.
-</content>
 
 ## v0.1.18 — main-gate promotions
 CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM promoted to live-validated (zenchron run 27214865086).
@@ -94,6 +93,18 @@ IaC scanners on a repo with `*.tf`. Semgrep image bumped to 1.165.0 (configurabl
 - **Still open:** the single biggest gap is **Dependency-Check live validation** — run the evidence
   workflow on a consumer with a warm NVD cache and cite the artifact in `main-gate-live-evidence.md`.
   Then: Deptrac on a layered project; IaC scanners on a repo with `*.tf`; refine OSV/CodeQL severity.
+
+## v0.1.24 — enterprise production closure
+Fifteen-agent sprint, evidence-driven, no promotions. Dependency-Check live run **attempted for real**
+(evidence workflow pushed to a non-default consumer branch; dispatch blocked by GitHub's
+default-branch-only `workflow_dispatch` rule → no artifact, still NOT live-validated). Added the
+full 34-collector fixture library + `v024-collectors`/`v024-coverage`/`v024-docs` self-test suites;
+per-profile install/sync productization; adoption guides + override examples; strict/regulated +
+DAST/Nuclei/IaC/Deptrac/architecture realism fixtures; supply-chain digests re-verified; doc maturity
+audit (0 contradictions) + cruft/link fixes; `v1-closure-v024.md` (v1.0 NOT reached).
+- **Top of next backlog (v0.1.25):** a maintainer merges the consumer evidence branch to its default
+  branch, dispatches the workflow (45-60 min cold NVD), and cites the real `dependency-check.json` →
+  promote Dependency-Check to live-validated. This is the single biggest remaining v1.0 blocker.
 
 ## v0.1.23 — enterprise readiness burn-down
 Blocker burn-down + evidence prep (no promotions): Dependency-Check live run **attempted** (blocked:

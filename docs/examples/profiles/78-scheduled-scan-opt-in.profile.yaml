@@ -1,0 +1,58 @@
+# Example 78 — Scheduled scan opt-in.
+#
+# Enables the nightly/scheduled scan channel via the third-party supply-chain SAST mode.
+# The scheduled workflow (templates/workflows/sentinel-shield-scheduled.yml) runs deeper /
+# slower tools (e.g. TruffleHog, OpenSSF Scorecard, OWASP Dependency-Check with a warm cache,
+# Grype-fs) off the PR-fast critical path. See docs/scheduled-scans.md.
+#
+# HONESTY: the scheduled gate is `template-only` in docs/product-status.md (not executed by
+# default, not yet live-validated on a consumer). OWASP Dependency-Check in particular is
+# attempted-not-validated and must run nightly with a warm cache, never PR-fast
+# (docs/dependency-check-nightly-strategy.md). Opting in schedules the run; it does not promote
+# the tools' maturity.
+
+project:
+  name: example-scheduled-app
+  type: laravel
+  criticality: high
+  owner: platform-team
+
+profiles:
+  - laravel
+  - react
+  - docker
+
+gates:
+  mode: baseline
+
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    # Scheduled-channel findings are reviewed off the PR path; keep coarse-severity tools
+    # advisory until live-validated for your repo.
+    dependency_policy_violations: true
+    ai_review_findings: false
+
+# Opt in to the scheduled third-party supply-chain scan channel.
+supply_chain:
+  third_party_sast:
+    enabled: true
+    mode: scheduled                    # disabled | report-only | scheduled | strict | regulated
+    paths:
+      - vendor/**
+      - node_modules/**
+    high_confidence_blocking: false    # scheduled is advisory; do not block nightly findings by default
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 90
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

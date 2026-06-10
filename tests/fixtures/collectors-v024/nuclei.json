@@ -1,0 +1,26 @@
+[
+  {
+    "template-id": "CVE-2021-44228",
+    "info": { "name": "Apache Log4j RCE", "severity": "critical" },
+    "host": "https://app.example.com",
+    "matched-at": "https://app.example.com/api"
+  },
+  {
+    "template-id": "exposed-git-config",
+    "info": { "name": "Git Config Exposure", "severity": "high" },
+    "host": "https://app.example.com",
+    "matched-at": "https://app.example.com/.git/config"
+  },
+  {
+    "template-id": "missing-hsts",
+    "info": { "name": "Missing HSTS Header", "severity": "medium" },
+    "host": "https://app.example.com",
+    "matched-at": "https://app.example.com/"
+  },
+  {
+    "template-id": "tech-detect",
+    "info": { "name": "Technology Detection", "severity": "info" },
+    "host": "https://app.example.com",
+    "matched-at": "https://app.example.com/"
+  }
+]

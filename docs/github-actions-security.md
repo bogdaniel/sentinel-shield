@@ -129,11 +129,11 @@ and local (`./`) actions. Remediation: [`remediation/github-actions-sha-pinning.
 Consuming projects install/sync this via `scripts/install-baseline.sh` /
 `scripts/sync-baseline.sh` from a profile manifest (the managed workflow calls the upstream
 runners/adapters/audits). Project-local files (`accepted-risks.json`, `phpstan-baseline.neon`)
-are never overwritten. See [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).
+are never overwritten. See [`docs/profile-driven-adoption.md`](profile-driven-adoption.md).
 
 ## v0.1.12 enterprise scanner matrix
 
 New gated summary keys (style_violations, php_syntax_errors, dependency_policy_violations,
 iac_violations, dast_findings, container_image_violations, repository_health_warnings,
 ai_review_findings) with conservative mode defaults; DAST manual + fail-closed; AI review
-assistive + non-gating by default. See [`docs/enterprise-scanner-matrix.md`](docs/enterprise-scanner-matrix.md).
+assistive + non-gating by default. See [`docs/enterprise-scanner-matrix.md`](enterprise-scanner-matrix.md).

@@ -1,0 +1,21 @@
+[
+  {
+    "filePath": "src/app.tsx",
+    "errorCount": 2,
+    "warningCount": 1,
+    "messages": [
+      { "ruleId": "no-unused-vars", "severity": 2, "message": "'x' is defined but never used", "line": 3 },
+      { "ruleId": "security/detect-object-injection", "severity": 2, "message": "Variable Assigned to Object Injection Sink", "line": 18 },
+      { "ruleId": "no-console", "severity": 1, "message": "Unexpected console statement", "line": 25 }
+    ]
+  },
+  {
+    "filePath": "src/util.ts",
+    "errorCount": 1,
+    "warningCount": 1,
+    "messages": [
+      { "ruleId": "no-unsanitized/property", "severity": 2, "message": "Unsafe assignment to innerHTML", "line": 9 },
+      { "ruleId": "eqeqeq", "severity": 1, "message": "Expected '===' and instead saw '=='", "line": 12 }
+    ]
+  }
+]

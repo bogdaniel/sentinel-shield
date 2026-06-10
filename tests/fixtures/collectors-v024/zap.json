@@ -1,0 +1,15 @@
+{
+  "@version": "2.14.0",
+  "site": [
+    {
+      "@name": "https://app.example.com",
+      "@host": "app.example.com",
+      "alerts": [
+        { "pluginid": "40018", "alert": "SQL Injection", "riskcode": "3", "confidence": "2", "name": "SQL Injection" },
+        { "pluginid": "40012", "alert": "Cross Site Scripting (Reflected)", "riskcode": "3", "confidence": "2", "name": "XSS" },
+        { "pluginid": "10038", "alert": "Content Security Policy Header Not Set", "riskcode": "2", "confidence": "2", "name": "CSP" },
+        { "pluginid": "10020", "alert": "Missing Anti-clickjacking Header", "riskcode": "1", "confidence": "2", "name": "Clickjacking" }
+      ]
+    }
+  ]
+}

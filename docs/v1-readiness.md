@@ -297,5 +297,10 @@ Deptrac on a layered project, IaC scanners on a repo with `*.tf`, and the contro
 (stays `manual`). `v1.0` is declared only when the [`roadmap.md`](roadmap.md) frontier (Phase 3
 live validation and beyond) lands with cited evidence — this document defines that bar; it does
 not assert it is met.
-</content>
-</invoke>
+
+## v0.1.24 closure addendum
+The per-sprint v1.0 closure status — blockers remaining/closed, the test-count / profile / live-evidence
+thresholds, the graduation ladder, and governance — lives in
+[`v1-closure-v024.md`](v1-closure-v024.md). **v1.0 STATUS: NOT REACHED.** The chief remaining blocker
+is **OWASP Dependency-Check live validation** (no real artifact exists; a real run was *attempted* this
+sprint — see [`dependency-check-live-evidence-v024.md`](dependency-check-live-evidence-v024.md)).

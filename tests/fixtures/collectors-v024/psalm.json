@@ -1,0 +1,16 @@
+[
+  {
+    "severity": "error",
+    "type": "InvalidReturnType",
+    "message": "The inferred type 'string' does not match the declared return type 'int'",
+    "file_name": "src/Math.php",
+    "line_from": 14
+  },
+  {
+    "severity": "error",
+    "type": "UndefinedMethod",
+    "message": "Method App\\User::nope does not exist",
+    "file_name": "src/User.php",
+    "line_from": 52
+  }
+]

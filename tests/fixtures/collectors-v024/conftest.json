@@ -1,0 +1,19 @@
+[
+  {
+    "filename": "deployment.yaml",
+    "namespace": "main",
+    "successes": 3,
+    "failures": [
+      { "msg": "Containers must not run as root", "metadata": { "rule": "deny-root" } },
+      { "msg": "Containers must set resource limits", "metadata": { "rule": "require-limits" } }
+    ]
+  },
+  {
+    "filename": "service.yaml",
+    "namespace": "main",
+    "successes": 2,
+    "failures": [
+      { "msg": "Service must not use NodePort", "metadata": { "rule": "deny-nodeport" } }
+    ]
+  }
+]

@@ -1,0 +1,55 @@
+# Sentinel Shield v0.1.24 test fixture — valid Deptrac config (layers + ruleset).
+#
+# Models a layered Clean Architecture for a PHP app with code under ./src.
+# Four layers (Domain, Application, Infrastructure, Presentation) and a ruleset
+# that allows only inward dependencies. This is the config Deptrac analyses; it
+# is NOT the JSON report the collector consumes (see deptrac-clean.json /
+# deptrac-violations.json for collector inputs).
+#
+# Run:  vendor/bin/deptrac analyse --config-file=deptrac.yaml
+# Requires:  composer require --dev qossmic/deptrac-shim
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Domain\\.*#'
+
+    - name: Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Application\\.*#'
+
+    - name: Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Infrastructure\\.*#'
+
+    - name: Presentation
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\(Http|Controller)\\.*#'
+
+  ruleset:
+    # Domain is the core: it may depend on nothing internal.
+    Domain: ~
+
+    # Application orchestrates use cases; it may depend on Domain only.
+    Application:
+      - Domain
+
+    # Infrastructure implements ports defined in Domain/Application.
+    Infrastructure:
+      - Domain
+      - Application
+
+    # Presentation drives use cases; it must not reach Infrastructure/Domain
+    # directly.
+    Presentation:
+      - Application
+
+  # Surface unassigned code so coverage gaps remain visible.
+  skip_violations: {}

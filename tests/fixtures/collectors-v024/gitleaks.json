@@ -1,0 +1,20 @@
+{
+  "findings": [
+    {
+      "RuleID": "generic-api-key",
+      "Description": "Detected a generic API key",
+      "File": "src/config/secrets.php",
+      "StartLine": 12,
+      "Secret": "REDACTED",
+      "Match": "api_key = \"REDACTED\""
+    },
+    {
+      "RuleID": "aws-access-token",
+      "Description": "Detected an AWS access token",
+      "File": ".env",
+      "StartLine": 3,
+      "Secret": "REDACTED",
+      "Match": "AWS_ACCESS_KEY_ID=REDACTED"
+    }
+  ]
+}

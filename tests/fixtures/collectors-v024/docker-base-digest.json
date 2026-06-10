@@ -1,0 +1,16 @@
+[
+  {
+    "file": "./Dockerfile",
+    "line": 1,
+    "image": "php:8.3-fpm-alpine",
+    "code": "SS_DOCKER_BASE_DIGEST",
+    "reason": "base image 'php:8.3-fpm-alpine' uses a mutable tag, not an @sha256 digest"
+  },
+  {
+    "file": "./docker/nginx/Dockerfile",
+    "line": 1,
+    "image": "nginx",
+    "code": "SS_DOCKER_BASE_DIGEST",
+    "reason": "base image 'nginx' has no tag/digest (implicit :latest)"
+  }
+]

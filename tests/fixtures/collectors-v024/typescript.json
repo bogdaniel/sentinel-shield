@@ -1,0 +1,5 @@
+{
+  "errors": 5,
+  "tool": "tsc",
+  "note": "normalized tsc --noEmit error count"
+}

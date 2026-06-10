@@ -6,6 +6,40 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.24] — Enterprise Production Closure Sprint
+
+Fifteen-agent parallel sprint (14 worktree-isolated lanes A–N + release captain) merged via
+`release/v024-integration`. No new scanners; no gates weakened; no findings suppressed; no fake
+reports. **OWASP Dependency-Check remains attempted, NOT live-validated.** **v1.0 NOT reached.** No
+consuming-project application code modified.
+
+### Dependency-Check live-evidence attempt (real, honest)
+A real attempt was made: an evidence-only workflow (SS v0.1.23 full-SHA pin, monthly NVD cache,
+foreground, `if: always()` upload) was pushed to a **non-default branch** of consumer
+`bogdaniel/zenchron-tools` (workflow-only, no app code, not merged to main). Dispatch was blocked
+because GitHub only registers `workflow_dispatch` on the default branch — **no artifact produced,
+nothing promoted, nothing fabricated** (see `docs/dependency-check-live-evidence-v024.md`).
+
+### Added (14 lanes)
+- Dep-check hardening fixtures (high/critical/empty/malformed) + `docs/dependency-check-hardening.md`.
+- `docs/install-sync-productization.md` + `docs/install-sync-quickstart.md` (per-profile matrix, rollback, troubleshooting).
+- `docs/profile-adoption-guide.md` + 8 `docs/examples/profiles/*.yaml` override examples; profile support matrix.
+- `tests/fixtures/modes-v024/*` (multi/clean/dast/repo-health) + `docs/strict-regulated-execution.md`.
+- `tests/fixtures/dast/{zap-baseline,zap-full,nuclei}.json` + `docs/dast-zap-readiness.md` + `docs/nuclei-readiness.md` + `templates/nuclei-target-allowlist.md`.
+- `tests/fixtures/iac-v024/*` + `docs/iac-scanner-realism.md`; `tests/fixtures/{deptrac-v024,architecture-v024}/*` + `docs/architecture-deptrac-realism.md`.
+- `docs/supply-chain-reproducibility-v024.md` (all 3 scanner digests re-verified live = MATCH; dep-check `latest` resolved but NOT pinned).
+- `docs/workflow-hardening-v024.md` + `docs/workflow-template-adoption.md`; `if: always()` added to all 8 combined-template uploads.
+- `docs/v1-closure-v024.md` (v1.0 NOT reached; thresholds + graduation ladder); `docs/maturity-audit-v024.md` (0 maturity contradictions; broken-link + cruft findings).
+- **Complete 34-collector fixture library** `tests/fixtures/collectors-v024/*` + INDEX.
+- Self-test suites **`v024-collectors`**, **`v024-coverage`**, **`v024-docs`**; `self-test all` PASS.
+
+### Changed / fixed
+- Removed stray `</content>`/`</invoke>` cruft from product-status/roadmap/v1-readiness; fixed 6 broken doc links (audit-driven).
+- Captain docs: CHANGELOG, product-status, roadmap, product-readiness-checklist, v1-readiness (closure link).
+
+### Not validated (honest)
+- Dependency-Check: attempted, NOT live-validated (no artifact). DAST/Nuclei manual/fail-closed (never enabled; Nuclei template-path guard noted as future). IaC/Deptrac/architecture remain experimental/only-if-configured. No v1.0 claim.
+
 ## [0.1.23] — Enterprise Readiness Burn-Down Sprint
 
 Ten-lane parallel sprint (9 worktree-isolated agent lanes + release captain) merged via

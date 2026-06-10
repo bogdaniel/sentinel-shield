@@ -1,0 +1,7 @@
+{
+  "files": [
+    { "name": "src/Controller/HomeController.php", "appliedCheckers": ["braces", "no_unused_imports"] },
+    { "name": "src/Service/Mailer.php", "appliedCheckers": ["single_quote"] },
+    { "name": "src/Model/User.php", "appliedCheckers": ["binary_operator_spaces"] }
+  ]
+}

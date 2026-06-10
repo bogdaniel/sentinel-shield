@@ -1,0 +1,10 @@
+{
+  "Report": {
+    "Violations": 2,
+    "Skipped_violations": 0,
+    "Uncovered": 0,
+    "Allowed": 124,
+    "Warnings": 0,
+    "Errors": 0
+  }
+}
