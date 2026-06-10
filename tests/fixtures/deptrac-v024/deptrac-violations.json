@@ -1,0 +1,38 @@
+{
+  "Report": {
+    "Violations": 3,
+    "Skipped_violations": 0,
+    "Uncovered": 1,
+    "Allowed": 9,
+    "Warnings": 0,
+    "Errors": 0
+  },
+  "files": {
+    "src/Domain/Order/Order.php": {
+      "violations": [
+        {
+          "message": "App\\Domain\\Order\\Order must not depend on App\\Infrastructure\\Persistence\\DoctrineOrderRepository (Domain on Infrastructure)",
+          "line": 14,
+          "dependerLayer": "Domain",
+          "dependentLayer": "Infrastructure"
+        }
+      ]
+    },
+    "src/Presentation/Http/CheckoutController.php": {
+      "violations": [
+        {
+          "message": "App\\Http\\CheckoutController must not depend on App\\Infrastructure\\Persistence\\DoctrineOrderRepository (Presentation on Infrastructure)",
+          "line": 27,
+          "dependerLayer": "Presentation",
+          "dependentLayer": "Infrastructure"
+        },
+        {
+          "message": "App\\Http\\CheckoutController must not depend on App\\Domain\\Order\\Order (Presentation on Domain)",
+          "line": 31,
+          "dependerLayer": "Presentation",
+          "dependentLayer": "Domain"
+        }
+      ]
+    }
+  }
+}
