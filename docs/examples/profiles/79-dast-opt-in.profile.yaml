@@ -1,0 +1,54 @@
+# Example 79 — DAST opt-in (commented; fail-closed).
+#
+# DAST (ZAP/Nuclei) is `manual` in docs/product-status.md: it runs ONLY on explicit operator
+# action against an approved target with an allowlist, and is FAIL-CLOSED — if no valid target +
+# allowlist is supplied, the DAST job refuses to run rather than passing silently. It is never a
+# default gate and has never been live-run end-to-end. See docs/dast-policy.md and the workflow
+# templates/workflows/sentinel-shield-dast.yml.
+#
+# To gate on DAST you must (1) follow the controlled-pilot approval (docs/dast-policy.md), then
+# (2) UNCOMMENT the dast block below and set dast_findings: true. Leaving it commented keeps DAST
+# off — the safe default.
+
+project:
+  name: example-dast-pilot
+  type: laravel
+  criticality: high
+  owner: security-team
+
+profiles:
+  - laravel
+  - react
+  - docker
+
+gates:
+  mode: strict
+
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    # dast_findings stays false unless you have completed the DAST approval and supplied a
+    # target + allowlist. The DAST job is fail-closed: no allowlist => it refuses to run.
+    dast_findings: false               # set true ONLY after docs/dast-policy.md approval
+    ai_review_findings: false
+
+# --- DAST opt-in (COMMENTED — uncomment only after approval; fail-closed without a target) ---
+# dast:
+#   enabled: true
+#   target: https://staging.example.internal     # approved, non-production target ONLY
+#   allowlist: docs/security/nuclei-target-allowlist.md
+#   # With no target/allowlist the job fail-closes (does NOT pass). docs/dast-policy.md.
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 60
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json

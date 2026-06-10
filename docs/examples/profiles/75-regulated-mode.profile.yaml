@@ -1,0 +1,70 @@
+# Example 75 — Regulated mode.
+#
+# gates.mode: regulated. Use ONLY when audit evidence is required and after the regulated
+# pre-flight (docs/regulated-mode-readiness.md). Regulated adds dast_findings +
+# repository_health_warnings on top of strict, requires SBOM + release evidence, and blocks all
+# third-party supply-chain channels. Several gates it can enable are still immature
+# (OSV/CodeQL coarse severity, Dependency-Check attempted-not-validated, DAST manual) — read the
+# readiness doc before relying on them. ai_review_findings stays NON-GATING even here unless you
+# deliberately set it true. See docs/gate-resolution.md.
+
+project:
+  name: example-regulated-app
+  type: symfony
+  criticality: critical
+  owner: security-team
+
+profiles:
+  - symfony
+  - docker
+
+gates:
+  mode: regulated
+
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    medium_vulnerabilities: true       # regulated typically blocks medium too
+    architecture_violations: true
+    type_errors: true
+    test_failures: true
+    unsafe_docker: true
+    unsafe_github_actions: true
+    missing_sbom: true                 # required for audit
+    missing_release_evidence: true     # required for audit
+    expired_exceptions: true
+    style_violations: true
+    iac_violations: true
+    container_image_violations: true
+    php_syntax_errors: true
+    dependency_policy_violations: true
+    third_party_suspicious_code: true
+    third_party_install_script_risk: true
+    third_party_obfuscation: true
+    third_party_network_behavior: true
+    dast_findings: true                # regulated adds DAST gating — DAST is still manual/fail-closed (docs/dast-policy.md)
+    repository_health_warnings: true   # regulated adds this
+    ai_review_findings: false          # assistive only; stays non-gating (docs/ai-review-policy.md)
+
+supply_chain:
+  third_party_sast:
+    enabled: true
+    mode: regulated
+    paths:
+      - vendor/**
+      - node_modules/**
+    high_confidence_blocking: true
+
+exceptions:
+  allowed: true
+  require_owner: true
+  require_expiry_date: true
+  max_expiry_days: 30
+
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - env
+    - json
