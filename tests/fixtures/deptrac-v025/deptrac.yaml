@@ -1,0 +1,44 @@
+# Sentinel Shield — Deptrac config for the v0.1.25 layered fixture project.
+#
+# Mirrors profiles/symfony/deptrac.yaml (src/, inward-only layered ruleset) so a
+# real `deptrac analyse` run produces a meaningful report. The fixture deliberately
+# contains one boundary breach (App\Domain\Order\Order -> Infrastructure).
+#
+# Run (real):
+#   deptrac analyse --config-file=deptrac.yaml --report-type=json --output=deptrac.json
+#
+# Layout:
+#   App\Domain\*          domain layer (entities, value objects, ports)
+#   App\Application\*     use-case / command handlers
+#   App\Infrastructure\*  adapters (Doctrine repositories, etc.)
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Domain\\.*#'
+
+    - name: Application
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Application\\.*#'
+
+    - name: Infrastructure
+      collectors:
+        - type: classNameRegex
+          value: '#^App\\Infrastructure\\.*#'
+
+  ruleset:
+    # Domain depends on nothing internal — the breach in Order.php violates this.
+    Domain: ~
+    # Application may depend on Domain only.
+    Application:
+      - Domain
+    # Infrastructure implements ports declared in Domain.
+    Infrastructure:
+      - Domain
+
+  skip_violations: {}
