@@ -1,0 +1,54 @@
+{
+  "@programName": "ZAP",
+  "@version": "2.15.0",
+  "site": [
+    {
+      "@name": "https://staging.example.test",
+      "@host": "staging.example.test",
+      "@port": "443",
+      "@ssl": "true",
+      "alerts": [
+        {
+          "pluginid": "40018",
+          "alertRef": "40018",
+          "alert": "SQL Injection",
+          "name": "SQL Injection",
+          "riskcode": "3",
+          "confidence": "3",
+          "riskdesc": "High (High)",
+          "count": "1"
+        },
+        {
+          "pluginid": "40003",
+          "alertRef": "40003",
+          "alert": "CRLF Injection",
+          "name": "CRLF Injection",
+          "riskcode": "2",
+          "confidence": "2",
+          "riskdesc": "Medium (Medium)",
+          "count": "1"
+        },
+        {
+          "pluginid": "10096",
+          "alertRef": "10096",
+          "alert": "Timestamp Disclosure",
+          "name": "Timestamp Disclosure",
+          "riskcode": "1",
+          "confidence": "1",
+          "riskdesc": "Low (Low)",
+          "count": "1"
+        },
+        {
+          "pluginid": "10015",
+          "alertRef": "10015",
+          "alert": "Informational Alert",
+          "name": "Informational Alert",
+          "riskcode": "0",
+          "confidence": "1",
+          "riskdesc": "Informational (Low)",
+          "count": "1"
+        }
+      ]
+    }
+  ]
+}
