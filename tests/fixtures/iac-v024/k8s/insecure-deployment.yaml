@@ -1,0 +1,32 @@
+# Sentinel Shield v0.1.24 IaC fixture (intentionally insecure).
+# Kubernetes Deployment with a privileged container, root user, and no resource
+# limits. Used to exercise IaC scanners (checkov/conftest) — NOT for deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-shield-fixture-insecure
+  labels:
+    app: insecure-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insecure-fixture
+  template:
+    metadata:
+      labels:
+        app: insecure-fixture
+    spec:
+      hostNetwork: true # FINDING: shares host network namespace
+      hostPID: true     # FINDING: shares host PID namespace
+      containers:
+        - name: app
+          image: nginx:latest # FINDING: mutable :latest tag
+          securityContext:
+            privileged: true              # FINDING: privileged container
+            runAsNonRoot: false           # FINDING: runs as root
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+          # FINDING: no resources.limits / resources.requests set
+          ports:
+            - containerPort: 80

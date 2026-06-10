@@ -1,0 +1,30 @@
+[
+  {
+    "filename": "k8s/insecure-deployment.yaml",
+    "namespace": "main",
+    "successes": 0,
+    "failures": [
+      {
+        "msg": "Container app must not run in privileged mode",
+        "metadata": {
+          "policy": "deny_privileged",
+          "details": "securityContext.privileged is true"
+        }
+      },
+      {
+        "msg": "Container app must set resources.limits (cpu and memory)",
+        "metadata": {
+          "policy": "deny_no_limits",
+          "details": "resources.limits is unset"
+        }
+      },
+      {
+        "msg": "Pod must not use hostNetwork",
+        "metadata": {
+          "policy": "deny_host_network",
+          "details": "spec.template.spec.hostNetwork is true"
+        }
+      }
+    ]
+  }
+]

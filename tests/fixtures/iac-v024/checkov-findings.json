@@ -1,0 +1,39 @@
+{
+  "check_type": "terraform",
+  "summary": {
+    "passed": 7,
+    "failed": 3,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "resource_count": 3
+  },
+  "results": {
+    "passed_checks": [],
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_20",
+        "check_name": "S3 Bucket has an ACL defined which allows public READ access",
+        "resource": "aws_s3_bucket.public_data",
+        "severity": "HIGH",
+        "file_path": "/terraform/insecure.tf",
+        "file_line_range": [13, 16]
+      },
+      {
+        "check_id": "CKV_AWS_53",
+        "check_name": "Ensure S3 bucket has block public ACLS enabled",
+        "resource": "aws_s3_bucket_public_access_block.public_data",
+        "severity": "HIGH",
+        "file_path": "/terraform/insecure.tf",
+        "file_line_range": [18, 24]
+      },
+      {
+        "check_id": "CKV_AWS_24",
+        "check_name": "Ensure no security groups allow ingress from 0.0.0.0:0 to port 22",
+        "resource": "aws_security_group.open_ssh",
+        "severity": "CRITICAL",
+        "file_path": "/terraform/insecure.tf",
+        "file_line_range": [27, 45]
+      }
+    ]
+  }
+}
