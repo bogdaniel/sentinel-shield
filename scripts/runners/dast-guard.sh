@@ -37,3 +37,42 @@ ss_dast_check() {
 	echo "[sentinel-shield][dast] target host '$_host' allowlisted; proceeding." >&2
 	return 0
 }
+
+# ss_nuclei_template_check — code-enforced controlled template-path guard (v0.1.25).
+# Independent of ss_dast_check (which zap runners depend on; do NOT fold this in there).
+# Enforces SENTINEL_SHIELD_NUCLEI_TEMPLATES (required curated template dir/file path):
+#   - MISSING (unset/empty)                                  -> return 3
+#   - PATH TRAVERSAL ('..' anywhere in the path)             -> return 3
+#   - REMOTE URL (http://, https://, git@) w/o explicit
+#     SENTINEL_SHIELD_NUCLEI_ALLOW_REMOTE=1                  -> return 3
+#   - PATH ABSENT on disk                                    -> return 3
+# Returns 0 only when a local, non-traversing template path exists on disk (or an
+# explicitly-allowed remote URL is supplied).
+ss_nuclei_template_check() {
+	_tpl="${SENTINEL_SHIELD_NUCLEI_TEMPLATES:-}"
+	_allow_remote="${SENTINEL_SHIELD_NUCLEI_ALLOW_REMOTE:-}"
+	if [ -z "$_tpl" ]; then
+		echo "[sentinel-shield][dast] SENTINEL_SHIELD_NUCLEI_TEMPLATES not set; FAIL CLOSED (a curated template path is required for a controlled run)." >&2
+		return 3
+	fi
+	case "$_tpl" in
+		*..*)
+			echo "[sentinel-shield][dast] template path '$_tpl' contains '..' (path traversal); FAIL CLOSED." >&2
+			return 3 ;;
+	esac
+	case "$_tpl" in
+		http://*|https://*|git@*)
+			if [ "$_allow_remote" = "1" ]; then
+				echo "[sentinel-shield][dast] remote template source '$_tpl' explicitly allowed (SENTINEL_SHIELD_NUCLEI_ALLOW_REMOTE=1); proceeding." >&2
+				return 0
+			fi
+			echo "[sentinel-shield][dast] template path '$_tpl' is a remote URL; FAIL CLOSED (set SENTINEL_SHIELD_NUCLEI_ALLOW_REMOTE=1 to explicitly allow)." >&2
+			return 3 ;;
+	esac
+	if [ ! -e "$_tpl" ]; then
+		echo "[sentinel-shield][dast] template path '$_tpl' does not exist on disk; FAIL CLOSED." >&2
+		return 3
+	fi
+	echo "[sentinel-shield][dast] curated template path '$_tpl' validated; proceeding." >&2
+	return 0
+}
