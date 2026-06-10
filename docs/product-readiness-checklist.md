@@ -79,6 +79,18 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 open frontier is **Phase 3 — live validation of main-gate tools**, currently `blocked` on a
 dispatchable validation strategy. Do not read a `partial`/`blocked` item as production-ready.
 
+## v0.1.24 — enterprise production closure (status update)
+- [x] `done` — Complete 34-collector fixture library + `v024-collectors`/`v024-coverage`/`v024-docs` self-test suites.
+- [x] `done` — Per-profile install/sync productization matrix + quickstart; profile adoption guides + mode/onboarding override examples.
+- [x] `done` — Strict/regulated execution fixtures enforced (multi→strict fails/baseline passes; dast→regulated fails/strict passes; clean→all pass).
+- [x] `done` — DAST (ZAP baseline/full incl. explicit-input gap test) + Nuclei + IaC (tf/k8s/compose) + Deptrac + architecture realism fixtures with tested collector mappings.
+- [x] `done` — Supply-chain: 3 scanner digests re-verified live (MATCH); reproducibility/update/rollback docs.
+- [x] `done` — Workflow hardening: every template upload guarded by `if: always()` (self-test enforced); adoption docs.
+- [x] `done` — Doc maturity audit (0 contradictions); stray cruft tags + 6 broken links fixed.
+- [x] `done` — `v1-closure-v024.md` (thresholds, graduation ladder, governance).
+- [ ] `blocked` — **Dependency-Check live validation**: real run **attempted** (evidence workflow pushed to a non-default consumer branch; dispatch blocked by default-branch-only rule); no artifact. **Still attempted, NOT live-validated** — chief v1.0 blocker.
+- [ ] `not-reached` — **v1.0**: explicitly NOT reached.
+
 ## v0.1.23 — enterprise readiness burn-down (status update)
 - [x] `done` — v1.0 readiness definition ([`v1-readiness.md`](v1-readiness.md)) + product contract.
 - [x] `done` — Strict/regulated gate-promotion policy + 24-gate readiness matrix (enforced by `self-test v023-coverage`).

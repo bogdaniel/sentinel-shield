@@ -137,8 +137,6 @@ output). To promote: run on a consumer that configures them and cite the run.
 6. Use `regulated` only when audit evidence is required.
 
 See [`roadmap.md`](roadmap.md) and [`product-readiness-checklist.md`](product-readiness-checklist.md).
-</content>
-</invoke>
 
 ## v0.1.19 — main-gate execution hardening (no promotions)
 Grype (SBOM-first/fs + container), OWASP Dependency-Check (disabled-default, cache, nightly),
@@ -163,6 +161,22 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.24 — enterprise production closure (no promotions)
+Fifteen-agent sprint. No maturity promotions; blocker burn-down + evidence depth:
+- **Dependency-Check:** real live-evidence ATTEMPT — evidence workflow pushed to a non-default
+  consumer branch; dispatch blocked (workflow_dispatch needs default branch); **no artifact →
+  still attempted, NOT live-validated.** See `dependency-check-live-evidence-v024.md`.
+- **Self-test:** grown with `v024-collectors` (full 34-collector fixture library iterated),
+  `v024-coverage` (dep-check hardening, modes-v024 strict/regulated enforcement, IaC/deptrac/arch,
+  DAST incl. the zap-full explicit-input gap, every workflow upload guarded), `v024-docs` (doc honesty).
+- **Adoption:** per-profile install/sync productization matrix + quickstart; profile adoption guides +
+  override examples for all 5 stacks + every mode.
+- **Realism fixtures:** strict/regulated, ZAP baseline/full, Nuclei, IaC (tf/k8s/compose +
+  checkov/conftest/terrascan), Deptrac, architecture — collector mappings tested (experimental/manual unchanged).
+- **Supply-chain:** all 3 scanner digests re-verified live = MATCH; reproducibility/update/rollback.
+- **Docs hygiene:** maturity audit found **0 contradictions**; fixed stray cruft tags + 6 broken links.
+- **v1.0:** `v1-closure-v024.md` — explicitly **NOT reached**; Dependency-Check live validation is the chief blocker.
+
 ## v0.1.23 — enterprise readiness burn-down (no promotions)
 Ten-lane sprint. No maturity promotions; blocker burn-down + evidence prep:
 - **Dependency-Check:** real consumer run **attempted** (gh auth + network confirmed) — blocked

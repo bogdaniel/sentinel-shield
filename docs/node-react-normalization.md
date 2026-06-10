@@ -83,7 +83,7 @@ The `tests` collector expects:
 
 at `reports/raw/tests.json`. Sentinel Shield does **not** run your test runner.
 Produce a JSON report, then normalize it — example helper:
-[`examples/laravel-react-docker/scripts/sentinel/vitest-to-tests-json.mjs`](../examples/laravel-react-docker/scripts/sentinel/vitest-to-tests-json.mjs).
+[`scripts/adapters/vitest-to-tests-json.mjs`](../scripts/adapters/vitest-to-tests-json.mjs).
 
 ```sh
 # Vitest
