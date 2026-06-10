@@ -1671,6 +1671,105 @@ run_v025_live() {
 	log_info "v025-live: OK (real Checkov/Grype/Deptrac artifacts, NVD-429 evidence, zap-full fix, nuclei guard, regulated, workflow rules)"
 }
 
+# --- v0.1.26: Dependency-Check NVD-key plumbing (leak-safe) + strict consumer evidence ---
+V26_FAILS=0
+dc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V26_FAILS=$((V26_FAILS + 1)); fi; }
+
+run_v026_dependency_check() {
+	log_info "v026: Dependency-Check NVD API-key plumbing (leak-safe) + strict consumer evidence"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
+	_d=$(mktemp -d)
+
+	# (53) REAL NVD-backed artifact (run 2026-06-10, key-authenticated, 5 deps) parses clean.
+	dc_check "(53) REAL dependency-check artifact -> pass:0/0/0" \
+		"$(sh "$C/dependency-check.sh" --input "$F/live-evidence/dependency-check-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.critical_vulnerabilities)/\(.summary.high_vulnerabilities)/\(.summary.medium_vulnerabilities)"')" \
+		"pass:0/0/0"
+	# (53) real-like vulnerabilities still map (regression guard on existing fixtures).
+	dc_check "(53) dep-check critical fixture -> critical>=1" \
+		"$([ "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/critical.json" 2>/dev/null | jq '.summary.critical_vulnerabilities')" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# Fake dependency-check binary: records argv (minus --out value), writes $SS_T_JSON to --out, exits $SS_T_RC.
+	_bin="$_d/bin"; mkdir -p "$_bin"
+	cat > "$_bin/dependency-check" <<'STUB'
+#!/bin/sh
+out=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--out) out="$2"; shift 2 ;;
+		*) printf '%s\n' "$1" >> "$SS_T_ARGS"; shift ;;
+	esac
+done
+[ -n "${SS_T_JSON:-}" ] && printf '%s' "$SS_T_JSON" > "$out"
+exit "${SS_T_RC:-0}"
+STUB
+	chmod +x "$_bin/dependency-check"
+
+	# (51,55) key set + tool exits NON-ZERO with valid JSON -> report PRESERVED; key never logged; key OFF argv.
+	SS_T_ARGS="$_d/argv.txt"; : > "$SS_T_ARGS"
+	if out=$(PATH="$_bin:$PATH" SS_T_ARGS="$SS_T_ARGS" SS_T_JSON='{"dependencies":[{"vulnerabilities":[{"severity":"HIGH"}]}]}' SS_T_RC=1 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY=FAKEKEY-DEADBEEF \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c1" \
+		sh "$A" "$_d/out1.json" 2>&1); then _rc=0; else _rc=$?; fi
+	dc_check "(55) non-zero exit + valid JSON -> report preserved" "$([ -s "$_d/out1.json" ] && echo yes || echo no)" "yes"
+	dc_check "(55) non-zero exit + valid JSON -> wrapper exit 0" "$_rc" "0"
+	dc_check "(51) NVD key NEVER appears in logs" "$(printf '%s' "$out" | grep -c 'FAKEKEY-DEADBEEF')" "0"
+	dc_check "(51) 'key redacted' notice present" "$(printf '%s' "$out" | grep -c 'key redacted')" "1"
+	dc_check "(51) NVD key NEVER on the command line (argv)" "$(grep -c 'FAKEKEY-DEADBEEF' "$SS_T_ARGS")" "0"
+	dc_check "(51) key passed via --propertyfile instead" "$(grep -c -- '--propertyfile' "$SS_T_ARGS")" "1"
+
+	# (55b) tool exits non-zero WITHOUT valid JSON -> discarded, unavailable (NEVER fake-clean).
+	if out=$(PATH="$_bin:$PATH" SS_T_ARGS="$_d/argv2.txt" SS_T_JSON='not json' SS_T_RC=1 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c1b" \
+		sh "$A" "$_d/out1b.json" 2>&1); then _rc=0; else _rc=$?; fi
+	dc_check "(55b) invalid JSON -> NO report (no fake-clean)" "$([ -f "$_d/out1b.json" ] && echo present || echo absent)" "absent"
+
+	# (54) MODE=enabled + NO key + NO binary + NO image -> unavailable, NO report (not fake-clean).
+	if out=$(PATH="/usr/bin:/bin" \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE='' \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c2" \
+		sh "$A" "$_d/out2.json" 2>&1); then _rc=0; else _rc=$?; fi
+	dc_check "(54) no key/binary/image -> unavailable exit 0" "$_rc" "0"
+	dc_check "(54) no key/binary/image -> NO fake-clean report" "$([ -f "$_d/out2.json" ] && echo present || echo absent)" "absent"
+	dc_check "(54) 'no NVD API key' notice present" "$(printf '%s' "$out" | grep -c 'no NVD API key')" "1"
+
+	# Temp secret dir is always cleaned up (no propertyfile left behind).
+	dc_check "secret propertyfile dir cleaned up" "$(find "$_d" -name 'dependency-check.properties' 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+	# (56) strict consumer evidence: baseline PASS / strict FAIL on medium+style (controlled fixture).
+	_sd=$(mktemp -d); mkdir -p "$_sd/b" "$_sd/s"
+	jq '.summary.medium_vulnerabilities=1 | .summary.style_violations=1' templates/security-summary.example.json > "$_sd/summary.json"
+	sh scripts/resolve-gates.sh --mode baseline --output-dir "$_sd/b" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_sd/b/sentinel-shield-gates.env" --summary "$_sd/summary.json" --output-dir "$_sd/b" --format json >/dev/null 2>&1; then _rb=0; else _rb=$?; fi
+	dc_check "(56) baseline + medium+style -> PASS" "$_rb" "0"
+	sh scripts/resolve-gates.sh --mode strict --output-dir "$_sd/s" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_sd/s/sentinel-shield-gates.env" --summary "$_sd/summary.json" --output-dir "$_sd/s" --format json >/dev/null 2>&1; then _rs=0; else _rs=$?; fi
+	dc_check "(56) strict + medium+style -> FAIL" "$_rs" "1"
+	dc_check "(56) strict failed_gates = medium+style" "$(jq -rc '[.failed_gates[]]|sort|join(",")' "$_sd/s/sentinel-shield-enforcement.json")" "medium_vulnerabilities,style_violations"
+	rm -rf "$_sd"
+
+	# (57) Regulated mode unchanged by v026 (still gates release-evidence).
+	mkdir -p "$_d/reg"; sh scripts/resolve-gates.sh --mode regulated --output-dir "$_d/reg" --format env >/dev/null 2>&1
+	dc_check "(57) regulated still gates missing_release_evidence" "$(grep -c 'FAIL_ON_MISSING_RELEASE_EVIDENCE=true' "$_d/reg/sentinel-shield-gates.env")" "1"
+
+	# (52) env var documented in the audit script and in docs.
+	dc_check "(52) audit script references NVD key env var" "$([ "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	dc_check "(52) docs document NVD key env var" "$(grep -rqs 'SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$ROOT/docs" && echo yes || echo no)" "yes"
+
+	# (58,59) evidence + v1 docs record Dependency-Check status.
+	dc_check "(58) live-evidence doc records v0.1.26 Dependency-Check live artifact" "$(grep -qs 'v0.1.26 — Dependency-Check FIRST REAL ARTIFACT' "$ROOT/docs/main-gate-live-evidence.md" && echo yes || echo no)" "yes"
+	dc_check "(59) v1-readiness records Dependency-Check" "$(grep -qs 'Dependency-Check' "$ROOT/docs/v1-readiness.md" && echo yes || echo no)" "yes"
+
+	# (60) local agent metadata is never tracked.
+	dc_check "(60) no .claude/ tracked in git" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	rm -rf "$_d"
+	if [ "$V26_FAILS" -ne 0 ]; then log_error "v026: $V26_FAILS case(s) failed"; return 1; fi
+	log_info "v026: OK (real NVD-backed artifact, leak-safe key plumbing, preserve-on-nonzero, no-fake-clean, strict consumer evidence)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1700,6 +1799,7 @@ case "$SUB" in
 	v024-coverage) run_v024_coverage ;;
 	v024-docs) run_v024_docs ;;
 	v025-live) run_v025_live ;;
+	v026-live) run_v026_dependency_check ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1729,13 +1829,14 @@ case "$SUB" in
 		run_v024_coverage
 		run_v024_docs
 		run_v025_live
+		run_v026_dependency_check
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|all)"
 		exit 2
 		;;
 esac
