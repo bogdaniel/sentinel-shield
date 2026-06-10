@@ -1,0 +1,7 @@
+{
+  "errors": 2,
+  "files": [
+    { "file": "src/Broken.php", "message": "syntax error, unexpected '}' on line 18" },
+    { "file": "src/AlsoBroken.php", "message": "syntax error, unexpected end of file" }
+  ]
+}

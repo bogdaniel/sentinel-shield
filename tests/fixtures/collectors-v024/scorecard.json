@@ -1,0 +1,13 @@
+{
+  "date": "2026-06-10",
+  "repo": { "name": "github.com/example/app" },
+  "score": 6.3,
+  "checks": [
+    { "name": "Branch-Protection", "score": 2 },
+    { "name": "Token-Permissions", "score": 0 },
+    { "name": "Pinned-Dependencies", "score": 4 },
+    { "name": "Maintained", "score": 9 },
+    { "name": "License", "score": 10 },
+    { "name": "Dangerous-Workflow", "score": -1 }
+  ]
+}

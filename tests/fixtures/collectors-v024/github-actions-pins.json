@@ -1,0 +1,23 @@
+[
+  {
+    "file": ".github/workflows/ci.yml",
+    "line": 12,
+    "type": "action",
+    "ref": "actions/checkout@v4",
+    "reason": "action ref '@v4' is a tag/branch, not a full 40-char commit SHA"
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "line": 20,
+    "type": "action",
+    "ref": "actions/setup-node",
+    "reason": "action ref has no @version (defaults to a moving branch)"
+  },
+  {
+    "file": ".github/workflows/release.yml",
+    "line": 8,
+    "type": "image",
+    "ref": "docker://node:20",
+    "reason": "docker:// image not pinned by @sha256 digest"
+  }
+]

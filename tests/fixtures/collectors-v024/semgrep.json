@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "check_id": "php.lang.security.injection.sql.sql-injection",
+      "path": "src/Repository/UserRepository.php",
+      "start": { "line": 42 },
+      "extra": { "severity": "ERROR", "message": "Possible SQL injection" }
+    },
+    {
+      "check_id": "php.lang.security.xss.echoed-request",
+      "path": "src/Controller/HomeController.php",
+      "start": { "line": 88 },
+      "extra": { "severity": "WARNING", "message": "Possible XSS" }
+    },
+    {
+      "check_id": "generic.secrets.gitleaks.generic-api-key",
+      "path": "config/services.php",
+      "start": { "line": 5 },
+      "extra": { "severity": "INFO", "message": "Informational finding" }
+    }
+  ],
+  "errors": []
+}

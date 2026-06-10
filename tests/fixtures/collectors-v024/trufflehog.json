@@ -1,0 +1,20 @@
+[
+  {
+    "DetectorName": "AWS",
+    "Verified": true,
+    "Raw": "REDACTED",
+    "SourceMetadata": { "Data": { "Filesystem": { "file": "config/aws.php", "line": 7 } } }
+  },
+  {
+    "DetectorName": "Github",
+    "Verified": true,
+    "Raw": "REDACTED",
+    "SourceMetadata": { "Data": { "Filesystem": { "file": ".env", "line": 2 } } }
+  },
+  {
+    "DetectorName": "Generic",
+    "Verified": false,
+    "Raw": "REDACTED",
+    "SourceMetadata": { "Data": { "Filesystem": { "file": "README.md", "line": 40 } } }
+  }
+]
