@@ -1,0 +1,29 @@
+# Sentinel Shield — HARDENED digest-pinned reference (v0.1.28).
+#
+# Policy (docs/scanner-image-digest-pinning.md):
+#   development / onboarding  -> readable tags  (legible, easy to bump)
+#   production / hardened     -> digest-pinned  (reproducible, tamper-evident)
+#
+# This snippet shows the production form: every scanner image and Action is pinned by @sha256.
+# Digests re-verified 2026-06-15 (all MATCH prior records). To roll back, keep the previous
+# @sha256 — digests are immutable, so the exact validated image is always retrievable even if the
+# tag moves. On a digest MISMATCH at pull time, the gate fails closed — investigate before bumping.
+#
+# This is an EXAMPLE snippet (not a runnable workflow). Copy the pinned refs into your consumer
+# workflow's scanner steps / env. Do NOT use floating/mutable tags in production — pin every image
+# by digest, Dependency-Check included.
+
+env:
+  # Scanner container images — production: pin by digest, never a floating/mutable tag.
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9
+  SENTINEL_SHIELD_SEMGREP_IMAGE:          semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
+  SENTINEL_SHIELD_GRYPE_IMAGE:            anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
+  SENTINEL_SHIELD_DOCKLE_IMAGE:           goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9
+
+# GitHub Actions — production: pin by commit SHA (the comment records the human-readable version).
+hardened_action_pins:
+  - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683       # v4.2.2
+  - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+  - uses: google/osv-scanner-action/osv-scanner-action@19ec1116569a47416e11a45848722b1af31a857b # v1.9.0
+  - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+  - uses: anchore/sbom-action@d8a2c0130026bf585de5c176ab8f7ce62d75bf04       # v0.20.7
