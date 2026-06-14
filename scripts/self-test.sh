@@ -1888,6 +1888,70 @@ run_v028_strict_ci_and_breadth() {
 	log_info "v028: OK (strict CI evidence doc, 8-profile install/sync breadth, digest policy + hardened example, secret hygiene)"
 }
 
+# --- v0.1.29: clean strict CI evidence — override precedence + evidence isolation + DC propertyfile ---
+V29_FAILS=0
+cs_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V29_FAILS=$((V29_FAILS + 1)); fi; }
+
+run_v029_clean_strict_ci() {
+	log_info "v029: clean strict CI — override precedence, evidence isolation, DC propertyfile container-readable"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
+	_d=$(mktemp -d); mkdir -p "$_d/ov" "$_d/pure"
+	jq '.summary.high_vulnerabilities=6 | .summary.medium_vulnerabilities=4' templates/security-summary.example.json > "$_d/sum.json"
+
+	# (56) consumer override precedence: mode:strict + explicit medium:false -> medium gate disabled.
+	cat > "$_d/profile-override.yaml" <<'YAML'
+project:
+  name: evidence-fixture
+  type: other
+profiles:
+  - github-actions
+gates:
+  mode: strict
+  fail_on:
+    medium_vulnerabilities: false
+YAML
+	sh scripts/resolve-gates.sh --profile "$_d/profile-override.yaml" --output-dir "$_d/ov" --format env >/dev/null 2>&1
+	cs_check "(56) override mode=strict" "$(grep -c 'SENTINEL_SHIELD_MODE=strict' "$_d/ov/sentinel-shield-gates.env")" "1"
+	cs_check "(56) explicit medium override wins (=false)" "$(grep -c 'FAIL_ON_MEDIUM_VULNERABILITIES=false' "$_d/ov/sentinel-shield-gates.env")" "1"
+	if sh scripts/enforce-gates.sh --gates-env "$_d/ov/sentinel-shield-gates.env" --summary "$_d/sum.json" --output-dir "$_d/ov" --format json >/dev/null 2>&1; then :; fi
+	cs_check "(56) override strict: medium NOT in failed_gates" "$(jq -r '[.failed_gates[]|select(.=="medium_vulnerabilities")]|length' "$_d/ov/sentinel-shield-enforcement.json")" "0"
+
+	# (57) evidence isolation: pure mode-default strict (no consumer profile) -> medium gate fires.
+	sh scripts/resolve-gates.sh --mode strict --profile "$_d/none.yaml" --output-dir "$_d/pure" --format env >/dev/null 2>&1
+	cs_check "(57) pure strict enables medium gate" "$(grep -c 'FAIL_ON_MEDIUM_VULNERABILITIES=true' "$_d/pure/sentinel-shield-gates.env")" "1"
+	if sh scripts/enforce-gates.sh --gates-env "$_d/pure/sentinel-shield-gates.env" --summary "$_d/sum.json" --output-dir "$_d/pure" --format json >/dev/null 2>&1; then :; fi
+	# (55) baseline vs strict delta (pure default).
+	cs_check "(55) pure strict: high + medium gated" "$(jq -rc '[.failed_gates[]|select(.=="high_vulnerabilities" or .=="medium_vulnerabilities")]|sort|join(",")' "$_d/pure/sentinel-shield-enforcement.json")" "high_vulnerabilities,medium_vulnerabilities"
+
+	# (58) DC valid JSON parsing (real artifact + npm-vocab).
+	cs_check "(58) real DC artifact parses pass:0/0/0" "$(sh "$C/dependency-check.sh" --input "$F/live-evidence/dependency-check-real.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.critical_vulnerabilities)/\(.summary.high_vulnerabilities)/\(.summary.medium_vulnerabilities)"')" "pass:0/0/0"
+	cs_check "(58) npm-vocab parses c=1 h=2 m=2" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/npm-vocab.json" 2>/dev/null | jq -rc '"\(.tool_report.critical)/\(.tool_report.high)/\(.tool_report.medium)"')" "1/2/2"
+
+	# (60) DC propertyfile is container-readable (the v029 fix) AND key never echoed (no set -x).
+	cs_check "(60) audit makes propertyfile container-readable (chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	cs_check "(60) audit never enables set -x" "$(grep -c 'set -x' "$A")" "0"
+	# (59,60) stub run: missing key/binary/image -> NO fake-clean report; with key -> key never in logs.
+	_bin="$_d/bin"; mkdir -p "$_bin"
+	printf '#!/bin/sh\nout="";while [ $# -gt 0 ];do case "$1" in --out) out="$2";shift 2;; *) shift;; esac;done\nprintf "%%s" "{\\"dependencies\\":[]}" > "$out"\nexit 0\n' > "$_bin/dependency-check"
+	chmod +x "$_bin/dependency-check"
+	if outk=$(PATH="$_bin:$PATH" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY=FAKEKEY-CAFE SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c" sh "$A" "$_d/o.json" 2>&1); then :; fi
+	cs_check "(60) NVD key never appears in logs" "$(printf '%s' "$outk" | grep -c 'FAKEKEY-CAFE')" "0"
+	if outn=$(PATH="/usr/bin:/bin" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE='' SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c2" sh "$A" "$_d/o2.json" 2>&1); then :; fi
+	cs_check "(59) missing key/binary/image -> NO fake-clean report" "$([ -f "$_d/o2.json" ] && echo present || echo absent)" "absent"
+
+	# (62) v029 evidence doc carries the 3 views + the live run id.
+	_doc="$ROOT/docs/clean-strict-ci-evidence-v029.md"
+	cs_check "(62) v029 doc cites the live run id" "$(grep -qs '27513388096' "$_doc" && echo yes || echo no)" "yes"
+	cs_check "(62) v029 doc records all 3 views" "$(grep -qsi 'strict (evidence)' "$_doc" && grep -qsi 'strict (consumer)' "$_doc" && grep -qsi 'baseline' "$_doc" && echo yes || echo no)" "yes"
+
+	# (61) no local agent metadata tracked.
+	cs_check "(61) no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	rm -rf "$_d"
+	if [ "$V29_FAILS" -ne 0 ]; then log_error "v029: $V29_FAILS case(s) failed"; return 1; fi
+	log_info "v029: OK (override precedence, evidence isolation, DC container-readable propertyfile, no-fake-clean, evidence doc)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1920,6 +1984,7 @@ case "$SUB" in
 	v026-live) run_v026_dependency_check ;;
 	v027-live) run_v027_consumer_evidence ;;
 	v028-live) run_v028_strict_ci_and_breadth ;;
+	v029-live) run_v029_clean_strict_ci ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1952,13 +2017,14 @@ case "$SUB" in
 		run_v026_dependency_check
 		run_v027_consumer_evidence
 		run_v028_strict_ci_and_breadth
+		run_v029_clean_strict_ci
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|all)"
 		exit 2
 		;;
 esac
