@@ -1770,6 +1770,65 @@ STUB
 	log_info "v026: OK (real NVD-backed artifact, leak-safe key plumbing, preserve-on-nonzero, no-fake-clean, strict consumer evidence)"
 }
 
+# --- v0.1.27: Dependency-Check consumer CVE coverage (npm-vocab fix) + local strict evidence ---
+V27_FAILS=0
+ce_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V27_FAILS=$((V27_FAILS + 1)); fi; }
+
+run_v027_consumer_evidence() {
+	log_info "v027: Dependency-Check npm-vocab severity mapping + local consumer strict evidence"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
+	_d=$(mktemp -d)
+
+	# (70,71) npm-vocab fixture: DC mixes NVD (HIGH/MEDIUM) + npm (high/moderate). MODERATE -> medium.
+	ce_check "(71) npm-vocab fixture -> fail c=1 h=2 m=2" \
+		"$(sh "$C/dependency-check.sh" --input "$F/dependency-check/npm-vocab.json" 2>/dev/null | jq -rc '"\(.status) c=\(.tool_report.critical) h=\(.tool_report.high) m=\(.tool_report.medium)"')" \
+		"fail c=1 h=2 m=2"
+	# (71) single npm "moderate" maps to the medium bucket (the v027 fix).
+	printf '%s' '{"dependencies":[{"vulnerabilities":[{"severity":"moderate"}]}]}' > "$_d/mod.json"
+	ce_check "(71) lone npm 'moderate' -> medium=1" \
+		"$(sh "$C/dependency-check.sh" --input "$_d/mod.json" 2>/dev/null | jq -r '.tool_report.medium')" "1"
+	# (71) regression: NVD-vocab fixtures unchanged.
+	ce_check "(71) NVD 'medium' fixture still medium=1" \
+		"$(sh "$C/dependency-check.sh" --input "$F/dependency-check/medium.json" 2>/dev/null | jq -r '.tool_report.medium')" "1"
+	ce_check "(71) critical fixture still critical=1" \
+		"$(sh "$C/dependency-check.sh" --input "$F/dependency-check/critical.json" 2>/dev/null | jq -r '.tool_report.critical')" "1"
+
+	# (72) consumer-shaped strict-vs-baseline: high gates baseline+strict; medium adds in strict.
+	_sd=$(mktemp -d); mkdir -p "$_sd/b" "$_sd/s"
+	jq '.summary.high_vulnerabilities=6 | .summary.medium_vulnerabilities=3' templates/security-summary.example.json > "$_sd/summary.json"
+	sh scripts/resolve-gates.sh --mode baseline --output-dir "$_sd/b" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_sd/b/sentinel-shield-gates.env" --summary "$_sd/summary.json" --output-dir "$_sd/b" --format json >/dev/null 2>&1; then _rb=0; else _rb=$?; fi
+	ce_check "(72) baseline + 6 high/3 medium -> FAIL" "$_rb" "1"
+	ce_check "(72) baseline failed = high only" "$(jq -rc '[.failed_gates[]]|sort|join(",")' "$_sd/b/sentinel-shield-enforcement.json")" "high_vulnerabilities"
+	sh scripts/resolve-gates.sh --mode strict --output-dir "$_sd/s" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_sd/s/sentinel-shield-gates.env" --summary "$_sd/summary.json" --output-dir "$_sd/s" --format json >/dev/null 2>&1; then _rs=0; else _rs=$?; fi
+	ce_check "(72) strict + 6 high/3 medium -> FAIL" "$_rs" "1"
+	ce_check "(72) strict adds medium to failed gates" "$(jq -rc '[.failed_gates[]|select(.=="high_vulnerabilities" or .=="medium_vulnerabilities")]|sort|join(",")' "$_sd/s/sentinel-shield-enforcement.json")" "high_vulnerabilities,medium_vulnerabilities"
+	rm -rf "$_sd"
+
+	# (69) NVD key still plumbed safely (propertyfile, env var) — cross-check the audit script.
+	ce_check "(69) audit passes key via --propertyfile" "$([ "$(grep -c -- '--propertyfile' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	ce_check "(69) audit reads NVD key env var" "$([ "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# (73) v027 evidence docs carry the required sections.
+	ce_check "(73) consumer-evidence doc present + cites consumer" "$(grep -qs 'zenchron-tools' "$ROOT/docs/dependency-check-consumer-evidence-v027.md" && grep -qs 'MODERATE' "$ROOT/docs/dependency-check-consumer-evidence-v027.md" && echo yes || echo no)" "yes"
+	ce_check "(73) live-evidence doc records v0.1.27 consumer run" "$(grep -qs 'v0.1.27 — Dependency-Check on a DEPENDENCY-RICH consumer' "$ROOT/docs/main-gate-live-evidence.md" && echo yes || echo no)" "yes"
+
+	# (76) digest-override / production pinning guidance present.
+	ce_check "(76) digest re-verification doc records v0.1.27 MATCH" "$(grep -qs 'v0.1.27 — digest re-verification' "$ROOT/docs/scanner-image-digest-pinning.md" && echo yes || echo no)" "yes"
+
+	# (74) no local agent metadata tracked.
+	ce_check "(74) no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	# (75) no UUID-shaped secret committed in scripts or the v027 evidence doc (key never hardcoded).
+	ce_check "(75) no UUID-shaped secret in scripts/" "$( ( cd "$ROOT" && git grep -lIE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' -- scripts/ 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+	ce_check "(75) consumer DC raw artifact NOT tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c 'dependency-check-consumer.json' ) )" "0"
+
+	rm -rf "$_d"
+	if [ "$V27_FAILS" -ne 0 ]; then log_error "v027: $V27_FAILS case(s) failed"; return 1; fi
+	log_info "v027: OK (npm-vocab MODERATE->medium, consumer strict/baseline, key safety, evidence docs, digest re-verify)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1800,6 +1859,7 @@ case "$SUB" in
 	v024-docs) run_v024_docs ;;
 	v025-live) run_v025_live ;;
 	v026-live) run_v026_dependency_check ;;
+	v027-live) run_v027_consumer_evidence ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1830,13 +1890,14 @@ case "$SUB" in
 		run_v024_docs
 		run_v025_live
 		run_v026_dependency_check
+		run_v027_consumer_evidence
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|all)"
 		exit 2
 		;;
 esac
