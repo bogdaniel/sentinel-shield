@@ -6,6 +6,35 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.27] — Dependency-Check Consumer CVE Coverage and Strict CI Evidence
+
+No new scanners; no gates weakened; no findings suppressed; no fake reports; **no v1.0 claim**.
+No consumer findings remediated.
+
+### Added
+- **Dependency-Check on a dependency-rich consumer** (`zenchron-tools`, private; 218 Composer + 610
+  npm → 9,289 analyzed deps): **7 vulnerable deps / 11 vulns**, collector → **6 high / 3 medium**
+  (`fail`), 89 s warm cache. Closes the v0.1.26 thin-self-scan caveat — **non-zero CVE buckets now
+  exercised**. Raw 7.3 MB artifact kept **local/gitignored** (consumer private, this repo public);
+  aggregate counts only. [`docs/dependency-check-consumer-evidence-v027.md`](docs/dependency-check-consumer-evidence-v027.md).
+- **Local consumer strict evidence**: real engine on the consumer summary — baseline FAIL (6 high),
+  strict FAIL (6 high + 3 medium + missing_sbom); nothing suppressed. Live strict CI run still
+  outstanding; **strict NOT production-ready**.
+- Self-test `v027-live`: npm-vocab severity mapping, consumer-shaped strict/baseline, secret-not-committed,
+  digest-override docs, evidence-doc sections.
+- `tests/fixtures/dependency-check/npm-vocab.json` (synthetic, no consumer data).
+
+### Fixed
+- **Collector severity-mapping gap (surfaced by real consumer data):** Dependency-Check mixes NVD
+  labels (`MEDIUM`) with npm Node-Audit/RetireJS labels (`moderate`); the collector dropped
+  `MODERATE`, hiding **3 real moderate CVEs** from the strict `medium` gate. Now mapped
+  `MODERATE → medium` in `scripts/collectors/dependency-check.sh` — **strengthens** the gate.
+
+### Changed
+- Digest pins for DC/Semgrep/Grype/Dockle **re-verified** (2026-06-15) — all MATCH prior records.
+- `docs/v1-readiness.md`: blocker (4) **fully closed** (consumer non-zero CVE coverage); (7) advanced
+  to **local consumer evidence**. **v1.0 RC NOT recommended** — next is `v0.1.28`. v1.0 NOT reached.
+
 ## [0.1.26] — Dependency-Check Live Validation and Strict Consumer Evidence
 
 Closes the chief `v1.0` blocker's execution path. No new scanners; no gates weakened; no findings

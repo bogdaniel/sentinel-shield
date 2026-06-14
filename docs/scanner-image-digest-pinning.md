@@ -92,3 +92,23 @@ If a newly-pinned digest misbehaves (false positives, crashes, version drift):
 3. File the regression against the scanner upstream; keep the old digest pinned until fixed.
 4. Because the old digests are immutable, rollback is deterministic — the exact validated image is
    always retrievable by its `@sha256:` reference even if the tag has moved on.
+
+## v0.1.27 — digest re-verification (all MATCH)
+
+Re-resolved with Docker on **2026-06-15**; every digest **matches** the prior recorded value
+(reproducible across releases — not invented):
+
+| Image | Tag | Digest | Verdict |
+|---|---|---|---|
+| `owasp/dependency-check` | `latest` | `sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9` | **MATCH** (v0.1.26) |
+| `semgrep/semgrep` | `1.165.0` | `sha256:f4791a54…bfed1b` | **MATCH** (v0.1.21) |
+| `anchore/grype` | `v0.114.0` | `sha256:7a9fc7f8…01dd28` | **MATCH** (v0.1.21) |
+| `goodwithtech/dockle` | `v0.4.15` | `sha256:eade932f…7abe6b9` | **MATCH** (v0.1.21) |
+
+**Production recommendation.** Templates ship **readable tags** for legibility; consumers SHOULD pin
+each scanner to its `@sha256:` digest before production via the documented override env vars.
+Dependency-Check is the one image referenced as `:latest` (it tracks the NVD analyzers); for a
+reproducible consumer gate, pin it to `owasp/dependency-check@sha256:ad169904…cc77b9` (the digest
+behind the v0.1.27 consumer run). **Default templates remain tag-based by design**; moving them to
+digest-pinned-by-default is a separate v1.0 item (`v1-readiness.md` §6). Rollback and digest-mismatch
+guidance: see the section above (immutable digests → deterministic rollback).

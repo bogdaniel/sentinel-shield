@@ -122,4 +122,18 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
   a **live strict CI run on a real consumer** is still outstanding. Strict NOT production-ready.
 - [ ] `outstanding` — **Dependency-Check on a dependency-rich consumer** (non-zero CVE buckets).
 - [ ] `not-reached` — **v1.0**: still explicitly NOT reached; see `v1-readiness.md`.
+
+## v0.1.27 — Dependency-Check consumer CVE coverage + local strict evidence
+- [x] `done` — **Dependency-Check on a dependency-rich consumer**: real run on `zenchron-tools` (9,289
+  deps) → **7 vulnerable / 11 vulns → 6 high / 3 medium** (`fail`). Non-zero CVE buckets exercised;
+  v0.1.26 thin-self-scan caveat CLOSED. Raw artifact kept local (consumer private / repo public).
+  [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md).
+- [x] `done` — **Severity-mapping fix**: npm `MODERATE→medium` (3 real CVEs were dropped); strengthens
+  the gate. Guarded by `npm-vocab.json` + `self-test v027-live`.
+- [x] `done` — **Digest pinning re-verified**: DC/Semgrep/Grype/Dockle digests all MATCH prior records.
+- [ ] `partial` — **Strict-mode**: advanced to **local consumer evidence** (baseline FAIL 6 high /
+  strict FAIL 6 high + 3 medium + missing_sbom; nothing suppressed). **Live strict CI run still
+  outstanding.** Strict NOT production-ready.
+- [ ] `not-reached` — **v1.0**: NOT reached; **RC NOT recommended** — next is v0.1.28 (install/sync
+  breadth + live strict CI).
 </content>

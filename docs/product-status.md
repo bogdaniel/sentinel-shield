@@ -161,6 +161,25 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.27 — Dependency-Check consumer CVE coverage + npm-vocab fix + local strict evidence
+**Maturity: OWASP Dependency-Check live-validated on a DEPENDENCY-RICH consumer (non-zero CVE buckets).**
+- **Consumer run.** Real DC on `zenchron-tools` (private; 218 Composer + 610 npm → 9,289 analyzed
+  deps): **7 vulnerable deps / 11 vulns**, collector → **6 high / 3 medium** (`fail`), 89 s (warm
+  cache). Closes the v0.1.26 thin-self-scan caveat. Raw artifact kept **local/gitignored** (consumer
+  private, this repo public); aggregate counts only. [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md).
+- **Real bug fixed.** Collector dropped npm `MODERATE` severities → **3 real moderate CVEs invisible**
+  to the strict `medium` gate. Now mapped `MODERATE→medium` (strengthens the gate; not a weakening).
+  Guarded by `npm-vocab.json` fixture + `self-test v027-live`.
+- **npm caveat.** Node-Audit online analyzer was HTTP-429 rate-limited → npm-source coverage partial
+  (NVD/RetireJS complete). External limit, not a SS failure.
+- **Strict — LOCAL consumer evidence.** Real engine on the consumer summary: baseline FAIL (6 high),
+  strict FAIL (6 high + 3 medium + missing_sbom). Nothing suppressed. **Live strict CI run still
+  outstanding; strict NOT production-ready.**
+- **Digest pinning re-verified** (2026-06-15): DC/Semgrep/Grype/Dockle digests all **MATCH** prior
+  records (reproducible).
+- Self-test **397 → 413** (`v027-live`). **v1.0 NOT reached; NOT recommending RC** — next is v0.1.28
+  (install/sync breadth + live strict CI).
+
 ## v0.1.26 — Dependency-Check live validation (NVD-key) + strict consumer evidence
 **Maturity change: OWASP Dependency-Check `experimental` → `live-validated` (execution path).**
 - **First real `dependency-check.json`.** A real OWASP Dependency-Check run, authenticated with an

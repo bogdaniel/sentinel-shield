@@ -128,3 +128,33 @@ noise. Verified via the resolved gate-env diff: strict additionally turns on `me
 (`accepted_risks.loaded = 0`). This is a **controlled-fixture dry-run**, NOT a live full-CI consumer
 run — strict mode is **adoptable once a consumer has triaged medium vulns and configured style**, and
 remains **NOT claimed production-ready** until a live strict CI run on a real consumer is cited here.
+
+## v0.1.27 — Dependency-Check on a DEPENDENCY-RICH consumer (non-zero CVE buckets) + npm-vocab fix
+
+Closes the v0.1.26 thin-self-scan caveat. Full record (with privacy/CI caveats):
+[`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md).
+
+| Field | Value |
+|---|---|
+| Tool / Consumer | OWASP Dependency-Check (`owasp/dependency-check@sha256:ad169904…cc77b9`) on **`bogdaniel/zenchron-tools`** (private), commit `271e5b7` |
+| Surface | 218 Composer + 610 npm direct → **9,289 analyzed dependencies** |
+| Artifact | `dependency-check.json` **7.3 MB, valid** — kept **local/gitignored** (consumer private, this repo public); aggregate counts only |
+| Findings | **7 vulnerable deps, 11 vulns** — raw `HIGH`=3 + npm `high`=3 = **6 high**; npm `moderate`=3 → **medium**; `low`=2 (NVD=3 / NPM=7 / RetireJS=1) |
+| Collector mapping | **status `fail`, 0 critical / 6 high / 3 medium** |
+| Runtime | **89 s** (warm NVD cache) |
+| Severity fix | npm `MODERATE → medium` in `dependency-check.sh` collector — **3 real CVEs were being dropped**; fix **strengthens** the gate. Guarded by `npm-vocab.json` + `self-test v027-live` |
+| npm caveat | Node-Audit online analyzer hit **HTTP 429** (npmjs rate limit) → npm-source findings may be undercounted; NVD/RetireJS complete |
+| Promotion | **live-validated (execution path) → live-validated on a dependency-rich consumer with non-zero CVE buckets.** Severity fidelity still best-effort (coarse npm/NVD vocab) |
+
+### Strict-mode — LOCAL consumer evidence (Lane B)
+
+Real engine over a summary built from the consumer's DC artifact:
+
+| Mode | Exit | Result | Failed gates |
+|---|---|---|---|
+| `baseline` | 1 | **fail** | `high_vulnerabilities` (6) |
+| `strict` | 1 | **fail** | `high_vulnerabilities` (6), `medium_vulnerabilities` (3), `missing_sbom` |
+
+**Baseline correctly fails on 6 real HIGH CVEs** (not noise); the strict-only delta (3 `moderate→medium`
+CVEs + `missing_sbom`) is visible. Nothing suppressed. This is **LOCAL** consumer evidence — a **live
+strict CI run on a real consumer is still OUTSTANDING**; strict mode remains **NOT production-ready**.

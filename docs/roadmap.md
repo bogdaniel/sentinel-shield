@@ -136,3 +136,14 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   ([`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md)); a **live strict
   CI run on a real consumer** remains the open item before the strict gate is `proven`.
 - Self-test 375 → 397. **v1.0 still NOT reached.**
+
+### v0.1.27 update — Dependency-Check blocker fully CLOSED (consumer CVE coverage)
+- **OWASP Dependency-Check on a dependency-rich consumer** (`zenchron-tools`, 9,289 deps): **7
+  vulnerable deps / 11 vulns → 6 high / 3 medium**, 89 s warm cache. v0.1.26 thin-self-scan caveat
+  **CLOSED**. Raw artifact kept local (consumer private / this repo public).
+- **Severity-mapping fix:** npm `MODERATE→medium` in the collector (3 real CVEs were dropped);
+  strengthens the gate. Guarded by `npm-vocab.json` + `v027-live`.
+- **Strict:** advanced from controlled fixture to **local consumer evidence**; a **live strict CI
+  run** remains the open item before `proven`.
+- **Digest pinning re-verified** (DC/Semgrep/Grype/Dockle all MATCH).
+- **v1.0 RC NOT recommended** — next is **v0.1.28** (install/sync breadth + live strict CI). v1.0 NOT reached.

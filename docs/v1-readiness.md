@@ -41,17 +41,22 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 | 1 | **Gate engine proven** | resolver/enforcer/summary-builder/select deterministic, blocking self-test green | **DONE** — `proven`; blocking self-test (`negative`, `fallback`, `suppression`, `finding-scope`); self-gated in this repo's CI |
 | 2 | **PR-fast gate proven** | live-validated on a real consumer with no regression | **DONE** — `proven`; zenchron run 27170148123 (baseline PASS) |
 | 3 | **Main-gate core live-validated** (CodeQL / OSV / Trivy-fs / Syft / Grype / Dockle) | each has a cited consumer artifact + collector parse | **DONE** — CodeQL/OSV/Trivy-fs/Syft (run 27214865086); Grype/Dockle (run 27239206382). Severities for CodeQL/OSV remain coarse |
-| 4 | **OWASP Dependency-Check live-validated** | a real, cited `dependency-check.json` from a consumer parsed by its collector | **DONE (with caveat)** — v0.1.26: a **real NVD-key-authenticated `dependency-check.json` exists**, valid, collector-parsed (`pass`, 0/0/0), cited in [`main-gate-live-evidence.md`](main-gate-live-evidence.md). The HTTP-429 blocker is gone (key raises the NVD rate limit). **Caveat:** proven on a **thin self-scan** surface (5 deps, 0 vulns) — non-zero severity buckets not yet exercised on a dependency-rich consumer. Chief-blocker **execution path: CLOSED** |
+| 4 | **OWASP Dependency-Check live-validated** | a real, cited `dependency-check.json` from a consumer parsed by its collector, **with non-zero CVE buckets exercised** | **DONE** — v0.1.27: real run on a **dependency-rich consumer** (`zenchron-tools`, 9,289 deps) → **7 vulnerable deps / 11 vulns**, collector-parsed to **6 high / 3 medium** (`fail`). The v0.1.26 thin-self-scan caveat is **CLOSED** — non-zero severity buckets are exercised. Surfaced + fixed a real npm `MODERATE→medium` mapping gap. Cited in [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md). **Residual:** severity fidelity best-effort; npm Node-Audit was rate-limited (429) so npm-source coverage is partial |
 | 5 | **Install/sync proven across shipped profiles** | dry-run-default install/sync round-trips with fixtures for the shipped install manifests | **PARTIAL** — `proven` for `laravel-react-docker` (self-test `install-sync`/`fixtures`). Other manifests (`react`, `node`, `docker`, `php-library`, `symfony`, `node-react`) have manifests + dry-run but only `laravel-react-docker` has a full fixture round-trip → **OUTSTANDING** for the rest |
 | 6 | **Digest pinning** | a documented, verifiable way to pin every shipped scanner image/action to a digest | **PARTIAL** — digests **resolved (not invented)** for Semgrep/Grype/Dockle (2026-06-10); path + override env vars documented ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md), [`pinned-tool-references.md`](pinned-tool-references.md)). **Not pinned by default** (templates ship readable tags); consumer pins. Full coverage across every shipped ref is **OUTSTANDING** |
-| 7 | **Strict mode validated on ≥1 consumer** | a real consumer runs green in `strict` with no `report-only` escape hatch | **PARTIAL** — v0.1.26: real engine baseline-PASS / strict-FAIL **dry-run** on a controlled fixture, behaving correctly ([`strict-mode-consumer-evidence-v026.md`](strict-mode-consumer-evidence-v026.md)). A **live strict CI run on a real consumer** is still **OUTSTANDING** |
+| 7 | **Strict mode validated on ≥1 consumer** | a real consumer runs in `strict` in CI with no `report-only` escape hatch | **PARTIAL** — v0.1.27: **LOCAL** consumer evidence on `zenchron-tools` (real engine, real DC findings → baseline FAIL on 6 high, strict FAIL on 6 high + 3 medium + missing_sbom; nothing suppressed; [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md)). Up from a controlled fixture (v0.1.26). A **live strict CI run on a real consumer** is still **OUTSTANDING**; strict NOT production-ready |
 
-**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE. v0.1.26 **closed the
-chief blocker's execution path (4)** — a real NVD-key Dependency-Check artifact exists — and added a
-controlled-fixture strict dry-run (7). The remaining `v1.0` blockers are **(4-caveat) Dependency-Check
-on a dependency-rich consumer**, **(5) install/sync proof beyond `laravel-react-docker`**, **(6) full
-default-capable digest pinning**, and **(7) a *live* strict run on a real consumer**. **v1.0 is NOT
-reached.** See §16 for the consolidated blocker list.
+**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE. v0.1.27 **fully closed
+blocker (4)** — Dependency-Check is now live-validated on a dependency-rich consumer with **non-zero
+CVE buckets** (and a real severity-mapping bug fixed) — and advanced (7) from a controlled fixture to
+**local consumer evidence**. The remaining `v1.0` blockers are **(5) install/sync proof beyond
+`laravel-react-docker`**, **(6) full default-capable digest pinning**, and **(7) a *live strict CI
+run* on a real consumer**. **v1.0 is NOT reached.**
+
+**v1.0 RC decision (v0.1.27):** **NOT yet.** Blocker (4) is closed and digest pinning (6) is
+re-verified reproducible, but (7) still lacks a *live CI* strict run and (5) lacks install/sync
+breadth. The next release should remain **`v0.1.28`** (close 5 + 7 live-CI), **not** `v1.0.0-rc.1`.
+See §16 for the consolidated blocker list.
 
 ---
 
