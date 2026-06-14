@@ -1829,6 +1829,65 @@ run_v027_consumer_evidence() {
 	log_info "v027: OK (npm-vocab MODERATE->medium, consumer strict/baseline, key safety, evidence docs, digest re-verify)"
 }
 
+# --- v0.1.28: strict-mode CI evidence + install/sync breadth + digest pinning policy ---
+V28_FAILS=0
+ci_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V28_FAILS=$((V28_FAILS + 1)); fi; }
+
+run_v028_strict_ci_and_breadth() {
+	log_info "v028: strict CI evidence doc + install/sync breadth + digest pinning policy"
+	_d=$(mktemp -d)
+	_doc="$ROOT/docs/strict-ci-and-install-sync-evidence-v028.md"
+
+	# (66) strict-CI evidence doc carries the required fields (run id, both modes).
+	ci_check "(66) strict-CI doc cites the live run ID" "$(grep -qs '27512789768' "$_doc" && echo yes || echo no)" "yes"
+	ci_check "(66) strict-CI doc records baseline + strict" "$(grep -qs 'baseline' "$_doc" && grep -qs 'strict' "$_doc" && echo yes || echo no)" "yes"
+
+	# (67) baseline-vs-strict behavior (pure mode default; regression on real-CI-shaped summary).
+	mkdir -p "$_d/b" "$_d/s"
+	jq '.summary.high_vulnerabilities=6 | .summary.medium_vulnerabilities=4' templates/security-summary.example.json > "$_d/sum.json"
+	sh scripts/resolve-gates.sh --mode baseline --profile "$_d/none.yaml" --output-dir "$_d/b" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_d/b/sentinel-shield-gates.env" --summary "$_d/sum.json" --output-dir "$_d/b" --format json >/dev/null 2>&1; then :; fi
+	ci_check "(67) baseline failed = high only" "$(jq -rc '[.failed_gates[]]|sort|join(",")' "$_d/b/sentinel-shield-enforcement.json")" "high_vulnerabilities"
+	sh scripts/resolve-gates.sh --mode strict --profile "$_d/none.yaml" --output-dir "$_d/s" --format env >/dev/null 2>&1
+	if sh scripts/enforce-gates.sh --gates-env "$_d/s/sentinel-shield-gates.env" --summary "$_d/sum.json" --output-dir "$_d/s" --format json >/dev/null 2>&1; then :; fi
+	ci_check "(67) strict failed = high + medium" "$(jq -rc '[.failed_gates[]|select(.=="high_vulnerabilities" or .=="medium_vulnerabilities")]|sort|join(",")' "$_d/s/sentinel-shield-enforcement.json")" "high_vulnerabilities,medium_vulnerabilities"
+
+	# (68,69,70) install/sync breadth across all shipped profiles.
+	for _prof in laravel-react-docker laravel react node node-react symfony php-library docker; do
+		_t=$(mktemp -d)
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" >/dev/null 2>&1
+		ci_check "(68) $_prof: dry-run writes nothing" "$(find "$_t" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+		printf 'keep\n' > "$_t/UNMANAGED.txt"
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" --apply --mode report-only >/dev/null 2>&1
+		ci_check "(68) $_prof: apply creates managed workflow+profile" "$([ -f "$_t/.sentinel-shield/profile.yaml" ] && [ -f "$_t/.github/workflows/sentinel-shield.yml" ] && echo yes || echo no)" "yes"
+		ci_check "(69) $_prof: accepted-risks.json never created" "$([ -f "$_t/.sentinel-shield/accepted-risks.json" ] && echo yes || echo no)" "no"
+		printf '{"version":"1.1","risks":[{"id":"KEEP"}]}' > "$_t/.sentinel-shield/accepted-risks.json"
+		sh "$ROOT/scripts/install-baseline.sh" --target "$_t" --profile "$_prof" --apply --force >/dev/null 2>&1
+		ci_check "(69) $_prof: --force preserves accepted-risks" "$(grep -c KEEP "$_t/.sentinel-shield/accepted-risks.json")" "1"
+		printf '\n# DRIFT\n' >> "$_t/.github/workflows/sentinel-shield.yml"
+		_det=$(sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" --profile "$_prof" 2>/dev/null | grep -c 'manual-review-needed (managed drift' || true)
+		sh "$ROOT/scripts/sync-baseline.sh" --target "$_t" --profile "$_prof" --apply --force >/dev/null 2>&1
+		ci_check "(68) $_prof: drift detect->resolve" "$([ "$_det" = "1" ] && [ "$(grep -c DRIFT "$_t/.github/workflows/sentinel-shield.yml")" = "0" ] && echo yes || echo no)" "yes"
+		ci_check "(70) $_prof: unmanaged file untouched" "$(cat "$_t/UNMANAGED.txt")" "keep"
+		rm -rf "$_t"
+	done
+
+	# (71,72) hardened digest-pinned example: pins by @sha256, no production ':latest'.
+	_hx="$ROOT/examples/hardened/sentinel-shield-hardened.snippet.yml"
+	ci_check "(71) hardened example exists" "$([ -f "$_hx" ] && echo yes || echo no)" "yes"
+	ci_check "(71) hardened example pins >=4 images by @sha256" "$([ "$(grep -c '@sha256:' "$_hx")" -ge 4 ] && echo yes || echo no)" "yes"
+	ci_check "(72) hardened example has NO ':latest'" "$(grep -c ':latest' "$_hx")" "0"
+
+	# (73) no local agent metadata tracked.
+	ci_check "(73) no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+	# (74) no UUID-shaped secret literal committed anywhere in scripts/docs/examples.
+	ci_check "(74) no UUID-shaped secret in scripts/docs/examples" "$( ( cd "$ROOT" && git grep -lIE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' -- scripts/ docs/ examples/ 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	rm -rf "$_d"
+	if [ "$V28_FAILS" -ne 0 ]; then log_error "v028: $V28_FAILS case(s) failed"; return 1; fi
+	log_info "v028: OK (strict CI evidence doc, 8-profile install/sync breadth, digest policy + hardened example, secret hygiene)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1860,6 +1919,7 @@ case "$SUB" in
 	v025-live) run_v025_live ;;
 	v026-live) run_v026_dependency_check ;;
 	v027-live) run_v027_consumer_evidence ;;
+	v028-live) run_v028_strict_ci_and_breadth ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -1891,13 +1951,14 @@ case "$SUB" in
 		run_v025_live
 		run_v026_dependency_check
 		run_v027_consumer_evidence
+		run_v028_strict_ci_and_breadth
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|all)"
 		exit 2
 		;;
 esac
