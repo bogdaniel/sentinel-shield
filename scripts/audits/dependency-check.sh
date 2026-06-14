@@ -66,20 +66,29 @@ mkdir -p "$CACHE"
 OUTDIR=$(CDPATH= cd -- "$(dirname "$OUT")" && pwd)
 TO=$(timeout_prefix)
 
-# Build a 0600 propertyfile carrying the NVD API key, if one was provided. This keeps the key
-# OFF the command line (no process-list exposure) and out of every log line. Paths produced by
-# `mktemp -d` contain no spaces, so the SC2086-disabled unquoted expansions below are safe.
+# Build a propertyfile carrying the NVD API key, if one was provided. This keeps the key OFF the
+# command line (no process-list exposure) and out of every log line. Paths produced by `mktemp -d`
+# contain no spaces, so the SC2086-disabled unquoted expansions below are safe.
+#
+# v0.1.29: the file MUST be readable by the Dependency-Check CONTAINER, which runs as a different
+# UID than the host. A 0600 file in a 0700 dir is unreadable inside the container on Linux Docker/CI
+# (`FileNotFoundException ... Permission denied`) — that is why DC never ran in the v0.1.28 CI run.
+# We relax to a world-readable file in a traversable mktemp dir so the container user can read it.
+# The key stays OFF the command line / logs / report / commits; the only relaxation is that the key
+# is local-readable for the (short) life of an EPHEMERAL temp dir that is removed on exit (trap).
 DC_SECRET_ARG=""            # local-binary path: `--propertyfile <host-path>`
 DC_SECRET_MOUNT=""          # docker path: read-only bind mount `host:container:ro`
 DC_SECRET_CONTAINER_ARG=""  # docker path: `--propertyfile <container-path>`
 if [ -n "$NVD_API_KEY_VALUE" ]; then
-	PROPDIR=$(umask 077 && mktemp -d 2>/dev/null) || unavailable "could not create temp dir for the NVD API key"
-	( umask 077; printf 'nvd.api.key=%s\n' "$NVD_API_KEY_VALUE" > "$PROPDIR/dependency-check.properties" )
-	chmod 600 "$PROPDIR/dependency-check.properties"
+	PROPDIR=$(mktemp -d 2>/dev/null) || unavailable "could not create temp dir for the NVD API key"
+	printf 'nvd.api.key=%s\n' "$NVD_API_KEY_VALUE" > "$PROPDIR/dependency-check.properties"
+	# Container-readable (different UID): traversable dir + readable file. Ephemeral, removed on exit.
+	chmod 755 "$PROPDIR"
+	chmod 644 "$PROPDIR/dependency-check.properties"
 	DC_SECRET_ARG="--propertyfile $PROPDIR/dependency-check.properties"
 	DC_SECRET_MOUNT="$PROPDIR:/ss-secret:ro"
 	DC_SECRET_CONTAINER_ARG="--propertyfile /ss-secret/dependency-check.properties"
-	echo "[sentinel-shield] dependency-check: NVD API key provided — using the authenticated NVD rate limit (key redacted via 0600 propertyfile)." >&2
+	echo "[sentinel-shield] dependency-check: NVD API key provided — using the authenticated NVD rate limit (key redacted via propertyfile)." >&2
 else
 	echo "[sentinel-shield] dependency-check: no NVD API key (SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY unset) — open NVD rate limit; the first full dataset pull may HTTP 429." >&2
 fi
