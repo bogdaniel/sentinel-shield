@@ -136,4 +136,18 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
   outstanding.** Strict NOT production-ready.
 - [ ] `not-reached` — **v1.0**: NOT reached; **RC NOT recommended** — next is v0.1.28 (install/sync
   breadth + live strict CI).
+
+## v0.1.28 — Strict CI evidence + install/sync breadth + digest policy
+- [x] `done` — **Install/sync breadth**: 8 profiles round-tripped (laravel-react-docker, laravel,
+  react, node, node-react, symfony, php-library, docker) — dry-run no-op, apply, accepted-risks never
+  touched, full drift detect→resolve, unmanaged files untouched. Guarded by `v028-live`.
+- [x] `done` — **Digest-pinning policy**: dev/onboarding = readable tags; production/hardened =
+  digest-pinned overrides. Digests re-verified (all MATCH); hardened example
+  `examples/hardened/sentinel-shield-hardened.snippet.yml`.
+- [ ] `partial` — **Strict CI evidence**: live consumer CI run EXISTS (`zenchron-tools` run
+  `27512789768`, baseline FAIL `[high]` / strict FAIL `[high]`). Residuals: strict not green (real
+  highs); strict delta masked by consumer's explicit `medium_vulnerabilities:false`; DC didn't
+  complete in CI. Strict NOT production-ready.
+- [ ] `not-reached` — **v1.0 / RC**: NOT reached; **RC NOT recommended** — next is **v0.1.29** (clean
+  strict CI run: no masking override + DC completes), then evaluate `v1.0.0-rc.1`.
 </content>

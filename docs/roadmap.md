@@ -147,3 +147,14 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   run** remains the open item before `proven`.
 - **Digest pinning re-verified** (DC/Semgrep/Grype/Dockle all MATCH).
 - **v1.0 RC NOT recommended** — next is **v0.1.28** (install/sync breadth + live strict CI). v1.0 NOT reached.
+
+### v0.1.28 update — install/sync breadth + digest policy CLOSED; live strict CI run exists
+- **Live strict CI run** on `zenchron-tools` (run `27512789768`): baseline FAIL `[high]` / strict FAIL
+  `[high]`. Honest residuals — strict not green (real highs), strict delta masked by the consumer's
+  explicit `fail_on.medium_vulnerabilities:false` (shown via pure mode-default resolve), DC didn't
+  complete in CI. Strict NOT production-ready.
+- **Install/sync breadth CLOSED** — 8 profiles round-tripped (drift detect→resolve; accepted-risks &
+  unmanaged files untouched).
+- **Digest-pinning policy CLOSED** — dev tags / prod digest-pinned; hardened example added; digests re-verified.
+- **v1.0 RC NOT recommended** — next is **v0.1.29**: a *clean* strict CI run (no masking override + DC
+  completes). After that, evaluate `v1.0.0-rc.1`. v1.0 NOT reached.

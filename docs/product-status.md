@@ -161,6 +161,23 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.28 — Strict CI evidence + install/sync breadth + digest policy (no v1.0 RC)
+- **Live strict CI evidence.** Real GitHub Actions run on `zenchron-tools` (run `27512789768`,
+  success): baseline + strict both ran; baseline FAIL `[high]` / strict FAIL `[high]` (real OSV/Trivy:
+  6 high, 4 medium; SBOM present). **Honest residuals:** strict not green (real highs); the consumer's
+  explicit `fail_on.medium_vulnerabilities:false` masked the strict delta (shown via pure mode-default
+  resolve → strict adds medium); **DC did not complete in CI** (1-min run; local v0.1.27 DC evidence
+  stands). Nothing suppressed by SS. Strict **NOT production-ready**.
+  [`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md).
+- **Install/sync breadth CLOSED.** 8 profiles round-tripped (laravel-react-docker, laravel, react,
+  node, node-react, symfony, php-library, docker): dry-run no-op, apply, accepted-risks never
+  touched, full drift detect→resolve, unmanaged files untouched. Guarded by `v028-live`.
+- **Digest-pinning policy decided.** dev/onboarding = readable tags; production/hardened =
+  digest-pinned overrides. Digests re-verified (all MATCH); hardened example added
+  (`examples/hardened/sentinel-shield-hardened.snippet.yml`).
+- **v1.0 RC: NOT recommended.** (4)(5)(6) closed; (7) has a live CI run with residuals → next is
+  **v0.1.29** (clean strict CI run: no masking override + DC completes). Self-test **413 → 470**. v1.0 NOT reached.
+
 ## v0.1.27 — Dependency-Check consumer CVE coverage + npm-vocab fix + local strict evidence
 **Maturity: OWASP Dependency-Check live-validated on a DEPENDENCY-RICH consumer (non-zero CVE buckets).**
 - **Consumer run.** Real DC on `zenchron-tools` (private; 218 Composer + 610 npm → 9,289 analyzed

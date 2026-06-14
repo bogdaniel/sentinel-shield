@@ -6,6 +6,33 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.28] — Strict CI Evidence and Install/Sync Breadth
+
+No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports;
+**no v1.0 claim**.
+
+### Added
+- **Live strict-mode CI evidence** on a consumer: real GitHub Actions run on `bogdaniel/zenchron-tools`
+  (run `27512789768`, success) running the gate in baseline AND strict, artifacts uploaded
+  (`if: always()`). baseline FAIL `[high]` / strict FAIL `[high]` on real OSV/Trivy findings (6 high,
+  4 medium; SBOM present). Evidence-only, non-required, push-triggered off `main` (the consumer's
+  `deploy.yml` triggers on push to `main`). [`docs/strict-ci-and-install-sync-evidence-v028.md`](docs/strict-ci-and-install-sync-evidence-v028.md).
+- **Install/sync breadth**: 8 profiles round-tripped (laravel-react-docker, laravel, react, node,
+  node-react, symfony, php-library, docker) — dry-run no-op, apply, accepted-risks never touched,
+  full drift detect→resolve cycle, unmanaged files untouched.
+- **Digest-pinning policy**: dev/onboarding = readable tags, production/hardened = digest-pinned
+  overrides; hardened example `examples/hardened/sentinel-shield-hardened.snippet.yml`; digests
+  re-verified (all MATCH).
+- Self-test `v028-live`: strict-CI evidence doc fields, install/sync breadth matrix, accepted-risks &
+  project-local not overwritten, hardened digest-pinned example, no production `:latest` recommendation,
+  no `.claude/` tracked, no secret literal committed.
+
+### Decided
+- **v1.0 RC: NOT recommended.** Blockers (4) DC rich-consumer, (5) install/sync breadth, (6) digest
+  policy are closed; (7) strict CI has a live run but with honest residuals (strict not green; delta
+  masked by the consumer's explicit `medium_vulnerabilities:false`; DC didn't complete in CI). Next is
+  **`v0.1.29`** (a clean strict CI run), then evaluate `v1.0.0-rc.1`. v1.0 NOT reached.
+
 ## [0.1.27] — Dependency-Check Consumer CVE Coverage and Strict CI Evidence
 
 No new scanners; no gates weakened; no findings suppressed; no fake reports; **no v1.0 claim**.

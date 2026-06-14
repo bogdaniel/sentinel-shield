@@ -42,20 +42,21 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 | 2 | **PR-fast gate proven** | live-validated on a real consumer with no regression | **DONE** — `proven`; zenchron run 27170148123 (baseline PASS) |
 | 3 | **Main-gate core live-validated** (CodeQL / OSV / Trivy-fs / Syft / Grype / Dockle) | each has a cited consumer artifact + collector parse | **DONE** — CodeQL/OSV/Trivy-fs/Syft (run 27214865086); Grype/Dockle (run 27239206382). Severities for CodeQL/OSV remain coarse |
 | 4 | **OWASP Dependency-Check live-validated** | a real, cited `dependency-check.json` from a consumer parsed by its collector, **with non-zero CVE buckets exercised** | **DONE** — v0.1.27: real run on a **dependency-rich consumer** (`zenchron-tools`, 9,289 deps) → **7 vulnerable deps / 11 vulns**, collector-parsed to **6 high / 3 medium** (`fail`). The v0.1.26 thin-self-scan caveat is **CLOSED** — non-zero severity buckets are exercised. Surfaced + fixed a real npm `MODERATE→medium` mapping gap. Cited in [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md). **Residual:** severity fidelity best-effort; npm Node-Audit was rate-limited (429) so npm-source coverage is partial |
-| 5 | **Install/sync proven across shipped profiles** | dry-run-default install/sync round-trips with fixtures for the shipped install manifests | **PARTIAL** — `proven` for `laravel-react-docker` (self-test `install-sync`/`fixtures`). Other manifests (`react`, `node`, `docker`, `php-library`, `symfony`, `node-react`) have manifests + dry-run but only `laravel-react-docker` has a full fixture round-trip → **OUTSTANDING** for the rest |
-| 6 | **Digest pinning** | a documented, verifiable way to pin every shipped scanner image/action to a digest | **PARTIAL** — digests **resolved (not invented)** for Semgrep/Grype/Dockle (2026-06-10); path + override env vars documented ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md), [`pinned-tool-references.md`](pinned-tool-references.md)). **Not pinned by default** (templates ship readable tags); consumer pins. Full coverage across every shipped ref is **OUTSTANDING** |
-| 7 | **Strict mode validated on ≥1 consumer** | a real consumer runs in `strict` in CI with no `report-only` escape hatch | **PARTIAL** — v0.1.27: **LOCAL** consumer evidence on `zenchron-tools` (real engine, real DC findings → baseline FAIL on 6 high, strict FAIL on 6 high + 3 medium + missing_sbom; nothing suppressed; [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md)). Up from a controlled fixture (v0.1.26). A **live strict CI run on a real consumer** is still **OUTSTANDING**; strict NOT production-ready |
+| 5 | **Install/sync proven across shipped profiles** | dry-run-default install/sync round-trips with fixtures for the shipped install manifests | **DONE** — v0.1.28: **8 profiles** round-tripped (laravel-react-docker, laravel, react, node, node-react, symfony, php-library, docker): dry-run no-op, apply creates managed files, accepted-risks never created/overwritten, full drift detect→resolve cycle, unmanaged files untouched ([`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md)); guarded by `self-test v028-live` |
+| 6 | **Digest pinning** | a documented, verifiable policy to pin every shipped scanner image/action to a digest | **DONE (policy)** — v0.1.28: digests re-verified (all MATCH); **policy decided** — dev/onboarding = readable tags, production/hardened = digest-pinned overrides; hardened digest-pinned example added (`examples/hardened/sentinel-shield-hardened.snippet.yml`); rollback + drift guidance documented. **Pinned-by-default remains opt-in by design** (templates legible; consumer hardens) — a deliberate stance, not an open gap |
+| 7 | **Strict mode validated on ≥1 consumer** | a real consumer runs in `strict` in CI with no `report-only` escape hatch | **PARTIAL** — v0.1.28: a **live consumer CI run in strict EXISTS** (`zenchron-tools` run `27512789768`, success): baseline FAIL `[high]` / strict FAIL `[high]`; real OSV/Trivy findings; nothing suppressed ([`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md)). **Residuals:** strict did not run green (correctly failed on 6 real high CVEs); the consumer's explicit `fail_on.medium_vulnerabilities:false` masked the strict delta (shown via pure mode-default resolve); DC did not complete in the CI run. Strict **NOT production-ready** |
 
-**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE. v0.1.27 **fully closed
-blocker (4)** — Dependency-Check is now live-validated on a dependency-rich consumer with **non-zero
-CVE buckets** (and a real severity-mapping bug fixed) — and advanced (7) from a controlled fixture to
-**local consumer evidence**. The remaining `v1.0` blockers are **(5) install/sync proof beyond
-`laravel-react-docker`**, **(6) full default-capable digest pinning**, and **(7) a *live strict CI
-run* on a real consumer**. **v1.0 is NOT reached.**
+**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE. v0.1.28 **closed (5)
+install/sync breadth (8 profiles)** and **(6) the digest-pinning policy (dev tags / prod pinned)**,
+and advanced **(7)** from local to a **live consumer CI strict run**. The remaining hard item is **(7)
+a *clean* strict CI run** — one where strict runs without the consumer's medium-override masking the
+delta and with DC completing (warm cache). **v1.0 is NOT reached.**
 
-**v1.0 RC decision (v0.1.27):** **NOT yet.** Blocker (4) is closed and digest pinning (6) is
-re-verified reproducible, but (7) still lacks a *live CI* strict run and (5) lacks install/sync
-breadth. The next release should remain **`v0.1.28`** (close 5 + 7 live-CI), **not** `v1.0.0-rc.1`.
+**v1.0 RC decision (v0.1.28):** **NOT yet — next is `v0.1.29`, not `v1.0.0-rc.1`.** Blockers (4),
+(5), (6) are closed; (7) now has a **live CI run** but with honest residuals (strict not green / delta
+masked by consumer override / DC didn't run in CI). RC requires (7) demonstrated cleanly: a consumer
+strict CI run where the strict delta is visible (no masking override) and DC completes. That is the
+sole focus of v0.1.29; after it, evaluate `v1.0.0-rc.1`.
 See §16 for the consolidated blocker list.
 
 ---

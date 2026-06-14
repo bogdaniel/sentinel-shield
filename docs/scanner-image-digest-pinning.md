@@ -112,3 +112,21 @@ reproducible consumer gate, pin it to `owasp/dependency-check@sha256:ad169904…
 behind the v0.1.27 consumer run). **Default templates remain tag-based by design**; moving them to
 digest-pinned-by-default is a separate v1.0 item (`v1-readiness.md` §6). Rollback and digest-mismatch
 guidance: see the section above (immutable digests → deterministic rollback).
+
+## v0.1.28 — pinning policy (decided)
+
+Digests re-verified again 2026-06-15 — DC/Semgrep/Grype/Dockle all **MATCH**. The pinning policy is
+now an explicit, documented decision:
+
+| Context | Form | Why |
+|---|---|---|
+| **development / onboarding** | **readable tags** (`owasp/dependency-check:latest`, `anchore/grype:v0.114.0`, …) | legible, easy to bump, low-friction adoption |
+| **production / hardened** | **digest-pinned overrides** (`@sha256:…` via the documented env vars) | reproducible, tamper-evident, deterministic rollback |
+
+- **Default templates stay tag-based by design** (legibility) — this is a deliberate stance, not an
+  open gap. Consumers harden by pinning before production.
+- **Hardened reference:** [`examples/hardened/sentinel-shield-hardened.snippet.yml`](../examples/hardened/sentinel-shield-hardened.snippet.yml)
+  pins every scanner image + Action by digest/SHA. **Do not use `:latest` in production** — pin
+  Dependency-Check too (to `owasp/dependency-check@sha256:ad169904…cc77b9`).
+- **Rollback:** keep the prior `@sha256:` — immutable, always retrievable. **Drift:** a mismatch at
+  pull time fails the gate closed; investigate before bumping.
