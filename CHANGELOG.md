@@ -6,6 +6,36 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.29] — Clean Strict CI Evidence
+
+No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports;
+**no v1.0 RC claim**.
+
+### Fixed
+- **Dependency-Check NVD propertyfile is now container-readable.** The v0.1.26 leak-safe propertyfile
+  used `0600`/`0700` owned by the host UID — unreadable by the Dependency-Check container's different
+  UID on Linux Docker (`FileNotFoundException ... Permission denied`), which is exactly why DC failed
+  at 14 s in the v0.1.28 CI run. Now world-readable in a traversable ephemeral mktemp dir (removed on
+  exit). The key still never touches the command line, logs, report, or commits.
+
+### Added
+- **Clean strict-mode CI evidence** ([`docs/clean-strict-ci-evidence-v029.md`](docs/clean-strict-ci-evidence-v029.md)):
+  live consumer run `27513388096` (zenchron-tools, success) with **3 attributable views** — baseline
+  FAIL `[high]`; **strict-EVIDENCE FAIL `[high, medium]`** (pure mode default → strict delta visible);
+  strict-CONSUMER FAIL `[high]` (medium skipped by the consumer's own override, shown transparently).
+  Nothing suppressed. DC ran the full cold NVD download (perms fix) but then hit OWASP's **H2
+  database-lock** (stale cache) → no fake-clean report; exact blocker documented, local DC evidence
+  (v0.1.27) stands.
+- Self-test `v029-live`: consumer override precedence, evidence-profile isolation (pure vs
+  consumer-effective strict), DC container-readable propertyfile, DC no-fake-clean, key-never-logged,
+  evidence-doc sections.
+
+### Decided
+- **v1.0 RC: NOT yet — next is `v0.1.30`.** Holds the v0.1.28 RC bar ("(7) strict delta visible AND DC
+  completes in CI"): the delta-visible condition is now met cleanly; DC-in-CI is not (H2-lock). v0.1.30
+  closes DC-in-CI with a clean cache seed, then `v1.0.0-rc.1`. Remaining items are operational/
+  consumer-side, not engine defects. v1.0 NOT reached.
+
 ## [0.1.28] — Strict CI Evidence and Install/Sync Breadth
 
 No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports;

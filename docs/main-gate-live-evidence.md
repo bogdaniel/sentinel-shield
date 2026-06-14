@@ -158,3 +158,24 @@ Real engine over a summary built from the consumer's DC artifact:
 **Baseline correctly fails on 6 real HIGH CVEs** (not noise); the strict-only delta (3 `moderate→medium`
 CVEs + `missing_sbom`) is visible. Nothing suppressed. This is **LOCAL** consumer evidence — a **live
 strict CI run on a real consumer is still OUTSTANDING**; strict mode remains **NOT production-ready**.
+
+## v0.1.29 — CLEAN strict CI run (delta visible) + DC propertyfile fix
+
+Live consumer CI run `27512789768`'s successor: **run `27513388096`** (zenchron-tools, **success**,
+~41 min). Full record: [`clean-strict-ci-evidence-v029.md`](clean-strict-ci-evidence-v029.md). Three
+attributable views on the real CI summary (6 high, 4 medium; SBOM present):
+
+| View | Result | Failed gates | medium gate |
+|---|---|---|---|
+| baseline (pure default) | fail | `high_vulnerabilities` | — |
+| **strict (EVIDENCE)** | fail | `high_vulnerabilities`, **`medium_vulnerabilities`** | `enabled:true, value:4, fail` |
+| strict (CONSUMER) | fail | `high_vulnerabilities` | `enabled:false, value:4, skipped` |
+
+**Strict-only delta visible** (4 medium, EVIDENCE view); the CONSUMER skip is the consumer's own
+explicit `fail_on.medium_vulnerabilities:false` (shown transparently — SS suppressed nothing).
+
+**Dependency-Check CI:** the v0.1.28 **propertyfile permission blocker is FIXED** (container-readable;
+DC ran the full cold NVD download). DC then hit the OWASP **H2 database lock / "No documents exist"**
+error (stale/empty cache from the failed v0.1.28 run under `restore-keys: nvd-Linux-`) → exit 13, **no
+fake-clean report**. Exact blocker documented; **local DC evidence (v0.1.27, 6 high/3 medium) stands**.
+Strict is demonstrated cleanly in live CI but **not green** (real highs) and **not production-ready**.

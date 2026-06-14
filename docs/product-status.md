@@ -161,6 +161,23 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.29 — CLEAN strict CI run (delta visible) + DC propertyfile fix (no v1.0 RC yet)
+- **Clean strict CI evidence.** Live run `27513388096` (zenchron-tools, success, ~41 min) with **3
+  attributable views**: baseline FAIL `[high]`; **strict-EVIDENCE FAIL `[high, medium]`** (pure
+  mode-default → strict-only delta VISIBLE, medium `enabled:true,fail`); strict-CONSUMER FAIL `[high]`
+  (medium skipped by the consumer's own `fail_on.medium_vulnerabilities:false`, shown transparently —
+  SS suppressed nothing). [`clean-strict-ci-evidence-v029.md`](clean-strict-ci-evidence-v029.md).
+- **DC propertyfile bug FIXED.** v0.1.28's CI failure was a real bug — the leak-safe propertyfile was
+  `0600`/`0700` owned by the host UID, unreadable by the DC container's UID on Linux Docker. Now
+  container-readable (key still off cmdline/logs/report/commits). DC ran the full cold NVD download
+  this time.
+- **DC-in-CI still blocked (documented).** After the perms fix, DC hit OWASP's **H2 database-lock /
+  "No documents exist"** (stale cache) → exit 13, **no fake-clean report**. Local DC evidence (v0.1.27,
+  6 high/3 medium) stands. Remaining DC-in-CI work is operational (clean cache seed), not engine.
+- **Override precedence documented + guarded** (mode defaults → profile overrides win).
+- **v1.0 RC: NOT yet.** Holds the v0.1.28 bar (delta visible AND DC completes): delta now met, DC-in-CI
+  not. Next is **v0.1.30** (close DC-in-CI), then `v1.0.0-rc.1`. Self-test **470 → 484**. v1.0 NOT reached.
+
 ## v0.1.28 — Strict CI evidence + install/sync breadth + digest policy (no v1.0 RC)
 - **Live strict CI evidence.** Real GitHub Actions run on `zenchron-tools` (run `27512789768`,
   success): baseline + strict both ran; baseline FAIL `[high]` / strict FAIL `[high]` (real OSV/Trivy:

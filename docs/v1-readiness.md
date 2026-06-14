@@ -44,19 +44,20 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 | 4 | **OWASP Dependency-Check live-validated** | a real, cited `dependency-check.json` from a consumer parsed by its collector, **with non-zero CVE buckets exercised** | **DONE** — v0.1.27: real run on a **dependency-rich consumer** (`zenchron-tools`, 9,289 deps) → **7 vulnerable deps / 11 vulns**, collector-parsed to **6 high / 3 medium** (`fail`). The v0.1.26 thin-self-scan caveat is **CLOSED** — non-zero severity buckets are exercised. Surfaced + fixed a real npm `MODERATE→medium` mapping gap. Cited in [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md). **Residual:** severity fidelity best-effort; npm Node-Audit was rate-limited (429) so npm-source coverage is partial |
 | 5 | **Install/sync proven across shipped profiles** | dry-run-default install/sync round-trips with fixtures for the shipped install manifests | **DONE** — v0.1.28: **8 profiles** round-tripped (laravel-react-docker, laravel, react, node, node-react, symfony, php-library, docker): dry-run no-op, apply creates managed files, accepted-risks never created/overwritten, full drift detect→resolve cycle, unmanaged files untouched ([`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md)); guarded by `self-test v028-live` |
 | 6 | **Digest pinning** | a documented, verifiable policy to pin every shipped scanner image/action to a digest | **DONE (policy)** — v0.1.28: digests re-verified (all MATCH); **policy decided** — dev/onboarding = readable tags, production/hardened = digest-pinned overrides; hardened digest-pinned example added (`examples/hardened/sentinel-shield-hardened.snippet.yml`); rollback + drift guidance documented. **Pinned-by-default remains opt-in by design** (templates legible; consumer hardens) — a deliberate stance, not an open gap |
-| 7 | **Strict mode validated on ≥1 consumer** | a real consumer runs in `strict` in CI with no `report-only` escape hatch | **PARTIAL** — v0.1.28: a **live consumer CI run in strict EXISTS** (`zenchron-tools` run `27512789768`, success): baseline FAIL `[high]` / strict FAIL `[high]`; real OSV/Trivy findings; nothing suppressed ([`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md)). **Residuals:** strict did not run green (correctly failed on 6 real high CVEs); the consumer's explicit `fail_on.medium_vulnerabilities:false` masked the strict delta (shown via pure mode-default resolve); DC did not complete in the CI run. Strict **NOT production-ready** |
+| 7 | **Strict mode validated on ≥1 consumer** | a clean strict CI run: delta visible (no masking override) AND Dependency-Check completes | **NEARLY — clean delta achieved; DC-in-CI open.** v0.1.29: live run `27513388096` (success) with **3 attributable views** — baseline FAIL `[high]`, **strict-EVIDENCE FAIL `[high, medium]` (delta VISIBLE, medium `enabled:true,fail`)**, strict-CONSUMER FAIL `[high]` (medium skipped by the consumer's own `fail_on.medium_vulnerabilities:false`, shown transparently). Nothing suppressed ([`clean-strict-ci-evidence-v029.md`](clean-strict-ci-evidence-v029.md)). **Residuals:** (a) DC did **not** complete in CI — the v0.1.28 propertyfile-permission blocker is FIXED, but DC then hit an OWASP **H2 database-lock / "No documents exist"** (stale cache) → no fake-clean report; (b) strict is not "green" (correctly fails on 6 real highs — consumer remediation out of scope). Strict **NOT production-ready** |
 
-**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE. v0.1.28 **closed (5)
-install/sync breadth (8 profiles)** and **(6) the digest-pinning policy (dev tags / prod pinned)**,
-and advanced **(7)** from local to a **live consumer CI strict run**. The remaining hard item is **(7)
-a *clean* strict CI run** — one where strict runs without the consumer's medium-override masking the
-delta and with DC completing (warm cache). **v1.0 is NOT reached.**
+**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE; (4) DC rich-consumer,
+(5) install/sync breadth, (6) digest policy are CLOSED. v0.1.29 delivered the **clean strict CI run
+with the strict-only delta visible** — the primary part of (7). The **only remaining concrete item**
+is **DC completing in CI** (an operational cache/H2 fix — DC is already live-validated locally, and the
+SS-side perms blocker is fixed). **v1.0 is NOT reached.**
 
-**v1.0 RC decision (v0.1.28):** **NOT yet — next is `v0.1.29`, not `v1.0.0-rc.1`.** Blockers (4),
-(5), (6) are closed; (7) now has a **live CI run** but with honest residuals (strict not green / delta
-masked by consumer override / DC didn't run in CI). RC requires (7) demonstrated cleanly: a consumer
-strict CI run where the strict delta is visible (no masking override) and DC completes. That is the
-sole focus of v0.1.29; after it, evaluate `v1.0.0-rc.1`.
+**v1.0 RC decision (v0.1.29):** **NOT yet — next is `v0.1.30`, not `v1.0.0-rc.1`.** This holds to the
+RC bar set in v0.1.28: "(7) strict delta visible **and** DC completes in CI." The **delta-visible
+condition is now met cleanly**; **DC-in-CI is not** (H2-lock on a stale cache). Rather than move the
+goalposts, v0.1.30 closes DC-in-CI with a clean cache seed (distinct cache key + a DC-only warming run
+that builds the H2 datastore, then restore it). After DC completes in CI, the blocker table fully
+supports **`v1.0.0-rc.1`**. The remaining items are operational/consumer-side, **not** engine defects.
 See §16 for the consolidated blocker list.
 
 ---

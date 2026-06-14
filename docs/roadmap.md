@@ -158,3 +158,13 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 - **Digest-pinning policy CLOSED** — dev tags / prod digest-pinned; hardened example added; digests re-verified.
 - **v1.0 RC NOT recommended** — next is **v0.1.29**: a *clean* strict CI run (no masking override + DC
   completes). After that, evaluate `v1.0.0-rc.1`. v1.0 NOT reached.
+
+### v0.1.29 update — clean strict CI run achieved; DC propertyfile fixed; DC-in-CI still open
+- **Clean strict CI run** (zenchron-tools run `27513388096`, success): 3 attributable views; the
+  **strict-only delta (medium) is VISIBLE** in the EVIDENCE view; the CONSUMER view shows the
+  consumer's own override masking it. Nothing suppressed.
+- **DC propertyfile container-readability fixed** (the v0.1.28 CI blocker); DC ran the full cold NVD
+  download. DC then hit an OWASP **H2 database-lock** (stale cache) → no report (no fake-clean). Exact
+  blocker documented; local DC evidence stands.
+- **v1.0 RC NOT recommended** — the delta-visible RC condition is met but DC-in-CI is not. Next is
+  **v0.1.30** (close DC-in-CI: clean cache seed / warming run), then `v1.0.0-rc.1`. v1.0 NOT reached.

@@ -150,4 +150,17 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
   complete in CI. Strict NOT production-ready.
 - [ ] `not-reached` — **v1.0 / RC**: NOT reached; **RC NOT recommended** — next is **v0.1.29** (clean
   strict CI run: no masking override + DC completes), then evaluate `v1.0.0-rc.1`.
+
+## v0.1.29 — Clean strict CI evidence
+- [x] `done` — **Clean strict CI run** (zenchron-tools run `27513388096`, success): 3 attributable
+  views; **strict-only delta (medium) VISIBLE** in the EVIDENCE view (pure mode default); CONSUMER
+  view transparently shows the consumer's `fail_on.medium_vulnerabilities:false` masking. Nothing
+  suppressed. [`clean-strict-ci-evidence-v029.md`](clean-strict-ci-evidence-v029.md).
+- [x] `done` — **DC propertyfile container-readable fix** (the v0.1.28 CI blocker): DC ran the full
+  cold NVD download. Guarded by `v029-live` (60).
+- [ ] `blocked` — **DC completes in CI**: after the perms fix, DC hit OWASP **H2 database-lock /
+  "No documents exist"** (stale cache) → exit 13, no fake-clean report. Operational (clean cache
+  seed); local DC evidence (v0.1.27) stands.
+- [ ] `not-reached` — **v1.0 / RC**: **RC NOT recommended** — delta-visible condition met, DC-in-CI
+  not. Next is **v0.1.30** (close DC-in-CI), then `v1.0.0-rc.1`.
 </content>
