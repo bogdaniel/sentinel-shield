@@ -1,0 +1,39 @@
+{
+  "reportSchema": "1.1",
+  "scanInfo": { "engineVersion": "fixture" },
+  "projectInfo": { "name": "npm-vocab-fixture", "reportDate": "2026-06-15T00:00:00Z" },
+  "_comment": "Synthetic fixture (no consumer data). Reproduces Dependency-Check mixing NVD CVSS labels (CRITICAL/HIGH) with npm Node-Audit/RetireJS labels (critical/high/moderate/low). Guards that npm 'moderate' maps to the medium bucket. Expected collector mapping: critical=1, high=2, medium=2.",
+  "dependencies": [
+    {
+      "fileName": "pkg-a (NVD)",
+      "vulnerabilities": [
+        { "name": "CVE-0000-0001", "severity": "CRITICAL", "source": "NVD" }
+      ]
+    },
+    {
+      "fileName": "pkg-b (NVD)",
+      "vulnerabilities": [
+        { "name": "CVE-0000-0002", "severity": "HIGH", "source": "NVD" }
+      ]
+    },
+    {
+      "fileName": "pkg-c (npm)",
+      "vulnerabilities": [
+        { "name": "GHSA-aaaa-bbbb-cccc", "severity": "high", "source": "NPM" }
+      ]
+    },
+    {
+      "fileName": "pkg-d (npm)",
+      "vulnerabilities": [
+        { "name": "GHSA-dddd-eeee-ffff", "severity": "moderate", "source": "NPM" },
+        { "name": "GHSA-gggg-hhhh-iiii", "severity": "moderate", "source": "RETIREJS" }
+      ]
+    },
+    {
+      "fileName": "pkg-e (npm)",
+      "vulnerabilities": [
+        { "name": "GHSA-jjjj-kkkk-llll", "severity": "low", "source": "NPM" }
+      ]
+    }
+  ]
+}
