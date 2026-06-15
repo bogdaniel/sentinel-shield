@@ -109,6 +109,12 @@ if command -v dependency-check >/dev/null 2>&1; then
 elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	echo "[sentinel-shield] dependency-check (container $IMAGE): scanning . (cache mounted, foreground)" >&2
 	CACHE_ABS=$(CDPATH= cd -- "$CACHE" && pwd)
+	# v0.1.30: the Dependency-Check container runs as a NON-ROOT user, but the bind-mounted NVD data
+	# dir and report dir are owned by the host UID. Without write access the container cannot create
+	# or lock the H2 database — it fails with "Unable to obtain an exclusive lock on the H2 database"
+	# / "No documents exist" (the v0.1.29/30 CI failure) even on a fresh cache. Make both dirs
+	# container-writable (NVD data + reports are not secret; the key lives only in the propertyfile).
+	chmod -R a+rwX "$CACHE_ABS" "$OUTDIR" 2>/dev/null || true
 	# shellcheck disable=SC2086
 	$TO docker run --rm -v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" \
 		${DC_SECRET_MOUNT:+-v} ${DC_SECRET_MOUNT:+$DC_SECRET_MOUNT} "$IMAGE" \
