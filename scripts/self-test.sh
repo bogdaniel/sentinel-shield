@@ -1593,11 +1593,12 @@ run_v024_docs() {
 	log_info "v024-docs: changelog/version, Dependency-Check honesty, v1 not-reached, no stray tags, .claude untracked"
 	D="$ROOT/docs"
 	vd_check "CHANGELOG has 0.1.24 entry" "$([ "$(grep -c '0.1.24' "$ROOT/CHANGELOG.md")" -ge 1 ] && echo yes || echo no)" "yes"
-	# Dependency-Check honesty gate (precise, source-of-truth based): the live-evidence registry must
-	# NOT assert Dependency-Check is live-validated, and product-status must mark it attempted/NOT.
-	_overclaim=$(grep -hiE 'dependency-check' "$D/main-gate-live-evidence.md" 2>/dev/null | grep -iE 'live-validated' | grep -viE 'not|attempt|pending' | wc -l | tr -d ' ')
-	vd_check "live-evidence registry does NOT promote Dependency-Check" "$_overclaim" "0"
-	vd_check "product-status marks Dependency-Check attempted/NOT" "$([ "$(grep -iE 'dependency-check' "$D/product-status.md" | grep -ciE 'attempt|NOT live-validated')" -ge 1 ] && echo yes || echo no)" "yes"
+	# Dependency-Check honesty gate (v0.1.30): DC is now PROMOTED — live-validated locally (v0.1.27,
+	# dependency-rich) AND in CI (v0.1.30). The original v0.1.24 guard ("must NOT be promoted") is
+	# retired; the anti-fake intent is preserved by requiring the promotion to be EVIDENCE-BACKED — the
+	# live-evidence registry and product-status must cite the real DC CI run id, never a bare claim.
+	vd_check "live-evidence registry promotes Dependency-Check WITH a cited CI run id" "$(grep -qs '27530386965' "$D/main-gate-live-evidence.md" && echo yes || echo no)" "yes"
+	vd_check "product-status records DC CI completion (cites run id)" "$(grep -qs '27530386965' "$D/product-status.md" && echo yes || echo no)" "yes"
 	# v1.0 not reached must be stated in v1-readiness.
 	vd_check "v1-readiness states NOT reached" "$([ "$(grep -ciE 'v1.0 (is )?not (yet )?reach|NOT REACHED' "$D/v1-readiness.md")" -ge 1 ] && echo yes || echo no)" "yes"
 	vd_check "v1-closure-v024 present + linked from v1-readiness" "$([ -f "$D/v1-closure-v024.md" ] && [ "$(grep -c 'v1-closure-v024' "$D/v1-readiness.md")" -ge 1 ] && echo yes || echo no)" "yes"
@@ -1952,6 +1953,77 @@ YAML
 	log_info "v029: OK (override precedence, evidence isolation, DC container-readable propertyfile, no-fake-clean, evidence doc)"
 }
 
+# --- v0.1.30: Dependency-Check CI cache reliability (stale-lock cleanup, reset docs, no-fake-clean) ---
+V30_FAILS=0
+cc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V30_FAILS=$((V30_FAILS + 1)); fi; }
+
+run_v030_dc_ci_cache() {
+	log_info "v030: Dependency-Check CI cache reliability — stale-lock cleanup, reset docs, no-fake-clean"
+	A="$ROOT/scripts/audits/dependency-check.sh"
+	_d=$(mktemp -d); _cache="$_d/cache"; mkdir -p "$_cache"
+	# stub DC binary: writes valid JSON to --out, configurable exit.
+	_bin="$_d/bin"; mkdir -p "$_bin"
+	cat > "$_bin/dependency-check" <<'STUB'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do case "$1" in --out) out="$2"; shift 2;; *) printf '%s\n' "$1" >> "${SS_T_ARGS:-/dev/null}"; shift;; esac; done
+[ -n "${SS_T_JSON:-}" ] && printf '%s' "$SS_T_JSON" > "$out"
+exit "${SS_T_RC:-0}"
+STUB
+	chmod +x "$_bin/dependency-check"
+
+	# (52) stale H2/update lock cleanup before run; NVD data preserved.
+	: > "$_cache/odc.update.lock"; : > "$_cache/odc.mv.db.lock"; : > "$_cache/store.lock"
+	printf 'NVDDATA' > "$_cache/odc.mv.db"   # the actual data file must survive
+	SS_T_ARGS="$_d/argv.txt"; : > "$SS_T_ARGS"
+	PATH="$_bin:$PATH" SS_T_JSON='{"dependencies":[]}' SS_T_RC=0 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_cache" \
+		sh "$A" "$_d/o.json" >/dev/null 2>&1 || true
+	cc_check "(52) stale *.lock files removed before run" "$(find "$_cache" -name '*.lock' 2>/dev/null | wc -l | tr -d ' ')" "0"
+	cc_check "(52) NVD data (odc.mv.db) preserved" "$([ -f "$_cache/odc.mv.db" ] && echo yes || echo no)" "yes"
+	cc_check "(52) report produced (stub)" "$([ -s "$_d/o.json" ] && echo yes || echo no)" "yes"
+
+	# (56) key passed via --propertyfile, NOT as a CLI arg.
+	: > "$_d/argv2.txt"
+	PATH="$_bin:$PATH" SS_T_ARGS="$_d/argv2.txt" SS_T_JSON='{"dependencies":[]}' SS_T_RC=0 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY=FAKEKEY-30 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c2" sh "$A" "$_d/o2.json" >/dev/null 2>&1 || true
+	cc_check "(56) NVD key NOT a CLI arg" "$(grep -c 'FAKEKEY-30' "$_d/argv2.txt")" "0"
+	cc_check "(56) key passed via --propertyfile" "$(grep -c -- '--propertyfile' "$_d/argv2.txt")" "1"
+	# (55) propertyfile dir removed after run.
+	cc_check "(55) propertyfile cleaned up after run" "$(find "$_d" -name 'dependency-check.properties' 2>/dev/null | wc -l | tr -d ' ')" "0"
+	# (54) container-readable propertyfile perms in the script.
+	cc_check "(54) propertyfile is container-readable (chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# (57) valid JSON preserved on NON-ZERO exit.
+	PATH="$_bin:$PATH" SS_T_JSON='{"dependencies":[{"vulnerabilities":[{"severity":"HIGH"}]}]}' SS_T_RC=1 \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c3" \
+		sh "$A" "$_d/o3.json" >/dev/null 2>&1 || true
+	cc_check "(57) non-zero exit + valid JSON -> report preserved" "$([ -s "$_d/o3.json" ] && echo yes || echo no)" "yes"
+	# (58) missing key/binary/image -> NO fake-clean report.
+	PATH="/usr/bin:/bin" SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE='' \
+		SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE="$_d/c4" sh "$A" "$_d/o4.json" >/dev/null 2>&1 || true
+	cc_check "(58) no key/binary/image -> NO fake-clean report" "$([ -f "$_d/o4.json" ] && echo present || echo absent)" "absent"
+
+	# (53) cache-reset behavior is documented.
+	_cdoc="$ROOT/docs/dependency-check-ci-cache.md"
+	cc_check "(53) CI cache doc documents reset input" "$(grep -qs 'reset_dependency_check_cache' "$_cdoc" && echo yes || echo no)" "yes"
+	cc_check "(53) script clears stale locks (find -name '*.lock' -delete)" "$([ "$(grep -c "name '\*.lock'" "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# (59) v030 evidence doc cites the live run id.
+	_edoc="$ROOT/docs/dependency-check-ci-evidence-v030.md"
+	cc_check "(59) v030 evidence doc cites the live run id" "$(grep -qs '27530386965' "$_edoc" && echo yes || echo no)" "yes"
+	# (60) v1 blocker table present + records Dependency-Check.
+	cc_check "(60) v1-readiness has the blocker table with Dependency-Check" "$(grep -qs 'OWASP Dependency-Check' "$ROOT/docs/v1-readiness.md" && echo yes || echo no)" "yes"
+	# (61) no .claude tracked.
+	cc_check "(61) no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+	# (62) no UUID-shaped secret literal committed.
+	cc_check "(62) no UUID-shaped secret in scripts/docs/examples" "$( ( cd "$ROOT" && git grep -lIE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' -- scripts/ docs/ examples/ 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	rm -rf "$_d"
+	if [ "$V30_FAILS" -ne 0 ]; then log_error "v030: $V30_FAILS case(s) failed"; return 1; fi
+	log_info "v030: OK (stale-lock cleanup, NVD data preserved, key off-argv, no-fake-clean, cache-reset docs)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -1985,6 +2057,7 @@ case "$SUB" in
 	v027-live) run_v027_consumer_evidence ;;
 	v028-live) run_v028_strict_ci_and_breadth ;;
 	v029-live) run_v029_clean_strict_ci ;;
+	v030-live) run_v030_dc_ci_cache ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2018,13 +2091,14 @@ case "$SUB" in
 		run_v027_consumer_evidence
 		run_v028_strict_ci_and_breadth
 		run_v029_clean_strict_ci
+		run_v030_dc_ci_cache
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|all)"
 		exit 2
 		;;
 esac
