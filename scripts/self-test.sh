@@ -2026,6 +2026,44 @@ STUB
 	log_info "v030: OK (stale-lock cleanup, NVD data preserved, key off-argv, no-fake-clean, cache-reset docs)"
 }
 
+# --- v1.0.0-rc.1 soak: contract-coherence regression guards (exit codes, RC framing, no-final-v1.0) ---
+RC_FAILS=0
+rc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; RC_FAILS=$((RC_FAILS + 1)); fi; }
+
+run_v100rc_soak() {
+	log_info "rc.1-soak: engine exit-code contract, RC framing, contract links, example-workflow uploads"
+	_d=$(mktemp -d)
+
+	# (E) resolve-gates exit-code contract: config/input errors -> exit 2 (STABLE convention), success -> 0.
+	if sh scripts/resolve-gates.sh --mode bogus --output-dir "$_d" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi; rc_check "resolve-gates: invalid --mode -> exit 2" "$_rc" "2"
+	if sh scripts/resolve-gates.sh --format bogus --output-dir "$_d" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi; rc_check "resolve-gates: invalid --format -> exit 2" "$_rc" "2"
+	if sh scripts/resolve-gates.sh --require-profile --profile "$_d/nope.yaml" --output-dir "$_d" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi; rc_check "resolve-gates: missing required profile -> exit 2" "$_rc" "2"
+	if sh scripts/resolve-gates.sh --mode strict --profile "$_d/none.yaml" --output-dir "$_d" --format env >/dev/null 2>&1; then _rc=0; else _rc=$?; fi; rc_check "resolve-gates: valid run -> exit 0" "$_rc" "0"
+	# all four engine scripts share the exit-2-on-config convention.
+	rc_check "enforce-gates uses die_cfg (exit 2)" "$([ "$(grep -c 'die_cfg' scripts/enforce-gates.sh)" -ge 1 ] && echo yes || echo no)" "yes"
+	rc_check "resolve-gates uses die_cfg (exit 2)" "$([ "$(grep -c 'die_cfg' scripts/resolve-gates.sh)" -ge 1 ] && echo yes || echo no)" "yes"
+
+	# (G/contract) RC framing: rc.1 is a candidate, NOT final v1.0.0 — no doc may assert final v1.0.0 reached.
+	_finalclaim=$( ( cd "$ROOT" && grep -rilE 'v1\.0\.0 (is )?(released|final|reached|ga|generally available)' docs/ README.md CHANGELOG.md 2>/dev/null | while read -r f; do grep -iE 'v1\.0\.0 (is )?(released|final|reached|ga|generally available)' "$f" | grep -viE 'not |never|rc|candidate|once|after|follows|unless|pending|—|criteria'; done | wc -l | tr -d ' ' ) )
+	rc_check "no doc claims final v1.0.0 released/reached" "$_finalclaim" "0"
+	rc_check "product-contract is frozen for rc.1" "$(grep -qs 'frozen for .v1.0.0-rc.1.' "$ROOT/docs/product-contract.md" && echo yes || echo no)" "yes"
+	rc_check "product-contract has migration policy to v1.0.0 (§6)" "$(grep -qs 'migration to .v1.0.0.' "$ROOT/docs/product-contract.md" && echo yes || echo no)" "yes"
+	rc_check "README links the RC-critical docs (product-contract + v1-readiness)" "$(grep -qs 'product-contract.md' "$ROOT/README.md" && grep -qs 'v1-readiness.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
+
+	# (G) Dependency-Check is NOT labelled experimental/not-live-validated in CANONICAL strict-mode-readiness.
+	rc_check "strict-mode-readiness: DC NOT labelled 'attempted, NOT live-validated'" "$(grep -c 'OWASP Dependency-Check.*attempted, NOT live-validated' "$ROOT/docs/strict-mode-readiness.md")" "0"
+
+	# (F) the laravel-react-docker EXAMPLE workflow: every upload-artifact has if: always() (raw reports survive).
+	_xwf="$ROOT/examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+	_ups=$(grep -c 'uses: actions/upload-artifact' "$_xwf")
+	_alwaysabove=$(awk '/uses: actions\/upload-artifact/{ if (prev ~ /if: always\(\)/) c++ } { prev=$0 } END{ print c+0 }' "$_xwf")
+	rc_check "example workflow: every upload-artifact has if: always()" "$_alwaysabove" "$_ups"
+
+	rm -rf "$_d"
+	if [ "$RC_FAILS" -ne 0 ]; then log_error "rc.1-soak: $RC_FAILS case(s) failed"; return 1; fi
+	log_info "rc.1-soak: OK (resolve-gates exit-2 contract, RC framing, contract migration+links, example uploads guarded)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2060,6 +2098,7 @@ case "$SUB" in
 	v028-live) run_v028_strict_ci_and_breadth ;;
 	v029-live) run_v029_clean_strict_ci ;;
 	v030-live) run_v030_dc_ci_cache ;;
+	rc1-soak) run_v100rc_soak ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2094,13 +2133,14 @@ case "$SUB" in
 		run_v028_strict_ci_and_breadth
 		run_v029_clean_strict_ci
 		run_v030_dc_ci_cache
+		run_v100rc_soak
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|all)"
 		exit 2
 		;;
 esac

@@ -200,3 +200,22 @@ the mounted data + report dirs (same UID class as the v0.1.29 propertyfile fix).
 dependency-rich local scan). Limitation: the CI scan covers the committed manifests (69 deps); add
 `composer install`/`npm ci` before DC for full transitive CI coverage (enhancement, not a blocker).
 **This closes the last hard v1.0 CI blocker** — see [`v1-readiness.md`](v1-readiness.md) for the RC call.
+
+## v1.0.0-rc.1 soak — Dependency-Check TRANSITIVE CI coverage (committed-surface caveat CLOSED)
+
+The RC soak ran the strict-evidence workflow pinned to **`v1.0.0-rc.1`** with `composer install` +
+`npm ci` BEFORE Dependency-Check, so DC scans the full transitive surface (vendor/ + node_modules/).
+
+| Field | Value |
+|---|---|
+| Consumer / Run | `bogdaniel/zenchron-tools` — **run `27573703800`, success** (~9 min, warm NVD cache) |
+| SS version | pinned **`v1.0.0-rc.1`** (commit `f1b2644`) |
+| **DC analyzed deps** | **9,179** (vs 69 committed-surface in v0.1.30) — transitive surface restored by credential-free installs |
+| DC findings | 1 critical / 8 high / 6 medium (npm `moderate`→medium) / 4 low → collector **`fail` 1 critical / 8 high / 6 medium** |
+| Strict views | baseline FAIL `[critical, high]`; **strict-EVIDENCE FAIL `[critical, high, medium]`** (delta visible) |
+| Key | NVD download with the secret key; 0 key occurrences in artifact/log/commits |
+
+**Outcome:** the v0.1.30 "CI scans the committed surface" limitation is **closed** — DC scans **9,179
+transitive deps in CI** on the rc.1 tag, collector-parsed, strict delta visible, nothing suppressed.
+The rc.1 STABLE contract held (no regression). Strict still correctly fails on real findings (opt-in,
+not production-ready by default).

@@ -100,7 +100,7 @@ severity for your project).
 | OSV-Scanner | `high_vulnerabilities` | `experimental` (live-validated run, **coarse severity**) | Counts all OSV vulns as `high` unless normalized; tune per project. |
 | CodeQL | `high/medium_vulnerabilities` | `experimental` (live-validated run, **coarse severity**) | SARIF `level→severity` (error→high, warning→medium), not CVSS. |
 | Grype | `*_vulnerabilities` | `proven` (run 27239206382) but severity best-effort | Live-validated; still confirm severity mapping on your deps. |
-| OWASP Dependency-Check | `*_vulnerabilities` | `experimental` — **attempted, NOT live-validated** | No real artifact exists; cold NVD exceeds CI budget. Run **nightly** with a warm cache, advisory, before gating. |
+| OWASP Dependency-Check | `*_vulnerabilities` | **`live-validated`** (local v0.1.27, 9,289 deps; CI v0.1.30 + transitive run 27573703800, 9,179 deps) — **coarse severity** | Live-validated locally + in CI with the NVD key. Severity mapping is best-effort (npm `moderate`→medium); confirm thresholds on real findings before gating. |
 | Dockle (`container_image_violations`) | `container_image_violations` | `proven` (run 27239206382) | Live-validated; needs a built image — inert if you don't build one. |
 | Checkov / Conftest / Terrascan (`iac_violations`) | `iac_violations` | `experimental` — **only if configured** | No consumer with IaC validated; only meaningful if you have IaC. |
 | Deptrac (`architecture_violations`) | `architecture_violations` | `supported` — not live-validated | Live-validate on a consumer that ships a `deptrac.yaml`. |

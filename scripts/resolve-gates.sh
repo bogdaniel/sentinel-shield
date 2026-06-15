@@ -18,6 +18,15 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 
+# die_cfg <message...> — configuration/input/parsing error -> exit 2 (the STABLE engine convention,
+# matching enforce-gates.sh / build-security-summary.sh / select-security-summary.sh). v1.0.0-rc.1
+# soak fix: resolve-gates previously exited 1 on config errors, contradicting product-contract §1
+# ("2 = config-or-input error, across the engine scripts").
+die_cfg() {
+	log_error "$*"
+	exit 2
+}
+
 # Canonical fail_on keys, in stable output order.
 FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
 
@@ -52,8 +61,8 @@ Generated artifacts (depending on --format):
   <output-dir>/sentinel-shield-gates.json
   <output-dir>/sentinel-shield-gates.md
 
-Exit status is non-zero on invalid mode, invalid boolean values, an unparseable
-profile, or a missing profile when --require-profile is set.
+Exit: 0 success, 2 config-or-input error (invalid mode, invalid boolean values, an
+unparseable profile, a missing profile when --require-profile is set, or a bad flag).
 EOF
 }
 
@@ -65,13 +74,13 @@ while [ $# -gt 0 ]; do
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--require-profile) REQUIRE_PROFILE=1; shift ;;
 		-h | --help) usage; exit 0 ;;
-		*) usage >&2; die "unknown argument: $1" ;;
+		*) usage >&2; die_cfg "unknown argument: $1" ;;
 	esac
 done
 
 case "$FORMAT" in
 	markdown | env | json | all) ;;
-	*) die "invalid --format '$FORMAT' (expected: markdown | env | json | all)" ;;
+	*) die_cfg "invalid --format '$FORMAT' (expected: markdown | env | json | all)" ;;
 esac
 
 # --- profile presence + parser selection ------------------------------------
@@ -79,7 +88,7 @@ PROFILE_EXISTS=0
 if [ -f "$PROFILE" ]; then
 	PROFILE_EXISTS=1
 elif [ "$REQUIRE_PROFILE" -eq 1 ]; then
-	die "profile not found: '$PROFILE' (and --require-profile was set)"
+	die_cfg "profile not found: '$PROFILE' (and --require-profile was set)"
 else
 	log_warn "profile '$PROFILE' not found; using report-only defaults"
 fi
@@ -99,7 +108,7 @@ if [ "$PROFILE_EXISTS" -eq 1 ] && [ "$USE_YQ" -eq 0 ]; then
 	# and quoted booleans. If found, mikefarah yq v4 is required.
 	if grep -v '^[[:space:]]*#' "$PROFILE" \
 		| grep -Eq '(^|[[:space:]])&[A-Za-z0-9_]|:[[:space:]]*\*[A-Za-z0-9_]|:[[:space:]]*[{[]|:[[:space:]]*[|>]([[:space:]]|$)|:[[:space:]]*["'"'"'](true|false|yes|no|on|off)["'"'"']'; then
-		die "profile uses advanced YAML (anchors/aliases/inline collections/block scalars/quoted booleans). Install mikefarah yq v4 to parse it, or simplify to the canonical format (see templates/profile.yaml)."
+		die_cfg "profile uses advanced YAML (anchors/aliases/inline collections/block scalars/quoted booleans). Install mikefarah yq v4 to parse it, or simplify to the canonical format (see templates/profile.yaml)."
 	fi
 
 	# Flatten the canonical YAML to dotted path=value lines (and parent.[]=value for
@@ -189,7 +198,7 @@ _mode_ok=0
 for _m in $VALID_MODES; do
 	[ "$_m" = "$MODE" ] && _mode_ok=1
 done
-[ "$_mode_ok" -eq 1 ] || die "invalid mode '$MODE' (expected one of: $VALID_MODES)"
+[ "$_mode_ok" -eq 1 ] || die_cfg "invalid mode '$MODE' (expected one of: $VALID_MODES)"
 
 mode_description() {
 	case "$1" in
@@ -251,7 +260,7 @@ resolve_key() {
 	_def=$(default_for "$MODE" "$1")
 	_p=$(get_scalar "gates.fail_on.$1")
 	if [ -n "$_p" ]; then
-		_n=$(bool_value "$_p") || die "invalid boolean for gates.fail_on.$1: '$_p' (use true/false)"
+		_n=$(bool_value "$_p") || die_cfg "invalid boolean for gates.fail_on.$1: '$_p' (use true/false)"
 		printf '%s' "$_n"
 	else
 		printf '%s' "$_def"
@@ -264,7 +273,7 @@ for key in $FAIL_ON_KEYS; do
 	_def=$(default_for "$MODE" "$key")
 	_p=$(get_scalar "gates.fail_on.$key")
 	if [ -n "$_p" ]; then
-		_n=$(bool_value "$_p") || die "invalid boolean for gates.fail_on.$key: '$_p' (use true/false)"
+		_n=$(bool_value "$_p") || die_cfg "invalid boolean for gates.fail_on.$key: '$_p' (use true/false)"
 		if [ "$_n" != "$_def" ]; then
 			OVERRIDES="${OVERRIDES}${key}|${_n}|${_def}
 "

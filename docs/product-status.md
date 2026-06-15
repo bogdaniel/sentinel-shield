@@ -54,7 +54,7 @@ and infrastructure. Concretely it owns:
 | Install / sync engine (laravel-react-docker) | `proven` | Self-test `install-sync`, `fixtures` round-trip |
 | Raw-report contract + collectors (core 14) | `proven` | Self-test fixtures + zenchron pilot |
 | PR-fast gate (`sentinel-shield-pr-fast.yml`) | `proven` | zenchron run 27170148123 (baseline PASS, no regression) |
-| Main-branch gate (`sentinel-shield-main.yml`) | `supported` (partial) | CodeQL/OSV/Trivy-fs/Syft **live-validated** (run 27214865086); Grype/Dep-Check/Dockle/Deptrac/IaC still unproven |
+| Main-branch gate (`sentinel-shield-main.yml`) | `supported` (partial) | CodeQL/OSV/Trivy-fs/Syft **live-validated** (run 27214865086); **Grype/Dockle live-validated** (run 27239206382); **OWASP Dependency-Check live-validated** (local v0.1.27 + CI v0.1.30, run 27530386965 + transitive run 27573703800); **Deptrac/IaC still unproven** |
 | Main-gate validation harness (`run-main-gate-validation.sh`) | `proven` (engine) | Self-test `main-gate-harness`; runs main-gate wrappers branch-safely, unavailable-not-fake. **Running scanners ≠ live-validated** |
 | Profile system (Laravel/React/Node/Docker) | `supported` | Manifests + dry-run; only laravel-react-docker has a full fixture round-trip |
 | Scheduled / nightly gate | `template-only` | Not executed by default |
@@ -102,21 +102,21 @@ output). To promote: run on a consumer that configures them and cite the run.
 ## 6. Experimental / template-only capabilities
 
 - **Experimental** (coarse parser, live-validate before trusting severity):
-  OWASP Dependency-Check,
   OpenSSF Scorecard, TruffleHog, Checkov, Conftest/OPA, Terrascan, Trivy-image.
+  (**OWASP Dependency-Check is now `live-validated`** — local v0.1.27 + CI v0.1.30 — and is no
+  longer experimental; its *coarse severity* mapping remains best-effort.)
   actionlint/zizmor run **advisory** in self-test.
 - **Template-only**: `sentinel-shield-main.yml`, `sentinel-shield-scheduled.yml` (and the
   combined `sentinel-shield.yml` against a real consumer pipeline).
 
 ## 7. Known product gaps
 
-- **Main-gate live validation underway.** v0.1.17 added the branch-safe path
-  (`run-main-gate-validation.sh`); v0.1.18 promotes the **first four** main-gate tools with cited
-  evidence (run 27214865086): **CodeQL, OSV-Scanner, Trivy-fs, Syft SBOM**. Still **not**
-  live-validated: **Grype, OWASP Dependency-Check, Dockle** (binary/image absent on the pilot —
-  see [`tooling/main-gate-tool-installation.md`](tooling/main-gate-tool-installation.md)),
-  **Deptrac** (no `deptrac.yaml`), **Checkov/Conftest/Terrascan** (no IaC). Promotion requires a
-  real cited run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+- **Main-gate live validation — mostly closed (as of v0.1.30).** v0.1.18 promoted **CodeQL,
+  OSV-Scanner, Trivy-fs, Syft SBOM** (run 27214865086); v0.1.20 promoted **Grype, Dockle** (run
+  27239206382); **OWASP Dependency-Check** is live-validated (local v0.1.27 + CI v0.1.30, runs
+  27530386965 / 27573703800). Still **not** live-validated: **Deptrac** (no `deptrac.yaml`),
+  **Checkov/Conftest/Terrascan** (no IaC). Promotion requires a real cited run in
+  [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 - **Install/sync covers four stacks, not arbitrary onboarding.** No `php-library` /`node-react`
   *named combination* manifest historically (php-library added in v0.1.16; node-react uses the
   `react` profile). Symfony/Go/Python have profiles but no install manifests.

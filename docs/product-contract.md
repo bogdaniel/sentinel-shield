@@ -175,9 +175,10 @@ promoted in `product-status.md`.
   a consumer triages/accept-risks before making strict required.
 - **Regulated mode is not a default** — opt-in for the stricter gate set.
 - **DAST (ZAP/Nuclei) is manual/allowlisted/fail-closed**; **AI review is non-gating**.
-- **Dependency-Check CI evidence scans the committed dependency surface** (add
-  `composer install`/`npm ci` before DC for full transitive CI coverage); DC is also
-  live-validated locally on a dependency-rich surface (9,289 deps, v0.1.27).
+- **Dependency-Check CI coverage** — proven on the **transitive** surface during the rc.1 soak
+  (`composer install`/`npm ci` before DC → **9,179 deps**, run `27573703800`), in addition to the
+  committed-surface CI run (v0.1.30) and the dependency-rich local scan (9,289 deps, v0.1.27).
+  Consumers wanting transitive coverage add the install steps before DC.
 - **Digest pinning is opt-in** — readable tags for onboarding, digest-pinned overrides for
   production ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
 - **Install/sync covers the shipped profiles** (laravel/react/node/docker/php-library +

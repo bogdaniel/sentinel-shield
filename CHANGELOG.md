@@ -6,6 +6,24 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+### v1.0.0-rc.1 soak — hardening (bugfix/coherence only; no scope change)
+- **Fixed (contract coherence):** `scripts/resolve-gates.sh` now exits **2** on config/input errors
+  (invalid `--mode`/`--format`, unparseable/missing-required profile), matching the STABLE engine
+  exit-code convention (`0`/`1`/`2`) already used by enforce/build/select. It previously exited `1`,
+  contradicting `product-contract.md` §1. Guarded by `self-test rc1-soak`.
+- **Dependency-Check TRANSITIVE CI coverage proven** on the rc.1 tag (soak run `27573703800`,
+  success): `composer install` + `npm ci` before DC → **9,179 deps** scanned in CI (vs 69
+  committed-surface), collector `fail` 1 critical / 8 high / 6 medium; strict-EVIDENCE delta visible.
+  Closes the v0.1.30 "committed-surface" caveat. [`main-gate-live-evidence.md`](docs/main-gate-live-evidence.md).
+- **Docs coherence (soak audit):** removed stale "Dependency-Check experimental / NOT live-validated"
+  labels from canonical sections of `product-status.md` (§3/§6/§7) and `strict-mode-readiness.md` (DC
+  is live-validated since v0.1.27/v0.1.30). Added rc.1 soak transitive evidence to the registry.
+- **Example workflow hardening:** every `upload-artifact` step in
+  `examples/laravel-react-docker/.github/workflows/sentinel-shield.yml` now has `if: always()` (raw
+  reports survive scanner failure/findings), matching the shipped templates.
+- **Self-test `rc1-soak`** (+12 checks): resolve-gates exit-2 contract, no-final-v1.0-claim, contract
+  freeze + migration + README links, DC-not-experimental, example-upload `if: always()`.
+
 ## [1.0.0-rc.1] — Release Candidate Contract Freeze
 
 **Release candidate — NOT final `v1.0.0`.** No new scanners, no scope expansion, no gates weakened,

@@ -83,6 +83,7 @@ jobs:
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
             --profile .sentinel-shield/profile.yaml --output-dir reports --format all
       - name: Upload gate resolution
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-gate-resolution
@@ -148,6 +149,7 @@ jobs:
           fi
           ls -1 reports/raw 2>/dev/null || true
       - name: Upload PHP raw reports
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-raw-security-php
@@ -194,6 +196,7 @@ jobs:
           fi
           ls -1 reports/raw 2>/dev/null || true
       - name: Upload Node raw reports
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-raw-security-node
@@ -255,6 +258,7 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
         continue-on-error: true
       - name: Upload Docker raw reports
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-raw-security-docker
@@ -339,6 +343,7 @@ jobs:
           output-file: reports/sbom.spdx.json
         continue-on-error: true
       - name: Upload generic raw reports
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-raw-security
@@ -346,6 +351,7 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
       - name: Upload SBOM
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-sbom
@@ -399,6 +405,7 @@ jobs:
             --branch "${GITHUB_REF_NAME}" \
             --workflow "${GITHUB_WORKFLOW}"
       - name: Upload security summary
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-security-summary
@@ -406,6 +413,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
       - name: Upload merged raw artifacts
+        if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
         uses: actions/upload-artifact@v4
         with:
           name: sentinel-shield-raw-security-merged
