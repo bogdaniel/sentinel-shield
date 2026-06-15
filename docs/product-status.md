@@ -161,7 +161,19 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
-## v1.0.0-rc.2 — RC Soak Hardening (NOT final v1.0.0)
+## v1.0.0 — General Availability (RELEASED)
+**Sentinel Shield `v1.0.0` is released.** The `rc.2` candidate **soaked clean** on a real consumer
+(run `27576003051`, success): the resolve-gates exit-code contract is verified **in CI**
+(`contract_ok: true`), transitive Dependency-Check completed (**9,179 deps**, collector `fail` 1
+critical / 8 high / 6 medium), baseline FAIL `[critical, high]` / strict-EVIDENCE FAIL `[critical,
+high, medium]` (delta visible). All 10 final-release criteria pass; self-test **512 PASS / 0 FAIL**.
+The STABLE surfaces now follow **semver** ([`product-contract.md`](product-contract.md)). **Engine
+stays `proven`; non-core scanner severity is best-effort.** `v1.0.0` does **not** mean every optional
+scanner is a production default — carried known limitations: strict opt-in/non-required; regulated
+opt-in; DAST/Nuclei manual; AI non-gating; DC transitive CI needs `composer install`/`npm ci`; digest
+pinning opt-in; NVD key consumer-provided + must be rotated.
+
+## v1.0.0-rc.2 — RC Soak Hardening (superseded by v1.0.0)
 **The rc.1 soak (3-hour, multi-lane) validated rc.1 on a real consumer and is promoting to `rc.2`.**
 Consumer evidence on the rc.1 tag: **transitive DC CI run `27573703800`** (9,179 deps, collector
 `fail` 1 critical / 8 high / 6 medium; strict-EVIDENCE delta visible) — the v0.1.30 committed-surface

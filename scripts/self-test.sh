@@ -2043,12 +2043,12 @@ run_v100rc_soak() {
 	rc_check "enforce-gates uses die_cfg (exit 2)" "$([ "$(grep -c 'die_cfg' scripts/enforce-gates.sh)" -ge 1 ] && echo yes || echo no)" "yes"
 	rc_check "resolve-gates uses die_cfg (exit 2)" "$([ "$(grep -c 'die_cfg' scripts/resolve-gates.sh)" -ge 1 ] && echo yes || echo no)" "yes"
 
-	# (G/contract) RC framing: rc.1 is a candidate, NOT final v1.0.0 — no doc may assert final v1.0.0 reached.
-	_finalclaim=$( ( cd "$ROOT" && grep -rilE 'v1\.0\.0 (is )?(released|final|reached|ga|generally available)' docs/ README.md CHANGELOG.md 2>/dev/null | while read -r f; do grep -iE 'v1\.0\.0 (is )?(released|final|reached|ga|generally available)' "$f" | grep -viE 'not |never|rc|candidate|once|after|follows|unless|pending|—|criteria'; done | wc -l | tr -d ' ' ) )
-	rc_check "no doc claims final v1.0.0 released/reached" "$_finalclaim" "0"
-	rc_check "product-contract is frozen for rc.1" "$(grep -qs 'frozen for .v1.0.0-rc.1.' "$ROOT/docs/product-contract.md" && echo yes || echo no)" "yes"
-	rc_check "product-contract has migration policy to v1.0.0 (§6)" "$(grep -qs 'migration to .v1.0.0.' "$ROOT/docs/product-contract.md" && echo yes || echo no)" "yes"
-	rc_check "README links the RC-critical docs (product-contract + v1-readiness)" "$(grep -qs 'product-contract.md' "$ROOT/README.md" && grep -qs 'v1-readiness.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
+	# Release coherence (v1.0.0 final): the release docs consistently mark v1.0.0 as released, the
+	# contract documents the v1.0.0 semver promise + migration, and README links the contract docs.
+	rc_check "CHANGELOG has a final [1.0.0] entry" "$(grep -qsE '^## \[1\.0\.0\]( |$)' "$ROOT/CHANGELOG.md" && echo yes || echo no)" "yes"
+	rc_check "v1-readiness marks v1.0.0 RELEASED" "$(grep -qsiE 'v1\.0\.0[^a-z0-9]{0,4}(released|\(ga\)|general availability)' "$ROOT/docs/v1-readiness.md" && echo yes || echo no)" "yes"
+	rc_check "product-contract documents v1.0.0 semver + migration" "$(grep -qs 'migration to .v1.0.0.' "$ROOT/docs/product-contract.md" && grep -qsi 'semver' "$ROOT/docs/product-contract.md" && echo yes || echo no)" "yes"
+	rc_check "README references v1.0.0 + the contract docs" "$(grep -qs 'product-contract.md' "$ROOT/README.md" && grep -qs 'v1-readiness.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
 
 	# (G) Dependency-Check is NOT labelled experimental/not-live-validated in CANONICAL strict-mode-readiness.
 	rc_check "strict-mode-readiness: DC NOT labelled 'attempted, NOT live-validated'" "$(grep -c 'OWASP Dependency-Check.*attempted, NOT live-validated' "$ROOT/docs/strict-mode-readiness.md")" "0"

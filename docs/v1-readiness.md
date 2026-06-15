@@ -51,9 +51,16 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 completing** are CLOSED. The SS-side DC CI bugs (propertyfile perms, container-writable data dir) are
 fixed and regression-guarded.
 
-**v1.0 RC status: `v1.0.0-rc.1` soaked → `v1.0.0-rc.2` recommended (NOT final `v1.0.0`).** All 7 hard
-blockers remain closed with cited evidence. The rc.1 soak (3-hour, multi-lane) **validated rc.1 on a
-real consumer** and found/fixed real issues before final:
+**v1.0 status: `v1.0.0` RELEASED (GA).** All 10 final-release criteria pass: rc.2 soaked clean on a
+real consumer (run `27576003051`, success), the resolve-gates exit-code contract is verified in CI
+(`contract_ok: true`), no new STABLE bug, self-test 512/0, validation green, docs coherent, no secrets
+or private artifacts committed, prior tags untouched. `v1.0.0-rc.1`→`rc.2` fixed a real STABLE bug
+(resolve-gates exit code); `rc.2`→`v1.0.0` is drop-in. The STABLE surfaces now follow **semver**
+([`product-contract.md`](product-contract.md) §6). History below.
+
+**v1.0 RC status: `v1.0.0-rc.1` soaked → `v1.0.0-rc.2` → `v1.0.0` (GA).** All 7 hard blockers closed
+with cited evidence. The rc.1 soak (3-hour, multi-lane) **validated rc.1 on a real consumer** and
+found/fixed real issues before final:
 
 - **Consumer evidence (rc.1 tag):** transitive DC CI run `27573703800` (success) — **9,179 deps**,
   collector `fail` 1 critical / 8 high / 6 medium; baseline FAIL `[critical, high]`, strict-EVIDENCE

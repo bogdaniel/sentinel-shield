@@ -219,3 +219,22 @@ The RC soak ran the strict-evidence workflow pinned to **`v1.0.0-rc.1`** with `c
 transitive deps in CI** on the rc.1 tag, collector-parsed, strict delta visible, nothing suppressed.
 The rc.1 STABLE contract held (no regression). Strict still correctly fails on real findings (opt-in,
 not production-ready by default).
+
+## v1.0.0 final — rc.2 re-soak (clean → GA)
+
+The `v1.0.0-rc.2` candidate was re-soaked on a real consumer pinned to the **`v1.0.0-rc.2`** tag, then
+promoted to **`v1.0.0` (GA)**.
+
+| Field | Value |
+|---|---|
+| Consumer / Run | `bogdaniel/zenchron-tools` — **run `27576003051`, success** (~11 min) |
+| SS version | pinned **`v1.0.0-rc.2`** (commit `77fab17`) |
+| Exit-code contract (in CI) | `resolve-gates` invalid config → **exit 2**, valid → **exit 0** — `contract_ok: true` (the rc.1→rc.2 STABLE fix verified end-to-end) |
+| DC analyzed deps | **9,179** (transitive via `composer install` + `npm ci`) |
+| DC collector | **`fail`, 1 critical / 8 high / 6 medium** |
+| Strict views | baseline FAIL `[critical, high]`; **strict-EVIDENCE FAIL `[critical, high, medium]`** (delta visible) |
+| Key | NVD download with the secret key; 0 key occurrences in artifact/log/commits |
+
+**Outcome:** rc.2 soaked **clean** — exit-code contract verified in CI, transitive DC complete,
+strict delta visible, nothing suppressed, no STABLE regression. All 10 final-release criteria pass →
+**`v1.0.0` released.** Strict remains opt-in/non-required (correctly red on real findings).

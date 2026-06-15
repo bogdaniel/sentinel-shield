@@ -6,7 +6,42 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
-## [1.0.0-rc.2] — RC Soak Hardening (still a release candidate; NOT final v1.0.0)
+## [1.0.0] — General Availability
+
+**Sentinel Shield `v1.0.0` is released.** All seven hard v1.0 blockers are closed with cited evidence
+(v0.1.27–v0.1.30), and the `v1.0.0-rc.2` candidate **soaked clean on a real consumer** with no STABLE
+regression. No new scanners, no scope change from rc.2 — this promotes rc.2 to GA.
+
+### Final-release verification (rc.2 re-soak — run `27576003051`, success)
+- **Consumer baseline + strict-EVIDENCE on the `v1.0.0-rc.2` tag** (`bogdaniel/zenchron-tools`):
+  transitive Dependency-Check via `composer install` + `npm ci` → **9,179 deps**, collector `fail`
+  1 critical / 8 high / 6 medium; baseline FAIL `[critical, high]`, strict-EVIDENCE FAIL
+  `[critical, high, medium]` (strict-only delta visible). Nothing suppressed.
+- **STABLE exit-code contract verified IN CI** on the rc.2 tag: `resolve-gates` invalid config → exit
+  **2**, valid run → exit **0** (`contract_ok: true`). The rc.1→rc.2 fix is confirmed end-to-end.
+- self-test **512 PASS / 0 FAIL**; sh-n / JSON / YAML / node all clean; no secrets, no private
+  artifacts; prior tags untouched.
+
+### Compatibility promise (from `v1.0.0`)
+The STABLE surfaces ([`product-contract.md`](docs/product-contract.md) §1–§3) now follow **semver**:
+additive changes in **minor** releases; any rename/removal/exit-code or summary-key semantic change is
+a **major** bump with a CHANGELOG callout. EXPERIMENTAL/INTERNAL surfaces and coarse scanner severity
+stay outside the semver promise until individually promoted in `product-status.md`.
+
+### Upgrade path
+- **From `v1.0.0-rc.2`:** drop-in — bump `SENTINEL_SHIELD_REF` to `v1.0.0`. No STABLE change vs rc.2.
+- **From `v0.1.x`:** bump the ref; the STABLE surfaces are unchanged except the documented
+  `resolve-gates` config-error exit code (`1`→`2`, fixed in rc.2) — consumers checking only
+  non-zero/zero are unaffected.
+
+### Soft limitations carried into `v1.0.0` (documented; `v1.0.0` ≠ "every optional scanner production-default")
+Strict mode opt-in/non-required (correctly fails on real findings); regulated opt-in; DAST/Nuclei
+manual/fail-closed; AI review non-gating; Dependency-Check transitive CI coverage requires the
+consumer to add `composer install`/`npm ci`; digest pinning opt-in (dev tags / prod pinned);
+install/sync covers the shipped profiles; `sync-managed-block` reserved; **the NVD API key must be
+consumer-provided and rotated** (it was chat-exposed) — never committed or logged.
+
+## [1.0.0-rc.2] — RC Soak Hardening (release candidate; superseded by v1.0.0)
 
 The 3-hour, multi-lane rc.1 soak validated rc.1 on a real consumer and fixed real issues found before
 final. **A STABLE-surface bug (resolve-gates exit code) was fixed**, so this is a new candidate

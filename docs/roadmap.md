@@ -197,3 +197,14 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   **new candidate `v1.0.0-rc.2`** + re-soak, **not** final `v1.0.0`.
 - **Path to final `v1.0.0`:** re-soak rc.2 on ≥1 consumer (baseline + strict-EVIDENCE) with no STABLE
   regression; rotate the NVD key; then tag `v1.0.0`. **Final `v1.0.0` NOT yet claimed.**
+
+### v1.0.0 — General Availability (RELEASED)
+- **rc.2 soaked clean → `v1.0.0` released.** Consumer re-soak run `27576003051` (success) on the
+  `v1.0.0-rc.2` tag: exit-code contract verified in CI (`contract_ok: true`), transitive DC 9,179
+  deps, baseline/strict-EVIDENCE correct (delta visible), no STABLE regression. All 10 final-release
+  criteria pass; self-test 512/0.
+- **From `v1.0.0`:** the STABLE surfaces (engine CLIs, exit codes, env vars, schemas, modes) follow
+  **semver** — additive in minor, breaking changes are major + CHANGELOG callout.
+- **Post-1.0 backlog (soft, opt-in, not blockers):** ship the transitive install steps in the DC
+  evidence template; a digest-pinned-by-default hardened profile; broaden install/sync onboarding;
+  promote Deptrac/IaC with cited consumer runs; refine coarse scanner severity.

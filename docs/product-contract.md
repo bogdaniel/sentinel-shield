@@ -1,17 +1,16 @@
-# Product Contract (v1.0.0-rc.1 freeze)
+# Product Contract (v1.0.0)
 
 This is the **stability contract** for Sentinel Shield. It tells consumers which
-surfaces they may depend on today, which are still moving, and how compatibility
-will be handled across the `v1.0.0` boundary.
+surfaces they may depend on, which are still moving, and how compatibility is handled
+from `v1.0.0` onward.
 
-> **Release-candidate status.** This contract is **frozen for `v1.0.0-rc.1`** — a
-> **release candidate**, **NOT** final `v1.0.0`. The STABLE surfaces in §1–§3 are the
-> ones `v1.0.0` intends to commit to under semver; rc.1 publishes them for soak/validation
-> before the final tag. Nothing here claims final `v1.0.0` is released. Maturity labels
-> defer to the single source of truth, [`product-status.md`](product-status.md) — where
-> any other doc disagrees on a label, `product-status.md` wins. This contract describes
-> *interface stability* (what may break and when), distinct from per-tool maturity.
-> The RC freeze + migration policy to `v1.0.0` is **§6**.
+> **Released (GA).** `v1.0.0` is released. The STABLE surfaces in §1–§3 are committed to under
+> **semver** from `v1.0.0`: additive in minor releases; any rename/removal/exit-code or summary-key
+> semantic change is a **major** bump with a CHANGELOG callout. EXPERIMENTAL/INTERNAL surfaces and
+> coarse scanner severity stay outside the semver promise until individually promoted. Maturity labels
+> defer to the single source of truth, [`product-status.md`](product-status.md) — where any other doc
+> disagrees on a label, `product-status.md` wins. This contract describes *interface stability*
+> (what may break and when), distinct from per-tool maturity. Semver + migration to `v1.0.0` is **§6**.
 
 ---
 
