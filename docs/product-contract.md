@@ -1,14 +1,17 @@
-# Product Contract (pre-1.0)
+# Product Contract (v1.0.0-rc.1 freeze)
 
 This is the **stability contract** for Sentinel Shield. It tells consumers which
 surfaces they may depend on today, which are still moving, and how compatibility
-will be handled before a `v1.0` exists.
+will be handled across the `v1.0.0` boundary.
 
-> **Pre-1.0 status.** Sentinel Shield has **not** reached `v1.0`. Nothing here is a
-> `v1.0` readiness claim. Maturity labels in this document defer to the single source
-> of truth, [`product-status.md`](product-status.md) — where any other doc disagrees on
-> a label, `product-status.md` wins. This contract describes *interface stability*
-> (what may break and when), which is related to but distinct from per-tool maturity.
+> **Release-candidate status.** This contract is **frozen for `v1.0.0-rc.1`** — a
+> **release candidate**, **NOT** final `v1.0.0`. The STABLE surfaces in §1–§3 are the
+> ones `v1.0.0` intends to commit to under semver; rc.1 publishes them for soak/validation
+> before the final tag. Nothing here claims final `v1.0.0` is released. Maturity labels
+> defer to the single source of truth, [`product-status.md`](product-status.md) — where
+> any other doc disagrees on a label, `product-status.md` wins. This contract describes
+> *interface stability* (what may break and when), distinct from per-tool maturity.
+> The RC freeze + migration policy to `v1.0.0` is **§6**.
 
 ---
 
@@ -46,7 +49,7 @@ is stable.
 | Surface | Why it is not yet stable |
 | --- | --- |
 | Individual collectors' **coarse severity** mapping | Severity fidelity is best-effort for OSV/CodeQL/Grype/OWASP Dependency-Check and similar; the bucket a finding lands in may be tuned. The collector *I/O contract* (§2) is stable; the *severity it assigns* is not. |
-| Scanner wrappers **not yet live-validated** | Per [`product-status.md`](product-status.md), `supported`/`experimental` tools (e.g. npm audit, ESLint, Psalm, Deptrac, Checkov/Conftest/Terrascan, Scorecard, TruffleHog, Trivy-image, OWASP Dependency-Check) have fixtures but no cited consumer run. Their wrapper flags/behavior may change. |
+| Scanner wrappers **not yet live-validated** | Per [`product-status.md`](product-status.md), `supported`/`experimental` tools (e.g. npm audit, ESLint, Psalm, Deptrac, Checkov/Conftest/Terrascan, Scorecard, TruffleHog, Trivy-image) have fixtures but no cited consumer run. Their wrapper flags/behavior may change. (**OWASP Dependency-Check is now live-validated** — local v0.1.27 + CI v0.1.30 — so it is no longer in this row; its *coarse severity* mapping stays EXPERIMENTAL per the row above.) |
 | `sentinel-shield-main.yml`, `sentinel-shield-scheduled.yml`, combined `sentinel-shield.yml` | `template-only` — not executed by default; topology may change. |
 | DAST (`manual`) and AI review (`non-gating`) surfaces | Manual/advisory by design; never a default gate, may evolve. |
 | `sync-managed-block` file mode | Reserved; treated like `manual` today (see §3). |
@@ -105,10 +108,13 @@ the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifes
 
 ## 4. What is NOT promised
 
-- **No live-validation claim for unproven tools.** In particular, **OWASP
-  Dependency-Check is not live-validated** (attempted; cold NVD exceeds the CI budget —
-  it is intended to run via a cached nightly job). Do not read its presence as a proven
-  gate.
+- **No live-validation claim for unproven tools.** `supported`/`experimental` wrappers
+  with fixtures but no cited consumer run (npm audit, ESLint, Psalm, Deptrac,
+  Checkov/Conftest/Terrascan, Scorecard, TruffleHog, Trivy-image) are not proven gates —
+  do not read their presence as proof. (**OWASP Dependency-Check IS live-validated** as of
+  v0.1.30 — local dependency-rich scan v0.1.27 + CI run `27530386965` — but its *coarse
+  severity* mapping remains best-effort, and its CI evidence run scans the committed
+  dependency surface; see [`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md).)
 - **No digest pinning by default.** Tool images/actions ship as readable tags; the
   consumer must pin digests before production ([`pinned-tool-references.md`](pinned-tool-references.md),
   [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
@@ -138,6 +144,51 @@ the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifes
 - **No `v1.0` until the roadmap clears it.** `v1.0` requires the open frontier in
   [`roadmap.md`](roadmap.md) (Phase 3 — live validation of main-gate tools, and beyond)
   to land with cited evidence. This document does not assert that frontier is closed.
+
+---
+
+## 6. `v1.0.0-rc.1` freeze + migration to `v1.0.0`
+
+**What rc.1 freezes.** `v1.0.0-rc.1` freezes the **STABLE** surfaces in §1–§3 — the engine
+CLIs and their flags/exit codes, the `SENTINEL_SHIELD_*` contract env vars, the
+`security-summary.json` / profile-manifest / accepted-risk **schemas** (additive only), the
+four adoption modes, and the four profile file modes. These are what `v1.0.0` commits to.
+
+**Migration v0.1.x → `v1.0.0`.**
+- **rc.1 is intended drop-in for the STABLE surfaces.** A consumer on a recent `v0.1.x`
+  pinning `SENTINEL_SHIELD_REF` to a tag/SHA upgrades by bumping the ref to `v1.0.0-rc.1`;
+  no STABLE surface is renamed/removed across the boundary (any exception is a CHANGELOG
+  breaking-change callout — there are none for rc.1).
+- **Pin to the RC tag for soak.** Consumers validating the RC pin `SENTINEL_SHIELD_REF=v1.0.0-rc.1`
+  (immutable tag), run their gate, and report regressions before final `v1.0.0`.
+- **rc.1 → `v1.0.0` is planned drop-in.** The final tag adds no STABLE breaking change over
+  rc.1; only the soft items below may be tightened (additively / opt-in).
+
+**Post-`v1.0.0` versioning (intended).** Once `v1.0.0` is tagged, the STABLE surfaces follow
+**semver**: additive changes in **minor** releases; any rename/removal/exit-code or
+summary-key semantic change is a **major** bump with a CHANGELOG callout. EXPERIMENTAL/INTERNAL
+surfaces (§1) and *coarse scanner severity* stay outside the semver promise until individually
+promoted in `product-status.md`.
+
+**RC known limitations (carried into rc.1 — documented, not blockers).**
+- **Strict mode is opt-in / non-required by default** — it correctly fails on real findings;
+  a consumer triages/accept-risks before making strict required.
+- **Regulated mode is not a default** — opt-in for the stricter gate set.
+- **DAST (ZAP/Nuclei) is manual/allowlisted/fail-closed**; **AI review is non-gating**.
+- **Dependency-Check CI evidence scans the committed dependency surface** (add
+  `composer install`/`npm ci` before DC for full transitive CI coverage); DC is also
+  live-validated locally on a dependency-rich surface (9,289 deps, v0.1.27).
+- **Digest pinning is opt-in** — readable tags for onboarding, digest-pinned overrides for
+  production ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
+- **Install/sync covers the shipped profiles** (laravel/react/node/docker/php-library +
+  laravel-react-docker, node-react); arbitrary-stack onboarding and `sync-managed-block`
+  in-place updates are not promised.
+- **The NVD API key must be consumer-provided** via `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`
+  (GitHub secret); never committed or logged.
+
+None of the above is a Sentinel Shield **engine** defect; they are scope/operational boundaries
+appropriate for a release candidate. Final `v1.0.0` follows the rc soak — see
+[`v1-readiness.md`](v1-readiness.md).
 
 ---
 

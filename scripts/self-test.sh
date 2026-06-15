@@ -2008,6 +2008,8 @@ STUB
 	_cdoc="$ROOT/docs/dependency-check-ci-cache.md"
 	cc_check "(53) CI cache doc documents reset input" "$(grep -qs 'reset_dependency_check_cache' "$_cdoc" && echo yes || echo no)" "yes"
 	cc_check "(53) script clears stale locks (find -name '*.lock' -delete)" "$([ "$(grep -c "name '\*.lock'" "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	# (rc.1) the shipped Dependency-Check template plumbs the NVD secret (contract coherence).
+	cc_check "(rc) shipped DC template plumbs NVD secret" "$(grep -qs 'secrets.SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$ROOT/templates/workflows/sentinel-shield-dependency-check.yml" && echo yes || echo no)" "yes"
 
 	# (59) v030 evidence doc cites the live run id.
 	_edoc="$ROOT/docs/dependency-check-ci-evidence-v030.md"
