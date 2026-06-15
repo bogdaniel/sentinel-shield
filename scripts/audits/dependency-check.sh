@@ -63,6 +63,12 @@ timeout_prefix() {
 
 [ "$MODE" = enabled ] || unavailable "disabled by default (set SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE=enabled; slow, scheduled/nightly recommended)"
 mkdir -p "$CACHE"
+# v0.1.30: clear STALE H2/update lock files left by a previous run that was killed mid-update
+# (CI timeout, cancelled job, or a restored partial cache). A stale `odc.update.lock` or H2 `*.lock`
+# makes Dependency-Check fail with "Unable to obtain an exclusive lock on the H2 database". This only
+# removes LOCK files — never the NVD data itself (full cache reset is the workflow's job, see
+# docs/dependency-check-ci-cache.md). Safe no-op when the cache is clean or absent.
+find "$CACHE" -type f \( -name '*.lock' -o -name 'odc.update.lock' \) -delete 2>/dev/null || true
 OUTDIR=$(CDPATH= cd -- "$(dirname "$OUT")" && pwd)
 TO=$(timeout_prefix)
 
