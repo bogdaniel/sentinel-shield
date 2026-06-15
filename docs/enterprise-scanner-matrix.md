@@ -133,3 +133,11 @@ override env vars — supply-chain hardening, no maturity change. See
 HTTP 429. Container `owasp/dependency-check@sha256:ad169904…cc77b9`. **Caveat:** thin self-scan
 surface — non-zero severity buckets not yet exercised on a dependency-rich consumer. Canonical:
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). Deptrac/IaC unchanged.
+
+## v0.1.30 — Dependency-Check live-validated IN CI
+**OWASP Dependency-Check now completes in GitHub Actions** (run `27530386965`, success): full NVD
+download (357,832 records via the API key), valid `dependency-check.json`, collector `fail`
+1 critical / 1 high / 0 medium; cold + warm cache proven. The non-root-container H2 write blocker is
+fixed (`chmod a+rwX` mounted data/report dirs). DC is now live-validated **in CI** (committed surface,
+69 deps) **and** locally on a dependency-rich surface (v0.1.27, 9,289 deps). Canonical:
+[`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md). Deptrac/IaC unchanged.

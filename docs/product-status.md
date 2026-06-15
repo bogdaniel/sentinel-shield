@@ -161,6 +161,20 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v0.1.30 — Dependency-Check COMPLETES in CI → v1.0.0-rc.1 recommended
+- **Final CI blocker CLOSED.** OWASP Dependency-Check now **completes in GitHub Actions** — run
+  `27530386965` (zenchron-tools, success): full NVD download (357,832 records via the API key, no 429,
+  no H2 lock), valid 67 KB `dependency-check.json`, collector **`fail` 1 critical / 1 high / 0 medium**.
+  Strict-EVIDENCE FAIL `[critical, high, medium]` (delta visible). [`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md).
+- **Root cause + fix.** The v0.1.29 H2 lock was the non-root DC container unable to write the
+  host-owned bind-mounted NVD data dir → could not build the H2 DB. Fixed by `chmod a+rwX` on the
+  mounted data/report dirs (same UID class as the v0.1.29 propertyfile fix). Plus cache reliability:
+  fresh `nvd-v030-*` namespace, conditional save (never poison), `reset_dependency_check_cache` input,
+  stale-lock cleanup. [`dependency-check-ci-cache.md`](dependency-check-ci-cache.md).
+- **All 7 hard v1.0 blockers are now closed.** **`v1.0.0-rc.1` is RECOMMENDED next.** Remaining items
+  are soft/known-limitations (strict opt-in; DC CI committed-surface; digest opt-in; key rotation) —
+  not engine defects. **Final `v1.0.0` not yet claimed; `v1.0.0-rc.1` is.** Self-test **484 → 499**.
+
 ## v0.1.29 — CLEAN strict CI run (delta visible) + DC propertyfile fix (no v1.0 RC yet)
 - **Clean strict CI evidence.** Live run `27513388096` (zenchron-tools, success, ~41 min) with **3
   attributable views**: baseline FAIL `[high]`; **strict-EVIDENCE FAIL `[high, medium]`** (pure

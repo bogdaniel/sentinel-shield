@@ -44,20 +44,27 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 | 4 | **OWASP Dependency-Check live-validated** | a real, cited `dependency-check.json` from a consumer parsed by its collector, **with non-zero CVE buckets exercised** | **DONE** — v0.1.27: real run on a **dependency-rich consumer** (`zenchron-tools`, 9,289 deps) → **7 vulnerable deps / 11 vulns**, collector-parsed to **6 high / 3 medium** (`fail`). The v0.1.26 thin-self-scan caveat is **CLOSED** — non-zero severity buckets are exercised. Surfaced + fixed a real npm `MODERATE→medium` mapping gap. Cited in [`dependency-check-consumer-evidence-v027.md`](dependency-check-consumer-evidence-v027.md). **Residual:** severity fidelity best-effort; npm Node-Audit was rate-limited (429) so npm-source coverage is partial |
 | 5 | **Install/sync proven across shipped profiles** | dry-run-default install/sync round-trips with fixtures for the shipped install manifests | **DONE** — v0.1.28: **8 profiles** round-tripped (laravel-react-docker, laravel, react, node, node-react, symfony, php-library, docker): dry-run no-op, apply creates managed files, accepted-risks never created/overwritten, full drift detect→resolve cycle, unmanaged files untouched ([`strict-ci-and-install-sync-evidence-v028.md`](strict-ci-and-install-sync-evidence-v028.md)); guarded by `self-test v028-live` |
 | 6 | **Digest pinning** | a documented, verifiable policy to pin every shipped scanner image/action to a digest | **DONE (policy)** — v0.1.28: digests re-verified (all MATCH); **policy decided** — dev/onboarding = readable tags, production/hardened = digest-pinned overrides; hardened digest-pinned example added (`examples/hardened/sentinel-shield-hardened.snippet.yml`); rollback + drift guidance documented. **Pinned-by-default remains opt-in by design** (templates legible; consumer hardens) — a deliberate stance, not an open gap |
-| 7 | **Strict mode validated on ≥1 consumer** | a clean strict CI run: delta visible (no masking override) AND Dependency-Check completes | **NEARLY — clean delta achieved; DC-in-CI open.** v0.1.29: live run `27513388096` (success) with **3 attributable views** — baseline FAIL `[high]`, **strict-EVIDENCE FAIL `[high, medium]` (delta VISIBLE, medium `enabled:true,fail`)**, strict-CONSUMER FAIL `[high]` (medium skipped by the consumer's own `fail_on.medium_vulnerabilities:false`, shown transparently). Nothing suppressed ([`clean-strict-ci-evidence-v029.md`](clean-strict-ci-evidence-v029.md)). **Residuals:** (a) DC did **not** complete in CI — the v0.1.28 propertyfile-permission blocker is FIXED, but DC then hit an OWASP **H2 database-lock / "No documents exist"** (stale cache) → no fake-clean report; (b) strict is not "green" (correctly fails on 6 real highs — consumer remediation out of scope). Strict **NOT production-ready** |
+| 7 | **Strict mode validated on ≥1 consumer** | a clean strict CI run: delta visible (no masking override) AND Dependency-Check completes | **CLOSED.** v0.1.29 delivered the clean delta (run `27513388096`); **v0.1.30 closes DC-in-CI** — run **`27530386965`** (success): DC downloaded the full NVD dataset (357,832 records) and produced a valid 67 KB `dependency-check.json`, collector `fail` 1 critical / 1 high / 0 medium. Strict views: baseline FAIL `[critical, high]`, **strict-EVIDENCE FAIL `[critical, high, medium]`** (delta visible). Root cause was the non-root container unable to write the host-owned bind-mounted NVD data dir; **fixed** by `chmod a+rwX` ([`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md)). **Caveat:** strict is not "green" (correctly fails on real findings — opt-in/non-required by default); CI scans the committed surface (69 deps; DC also locally validated on 9,289). Strict **NOT production-ready** by default — but the CI-validation bar is **met** |
 
-**Net:** the engine, PR-fast gate, and the main-gate core (6 tools) are DONE; (4) DC rich-consumer,
-(5) install/sync breadth, (6) digest policy are CLOSED. v0.1.29 delivered the **clean strict CI run
-with the strict-only delta visible** — the primary part of (7). The **only remaining concrete item**
-is **DC completing in CI** (an operational cache/H2 fix — DC is already live-validated locally, and the
-SS-side perms blocker is fixed). **v1.0 is NOT reached.**
+**Net:** **all 7 hard blockers now have real, cited evidence.** Engine/PR-fast/main-gate core DONE;
+(4) DC rich-consumer, (5) install/sync breadth, (6) digest policy, and **(7) clean strict CI with DC
+completing** are CLOSED. The SS-side DC CI bugs (propertyfile perms, container-writable data dir) are
+fixed and regression-guarded.
 
-**v1.0 RC decision (v0.1.29):** **NOT yet — next is `v0.1.30`, not `v1.0.0-rc.1`.** This holds to the
-RC bar set in v0.1.28: "(7) strict delta visible **and** DC completes in CI." The **delta-visible
-condition is now met cleanly**; **DC-in-CI is not** (H2-lock on a stale cache). Rather than move the
-goalposts, v0.1.30 closes DC-in-CI with a clean cache seed (distinct cache key + a DC-only warming run
-that builds the H2 datastore, then restore it). After DC completes in CI, the blocker table fully
-supports **`v1.0.0-rc.1`**. The remaining items are operational/consumer-side, **not** engine defects.
+**v1.0 RC decision (v0.1.30): ✅ `v1.0.0-rc.1` is RECOMMENDED next.** This is the honest, consistent
+call — the RC bar set in v0.1.28 ("(7) strict delta visible **and** DC completes in CI") is now
+**fully met** (run `27530386965`). All hard blockers are closed; what remains are **soft/known
+limitations appropriate for a release candidate**, not blockers:
+
+- **Soft:** strict mode is opt-in/non-required by default (it correctly fails on real findings — a
+  consumer must triage/accept-risk before flipping strict to required); DC CI scans the committed
+  dependency surface (add `composer install`/`npm ci` for full transitive CI coverage); digest pinning
+  is opt-in (dev tags / prod pinned); install/sync `sync-managed-block` in-place updater is still
+  reserved; the NVD key must be rotated (it was chat-exposed) and the secret re-set.
+- **Not a blocker:** none of the above is a Sentinel Shield engine defect.
+
+rc.1 ships these as documented known limitations; final `v1.0.0` follows after the rc soak + the
+soft items are burned down. **v1.0 (final) is NOT yet claimed — `v1.0.0-rc.1` is.**
 See §16 for the consolidated blocker list.
 
 ---

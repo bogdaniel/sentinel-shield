@@ -179,3 +179,24 @@ DC ran the full cold NVD download). DC then hit the OWASP **H2 database lock / "
 error (stale/empty cache from the failed v0.1.28 run under `restore-keys: nvd-Linux-`) → exit 13, **no
 fake-clean report**. Exact blocker documented; **local DC evidence (v0.1.27, 6 high/3 medium) stands**.
 Strict is demonstrated cleanly in live CI but **not green** (real highs) and **not production-ready**.
+
+## v0.1.30 — Dependency-Check COMPLETES in CI (final CI blocker closed)
+
+Full record: [`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md). The
+v0.1.29 H2 failure was a container-UID write issue (the non-root DC container could not write the
+host-owned bind-mounted NVD data dir → could not build/lock the H2 DB). **Fixed** by `chmod a+rwX` on
+the mounted data + report dirs (same UID class as the v0.1.29 propertyfile fix).
+
+| Field | Value |
+|---|---|
+| Consumer / Run | `bogdaniel/zenchron-tools` — **run `27530386965`, success** |
+| NVD | **357,832 / 357,832 records (100%)** via the API key — no 429, **no H2 lock** |
+| Artifact | `dependency-check.json` **valid, 67 KB** — DC **completes in CI** |
+| Findings | 69 deps (committed surface), 3 vulns → collector **`fail`, 1 critical / 1 high / 0 medium** |
+| Strict (EVIDENCE) | baseline FAIL `[critical, high]`; strict FAIL `[critical, high, **medium**]` — delta visible |
+| Key | full NVD download with the key; 0 key occurrences in artifact/log/commits |
+
+**Promotion:** OWASP Dependency-Check is now **live-validated in CI** (in addition to the v0.1.27
+dependency-rich local scan). Limitation: the CI scan covers the committed manifests (69 deps); add
+`composer install`/`npm ci` before DC for full transitive CI coverage (enhancement, not a blocker).
+**This closes the last hard v1.0 CI blocker** — see [`v1-readiness.md`](v1-readiness.md) for the RC call.

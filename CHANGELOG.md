@@ -6,6 +6,39 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [0.1.30] — Dependency-Check CI Cache Reliability
+
+No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports.
+**Closes the final hard v1.0 CI blocker → `v1.0.0-rc.1` recommended next.**
+
+### Fixed
+- **Dependency-Check now completes in CI.** Root cause of the v0.1.29/30 H2 failure (`Unable to obtain
+  an exclusive lock on the H2 database` / `No documents exist`, even on a fresh cache): the OWASP
+  Dependency-Check container runs as a **non-root** user but the bind-mounted NVD data + report dirs
+  are owned by the host UID, so the container could not create/lock the H2 database. The wrapper now
+  `chmod a+rwX` the mounted data/report dirs before `docker run` (NVD data/reports are not secret; the
+  key stays only in the propertyfile). Same UID class as the v0.1.29 propertyfile fix.
+- **Stale H2/update lock cleanup.** The wrapper removes stale `*.lock` / `odc.update.lock` (never the
+  NVD data) before running, so a run killed mid-update doesn't block the next.
+
+### Added
+- **Dependency-Check CI evidence** ([`docs/dependency-check-ci-evidence-v030.md`](docs/dependency-check-ci-evidence-v030.md)):
+  run `27530386965` (zenchron-tools, success) — full NVD download (357,832 records), valid 67 KB
+  `dependency-check.json`, collector `fail` 1 critical/1 high/0 medium; strict-EVIDENCE FAIL
+  `[critical, high, medium]` (delta visible). **Cold + warm cache both proven** (conditional save →
+  cache hit on rerun).
+- **CI cache reliability** ([`docs/dependency-check-ci-cache.md`](docs/dependency-check-ci-cache.md)):
+  fresh `nvd-v030-*` cache namespace (never restores the poisoned `nvd-Linux-*`), conditional save
+  (only on a produced report → never poison), `reset_dependency_check_cache` dispatch input.
+- Self-test `v030-live`: stale-lock cleanup (data preserved), cache-reset docs, propertyfile
+  container-readable + deleted-after-run, key-off-argv, valid-JSON-preserved, no-fake-clean.
+
+### Decided
+- **`v1.0.0-rc.1` is RECOMMENDED next.** The RC bar set in v0.1.28 ("(7) strict delta visible AND DC
+  completes in CI") is now fully met. **All 7 hard v1.0 blockers are closed.** Remaining items are
+  soft/known-limitations (strict opt-in; DC CI committed-surface; digest opt-in; NVD key rotation),
+  not engine defects. **Final `v1.0.0` is not yet claimed — `v1.0.0-rc.1` is.**
+
 ## [0.1.29] — Clean Strict CI Evidence
 
 No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports;

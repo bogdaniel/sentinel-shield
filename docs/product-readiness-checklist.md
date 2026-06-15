@@ -163,4 +163,16 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
   seed); local DC evidence (v0.1.27) stands.
 - [ ] `not-reached` — **v1.0 / RC**: **RC NOT recommended** — delta-visible condition met, DC-in-CI
   not. Next is **v0.1.30** (close DC-in-CI), then `v1.0.0-rc.1`.
+
+## v0.1.30 — Dependency-Check completes in CI → v1.0.0-rc.1
+- [x] `done` — **Dependency-Check completes in CI**: run `27530386965` (success) — full NVD download
+  (357,832 records), valid 67 KB artifact, collector `fail` 1 critical/1 high/0 medium. Cold + warm
+  cache proven. [`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md).
+- [x] `done` — **Root-cause fix**: non-root container couldn't write the bind-mounted NVD data dir →
+  `chmod a+rwX` mounted data/report dirs. Plus stale-lock cleanup + cache reliability (fresh
+  namespace, conditional save, reset input). Guarded by `v030-live`.
+- [x] `closed` — **ALL 7 hard v1.0 blockers** have real cited evidence.
+- [x] `recommended` — **`v1.0.0-rc.1` is the next release.** Soft/known limitations carried into rc.1:
+  strict opt-in (fails on real findings); DC CI committed-surface (add install step for transitive);
+  digest pinning opt-in; NVD key rotation pending. Final `v1.0.0` after the rc soak.
 </content>

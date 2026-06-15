@@ -136,3 +136,12 @@ A/C grades above are unchanged.
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). **Caveat:** thin self-scan surface — the
 grade reflects a proven execution path, not non-zero severity proof on a dependency-rich consumer
 (next target). No other grade changes. **v1.0 NOT reached.**
+
+## v0.1.30 — Dependency-Check completes in CI; all hard blockers closed → v1.0.0-rc.1
+**OWASP Dependency-Check** is now **A / live-validated in CI** as well as locally: run `27530386965`
+(zenchron-tools, success) — full NVD download (357,832 records), valid artifact, collector `fail`
+1 critical/1 high/0 medium; cold + warm cache proven. The non-root-container H2 write blocker is
+fixed (`chmod a+rwX` mounted dirs). With (4) DC, (5) install/sync breadth, (6) digest policy, and
+(7) clean strict CI + DC-completes all closed, **all 7 hard v1.0 blockers have cited evidence** and
+**`v1.0.0-rc.1` is recommended**. Remaining items are soft/known-limitations (strict opt-in; DC CI
+committed-surface; digest opt-in; key rotation). **Final `v1.0.0` not yet claimed.**

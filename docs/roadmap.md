@@ -168,3 +168,14 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   blocker documented; local DC evidence stands.
 - **v1.0 RC NOT recommended** — the delta-visible RC condition is met but DC-in-CI is not. Next is
   **v0.1.30** (close DC-in-CI: clean cache seed / warming run), then `v1.0.0-rc.1`. v1.0 NOT reached.
+
+### v0.1.30 update — Dependency-Check COMPLETES in CI → v1.0.0-rc.1 recommended
+- **Final CI blocker CLOSED.** DC completes in GitHub Actions (run `27530386965`, success): full NVD
+  download (357,832 records), valid `dependency-check.json`, collector `fail` 1 critical/1 high/0
+  medium. Strict-EVIDENCE FAIL `[critical, high, medium]` (delta visible). Cold + warm cache both
+  proven (conditional save → cache hit on rerun).
+- **Root cause + fix:** non-root container couldn't write the host-owned bind-mounted NVD data dir →
+  H2 build failed. Fixed by `chmod a+rwX` the mounted data/report dirs.
+- **All 7 hard v1.0 blockers closed → `v1.0.0-rc.1` RECOMMENDED.** Remaining items are soft/known
+  limitations (strict opt-in; DC CI committed-surface; digest opt-in; key rotation), not engine
+  defects. Final `v1.0.0` follows the rc soak. v1.0 (final) NOT yet claimed.
