@@ -161,6 +161,20 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.0.0-rc.1 — Release Candidate Contract Freeze (NOT final v1.0.0)
+**This is a release candidate, not final `v1.0.0`.** The product contract
+([`product-contract.md`](product-contract.md) §1–§3, §6) is **frozen** for soak: engine CLIs, exit
+codes, `SENTINEL_SHIELD_*` env vars, the additive schemas, the four adoption modes, and the profile
+file modes are the surfaces `v1.0.0` commits to under semver. **All 7 hard v1.0 blockers are closed**
+with cited evidence (v0.1.27–v0.1.30): engine/PR-fast/main-gate core, DC rich-consumer + DC-completes-in-CI,
+install/sync breadth, digest policy, clean strict CI. **Engine maturity stays `proven`; non-core
+scanner severity stays best-effort.** RC-coherence fixes only this tag: product-contract DC-status
+contradiction resolved (DC is live-validated), shipped DC template plumbs the NVD secret.
+**Carried known limitations (not blockers):** strict opt-in/non-required; regulated opt-in; DAST/Nuclei
+manual; AI review non-gating; DC CI scans the committed surface; digest pinning opt-in; NVD key
+consumer-provided + must be rotated. **Final `v1.0.0` follows the RC soak — not yet claimed.**
+Self-test **499 → 500**.
+
 ## v0.1.30 — Dependency-Check COMPLETES in CI → v1.0.0-rc.1 recommended
 - **Final CI blocker CLOSED.** OWASP Dependency-Check now **completes in GitHub Actions** — run
   `27530386965` (zenchron-tools, success): full NVD download (357,832 records via the API key, no 429,

@@ -51,10 +51,13 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 completing** are CLOSED. The SS-side DC CI bugs (propertyfile perms, container-writable data dir) are
 fixed and regression-guarded.
 
-**v1.0 RC decision (v0.1.30): ✅ `v1.0.0-rc.1` is RECOMMENDED next.** This is the honest, consistent
-call — the RC bar set in v0.1.28 ("(7) strict delta visible **and** DC completes in CI") is now
-**fully met** (run `27530386965`). All hard blockers are closed; what remains are **soft/known
-limitations appropriate for a release candidate**, not blockers:
+**v1.0 RC status (v1.0.0-rc.1): ✅ CUT.** `v1.0.0-rc.1` is tagged — a **release candidate, NOT final
+`v1.0.0`**. The RC bar set in v0.1.28 ("(7) strict delta visible **and** DC completes in CI") is
+**fully met** (run `27530386965`); all 7 hard blockers are closed with cited evidence. The product
+contract is **frozen** for soak ([`product-contract.md`](product-contract.md) §6). RC-coherence fixes
+only: the contract's DC-status contradiction is resolved (DC live-validated) and the shipped DC
+template plumbs the NVD secret. What remains are **soft/known limitations appropriate for a release
+candidate**, not blockers:
 
 - **Soft:** strict mode is opt-in/non-required by default (it correctly fails on real findings — a
   consumer must triage/accept-risk before flipping strict to required); DC CI scans the committed

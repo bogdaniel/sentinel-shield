@@ -179,3 +179,12 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 - **All 7 hard v1.0 blockers closed → `v1.0.0-rc.1` RECOMMENDED.** Remaining items are soft/known
   limitations (strict opt-in; DC CI committed-surface; digest opt-in; key rotation), not engine
   defects. Final `v1.0.0` follows the rc soak. v1.0 (final) NOT yet claimed.
+
+### v1.0.0-rc.1 — Release Candidate Contract Freeze (CUT)
+- **`v1.0.0-rc.1` is cut** — the product contract is frozen ([`product-contract.md`](product-contract.md)
+  §6). RC-coherence fixes only: DC-status contradiction resolved (now live-validated), shipped DC
+  template plumbs the NVD secret. No behavior/scope change.
+- **RC soak → final `v1.0.0`:** consumers pin `SENTINEL_SHIELD_REF=v1.0.0-rc.1`, run their gate, report
+  regressions; burn down the soft items (DC transitive CI coverage via `composer install`/`npm ci`,
+  key rotation, optional digest-pinned-by-default profile). After a clean soak with no STABLE breaking
+  change, tag **`v1.0.0`**. **Final `v1.0.0` NOT yet claimed.**

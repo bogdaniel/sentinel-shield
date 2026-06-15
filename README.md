@@ -13,6 +13,13 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
+> **Release status: `v1.0.0-rc.1` — release candidate (NOT final `v1.0.0`).** The product contract is
+> frozen for soak. Start here: the stability contract [`docs/product-contract.md`](docs/product-contract.md)
+> (§6 = RC freeze + v0.1.x→v1.0.0 migration), the readiness/blocker table
+> [`docs/v1-readiness.md`](docs/v1-readiness.md), and the canonical maturity source of truth
+> [`docs/product-status.md`](docs/product-status.md). Final `v1.0.0` follows the RC soak — it is not
+> yet claimed.
+
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage
 exceptions, and when a release is allowed to ship. Sentinel Shield codifies those

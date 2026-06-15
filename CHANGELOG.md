@@ -6,6 +6,33 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] — Release Candidate Contract Freeze
+
+**Release candidate — NOT final `v1.0.0`.** No new scanners, no scope expansion, no gates weakened,
+no findings suppressed. This tag **freezes the product contract** for soak/validation; final `v1.0.0`
+follows the RC soak. All seven hard v1.0 blockers are closed with cited evidence (v0.1.27–v0.1.30).
+
+### Frozen (the v1.0.0 STABLE surface — see [`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6)
+- Engine CLIs (`resolve-gates`, `enforce-gates`, `build-security-summary`, `select-security-summary`,
+  `install-baseline`, `sync-baseline`) — flags, exit codes (`0`/`1`/`2`), `SENTINEL_SHIELD_*` env vars.
+- Schemas (additive): `security-summary.json`, profile manifest, accepted-risks.
+- Adoption modes (`report-only`/`baseline`/`strict`/`regulated`), profile file modes, raw-report contract.
+
+### Changed (RC-coherence fixes only — no behavior change)
+- **`docs/product-contract.md`**: retitled to the `v1.0.0-rc.1` freeze; resolved a contradiction —
+  **OWASP Dependency-Check is now live-validated** (local v0.1.27 + CI v0.1.30), removed from the
+  "not yet live-validated" rows in §1/§4; added **§6 RC freeze + v0.1.x→v1.0.0 migration policy** and
+  the carried RC known-limitations.
+- **`templates/workflows/sentinel-shield-dependency-check.yml`**: plumbs the NVD secret
+  `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY` (contract coherence — DC is live-validated with the
+  key); digest-pin note updated. Guarded by `self-test v030-live`.
+
+### Known limitations carried into rc.1 (documented, not blockers)
+Strict opt-in/non-required; regulated opt-in; DAST/Nuclei manual/fail-closed; AI review non-gating;
+DC CI evidence scans the committed surface (DC also locally validated on 9,289 deps); digest pinning
+opt-in (dev tags / prod pinned); install/sync covers shipped profiles only; NVD key must be
+consumer-provided and **rotated** (it was chat-exposed). **Final `v1.0.0` is NOT claimed.**
+
 ## [0.1.30] — Dependency-Check CI Cache Reliability
 
 No new scanners; no gates weakened; no findings suppressed; no consumer remediation; no fake reports.
