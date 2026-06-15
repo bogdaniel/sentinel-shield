@@ -188,3 +188,12 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   regressions; burn down the soft items (DC transitive CI coverage via `composer install`/`npm ci`,
   key rotation, optional digest-pinned-by-default profile). After a clean soak with no STABLE breaking
   change, tag **`v1.0.0`**. **Final `v1.0.0` NOT yet claimed.**
+
+### v1.0.0-rc.2 — RC soak hardening (CUT)
+- The 3-hour rc.1 soak **validated rc.1 on a real consumer** (transitive DC CI run `27573703800`,
+  9,179 deps — committed-surface caveat CLOSED) and fixed real issues: a **STABLE-surface bug**
+  (`resolve-gates` exit `1`→`2` on config errors), stale DC maturity labels, and example-workflow
+  upload hardening. Because a frozen STABLE surface changed behavior, the disciplined outcome is a
+  **new candidate `v1.0.0-rc.2`** + re-soak, **not** final `v1.0.0`.
+- **Path to final `v1.0.0`:** re-soak rc.2 on ≥1 consumer (baseline + strict-EVIDENCE) with no STABLE
+  regression; rotate the NVD key; then tag `v1.0.0`. **Final `v1.0.0` NOT yet claimed.**

@@ -161,6 +161,16 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.0.0-rc.2 — RC Soak Hardening (NOT final v1.0.0)
+**The rc.1 soak (3-hour, multi-lane) validated rc.1 on a real consumer and is promoting to `rc.2`.**
+Consumer evidence on the rc.1 tag: **transitive DC CI run `27573703800`** (9,179 deps, collector
+`fail` 1 critical / 8 high / 6 medium; strict-EVIDENCE delta visible) — the v0.1.30 committed-surface
+caveat is closed. Soak fixes: a STABLE-surface bug — `resolve-gates.sh` exited `1` on config errors,
+now exits `2` per the contract (this behavior change to a frozen surface is **why rc.2, not final
+v1.0.0**); stale "DC experimental" labels corrected; example workflow uploads hardened (`if: always()`).
+Self-test **500 → 512** (`rc1-soak`). **Decision: cut `v1.0.0-rc.2`, re-soak, then final `v1.0.0` if
+clean. Final `v1.0.0` NOT claimed.**
+
 ## v1.0.0-rc.1 — Release Candidate Contract Freeze (NOT final v1.0.0)
 **This is a release candidate, not final `v1.0.0`.** The product contract
 ([`product-contract.md`](product-contract.md) §1–§3, §6) is **frozen** for soak: engine CLIs, exit

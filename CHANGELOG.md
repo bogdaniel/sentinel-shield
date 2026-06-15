@@ -6,7 +6,13 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
-### v1.0.0-rc.1 soak — hardening (bugfix/coherence only; no scope change)
+## [1.0.0-rc.2] — RC Soak Hardening (still a release candidate; NOT final v1.0.0)
+
+The 3-hour, multi-lane rc.1 soak validated rc.1 on a real consumer and fixed real issues found before
+final. **A STABLE-surface bug (resolve-gates exit code) was fixed**, so this is a new candidate
+(`rc.2`) for re-soak — not final `v1.0.0`. No new scanners, no scope change, no gates weakened.
+
+#### rc.1 soak — hardening (bugfix/coherence only; no scope change)
 - **Fixed (contract coherence):** `scripts/resolve-gates.sh` now exits **2** on config/input errors
   (invalid `--mode`/`--format`, unparseable/missing-required profile), matching the STABLE engine
   exit-code convention (`0`/`1`/`2`) already used by enforce/build/select. It previously exited `1`,

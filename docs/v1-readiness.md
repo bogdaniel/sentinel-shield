@@ -51,13 +51,23 @@ evidence exists in [`product-status.md`](product-status.md) / [`main-gate-live-e
 completing** are CLOSED. The SS-side DC CI bugs (propertyfile perms, container-writable data dir) are
 fixed and regression-guarded.
 
-**v1.0 RC status (v1.0.0-rc.1): ✅ CUT.** `v1.0.0-rc.1` is tagged — a **release candidate, NOT final
-`v1.0.0`**. The RC bar set in v0.1.28 ("(7) strict delta visible **and** DC completes in CI") is
-**fully met** (run `27530386965`); all 7 hard blockers are closed with cited evidence. The product
-contract is **frozen** for soak ([`product-contract.md`](product-contract.md) §6). RC-coherence fixes
-only: the contract's DC-status contradiction is resolved (DC live-validated) and the shipped DC
-template plumbs the NVD secret. What remains are **soft/known limitations appropriate for a release
-candidate**, not blockers:
+**v1.0 RC status: `v1.0.0-rc.1` soaked → `v1.0.0-rc.2` recommended (NOT final `v1.0.0`).** All 7 hard
+blockers remain closed with cited evidence. The rc.1 soak (3-hour, multi-lane) **validated rc.1 on a
+real consumer** and found/fixed real issues before final:
+
+- **Consumer evidence (rc.1 tag):** transitive DC CI run `27573703800` (success) — **9,179 deps**,
+  collector `fail` 1 critical / 8 high / 6 medium; baseline FAIL `[critical, high]`, strict-EVIDENCE
+  FAIL `[critical, high, medium]` (delta visible). The v0.1.30 committed-surface caveat is **closed**.
+- **STABLE-surface bug found + fixed (why rc.2, not final):** `resolve-gates.sh` exited `1` on config
+  errors, contradicting the STABLE exit-code contract (`2` = config/input). Fixed to exit `2`. Because
+  this **changes behavior of a frozen STABLE surface**, RC discipline requires a **new candidate
+  (`rc.2`) and re-soak** rather than going straight to final `v1.0.0` — the rc.1→final "drop-in"
+  promise no longer holds for rc.1 specifically.
+- **Coherence fixes:** stale "DC experimental/NOT live-validated" labels removed from canonical
+  product-status/strict-mode-readiness; example workflow uploads hardened with `if: always()`.
+
+**Decision: cut `v1.0.0-rc.2`** carrying these fixes; re-soak; then final `v1.0.0` if rc.2 is clean.
+The remaining items are **soft/known limitations appropriate for a release candidate**, not blockers:
 
 - **Soft:** strict mode is opt-in/non-required by default (it correctly fails on real findings — a
   consumer must triage/accept-risk before flipping strict to required); DC CI scans the committed
