@@ -17,3 +17,6 @@ graphify-out/
 
 # Local scan caches / runtime state (never commit)
 .sentinel-shield/
+
+# v1.4.0 sprint scratch (ledgers / working artifacts — never commit)
+.sprint-v140/

@@ -2189,6 +2189,38 @@ run_v130_evidence() {
 	log_info "v130-evidence: OK (Deptrac promoted with cited evidence; IaC blockers documented, not promoted)"
 }
 
+# --- v1.4.0 IaC: real LOCAL tool-execution evidence; collectors map it; STILL NOT promoted ---
+run_v140_iac() {
+	log_info "v140-iac: IaC fixtures (real local runs) parse; collectors map; IaC NOT promoted"
+	V140_FAILS=0
+	v140_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V140_FAILS=$((V140_FAILS + 1)); fi; }
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures/iac-v140"
+	EVD="$ROOT/docs/iac-local-evidence-v140.md"; MAT="$ROOT/docs/iac-evidence-candidate-matrix.md"
+
+	# (A02/A05/A04/A06) the derived-from-real IaC artifacts parse through the UNMODIFIED collectors.
+	v140_check "checkov fixture -> fail iac=16" "$(sh "$C/checkov.sh" --input "$F/checkov-real-derived.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:16"
+	v140_check "terrascan fixture -> fail iac=4" "$(sh "$C/terrascan.sh" --input "$F/terrascan-real.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:4"
+	v140_check "conftest plan-JSON fixture -> fail iac=2" "$(sh "$C/conftest.sh" --input "$F/conftest-plan-real.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:2"
+	# no-fake-clean: a genuine 0-finding run maps to pass:0 (the v1.3.0 namespace-miss repro).
+	v140_check "conftest namespace-miss fixture -> pass iac=0" "$(sh "$C/conftest.sh" --input "$F/conftest-hcl-namespace-miss.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "pass:0"
+
+	# (A07) evidence doc exists and is HONEST: states experimental/unchanged and NOT promoted/consumer-CI.
+	v140_check "iac local-evidence doc exists" "$( [ -f "$EVD" ] && echo yes || echo no )" "yes"
+	v140_check "candidate matrix doc exists" "$( [ -f "$MAT" ] && echo yes || echo no )" "yes"
+	v140_check "evidence doc says maturity UNCHANGED / experimental" "$(grep -qsiE 'remain .experimental.|Maturity status: UNCHANGED' "$EVD" && echo yes || echo no)" "yes"
+	v140_check "evidence doc says NOT a consumer-CI promotion" "$(grep -qsiE 'NOT.*(consumer-CI|promotion|promoted)' "$EVD" && echo yes || echo no)" "yes"
+	# (80) the global no-overclaim guard still holds WITH the new doc in scope.
+	v140_check "no doc claims Checkov/Terrascan/Conftest IS live-validated (incl. v140 doc)" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/product-status.md docs/enterprise-scanner-matrix.md docs/main-gate-live-evidence.md docs/iac-local-evidence-v140.md docs/iac-evidence-candidate-matrix.md 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	# (A17) hygiene: fixtures carry no absolute paths / consumer names / secrets; scratch not tracked.
+	v140_check "iac-v140 fixtures: no absolute paths or consumer names" "$( ( cd "$ROOT" && grep -rliE '/Users/|/Volumes/|zenchron|commerce-bridge|octo-cms' tests/fixtures/iac-v140 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+	v140_check "no .sprint-v140 scratch tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.sprint-v140/' ) )" "0"
+	v140_check "no IaC raw artifact tracked under reports/raw" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -cE 'reports/raw/(checkov|terrascan|conftest)\.json' ) )" "0"
+
+	if [ "$V140_FAILS" -ne 0 ]; then log_error "v140-iac: $V140_FAILS case(s) failed"; return 1; fi
+	log_info "v140-iac: OK (real local IaC evidence; collectors map; experimental unchanged, NOT promoted)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2227,6 +2259,7 @@ case "$SUB" in
 	v110-postga) run_v110_postga ;;
 	v120-docs) run_v120_docs ;;
 	v130-evidence) run_v130_evidence ;;
+	v140-iac) run_v140_iac ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2265,13 +2298,14 @@ case "$SUB" in
 		run_v110_postga
 		run_v120_docs
 		run_v130_evidence
+		run_v140_iac
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|all)"
 		exit 2
 		;;
 esac

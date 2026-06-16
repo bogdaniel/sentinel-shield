@@ -115,10 +115,13 @@ output). To promote: run on a consumer that configures them and cite the run.
   OSV-Scanner, Trivy-fs, Syft SBOM** (run 27214865086); v0.1.20 promoted **Grype, Dockle** (run
   27239206382); **OWASP Dependency-Check** is live-validated (local v0.1.27 + CI v0.1.30, runs
   27530386965 / 27573703800); **Deptrac** is live-validated (v1.3.0, deptrac 1.0.2 on real consumers,
-  0/4/4 violations). Still **not** live-validated: **Checkov/Conftest/Terrascan** (IaC) — v1.3.0
-  attempt produced no usable evidence (Checkov image not parsing Terraform; Terrascan has no `hcloud`
-  policies; Conftest no output — see the registry). Promotion requires a real cited run in
-  [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+  0/4/4 violations). Still **not** live-validated: **Checkov/Conftest/Terrascan** (IaC). v1.4.0 added
+  **real LOCAL tool-execution evidence** (Checkov 16 / Terrascan 4 / Conftest 2 on the insecure
+  fixture; collectors verified) and diagnosed the v1.3.0 blockers (Checkov Docker image; Terrascan
+  `hcloud`-only; Conftest namespace/input shape) — but a **local run is not live-validation**.
+  Promotion requires a real cited **consumer-CI** run in
+  [`main-gate-live-evidence.md`](main-gate-live-evidence.md); see
+  [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
 - **Install/sync covers four stacks, not arbitrary onboarding.** No `php-library` /`node-react`
   *named combination* manifest historically (php-library added in v0.1.16; node-react uses the
   `react` profile). Symfony/Go/Python have profiles but no install manifests.
@@ -163,6 +166,26 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.4.0 — Enterprise IaC Evidence, Adoption Scale, Supportability (additive minor)
+**No STABLE change, no new scanners, no maturity promotions.** Engine stays `proven`; **IaC
+(Checkov/Conftest/Terrascan) stays `experimental`** — but v1.4.0 captures **real LOCAL
+tool-execution evidence** (not consumer-CI) that closes the v1.3.0 diagnostic gap:
+- **Checkov 3.3.1** (via `pip`) parsed the insecure TF fixture → **3 resources, 16 violations,
+  0 parse errors**; collector → `iac_violations=16`. v1.3.0's "resource_count:0" is confirmed a
+  **Docker-image** fault, not the wrapper/TF.
+- **Terrascan 1.19.9** → **4 high violations** on AWS TF; collector → `4`. v1.3.0's "0 policies"
+  was **`hcloud`-only** (Hetzner unsupported), not an AWS gap.
+- **Conftest 0.56.0/OPA 0.69.0** ran the real repo Rego (`policies/opa/terraform.rego`,
+  `--namespace sentinel.terraform`, plan-JSON) → **2 real failures**; collector → `2`. v1.3.0's
+  "no output" was **namespace + HCL-vs-plan-JSON** usage.
+- All three collectors verified on real artifacts (violation + clean paths). Derived sanitized
+  fixtures: `tests/fixtures/iac-v140/`. Self-test **562 → 574** (`v140-iac`). **Local run ≠
+  live-validated** (project definition = consumer CI), so **no promotion**. Recipe for the next
+  consumer-CI attempt recorded in [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md) and
+  [`iac-evidence-candidate-matrix.md`](iac-evidence-candidate-matrix.md). Deptrac CI evidence was
+  **not** pursued this sprint (scope: local-only); Deptrac maturity unchanged from v1.3.0. Drop-in
+  from v1.3.0.
+
 ## v1.3.0 — Evidence-Based Deptrac Promotion (additive minor)
 **One evidence-backed maturity promotion; IaC honestly NOT promoted.** No STABLE change, no new scanners.
 - **Deptrac `experimental` → `live-validated`.** Real **deptrac 1.0.2** runs on real consumer projects

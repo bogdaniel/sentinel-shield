@@ -282,3 +282,24 @@ modules). **No usable evidence was produced** — so, per the rules, **no IaC pr
 cited run that parses real IaC into a non-trivial `iac_violations` count. Next attempt: an AWS/Azure/GCP
 or Kubernetes IaC surface (which the tools have policies for) and a working scanner image. The wrappers
 correctly report `unavailable`/0 — they never fake a clean IaC report.
+
+## v1.4.0 — IaC LOCAL tool-execution evidence (diagnostic closure; NO promotion)
+
+> **Not a consumer-CI promotion.** This is a **local** validation (same class as
+> [`live-evidence-v025.md`](live-evidence-v025.md)): real scanner binaries, real artifacts, real
+> collectors — but **no consumer, no run ID**. Checkov/Conftest/Terrascan **stay `experimental`.**
+> The registry table above is unchanged. Full record: [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
+
+v1.4.0 ran the three IaC scanners via their **supported** execution paths against the committed
+insecure fixture (`tests/fixtures/iac-v024/terraform/insecure.tf`) and pinned every v1.3.0 blocker
+to a root cause:
+
+| Tool | Version | Command | Raw | Collector → `iac_violations` | v1.3.0 blocker → root cause |
+|---|---|---|---|---|---|
+| **Checkov** | 3.3.1 (`pip`) | `checkov -d <tf> -o json` | 3 resources, 16 failed, 0 parse errs | `fail` / **16** | "resource_count:0" was the **Docker image**, not TF/wrapper |
+| **Terrascan** | 1.19.9 | `terrascan scan -d <tf> -i terraform -o json` | 4 violations (4 high) | `fail` / **4** | "0 policies" was **`hcloud`-only**; AWS works |
+| **Conftest** | 0.56.0 / OPA 0.69.0 | `conftest test --policy policies/opa/terraform.rego --namespace sentinel.terraform <plan.json>` | 2 failures | `fail` / **2** | "no output" was **namespace + HCL-vs-plan-JSON** |
+
+Derived, sanitized fixtures committed at `tests/fixtures/iac-v140/`; guarded by `self-test v140-iac`.
+**Still NOT promoted** — no consumer-CI run ID exists. The known-good commands above are the recipe
+for the next promotion attempt.

@@ -1,0 +1,7 @@
+[
+	{
+		"filename": "tests/fixtures/iac-v024/terraform/insecure.tf",
+		"namespace": "main",
+		"successes": 0
+	}
+]

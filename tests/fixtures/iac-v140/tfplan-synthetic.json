@@ -1,0 +1,15 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_security_group_rule.open_ssh",
+      "type": "aws_security_group_rule",
+      "change": { "after": { "type": "ingress", "from_port": 22, "to_port": 22, "cidr_blocks": ["0.0.0.0/0"] } }
+    },
+    {
+      "address": "aws_s3_bucket_acl.public_data",
+      "type": "aws_s3_bucket_acl",
+      "change": { "after": { "acl": "public-read" } }
+    }
+  ]
+}

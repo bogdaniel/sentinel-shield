@@ -1,0 +1,69 @@
+{
+  "results": {
+    "violations": [
+      {
+        "rule_name": "port22OpenToInternet",
+        "description": "Security Groups - Unrestricted Specific Ports - (SSH,22)",
+        "rule_id": "AC_AWS_0227",
+        "severity": "HIGH",
+        "category": "Infrastructure Security",
+        "resource_name": "open_ssh",
+        "resource_type": "aws_security_group",
+        "module_name": "root",
+        "file": "insecure.tf",
+        "plan_root": "./",
+        "line": 25
+      },
+      {
+        "rule_name": "s3PublicAclNoAccessBlock",
+        "description": "Ensure S3 buckets do not have, a both public ACL on the bucket and a public access block.",
+        "rule_id": "AC_AWS_0496",
+        "severity": "HIGH",
+        "category": "Identity and Access Management",
+        "resource_name": "public_data",
+        "resource_type": "aws_s3_bucket",
+        "module_name": "root",
+        "file": "insecure.tf",
+        "plan_root": "./",
+        "line": 11
+      },
+      {
+        "rule_name": "allUsersReadAccess",
+        "description": "Misconfigured S3 buckets can leak private information to the entire internet or allow unauthorized data tampering / deletion",
+        "rule_id": "AC_AWS_0210",
+        "severity": "HIGH",
+        "category": "Identity and Access Management",
+        "resource_name": "public_data",
+        "resource_type": "aws_s3_bucket",
+        "module_name": "root",
+        "file": "insecure.tf",
+        "plan_root": "./",
+        "line": 11
+      },
+      {
+        "rule_name": "s3Versioning",
+        "description": "Enabling S3 versioning will enable easy recovery from both unintended user actions, like deletes and overwrites",
+        "rule_id": "AC_AWS_0214",
+        "severity": "HIGH",
+        "category": "Resilience",
+        "resource_name": "public_data",
+        "resource_type": "aws_s3_bucket",
+        "module_name": "root",
+        "file": "insecure.tf",
+        "plan_root": "./",
+        "line": 11
+      }
+    ],
+    "skipped_violations": null,
+    "scan_summary": {
+      "file/folder": "tests/fixtures/iac-v024/terraform",
+      "iac_type": "terraform",
+      "scanned_at": "2026-06-16 15:09:02.409018 +0000 UTC",
+      "policies_validated": 147,
+      "violated_policies": 4,
+      "low": 0,
+      "medium": 0,
+      "high": 4
+    }
+  }
+}

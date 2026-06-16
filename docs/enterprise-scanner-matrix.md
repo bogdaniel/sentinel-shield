@@ -150,3 +150,12 @@ real consumers with genuine `deptrac.yaml` — 0 violations (commerce-bridge, pa
 `experimental`** — the v1.3.0 attempt on real Terraform produced no usable evidence (Checkov image not
 parsing TF; Terrascan no `hcloud` policies; Conftest no output). No fake-clean; promotion still pending
 real cited IaC evidence.
+
+## v1.4.0 — IaC local tool-execution evidence (NO promotion)
+Checkov/Conftest/Terrascan **stay `experimental`.** v1.4.0 captured **real LOCAL** evidence (not
+consumer-CI): Checkov 3.3.1 → 16, Terrascan 1.19.9 → 4, Conftest 0.56.0/OPA 0.69.0 → 2
+`iac_violations` on the insecure fixture; all three collectors verified on real artifacts (violation
++ clean paths). This diagnoses the v1.3.0 blockers (Checkov **Docker image** not parsing TF;
+Terrascan **`hcloud`-only** policy gap; Conftest **namespace + plan-JSON** usage) but a local run is
+**not** a live-validation. Canonical: [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
+Deptrac maturity unchanged from v1.3.0.

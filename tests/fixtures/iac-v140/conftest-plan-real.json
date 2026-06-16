@@ -1,0 +1,15 @@
+[
+	{
+		"filename": ".sprint-v140/raw/tfplan-synthetic.json",
+		"namespace": "sentinel.terraform",
+		"successes": 3,
+		"failures": [
+			{
+				"msg": "S3 bucket ACL 'aws_s3_bucket_acl.public_data' is public (public-read); buckets must be private unless explicitly classified public"
+			},
+			{
+				"msg": "security group rule 'aws_security_group_rule.open_ssh' exposes SSH to 0.0.0.0/0"
+			}
+		]
+	}
+]

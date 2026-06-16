@@ -6,6 +6,33 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.4.0] — Enterprise IaC Evidence, Adoption Scale, and Supportability
+
+**Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity
+promotions.** Drop-in from v1.3.0.
+
+### Added (real local evidence — NOT a promotion)
+- **IaC local tool-execution evidence.** Ran the three IaC scanners via their *supported* paths
+  against the committed insecure fixture and verified the collectors on real artifacts:
+  **Checkov 3.3.1** (`pip`) → 3 resources / **16** violations / 0 parse errors → `iac_violations=16`;
+  **Terrascan 1.19.9** → **4** high violations → `4`; **Conftest 0.56.0/OPA 0.69.0** (real repo Rego,
+  `--namespace sentinel.terraform`, plan-JSON) → **2** failures → `2`. Derived sanitized fixtures at
+  `tests/fixtures/iac-v140/`; docs [`iac-local-evidence-v140.md`](docs/iac-local-evidence-v140.md),
+  [`iac-evidence-candidate-matrix.md`](docs/iac-evidence-candidate-matrix.md).
+- **Self-test `v140-iac`** (12 guards): IaC fixtures parse through the collectors; the new docs are
+  honest (experimental/NOT consumer-CI); the no-overclaim guard now covers the v1.4.0 docs; hygiene
+  (no absolute paths/consumer names in fixtures, no scratch tracked). Self-test **562 → 574 PASS / 0 FAIL**.
+
+### Diagnosed (v1.3.0 IaC blocker root causes — still NOT promoted)
+- **Checkov** "resource_count:0" → the **Docker image**, not the wrapper/TF (`pip`/Action parse fine).
+- **Terrascan** "0 policies" → **`hcloud`-only** (Hetzner unsupported); AWS/Azure/GCP/k8s work.
+- **Conftest** "no output" → **namespace + HCL-vs-plan-JSON** usage of the repo Rego.
+
+### Not promoted / not done (honest)
+- **IaC stays `experimental`.** A local run is not a consumer-CI live-validation; no run ID exists.
+- **Deptrac CI evidence not pursued** this sprint (local-only scope); Deptrac maturity unchanged.
+- **Deptrac local re-run blocked** here (no PHP/Composer on the bench); v1.3.0 evidence stands.
+
 ## [1.3.0] — Evidence-Based Deptrac and IaC Promotion
 
 **Additive minor.** No STABLE contract change, no new scanners, no gates weakened. **One
