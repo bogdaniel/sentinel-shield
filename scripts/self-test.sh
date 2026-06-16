@@ -2317,6 +2317,61 @@ run_v170_platform() {
 	log_info "v170-platform: OK (evidence platform + adoption docs present, linked, honest)"
 }
 
+# --- v1.8.0: non-IaC completion — tooling exists + works; docs present + linked; nothing overclaimed ---
+run_v180_completion() {
+	log_info "v180-completion: hardened profile + doctor/support/maturity tooling + docs; no overclaim"
+	V180_FAILS=0
+	v180_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V180_FAILS=$((V180_FAILS + 1)); fi; }
+	D="$ROOT/docs"; S="$ROOT/scripts"; IDX="$D/index.md"; _t=$(mktemp -d "${TMPDIR:-/tmp}/ss-v180.XXXXXX")
+
+	# (A01) hardened profile: manifest valid + opt-in (NOT the install-baseline default) + round-trips.
+	v180_check "hardened manifest valid (profile+files)" "$(jq -e 'has("profile") and has("files")' "$ROOT/profiles/hardened-enterprise/profile.manifest.json" >/dev/null 2>&1 && echo yes || echo no)" "yes"
+	v180_check "hardened profile is opt-in (not the install default)" "$(grep -c 'PROFILE="hardened-enterprise"' "$S/install-baseline.sh")" "0"
+	sh "$S/install-baseline.sh" --target "$_t" --profile hardened-enterprise --apply --mode report-only >/dev/null 2>&1
+	v180_check "hardened profile installs the pinned snippet" "$([ -f "$_t/.sentinel-shield/hardened/sentinel-shield-hardened.snippet.yml" ] && echo yes || echo no)" "yes"
+
+	# (A02) doctor: exists, exit 0 on a dir, exit 2 on bad arg, never prints a key VALUE.
+	v180_check "doctor.sh present" "$([ -f "$S/doctor.sh" ] && echo yes || echo no)" "yes"
+	_rc=0; sh "$S/doctor.sh" --target "$ROOT" >/dev/null 2>&1 || _rc=$?; v180_check "doctor exit 0 (info)" "$_rc" "0"
+	_rc=0; sh "$S/doctor.sh" --bogus >/dev/null 2>&1 || _rc=$?; v180_check "doctor exit 2 (bad arg)" "$_rc" "2"
+
+	# (A03) support-bundle: excludes raw by default.
+	sh "$S/support-bundle.sh" --target "$ROOT" --out "$_t/b.tgz" >/dev/null 2>&1 || true
+	v180_check "support-bundle excludes raw by default" "$(tar -tzf "$_t/b.tgz" 2>/dev/null | grep -c 'raw-EXCLUDED.txt')" "1"
+
+	# (A10) maturity report: valid JSON; IaC ci-validated, Deptrac live-validated, AI non-gating.
+	v180_check "maturity-report JSON valid" "$(sh "$S/maturity-report.sh" --format json 2>/dev/null | jq -e '.tools|length>0' >/dev/null 2>&1 && echo yes || echo no)" "yes"
+	v180_check "maturity-report: Checkov ci-validated (NOT live)" "$(sh "$S/maturity-report.sh" --format json 2>/dev/null | jq -r '.tools[]|select(.tool=="Checkov").maturity')" "ci-validated (evidence-fixture)"
+	v180_check "maturity-report: Deptrac live-validated" "$(sh "$S/maturity-report.sh" --format json 2>/dev/null | jq -r '.tools[]|select(.tool=="Deptrac").maturity')" "live-validated"
+	v180_check "maturity-report: AI non-gating" "$(sh "$S/maturity-report.sh" --format json 2>/dev/null | jq -r '.tools[]|select(.tool|test("Kuzushi")).gating')" "non-gating"
+
+	# (A04-A09) docs exist + linked from index.
+	for f in severity-normalization.md external-adoption-test.md dast-staging-runbook.md \
+	         ai-security-review.md consumer-cleanup.md install-sync-ux.md; do
+		v180_check "doc exists: $f" "$([ -f "$D/$f" ] && echo yes || echo no)" "yes"
+		v180_check "doc linked from index: $f" "$(grep -qs "($f)" "$IDX" && echo yes || echo no)" "yes"
+	done
+
+	# (A05) severity: npm MODERATE -> medium documented.
+	v180_check "severity doc: npm MODERATE -> medium" "$(grep -qsiE 'MODERATE.*medium' "$D/severity-normalization.md" && echo yes || echo no)" "yes"
+	# (A06) DAST stays manual/non-default; (A07) AI non-gating.
+	v180_check "dast runbook: manual / non-default" "$(grep -qsiE 'manual|non-default|never.*PR-fast' "$D/dast-staging-runbook.md" && echo yes || echo no)" "yes"
+	v180_check "ai doc: non-gating" "$(grep -qsiE 'non-gating' "$D/ai-security-review.md" && echo yes || echo no)" "yes"
+
+	# (A16) roadmap closure sections + deferral of AWS/k8s/IaC live validation.
+	v180_check "roadmap: closed-as-complete section" "$(grep -qs 'Closed as complete' "$D/roadmap.md" && echo yes || echo no)" "yes"
+	v180_check "roadmap: intentionally-deferred section" "$(grep -qs 'Intentionally deferred' "$D/roadmap.md" && echo yes || echo no)" "yes"
+	v180_check "roadmap: AWS/k8s/IaC live validation deferred" "$(grep -qsiE 'AWS live validation|Kubernetes live validation|IaC live validation' "$D/roadmap.md" && echo yes || echo no)" "yes"
+
+	# (A17/A18) honesty + hygiene: no IaC live-validated claim anywhere.
+	v180_check "no doc claims Checkov/Terrascan/Conftest IS live-validated" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/ 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+	v180_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	rm -rf "$_t"
+	if [ "$V180_FAILS" -ne 0 ]; then log_error "v180-completion: $V180_FAILS case(s) failed"; return 1; fi
+	log_info "v180-completion: OK (non-IaC scope closed/deferred; tooling works; IaC stays ci-validated)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2359,6 +2414,7 @@ case "$SUB" in
 	v150-evidence) run_v150_evidence ;;
 	v160-iac) run_v160_iac ;;
 	v170-platform) run_v170_platform ;;
+	v180-completion) run_v180_completion ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2401,13 +2457,14 @@ case "$SUB" in
 		run_v150_evidence
 		run_v160_iac
 		run_v170_platform
+		run_v180_completion
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|all)"
 		exit 2
 		;;
 esac

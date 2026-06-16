@@ -6,6 +6,36 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.8.0] — Non-IaC Completion Sprint
+
+**Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity
+promotions.** Closes the repeatedly-identified **non-IaC** post-GA scope; AWS/k8s/IaC live validation
+stays **deferred** and IaC stays `ci-validated (evidence-fixture)`. Drop-in from v1.7.0.
+
+### Added — tooling (additive scripts)
+- `scripts/doctor.sh` — preflight/diagnostics (tooling, profile, accepted-risks, reports, workflows,
+  NVD key **by name only**); exit 0 info / 2 invalid. Does not run scanners or change gates.
+- `scripts/support-bundle.sh` — redacted diagnostics tarball; **excludes `reports/raw`, `.env`,
+  secrets** by default; `--include-raw` adds redacted copies with a warning.
+- `scripts/maturity-report.sh` — offline scanner maturity matrix as markdown or JSON.
+- **Hardened enterprise profile** `profiles/hardened-enterprise/` — first-class **opt-in**
+  (`--profile hardened-enterprise`); ships the digest/SHA-pinned hardened reference; defaults unchanged.
+
+### Added — docs
+- `severity-normalization.md`, `external-adoption-test.md`, `dast-staging-runbook.md`,
+  `ai-security-review.md`, `consumer-cleanup.md`, `install-sync-ux.md`; buyer pack support/RACI model;
+  roadmap **closure** (closed / intentionally-deferred / future-optional + the "100% non-IaC" definition);
+  troubleshooting v3; Dependency-Check operational finalization. All linked from `docs/index.md`.
+
+### Guarded
+- **Self-test `v180-completion`** — hardened profile opt-in + round-trip, doctor/support-bundle/maturity
+  scripts present + valid output, severity (npm MODERATE→medium), DAST not-PR-fast, AI non-gating,
+  roadmap closure sections, no IaC `live-validated` claim, hygiene. Self-test **613 → 644 PASS / 0 FAIL**.
+
+### Deferred (explicit, not in scope)
+- AWS / Kubernetes / IaC **live** validation; IaC maturity promotion; DAST default gating; AI gating;
+  STABLE (v2.0.0) changes (`profile list` flag, `sync-managed-block` in-place updater).
+
 ## [1.7.0] — Evidence Platform and Public Adoption Kit
 
 **Additive minor — documentation/platform only.** No engine/STABLE change, no new scanners, no gates

@@ -186,6 +186,18 @@ maturity change, on real CI evidence (not a `live-validated` claim).
   AWS/Azure/GCP/Kubernetes surface. Self-test **583 → 593** (`v160-iac`). Drop-in from v1.5.0.
   See [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 
+## v1.8.0 — Non-IaC Completion Sprint (additive minor)
+**No STABLE change, no new scanners, no maturity promotions.** Closes the repeatedly-identified
+**non-IaC** post-GA scope; IaC stays `ci-validated (evidence-fixture)` and AWS/k8s/IaC live validation
+stays **deferred** (see [`roadmap.md`](roadmap.md) §"v1.8.0 closure").
+- **Hardened enterprise profile** — first-class **opt-in** (`profiles/hardened-enterprise/`); defaults unchanged.
+- **Supportability** — `scripts/doctor.sh` (preflight; exit 0 info / 2 invalid) + `scripts/support-bundle.sh`
+  (redacted diagnostics; raw excluded by default) + `scripts/maturity-report.sh` (md/JSON).
+- **Docs** — severity-normalization, external-adoption-test, dast-staging-runbook, ai-security-review,
+  consumer-cleanup, install-sync-ux; buyer pack gains a support/RACI model.
+- **DAST stays `manual`; AI review stays `non-gating`** (both explicitly deferred from default gating).
+- Self-test **613 → 644** (`v180-completion`). Drop-in from v1.7.0.
+
 ## v1.5.0 — Deptrac CI Evidence; IaC consumer-CI promotion blocked (additive minor)
 **No STABLE change, no new scanners, no maturity promotions.** Engine stays `proven`.
 - **Deptrac stays `live-validated`** — now backed by a **consumer-CI run ID** (the v1.3.0 gap). Real

@@ -173,3 +173,10 @@ Checkov/Conftest/Terrascan move `experimental` → **`ci-validated (evidence-fix
 Terrascan 1.19.9 → 8, Conftest 0.56.0 → 5 `iac_violations`; collectors verified). **NOT**
 `live-validated` (engineered findings on a non-deployed fixture; full promotion needs a real
 production AWS/Azure/GCP/k8s consumer). Canonical: [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
+## v1.8.0 — non-IaC completion (no maturity change)
+No label changed. Confirmed coherent across product-status + maturity policy: engine `proven`;
+CodeQL/OSV/Trivy-fs/Syft/Grype/Dockle/Dependency-Check/**Deptrac** `live-validated`;
+**Checkov/Terrascan/Conftest** `ci-validated (evidence-fixture)` (NOT live-validated);
+ZAP/Nuclei `manual`; Claude Code review/Kuzushi `non-gating`. Single machine-readable view:
+`scripts/maturity-report.sh --format json`. Severity mapping: [`severity-normalization.md`](severity-normalization.md).

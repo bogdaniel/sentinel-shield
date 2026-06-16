@@ -60,6 +60,12 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`scanner-maturity-policy.md`](scanner-maturity-policy.md) — maturity labels + promotion/demotion **[reference]**
 - [`live-validation-playbook.md`](live-validation-playbook.md) — ci-validated → live-validated on a real consumer **[reference]**
 - [`public-adoption-kit.md`](public-adoption-kit.md) — one-stop adoption entry point **[reference]**
+- [`external-adoption-test.md`](external-adoption-test.md) — author-independent adoption proof **[reference]**
+- [`severity-normalization.md`](severity-normalization.md) — cross-scanner severity spec **[reference]**
+- [`dast-staging-runbook.md`](dast-staging-runbook.md) — DAST manual/staging runbook **[reference]**
+- [`ai-security-review.md`](ai-security-review.md) — AI review non-gating contract **[reference]**
+- [`consumer-cleanup.md`](consumer-cleanup.md) — evidence branch/secret/artifact lifecycle **[reference]**
+- [`install-sync-ux.md`](install-sync-ux.md) — install/sync advanced UX **[reference]**
 - [`enterprise-buyer-pack.md`](enterprise-buyer-pack.md) — buyer/architect evaluation pack **[reference]**
 - [`install-sync-scale-v140.md`](install-sync-scale-v140.md) — 8-profile install/sync re-validation **[evidence]**
 

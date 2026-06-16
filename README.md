@@ -31,6 +31,9 @@ This repository is not a demo. It is intended for use in real production project
 > [`docs/enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md). **How evidence works** →
 > [`docs/evidence-platform.md`](docs/evidence-platform.md) +
 > [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`).
+> **Stuck?** `sh scripts/doctor.sh` (preflight) · `sh scripts/support-bundle.sh` (safe diagnostics) ·
+> `sh scripts/maturity-report.sh` (tool status) · [`docs/troubleshooting.md`](docs/troubleshooting.md).
+> **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage

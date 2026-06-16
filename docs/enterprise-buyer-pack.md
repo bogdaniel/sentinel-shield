@@ -64,3 +64,22 @@ cited CI run IDs, the evidence registry, and the blocking self-test (currently *
 - **Troubleshooting:** [`troubleshooting.md`](troubleshooting.md) (symptom → cause → fix).
 - **Promotion to live-validated on your own infra:** [`live-validation-playbook.md`](live-validation-playbook.md).
 - **Versioning/immutability:** [`sentinel-shield-release-process.md`](sentinel-shield-release-process.md).
+
+## Support model & RACI (v1.8.0)
+
+| Activity | Security owner | Platform owner | App team | Evidence steward | Scanner owner |
+|---|---|---|---|---|---|
+| Set gate policy / modes | A | C | I | I | C |
+| Wire/maintain workflows | C | A/R | R | I | C |
+| Triage findings | C | C | A/R | I | C |
+| Own `accepted-risks.json` | C | I | A/R | I | I |
+| Capture/curate evidence + run IDs | I | C | C | A/R | C |
+| Maintain a scanner integration | I | C | I | C | A/R |
+| Escalation / incident | A | R | R | I | C |
+
+**Roles:** *evidence steward* curates the registry + run IDs; *scanner owner* maintains a tool's
+collector/version. **Escalation:** docs gap → patch docs; real bug → engine issue; environment →
+`doctor.sh` + `support-bundle.sh`. **Reviews:** quarterly maturity review (re-check labels vs
+evidence), upgrade review (semver/CHANGELOG before bumping), audit-evidence review (registry +
+`maturity-report.sh`). Support boundaries: SS owns the engine/collectors/docs; **the consumer owns
+scanner runs, findings remediation, and risk acceptance.**

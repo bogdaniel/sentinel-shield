@@ -164,3 +164,16 @@ still see their symptoms if a cache or mount is in a bad state:
 6. **Run DC scheduled/nightly or as an optional main-gate — never on the PR-fast path.** Pin
    `SENTINEL_SHIELD_REF` to a full SHA and apply a foreground timeout
    (`SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT`, e.g. `40m`, under the step `timeout-minutes`).
+
+## v1.8.0 — operational edges (finalization)
+
+- **Private registry auth:** transitive scans of private deps need consumer-provided registry auth
+  (composer/npm). SS does not store it; provide it in the consumer's CI env, never committed.
+- **`composer install` failure:** missing PHP ext / lockfile → transitive PHP surface is skipped (the
+  committed-surface scan still runs). Fix the consumer build, then re-run.
+- **`npm ci` failure:** missing lockfile / engine mismatch → transitive Node surface skipped likewise.
+- **Warm-cache troubleshooting:** an H2 lock / "No documents exist" means a poisoned/partial NVD
+  cache — reset the cache namespace (see [`dependency-check-ci-cache.md`](dependency-check-ci-cache.md));
+  the wrapper preserves a valid-JSON-with-nonzero-exit report and never fakes clean.
+- **Support bundle redaction:** `support-bundle.sh` redacts the NVD key variable and token patterns;
+  the key value is never printed/committed. Rotate per [`security-hygiene.md`](security-hygiene.md).

@@ -249,3 +249,40 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 - **Still open for a future minor (needs real evidence):** promote **IaC** on an AWS/Azure/GCP/K8s
   surface the scanners have policies for, with a working scanner image; refine coarse scanner severity;
   digest-pinned-by-default hardened profile. All semver-additive.
+
+---
+
+# v1.8.0 — Non-IaC Completion Closure
+
+This section **explicitly classifies** the repeatedly-identified post-GA work so the backlog is
+bounded, not endless.
+
+## Closed as complete (non-IaC)
+- Hardened enterprise profile — first-class **opt-in** (`profiles/hardened-enterprise/`).
+- Supportability: `scripts/doctor.sh` (preflight) + `scripts/support-bundle.sh` (redacted diagnostics).
+- External adoption proof flow ([`external-adoption-test.md`](external-adoption-test.md)).
+- Severity normalization spec + guards ([`severity-normalization.md`](severity-normalization.md)).
+- DAST staging/manual runbook ([`dast-staging-runbook.md`](dast-staging-runbook.md)) — stays manual.
+- AI review non-gating contract ([`ai-security-review.md`](ai-security-review.md)) — stays non-gating.
+- Consumer cleanup/lifecycle ([`consumer-cleanup.md`](consumer-cleanup.md)).
+- Install/sync UX guidance ([`install-sync-ux.md`](install-sync-ux.md)).
+- Maturity report (`scripts/maturity-report.sh`, md/JSON).
+- Evidence platform, adoption kit, buyer pack, maturity policy (v1.7.0).
+
+## Intentionally deferred (NOT in scope; require real external infra or a major)
+- **AWS live validation** — needs a real AWS consumer.
+- **Kubernetes live validation** — needs a real k8s consumer.
+- **IaC live validation / IaC maturity promotion** — IaC stays `ci-validated (evidence-fixture)`.
+- **DAST as a default gate** — stays manual/allowlisted.
+- **AI review as a gating signal** — stays non-gating.
+- **STABLE-surface (v2.0.0) changes** — e.g. a `profile list` flag, `sync-managed-block` in-place
+  updater — deferred to a major to preserve the semver contract.
+
+## Future optional (nice-to-have, unscheduled)
+- A second independent real-consumer validation per tool (strengthens `live-validated`).
+- Additional provider IaC fixtures (Azure/GCP) in the evidence consumer.
+
+## What "100% non-IaC completion" means
+Every non-IaC post-GA item repeatedly raised in prior sprints is **either implemented above or
+explicitly deferred here** — with the deferred set bounded to work that needs real external
+infrastructure or a major (v2.0.0) STABLE change. It does **not** claim universal completeness.

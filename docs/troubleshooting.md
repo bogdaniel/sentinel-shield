@@ -298,3 +298,37 @@ only. Nuclei additionally enforces a **controlled template path** guard. See
   `unavailable`. `unavailable` ≠ clean.
 - **Do not edit project-local files via `--force`.** `--force` is for managed files only;
   `.sentinel-shield/accepted-risks.json` and `phpstan-baseline.neon` stay project-owned.
+
+---
+
+## v1.8.0 supportability layer
+
+**First step for any adoption issue:** `sh scripts/doctor.sh --target <dir>` — checks tooling
+(sh/git/jq/node/php/composer/docker), profile.yaml, accepted-risks validity, reports dir,
+security-summary, workflows, and the NVD key **by variable name only** (never the value). Exit 0 =
+informational; exit 2 = invalid invocation/config.
+
+**Share diagnostics safely:** `sh scripts/support-bundle.sh --target <dir> --out bundle.tgz` — excludes
+`reports/raw`, `.env`, and secrets by default and **redacts** token patterns. `--include-raw` adds
+**redacted** copies (review before sharing).
+
+**Severity looks wrong / a CVE didn't gate.** See [`severity-normalization.md`](severity-normalization.md)
+(e.g. npm `MODERATE`→`medium`; OSV all→`high`; IaC/Deptrac are counts, not graded).
+
+**DAST won't run / scans nothing.** It's **manual** — needs `SENTINEL_SHIELD_DAST_TARGET_URL` +
+`..._ALLOWED_HOST`; host mismatch fails closed. See [`dast-staging-runbook.md`](dast-staging-runbook.md).
+
+**AI review didn't block.** By design — AI review is **non-gating**. See
+[`ai-security-review.md`](ai-security-review.md).
+
+**Profile listing / drift / force.** See [`install-sync-ux.md`](install-sync-ux.md).
+
+**Cleaning up after evidence.** See [`consumer-cleanup.md`](consumer-cleanup.md) (branch delete, secret
+rotation, retention) — nothing auto-deletes.
+
+**Current tool status at a glance:** `sh scripts/maturity-report.sh --format md`.
+
+### Escalation
+docs gap → patch the doc; real engine bug → file against `sentinel-shield`; environment →
+`doctor.sh` + `support-bundle.sh` output. IaC questions: IaC is `ci-validated (evidence-fixture)`,
+**not** `live-validated` — that is intentional and deferred.
