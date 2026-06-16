@@ -67,6 +67,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`v1-readiness.md`](v1-readiness.md) — blocker table / release readiness **[reference]**
 - [`roadmap.md`](roadmap.md) — maturity-ordered plan **[reference]**
 - [`sentinel-shield-release-process.md`](sentinel-shield-release-process.md) — tags, immutability **[reference]**
+- [`sprint-v140-report.md`](sprint-v140-report.md) — v1.4.0 20-lane/800-task sprint ledger **[evidence]**
 
 ### Support
 - [`troubleshooting.md`](troubleshooting.md) — symptom → cause → fix **[reference]**
