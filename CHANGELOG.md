@@ -6,6 +6,19 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.4.1] — Sprint Report Clarity Patch
+
+**Documentation-only.** No engine/STABLE change, no maturity change, no new scanners, no gates
+touched. Drop-in from v1.4.0.
+
+### Changed
+- **`docs/sprint-v140-report.md` re-framed.** Now leads with an executive summary, a **Real diff
+  summary** (21 files, +766/−8, 3 commits), and **10 substantive deliverables**; adds a **"What the
+  800 tasks mean"** section clarifying the count is brief-mandated atomic-check accounting, **not**
+  800 feature-level deliverables. The full 20-lane × 40-item ledger is preserved verbatim under
+  **Appendix A — Brief-Mandated Atomic Task Ledger**. All v1.4.0 facts (574/0 self-test, STABLE
+  diff = 0, no promotions, honest limitations) are preserved.
+
 ## [1.4.0] — Enterprise IaC Evidence, Adoption Scale, and Supportability
 
 **Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity

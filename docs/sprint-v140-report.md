@@ -1,8 +1,69 @@
-# Sentinel Shield v1.4.0 — 20-Agent / 800-Task Sprint Report
+# Sentinel Shield v1.4.0 — Sprint Report
 
-**Captain:** A20 (release/integration). **Branch:** `release/v140-integration`.
+**Captain:** A20 (release/integration). **Branch:** `release/v140-integration` (merged to master).
 **Semver:** additive minor (v1.3.0 → v1.4.0). **STABLE engine diff vs v1.3.0:** 0 lines.
 **Self-test:** 562 → **574 PASS / 0 FAIL**.
+
+> **Clarity note (v1.4.1 patch).** This report was re-framed to lead with the **real release
+> substance**. The originally-headline "800-task" count is **brief-mandated accounting granularity**,
+> moved to [Appendix A](#appendix-a--brief-mandated-atomic-task-ledger) — it is **not** 800
+> independent deliverables. No facts changed; only the framing.
+
+## Executive summary
+
+v1.4.0 shipped a **small, concrete, evidence-focused diff** — 21 files, **+766 / −8 lines, 3
+commits**. The value is real **local IaC tool-execution evidence** plus the guards and docs around
+it, **not** volume. The **800-task ledger was brief-mandated accounting granularity, not 800
+independent deliverables** (see Appendix A).
+
+## Real diff summary
+
+v1.4.0 vs v1.3.0 — **21 files, +766 / −8 lines, 3 commits**:
+
+- 3 IaC local tool runs (Checkov / Terrascan / Conftest)
+- 5 IaC fixtures (`tests/fixtures/iac-v140/`)
+- 12 self-test guards (`v140-iac`)
+- documentation updates (~5 new docs + edits to ~8 existing)
+- hardened snippet update (1 opt-in operational block)
+- install/sync matrix validation (8 profiles)
+- 3 commits (`c480dc2`, `d162b17`, `7c8f97f`)
+
+## Substantive deliverables
+
+1. **Checkov local evidence** — 3.3.1 via `pip`: 16 violations, collector → `iac_violations=16`.
+2. **Terrascan local evidence** — 1.19.9: 4 high findings, collector → `4`.
+3. **Conftest local evidence** — 0.56.0/OPA 0.69.0: 2 real Rego failures, collector → `2`.
+4. **IaC collector verification** — all three collectors verified on real artifacts (violation + clean paths).
+5. **IaC fixtures** — 5 sanitized, derived-from-real fixtures committed.
+6. **Self-test guards** — 12 new `v140-iac` checks; self-test 562 → 574 PASS / 0 FAIL.
+7. **Local-evidence documentation** — `iac-local-evidence-v140.md`, `iac-evidence-candidate-matrix.md`.
+8. **Install/sync scale note** — `install-sync-scale-v140.md` (8 profiles pass; no regression).
+9. **Hardened snippet update** — opt-in operational block (permissions / concurrency / timeout / retention).
+10. **Maturity decision — NO promotion** — Checkov/Conftest/Terrascan stay `experimental` (local ≠ consumer-CI).
+
+## What the 800 tasks mean
+
+The 800 items are **atomic checks / sub-steps across 20 lanes** (40 each). Many are **validation
+checks, blocked items, skipped items, no-secret checks, no-STABLE-change checks, and documentation
+confirmations**. They should **not** be interpreted as 800 feature-level deliverables. The real
+shipped work is the diff and the 10 deliverables above; the ledger in Appendix A is the per-step
+accounting the sprint brief required.
+
+## Honest limitations (preserved)
+
+- **Local evidence only** — no consumer-CI live validation.
+- **No IaC maturity promotion** — Checkov/Conftest/Terrascan stay `experimental`.
+- **Deptrac CI not pursued** (local-only scope; no run ID).
+- **Local Deptrac re-run blocked** — no PHP/Composer on the bench; v1.3.0 evidence stands.
+- **Consumer adoption was fixture-only** — no live consumer apps.
+- **Conftest plan-JSON input is synthetic** (Terraform not installed).
+
+## Shipped validation facts (preserved)
+
+- Self-test **574 PASS / 0 FAIL**.
+- **STABLE engine diff vs v1.3.0 = 0 lines**.
+- **No secrets** committed; **no private raw artifacts** tracked.
+- **Prior tags intact** (v1.0.0–v1.3.0, and v1.4.0).
 
 ## Execution model (honest)
 
@@ -42,7 +103,12 @@ compliant result, identical in spirit to the v0.1.25 local-evidence sprint.
 
 ---
 
-## Task ledgers (20 lanes × 40 = 800 atomic tasks)
+## Appendix A — Brief-Mandated Atomic Task Ledger
+
+> This appendix is the **per-step accounting the sprint brief required** (20 lanes × 40 = 800 atomic
+> items). It is **not** a list of 800 deliverables — most lines are checks, confirmations, blocked
+> items, or skipped/N-A items. The real shipped work is the **Real diff summary** and **Substantive
+> deliverables** sections above.
 
 Legend: ✅ done · 📝 done-as-doc · ⛔ blocked (cause) · ⏭️ skipped/N-A (cause).
 **Tallies per lane** are at each lane's end.
@@ -144,7 +210,8 @@ Legend: ✅ done · 📝 done-as-doc · ⛔ blocked (cause) · ⏭️ skipped/N-
 18. **Validation commands:** `sh -n` all scripts; `self-test.sh all`; python JSON validate;
     ruby YAML validate; `node --check`; `git diff v1.3.0` on 6 STABLE scripts (=0); secret/hygiene greps.
 19. **Prior tag integrity:** v1.0.0–v1.3.0 untouched.
-20. **Commit hashes:** `c480dc2` (evidence), `d162b17` (docs/profile/adoption); + release commit (captain).
+20. **Commit hashes:** `c480dc2` (evidence), `d162b17` (docs/profile/adoption), `7c8f97f` (sprint report;
+    v1.4.0 tag). The v1.4.1 clarity patch adds a further docs-only commit on top.
 21. **Known limitations:** no consumer-CI IaC/Deptrac evidence this sprint; Conftest plan-JSON input
     is synthetic; adoption validated on fixtures not live apps; PHP/Composer absent on the bench.
 22. **Recommended next release:** consumer-CI IaC run (Checkov on AWS/k8s via Action) → promote with
