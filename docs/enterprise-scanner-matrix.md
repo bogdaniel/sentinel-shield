@@ -159,3 +159,10 @@ consumer-CI): Checkov 3.3.1 → 16, Terrascan 1.19.9 → 4, Conftest 0.56.0/OPA 
 Terrascan **`hcloud`-only** policy gap; Conftest **namespace + plan-JSON** usage) but a local run is
 **not** a live-validation. Canonical: [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
 Deptrac maturity unchanged from v1.3.0.
+
+## v1.5.0 — Deptrac consumer-CI run ID; IaC consumer-CI blocked
+**Deptrac** stays `live-validated`, now with a **consumer-CI run ID**: public consumer
+**silver-potato**, run **27633798174**, `deptrac.json` → `architecture_violations=4` (fail), deptrac
+1.0.2. Severity still binary. **IaC (Checkov/Conftest/Terrascan) stays `experimental`** — no supported
+consumer surface exists (only Hetzner `hcloud`, unsupported); no run ID invented, no IaC fabricated.
+Canonical: [`main-gate-live-evidence.md`](main-gate-live-evidence.md).

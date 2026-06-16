@@ -166,6 +166,21 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.5.0 — Deptrac CI Evidence; IaC consumer-CI promotion blocked (additive minor)
+**No STABLE change, no new scanners, no maturity promotions.** Engine stays `proven`.
+- **Deptrac stays `live-validated`** — now backed by a **consumer-CI run ID** (the v1.3.0 gap). Real
+  GitHub Actions run on the public consumer **bogdaniel/silver-potato** (genuine `deptrac.yaml`):
+  workflow `sentinel-shield-deptrac-evidence`, **run 27633798174** (success), `deptrac.json` →
+  collector `architecture_violations=4` (**fail**, correct gate behavior), deptrac 1.0.2. Caveat
+  upgraded (local **+** CI); severity remains binary. Report-only fixture:
+  `tests/fixtures/deptrac-v150/silver-potato-ci.json`.
+- **IaC (Checkov/Conftest/Terrascan) NOT promoted — consumer-CI blocked.** The only real IaC consumer
+  (`zenchron-infra`) is 100% Hetzner `hcloud` (unsupported: Terrascan has no hcloud policies; the repo
+  Rego targets AWS; Checkov hcloud coverage is minimal); no AWS/Azure/GCP/k8s surface exists. No run ID
+  invented, no IaC fabricated. IaC stays `experimental`; v1.4.0 local evidence stands. Promotion needs a
+  real AWS/Azure/GCP/Kubernetes consumer. Self-test **574 → 583** (`v150-evidence`). Drop-in from v1.4.x.
+  See [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
 ## v1.4.0 — Enterprise IaC Evidence, Adoption Scale, Supportability (additive minor)
 **No STABLE change, no new scanners, no maturity promotions.** Engine stays `proven`; **IaC
 (Checkov/Conftest/Terrascan) stays `experimental`** — but v1.4.0 captures **real LOCAL

@@ -43,6 +43,11 @@ definition of done, and risks.
   Conftest works with the right namespace + plan-JSON. Collectors verified on real artifacts. This
   is **not** live validation (no consumer run); it makes the next IaC consumer-CI attempt a
   known-good recipe. See [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
+- **IaC update (v1.5.0):** consumer-CI IaC promotion is **blocked** — no supported AWS/Azure/GCP/k8s
+  consumer surface exists (the only IaC consumer is Hetzner `hcloud`, unsupported). IaC stays
+  `experimental`; a real supported-surface consumer is the remaining prerequisite.
+- **Deptrac (v1.5.0):** now has a **consumer-CI run ID** (silver-potato, run 27633798174) in addition
+  to the v1.3.0 local evidence; stays `live-validated`, severity binary.
 - **Definition of done:** each main-gate tool has a cited consumer run with raw→summary-key
   evidence and a pinned ref; severities reviewed.
 - **Risks:** coarse severity → false gates; long runtimes blowing the CI budget

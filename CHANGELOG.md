@@ -6,6 +6,26 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.5.0] — Deptrac CI Evidence; IaC consumer-CI promotion blocked
+
+**Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity
+promotions** (labels unchanged). Drop-in from v1.4.x.
+
+### Added (real consumer-CI evidence)
+- **Deptrac consumer-CI run ID** — the v1.3.0 gap (local-only) is closed. Evidence-only GitHub Actions
+  workflow on the **public** consumer **bogdaniel/silver-potato** (genuine `deptrac.yaml`): run
+  **27633798174** (success), `deptrac.json` → `scripts/collectors/deptrac.sh` → `architecture_violations=4`
+  (**fail**), deptrac 1.0.2. Report-only fixture `tests/fixtures/deptrac-v150/silver-potato-ci.json`
+  (counts only — no class/path data). Deptrac stays `live-validated`; caveat upgraded (local + CI);
+  severity still binary.
+- **Self-test `v150-evidence`** — guards the Deptrac CI run ID citation, the v150 fixture mapping, and
+  that IaC is still NOT claimed live-validated. Self-test **574 → 583 PASS / 0 FAIL**.
+
+### Not promoted (honest — consumer-CI surface does not exist)
+- **IaC (Checkov/Conftest/Terrascan) stays `experimental`.** A promotion-grade consumer-CI run requires a
+  supported AWS/Azure/GCP/Kubernetes surface; the only real IaC consumer (`zenchron-infra`) is 100%
+  Hetzner `hcloud` (unsupported). No run ID invented, no IaC fabricated. v1.4.0 local evidence stands.
+
 ## [1.4.1] — Sprint Report Clarity Patch
 
 **Documentation-only.** No engine/STABLE change, no maturity change, no new scanners, no gates

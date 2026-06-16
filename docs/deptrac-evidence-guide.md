@@ -191,3 +191,17 @@ evidence pattern:
 - **Result is non-zero**: a `fail` with a real count is **valid evidence** — upload
   it; do **not** suppress or remediate to force `pass`. Triage per
   [`architecture-deptrac-realism.md`](architecture-deptrac-realism.md) §175–§178.
+
+## 9. Captured CI evidence (v1.5.0)
+
+The local-CLI evidence of v1.3.0 now has a **consumer-CI run ID**:
+
+- **Consumer:** `bogdaniel/silver-potato` (public; Symfony DDD app, real `deptrac.yaml`).
+- **Workflow / run ID:** `sentinel-shield-deptrac-evidence` / **27633798174** (success).
+- **Tool:** deptrac 1.0.2 (`qossmic/deptrac-shim`).
+- **Artifact:** `deptrac.json` → `scripts/collectors/deptrac.sh` → `architecture_violations = 4` (**fail**).
+- **Fixture (committed, Report counts only):** `tests/fixtures/deptrac-v150/silver-potato-ci.json`.
+- **Caveat:** severity binary (violation count). Raw `.files` (class/paths) kept out of the repo.
+
+Recorded canonically in [`main-gate-live-evidence.md`](main-gate-live-evidence.md) (v1.5.0 section).
+Deptrac stays `live-validated` — no label change; the evidence basis is upgraded (local + CI).

@@ -2221,6 +2221,35 @@ run_v140_iac() {
 	log_info "v140-iac: OK (real local IaC evidence; collectors map; experimental unchanged, NOT promoted)"
 }
 
+# --- v1.5.0 evidence: Deptrac CONSUMER-CI run ID cited; IaC consumer-CI still NOT promoted ---
+run_v150_evidence() {
+	log_info "v150-evidence: Deptrac CI run ID cited; v150 fixture maps; IaC consumer-CI NOT promoted"
+	V150_FAILS=0
+	v150_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V150_FAILS=$((V150_FAILS + 1)); fi; }
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures/deptrac-v150"; REG="$ROOT/docs/main-gate-live-evidence.md"
+
+	# (F) the Report-only CI-derived fixture parses: 4 violations -> fail.
+	v150_check "deptrac v150 CI fixture -> fail arch=4" "$(sh "$C/deptrac.sh" --input "$F/silver-potato-ci.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.architecture_violations)"')" "fail:4"
+	# fixture carries NO private class/path data (Report block only; files == {}).
+	v150_check "deptrac v150 fixture: no .files class/path data" "$(jq -c '.files' "$F/silver-potato-ci.json" 2>/dev/null)" "{}"
+	v150_check "deptrac v150 fixture: no absolute/runner paths" "$( ( cd "$ROOT" && grep -rliE '/home/|/Users/|/Volumes/|App\\\\' tests/fixtures/deptrac-v150 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	# (F/G) the registry cites the Deptrac CONSUMER-CI run ID with the required fields.
+	v150_check "registry cites Deptrac CI run ID 27633798174" "$(grep -qs '27633798174' "$REG" && echo yes || echo no)" "yes"
+	v150_check "registry: Deptrac CI cites deptrac 1.0.2" "$(grep -qs 'deptrac 1.0.2' "$REG" && echo yes || echo no)" "yes"
+	v150_check "product-status: Deptrac still live-validated" "$(grep -qsiE 'Deptrac.*live-validated' "$ROOT/docs/product-status.md" && echo yes || echo no)" "yes"
+
+	# (G/I) IaC consumer-CI promotion is BLOCKED — still NO doc claims IaC IS live-validated.
+	v150_check "registry: IaC consumer-CI BLOCKED / NOT promoted" "$(grep -qsiE 'IaC consumer-CI promotion BLOCKED|consumer-CI promotion is honestly .?.?blocked|NOT promoted' "$REG" && echo yes || echo no)" "yes"
+	v150_check "no doc claims Checkov/Terrascan/Conftest IS live-validated (incl. v150 reg section)" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/product-status.md docs/enterprise-scanner-matrix.md docs/main-gate-live-evidence.md docs/iac-local-evidence-v140.md 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	# (I) hygiene: no consumer raw deptrac artifact (with .files) tracked.
+	v150_check "no raw deptrac CI artifact tracked under reports/raw" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -cE 'reports/raw/deptrac\.json' ) )" "0"
+
+	if [ "$V150_FAILS" -ne 0 ]; then log_error "v150-evidence: $V150_FAILS case(s) failed"; return 1; fi
+	log_info "v150-evidence: OK (Deptrac CI run ID cited; IaC consumer-CI blocked, NOT promoted)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2260,6 +2289,7 @@ case "$SUB" in
 	v120-docs) run_v120_docs ;;
 	v130-evidence) run_v130_evidence ;;
 	v140-iac) run_v140_iac ;;
+	v150-evidence) run_v150_evidence ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2299,13 +2329,14 @@ case "$SUB" in
 		run_v120_docs
 		run_v130_evidence
 		run_v140_iac
+		run_v150_evidence
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|all)"
 		exit 2
 		;;
 esac

@@ -303,3 +303,42 @@ to a root cause:
 Derived, sanitized fixtures committed at `tests/fixtures/iac-v140/`; guarded by `self-test v140-iac`.
 **Still NOT promoted** — no consumer-CI run ID exists. The known-good commands above are the recipe
 for the next promotion attempt.
+
+## v1.5.0 — Deptrac CONSUMER-CI run ID; IaC consumer-CI promotion BLOCKED (no supported surface)
+
+### Deptrac — consumer-CI evidence captured (run ID now exists)
+
+The v1.3.0 Deptrac promotion was on the **local CLI** path; it lacked a CI run ID. v1.5.0 closes that:
+a real GitHub Actions run on a **public** consumer with a genuine `deptrac.yaml`.
+
+| Field | Value |
+|---|---|
+| Tool / version | **deptrac 1.0.2** (`qossmic/deptrac-shim`) |
+| Consumer | **bogdaniel/silver-potato** (public; Symfony DDD app, real `deptrac.yaml`: Controller→Service→Repository) |
+| Workflow / **run ID** | `sentinel-shield-deptrac-evidence` / **27633798174** (success) |
+| Artifact | `deptrac.json` (1602 B, valid) — `.Report.Violations = 4` |
+| Collector → key | `scripts/collectors/deptrac.sh` → `architecture_violations` = **4** |
+| Pass/fail | **fail** (4 > 0) — correct gate behavior |
+| Command | `composer install --no-scripts && vendor/bin/deptrac analyse --formatter=json --output=deptrac.json` |
+| Caveat | severity is **binary** (violation count), not graded; the raw `.files` block (class/paths) is kept out of the repo — committed fixture (`tests/fixtures/deptrac-v150/silver-potato-ci.json`) is the **Report counts only** |
+
+**Decision:** Deptrac stays **`live-validated`** (unchanged label) — now backed by **both** v1.3.0 local
+evidence **and** a v1.5.0 CI run ID. No maturity change; the caveat is upgraded (CI-confirmed).
+
+### IaC (Checkov / Conftest / Terrascan) — consumer-CI promotion BLOCKED (NOT promoted)
+
+v1.5.0 set out to run the three IaC scanners in **consumer CI** on a supported surface. **No supported
+consumer surface exists.** The only real IaC consumer (`bogdaniel/zenchron-infra`) is **100% Hetzner
+`hcloud`** (+ Cloudflare/Tailscale/Ansible), and the project explicitly chose docker-compose over
+Kubernetes (ADR 0002). On that surface:
+
+| Tool | Why no promotion-grade consumer-CI evidence |
+|---|---|
+| **Terrascan** | ships **no `hcloud` policies** → 0/0 on the real surface (documented unsupported since v1.3.0) |
+| **Conftest** | repo Rego targets **AWS** resource types (`aws_security_group_rule`, `aws_s3_bucket_acl`) → 0 on `hcloud` |
+| **Checkov** | `hcloud` coverage is minimal; no meaningful `iac_violations` on the real surface |
+
+**Decision:** Checkov/Conftest/Terrascan remain **`experimental`**. No run ID was invented; no AWS/k8s
+IaC was fabricated to force findings (forbidden). The v1.4.0 **local** evidence + diagnostics stand;
+promotion still requires a real **AWS/Azure/GCP/Kubernetes** consumer with a cited CI run. Until such a
+consumer exists, IaC promotion is honestly **blocked**, not pending-an-attempt.
