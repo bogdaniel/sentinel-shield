@@ -161,6 +161,15 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.1.0 — Post-GA Adoption and Hardening (additive minor)
+**Additive minor release — no STABLE contract change, no maturity promotions.** Engine stays `proven`.
+New, all **opt-in / default-off**: transitive Dependency-Check CI knobs (`INSTALL_PHP`/`INSTALL_NODE`,
+default `false` → committed-surface behavior unchanged; transitive validated at 9,179 deps, run
+`27576003051`); hardened digest-pinned example extended with the knobs; Deptrac/IaC promotion **plan**
+(planning only — Deptrac/IaC stay `experimental` until cited evidence); onboarding/migration +
+security-hygiene/NVD-rotation docs. Upgrading from v1.0.0 is **drop-in**. Self-test **512 → 530**.
+No new scanners; no gate weakened; no findings suppressed.
+
 ## v1.0.0 — General Availability (RELEASED)
 **Sentinel Shield `v1.0.0` is released.** The `rc.2` candidate **soaked clean** on a real consumer
 (run `27576003051`, success): the resolve-gates exit-code contract is verified **in CI**

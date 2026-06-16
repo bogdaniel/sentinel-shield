@@ -13,14 +13,14 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status: `v1.0.0` — released (GA).** All seven hard v1.0 blockers are closed with cited
-> evidence and the `rc.2` candidate soaked clean on a real consumer. The STABLE surfaces now follow
-> **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6 = migration + semver).
-> Start here: the stability contract, the readiness/blocker table
-> [`docs/v1-readiness.md`](docs/v1-readiness.md), and the canonical maturity source of truth
-> [`docs/product-status.md`](docs/product-status.md). `v1.0.0` is **not** a claim that every optional
-> scanner is a production default — see the carried known limitations in `product-status.md` and the
-> CHANGELOG.
+> **Release status: `v1.1.0` — released (additive minor over `v1.0.0` GA).** The STABLE surfaces follow
+> **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6 = migration + semver) —
+> `v1.1.0` adds only opt-in/default-off capabilities and is **drop-in** from `v1.0.0`. Start here: the
+> stability contract, the [`v1.1.0 onboarding & migration`](docs/v1.1-onboarding-and-migration.md) guide,
+> the readiness/blocker table [`docs/v1-readiness.md`](docs/v1-readiness.md), and the canonical maturity
+> source of truth [`docs/product-status.md`](docs/product-status.md). `v1.0.0`/`v1.1.0` is **not** a
+> claim that every optional scanner is a production default — see the carried known limitations in
+> `product-status.md` and the CHANGELOG.
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage

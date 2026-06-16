@@ -6,6 +6,37 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.1.0] — Post-GA Adoption and Hardening
+
+**Additive minor release (semver minor).** No STABLE contract change — engine CLIs, exit codes,
+`SENTINEL_SHIELD_*` env vars, schemas, adoption modes, and profile file modes are unchanged. Upgrading
+from `v1.0.0` is **drop-in** (bump `SENTINEL_SHIELD_REF`). No new scanners, no maturity promotions
+(none had new cited evidence), no gates weakened.
+
+### Added (all opt-in / default-off)
+- **Transitive Dependency-Check CI knobs** on `templates/workflows/sentinel-shield-dependency-check.yml`:
+  `SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP` / `INSTALL_NODE` (+ `PHP_COMMAND` / `NODE_COMMAND`, and
+  `workflow_dispatch` inputs), **default `false`**. When enabled, `composer install` + `npm ci` populate
+  the transitive surface before DC (credential-free for public deps; `continue-on-error` → honest
+  fallback to the committed surface). **Default off preserves the v1.0.0 committed-surface behavior.**
+  Validated on a real consumer (9,179 deps, rc.2 soak run `27576003051`).
+  Docs: [`dependency-check-ci-cache.md`](docs/dependency-check-ci-cache.md).
+- **Hardened digest-pinned example** extended with the transitive knobs
+  ([`examples/hardened/sentinel-shield-hardened.snippet.yml`](examples/hardened/sentinel-shield-hardened.snippet.yml)) —
+  digest-pinned scanners + SHA-pinned actions; default templates stay tag-based.
+- **Deptrac / IaC promotion plan** ([`docs/deptrac-iac-promotion-plan.md`](docs/deptrac-iac-promotion-plan.md)) —
+  evidence checklists, expected raw paths, collector mappings, promotion criteria. **Planning only —
+  no maturity change** (Deptrac/IaC stay `experimental` until a real cited consumer run exists).
+- **Onboarding/migration doc** ([`docs/v1.1-onboarding-and-migration.md`](docs/v1.1-onboarding-and-migration.md)):
+  drop-in upgrade, production onboarding checklist, rollout/rollback, strict opt-in, regulated-not-default,
+  and a "what v1.0.0/v1.1.0 does NOT mean" section.
+- **Security-hygiene doc** ([`docs/security-hygiene.md`](docs/security-hygiene.md)): NVD key rotation,
+  `gh secret set`, verify-no-committed-key, consumer evidence-branch cleanup, artifact retention,
+  `.gitignore` coverage.
+- Self-test `v110-postga` (+19 checks): transitive knobs additive & default-off, NVD secret-only,
+  upload `if: always()`, hardened pins (no floating tag), planning-only promotion docs, no STABLE
+  exit-code drift, hygiene.
+
 ## [1.0.0] — General Availability
 
 **Sentinel Shield `v1.0.0` is released.** All seven hard v1.0 blockers are closed with cited evidence

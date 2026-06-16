@@ -11,7 +11,16 @@
 # restore the monthly cache and fetch only the delta (see the cold/warm doc section).
 name: sentinel-shield-dependency-check
 on:
-  workflow_dispatch:   # maintainer-triggered: produce the first real dependency-check.json artifact
+  workflow_dispatch:   # maintainer-triggered: produce a real dependency-check.json artifact
+    inputs:
+      install_php:
+        description: "composer install before DC (TRANSITIVE PHP surface; default committed-surface only)"
+        required: false
+        default: "false"
+      install_node:
+        description: "npm ci before DC (TRANSITIVE Node surface; default committed-surface only)"
+        required: false
+        default: "false"
   # Optional weekly schedule — uncomment to keep the NVD cache warm and re-scan on a cadence.
   # schedule:
   #   - cron: "23 4 * * 1"   # Mondays 04:23 UTC (off-peak)
@@ -19,8 +28,17 @@ permissions:
   contents: read   # minimal — no pull_request_target, no write scopes
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.22                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v1.1.0                             # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
+  # --- Transitive-scan knobs (v1.1.0; ADDITIVE, default OFF = committed-surface scan) -------------
+  # Dependency-Check reads committed manifests (composer.json / package-lock.json) by default. To scan
+  # the TRANSITIVE surface (vendor/ + node_modules/), set these to "true" (or dispatch with the inputs).
+  # Installs are credential-free for public deps; a private registry would need consumer-provided auth
+  # (NOT enabled here). Leaving them "false" preserves the v1.0.0 committed-surface behavior exactly.
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP: "false"
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE: "false"
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_PHP_COMMAND: "composer install --no-interaction --no-progress --no-scripts --ignore-platform-reqs --prefer-dist"
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_NODE_COMMAND: "npm ci --no-audit --no-fund --ignore-scripts"
 jobs:
   dependency-check:
     runs-on: ubuntu-latest
@@ -34,6 +52,17 @@ jobs:
           ref: ${{ env.SENTINEL_SHIELD_REF }}
           path: ${{ env.SENTINEL_SHIELD_PATH }}
           persist-credentials: false
+      # --- Optional TRANSITIVE surface (v1.1.0; default OFF). composer install + npm ci populate
+      #     vendor/ + node_modules/ so DC sees transitive deps. continue-on-error: an install failure
+      #     falls back to the committed surface (honest — never fakes coverage). NOT required by default.
+      - name: composer install (optional; transitive PHP surface)
+        if: ${{ inputs.install_php == 'true' || env.SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP == 'true' }}
+        continue-on-error: true
+        run: ${{ env.SENTINEL_SHIELD_DEPENDENCY_CHECK_PHP_COMMAND }} || echo "composer install failed — DC falls back to the committed surface"
+      - name: npm ci (optional; transitive Node surface)
+        if: ${{ inputs.install_node == 'true' || env.SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE == 'true' }}
+        continue-on-error: true
+        run: ${{ env.SENTINEL_SHIELD_DEPENDENCY_CHECK_NODE_COMMAND }} || echo "npm ci failed — DC falls back to the committed surface"
       - name: Compute NVD cache month stamp
         id: month
         run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"

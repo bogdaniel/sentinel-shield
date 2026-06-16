@@ -208,3 +208,12 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 - **Post-1.0 backlog (soft, opt-in, not blockers):** ship the transitive install steps in the DC
   evidence template; a digest-pinned-by-default hardened profile; broaden install/sync onboarding;
   promote Deptrac/IaC with cited consumer runs; refine coarse scanner severity.
+
+### v1.1.0 — Post-GA Adoption and Hardening (RELEASED; additive minor)
+- **Shipped (opt-in, default-off):** transitive Dependency-Check CI knobs in the DC template; hardened
+  digest-pinned example extended with the knobs; onboarding/migration + security-hygiene/NVD-rotation
+  docs. No STABLE change — drop-in from v1.0.0.
+- **Planning only (no maturity change):** Deptrac/IaC promotion plan (evidence checklists + criteria).
+- **Still open for a future minor (needs real evidence):** promote Deptrac (consumer with `deptrac.yaml`)
+  and IaC (Checkov/Conftest/Terrascan on a repo with IaC); digest-pinned-by-default hardened profile;
+  broaden install/sync onboarding; refine coarse scanner severity. All semver-additive.

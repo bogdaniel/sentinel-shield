@@ -53,3 +53,31 @@ workflow_dispatch:
 The NVD API key is passed only via `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY` → a
 container-readable but ephemeral propertyfile (removed on exit). It is **never** on the command line,
 in logs, in the report, or committed. See [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
+## Committed-surface vs transitive-surface scans (v1.1.0)
+
+Dependency-Check sees only what is present on disk. There are two scan surfaces:
+
+| Surface | What DC sees | How to enable | Default |
+|---|---|---|---|
+| **Committed surface** | committed manifests/locks (`composer.json`, `package-lock.json`, …) — what is in the repo | nothing — this is the default | **ON** (v1.0.0 behavior, unchanged) |
+| **Transitive surface** | full installed tree (`vendor/` + `node_modules/`) after `composer install` / `npm ci` | the shipped `sentinel-shield-dependency-check.yml` knobs below | OFF |
+
+**Transitive knobs (additive, v1.1.0 — default OFF, so v1.0.0 behavior is preserved):**
+
+```yaml
+# workflow env (or dispatch inputs install_php / install_node):
+SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP:  "true"   # composer install before DC
+SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE: "true"   # npm ci before DC
+SENTINEL_SHIELD_DEPENDENCY_CHECK_PHP_COMMAND:  "composer install --no-interaction --no-progress --no-scripts --ignore-platform-reqs --prefer-dist"
+SENTINEL_SHIELD_DEPENDENCY_CHECK_NODE_COMMAND: "npm ci --no-audit --no-fund --ignore-scripts"
+```
+
+- **Credential-free by default.** The install commands assume **public** packages. A private registry
+  needs consumer-provided auth (composer `auth.json` / npm `.npmrc` via the consumer's own secrets) —
+  **not** enabled by the template. If an install needs creds and none are present it fails; the steps
+  are `continue-on-error`, so DC **falls back to the committed surface** (honest — it never fakes
+  transitive coverage).
+- **Evidence:** the transitive surface was validated on a real consumer — **9,179 deps** (vs 69
+  committed-surface) — see [`main-gate-live-evidence.md`](main-gate-live-evidence.md) (rc.2 soak run
+  `27576003051`). Transitive scan is **opt-in**, never required by default.

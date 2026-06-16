@@ -2064,6 +2064,52 @@ run_v100rc_soak() {
 	log_info "rc.1-soak: OK (resolve-gates exit-2 contract, RC framing, contract migration+links, example uploads guarded)"
 }
 
+# --- v1.1.0 post-GA: transitive DC knobs (additive, default-off), hardened profile, planning docs ---
+PG_FAILS=0
+pg_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; PG_FAILS=$((PG_FAILS + 1)); fi; }
+
+run_v110_postga() {
+	log_info "v110-postga: transitive DC knobs (default-off), hardened profile, Deptrac/IaC plan, hygiene/migration docs"
+	_dct="$ROOT/templates/workflows/sentinel-shield-dependency-check.yml"
+
+	# (Lane A / F) transitive knobs are ADDITIVE and default OFF — v1.0.0 committed-surface behavior preserved.
+	pg_check "DC template defines INSTALL_PHP knob" "$([ "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP' "$_dct")" -ge 1 ] && echo yes || echo no)" "yes"
+	pg_check "DC template: INSTALL_PHP defaults false" "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP: \"false\"' "$_dct")" "1"
+	pg_check "DC template: INSTALL_NODE defaults false" "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE: \"false\"' "$_dct")" "1"
+	pg_check "DC template: install steps are gated (if:)" "$([ "$(grep -cE "if:.*INSTALL_PHP == 'true'" "$_dct")" -ge 1 ] && echo yes || echo no)" "yes"
+	pg_check "DC template: composer install is continue-on-error (honest fallback)" "$([ "$(grep -c 'continue-on-error: true' "$_dct")" -ge 2 ] && echo yes || echo no)" "yes"
+	pg_check "DC template: NVD key still secret-only" "$(grep -c 'secrets.SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$_dct")" "1"
+	pg_check "DC template: upload still if: always()" "$(grep -c 'if: always()' "$_dct")" "1"
+
+	# (Lane B) hardened profile: digest-pinned, no floating tag, transitive knobs present.
+	_hx="$ROOT/examples/hardened/sentinel-shield-hardened.snippet.yml"
+	pg_check "hardened example: >=4 @sha256 image pins" "$([ "$(grep -c '@sha256:' "$_hx")" -ge 4 ] && echo yes || echo no)" "yes"
+	pg_check "hardened example: NO floating ':latest'" "$(grep -c ':latest' "$_hx")" "0"
+	pg_check "hardened example: transitive knobs documented" "$(grep -c 'SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP' "$_hx")" "1"
+
+	# (Lane C) Deptrac/IaC plan is PLANNING ONLY — no maturity promotion, gate keys documented.
+	_plan="$ROOT/docs/deptrac-iac-promotion-plan.md"
+	pg_check "deptrac/iac plan exists + is PLANNING ONLY (no promotion)" "$(grep -qs 'PLANNING ONLY' "$_plan" && echo yes || echo no)" "yes"
+	pg_check "deptrac/iac plan documents gate keys" "$(grep -qs 'architecture_violations' "$_plan" && grep -qs 'iac_violations' "$_plan" && echo yes || echo no)" "yes"
+
+	# (Lane D/E) onboarding/migration + security-hygiene docs exist with the required content.
+	pg_check "v1.1 migration doc: drop-in + 'does NOT mean' section" "$(grep -qs 'drop-in' "$ROOT/docs/v1.1-onboarding-and-migration.md" && grep -qs 'does NOT mean' "$ROOT/docs/v1.1-onboarding-and-migration.md" && echo yes || echo no)" "yes"
+	pg_check "security-hygiene doc: NVD rotation + gh secret set" "$(grep -qs 'gh secret set SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY' "$ROOT/docs/security-hygiene.md" && echo yes || echo no)" "yes"
+
+	# (Lane F) NO STABLE drift: resolve-gates still honors exit-2 contract (cross-check vs v1.0.0 GA).
+	_d=$(mktemp -d)
+	if sh scripts/resolve-gates.sh --mode bogus --output-dir "$_d" >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	pg_check "STABLE: resolve-gates invalid config still -> exit 2 (no drift)" "$_rc" "2"
+	rm -rf "$_d"
+	# (Lane E) hygiene: .gitignore covers reports + .sentinel-shield; no .claude tracked.
+	pg_check ".gitignore covers reports/ + .sentinel-shield/" "$(grep -qsE '^/?reports/' "$ROOT/.gitignore" && grep -qsE '^\.sentinel-shield/' "$ROOT/.gitignore" && echo yes || echo no)" "yes"
+	pg_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+	pg_check "no private consumer raw artifact tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c 'dependency-check-consumer.json' ) )" "0"
+
+	if [ "$PG_FAILS" -ne 0 ]; then log_error "v110-postga: $PG_FAILS case(s) failed"; return 1; fi
+	log_info "v110-postga: OK (transitive knobs default-off & additive, hardened pins, planning-only promo, hygiene/migration docs)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2099,6 +2145,7 @@ case "$SUB" in
 	v029-live) run_v029_clean_strict_ci ;;
 	v030-live) run_v030_dc_ci_cache ;;
 	rc1-soak) run_v100rc_soak ;;
+	v110-postga) run_v110_postga ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2134,13 +2181,14 @@ case "$SUB" in
 		run_v029_clean_strict_ci
 		run_v030_dc_ci_cache
 		run_v100rc_soak
+		run_v110_postga
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|all)"
 		exit 2
 		;;
 esac

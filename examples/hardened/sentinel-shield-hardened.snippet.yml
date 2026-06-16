@@ -20,6 +20,11 @@ env:
   SENTINEL_SHIELD_GRYPE_IMAGE:            anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
   SENTINEL_SHIELD_DOCKLE_IMAGE:           goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9
 
+  # Optional TRANSITIVE Dependency-Check surface (v1.1.0; default OFF). Hardened production setups that
+  # want full transitive CVE coverage enable these (public deps; a private registry needs consumer auth).
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP:  "true"
+  SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE: "true"
+
 # GitHub Actions — production: pin by commit SHA (the comment records the human-readable version).
 hardened_action_pins:
   - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683       # v4.2.2
