@@ -11,6 +11,7 @@ are running, follow the cross-links for tuning, migration, and policy.
 - How modes resolve into gate flags: [`gate-resolution.md`](gate-resolution.md)
 - Accepting/suppressing a finding correctly: [`accepted-risk-suppression.md`](accepted-risk-suppression.md)
 - Upgrading an existing adopter: [`v1.1-onboarding-and-migration.md`](v1.1-onboarding-and-migration.md)
+- **Optional AI-assisted path:** drive this install with an AI agent — [`ai-assisted-install.md`](ai-assisted-install.md) + the copy-paste prompt [`../prompts/install-sentinel-shield.md`](../prompts/install-sentinel-shield.md). This manual quickstart remains the supported baseline.
 
 ---
 

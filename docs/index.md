@@ -29,6 +29,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 **[experimental]** not yet promoted · **[evidence]** an audit-trail / cited-run record.
 
 ### Getting started & adoption
+- [`ai-assisted-install.md`](ai-assisted-install.md) — optional AI-agent install (+ `prompts/install-sentinel-shield.md`) **[reference]**
 - [`quickstart.md`](quickstart.md) — install & first run **[stable]**
 - [`consumer-onboarding.md`](consumer-onboarding.md) — onboarding a consuming project **[stable]**
 - [`production-rollout.md`](production-rollout.md) — pilot → staged → default, ownership model **[stable]**

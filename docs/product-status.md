@@ -186,6 +186,14 @@ maturity change, on real CI evidence (not a `live-validated` claim).
   AWS/Azure/GCP/Kubernetes surface. Self-test **583 → 593** (`v160-iac`). Drop-in from v1.5.0.
   See [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 
+## v1.9.0 — AI-Assisted Install Guide (additive minor)
+**Docs/tooling only — no engine/STABLE change, no maturity change, no IaC/AWS/k8s work.** Adds an
+**optional** AI-assisted install path: [`ai-assisted-install.md`](ai-assisted-install.md) + a
+copy-paste agent prompt (`prompts/install-sentinel-shield.md`, printable via
+`scripts/print-ai-install-prompt.sh`). The prompt enforces audit-before-install, no-secret/no-history-
+rewrite, no-blind-suppression, and dry-run-before-upgrade. The **manual** quickstart remains the
+supported baseline. Self-test **644 → 658** (`v190-ai-install`). Drop-in from v1.8.0.
+
 ## v1.8.0 — Non-IaC Completion Sprint (additive minor)
 **No STABLE change, no new scanners, no maturity promotions.** Closes the repeatedly-identified
 **non-IaC** post-GA scope; IaC stays `ci-validated (evidence-fixture)` and AWS/k8s/IaC live validation

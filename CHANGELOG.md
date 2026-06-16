@@ -6,6 +6,27 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.9.0] — AI-Assisted Install Guide
+
+**Additive minor — docs/tooling only.** No engine/STABLE change, no install/sync flag change, no new
+scanners, **no maturity change**, no IaC/AWS/Kubernetes work. Drop-in from v1.8.0.
+
+### Added
+- **`docs/ai-assisted-install.md`** — what AI-assisted install is/when/what it does + must NOT do,
+  audit-before-install, profile selection, upgradeability, accepted-risks, CI, local validation, honest
+  failure reporting. Explicit: **not blind auto-install; inspect first; never suppress findings; never
+  commit secrets/private artifacts.**
+- **`prompts/install-sentinel-shield.md`** — copy-paste AI-agent prompt with 14 phases (audit → git
+  hygiene → PHP/Node baselines → profile → install → non-IaC gate → Deptrac → accepted-risks → local →
+  CI → docs → upgradeability → final report), hard non-negotiables, and upgradeability rules.
+- **`scripts/print-ai-install-prompt.sh`** — additive, read-only helper that prints the prompt
+  (exit 0; exit 2 if missing). No network, no mutation.
+- Links from README, `docs/index.md`, and the quickstart (as an **optional** path — manual install
+  remains the supported baseline).
+- **Self-test `v190-ai-install`** — guards the guide/prompt exist, are linked, contain the key safety
+  clauses (no secrets, no suppression, dry-run, final report), helper works, hygiene. Self-test
+  **644 → 658 PASS / 0 FAIL**.
+
 ## [1.8.0] — Non-IaC Completion Sprint
 
 **Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity

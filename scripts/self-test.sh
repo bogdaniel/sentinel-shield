@@ -2372,6 +2372,40 @@ run_v180_completion() {
 	log_info "v180-completion: OK (non-IaC scope closed/deferred; tooling works; IaC stays ci-validated)"
 }
 
+# --- v1.9.0: AI-assisted install guide + prompt exist, linked, safe; helper works ---
+run_v190_ai_install() {
+	log_info "v190-ai-install: AI install guide + prompt present, linked, contain safety clauses"
+	V190_FAILS=0
+	v190_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V190_FAILS=$((V190_FAILS + 1)); fi; }
+	G="$ROOT/docs/ai-assisted-install.md"; P="$ROOT/prompts/install-sentinel-shield.md"; H="$ROOT/scripts/print-ai-install-prompt.sh"
+
+	v190_check "guide exists" "$([ -f "$G" ] && echo yes || echo no)" "yes"
+	v190_check "prompt exists" "$([ -f "$P" ] && echo yes || echo no)" "yes"
+	v190_check "README links AI-assisted install" "$(grep -qs 'ai-assisted-install.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
+	v190_check "docs/index links AI-assisted install" "$(grep -qs 'ai-assisted-install.md' "$ROOT/docs/index.md" && echo yes || echo no)" "yes"
+
+	# guide explicitly says it is NOT blind auto-install.
+	v190_check "guide: not blind auto-install" "$(grep -qsiE 'not.{0,6}blind auto-install|does NOT mean blind' "$G" && echo yes || echo no)" "yes"
+
+	# prompt safety clauses.
+	v190_check "prompt: do not commit secrets" "$(grep -qsiE 'commit secrets' "$P" && echo yes || echo no)" "yes"
+	v190_check "prompt: do not suppress findings" "$(grep -qsiE 'suppress.*findings|not suppress' "$P" && echo yes || echo no)" "yes"
+	v190_check "prompt: dry-run" "$(grep -qsi 'dry-run' "$P" && echo yes || echo no)" "yes"
+	v190_check "prompt: Final report" "$(grep -qs 'Final report' "$P" && echo yes || echo no)" "yes"
+	v190_check "prompt: do not commit .claude" "$(grep -qsi '\.claude' "$P" && echo yes || echo no)" "yes"
+	v190_check "prompt: no IaC/AWS/k8s live validation unless requested" "$(grep -qsiE 'AWS / Kubernetes / IaC|AWS/Kubernetes/IaC' "$P" && echo yes || echo no)" "yes"
+
+	# helper works (exit 0, prints), and errors (exit 2) when the prompt is absent.
+	_rc=0; sh "$H" >/dev/null 2>&1 || _rc=$?; v190_check "helper prints prompt (exit 0)" "$_rc" "0"
+	_hd=$(mktemp -d "${TMPDIR:-/tmp}/ss-h190.XXXXXX"); mkdir -p "$_hd/scripts" "$_hd/prompts"; cp "$H" "$_hd/scripts/"
+	_rc=0; sh "$_hd/scripts/print-ai-install-prompt.sh" >/dev/null 2>&1 || _rc=$?; v190_check "helper exit 2 when prompt missing" "$_rc" "2"; rm -rf "$_hd"
+
+	v190_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	if [ "$V190_FAILS" -ne 0 ]; then log_error "v190-ai-install: $V190_FAILS case(s) failed"; return 1; fi
+	log_info "v190-ai-install: OK (AI install guide + prompt present, linked, safe; helper works)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2415,6 +2449,7 @@ case "$SUB" in
 	v160-iac) run_v160_iac ;;
 	v170-platform) run_v170_platform ;;
 	v180-completion) run_v180_completion ;;
+	v190-ai-install) run_v190_ai_install ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2458,13 +2493,14 @@ case "$SUB" in
 		run_v160_iac
 		run_v170_platform
 		run_v180_completion
+		run_v190_ai_install
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|all)"
 		exit 2
 		;;
 esac
