@@ -166,3 +166,10 @@ Deptrac maturity unchanged from v1.3.0.
 1.0.2. Severity still binary. **IaC (Checkov/Conftest/Terrascan) stays `experimental`** — no supported
 consumer surface exists (only Hetzner `hcloud`, unsupported); no run ID invented, no IaC fabricated.
 Canonical: [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
+## v1.6.0 — IaC scanners ci-validated (evidence-fixture)
+Checkov/Conftest/Terrascan move `experimental` → **`ci-validated (evidence-fixture)`**: real CI run
+**27636439883** on the dedicated evidence consumer `sentinel-shield-iac-evidence` (Checkov 3.3.1 → 27,
+Terrascan 1.19.9 → 8, Conftest 0.56.0 → 5 `iac_violations`; collectors verified). **NOT**
+`live-validated` (engineered findings on a non-deployed fixture; full promotion needs a real
+production AWS/Azure/GCP/k8s consumer). Canonical: [`main-gate-live-evidence.md`](main-gate-live-evidence.md).

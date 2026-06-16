@@ -46,6 +46,10 @@ definition of done, and risks.
 - **IaC update (v1.5.0):** consumer-CI IaC promotion is **blocked** — no supported AWS/Azure/GCP/k8s
   consumer surface exists (the only IaC consumer is Hetzner `hcloud`, unsupported). IaC stays
   `experimental`; a real supported-surface consumer is the remaining prerequisite.
+- **IaC update (v1.6.0):** Checkov/Terrascan/Conftest are now **`ci-validated (evidence-fixture)`** —
+  real CI run 27636439883 on the dedicated evidence consumer `sentinel-shield-iac-evidence` (27/8/5
+  `iac_violations`, collectors verified). NOT `live-validated`; full promotion still needs a real
+  production AWS/Azure/GCP/k8s consumer.
 - **Deptrac (v1.5.0):** now has a **consumer-CI run ID** (silver-potato, run 27633798174) in addition
   to the v1.3.0 local evidence; stays `live-validated`, severity binary.
 - **Definition of done:** each main-gate tool has a cited consumer run with raw→summary-key

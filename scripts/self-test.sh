@@ -2250,6 +2250,39 @@ run_v150_evidence() {
 	log_info "v150-evidence: OK (Deptrac CI run ID cited; IaC consumer-CI blocked, NOT promoted)"
 }
 
+# --- v1.6.0: IaC scanners CI-validated on a dedicated evidence consumer; NOT live-validated ---
+run_v160_iac() {
+	log_info "v160-iac: IaC CI fixtures map; run ID cited; ci-validated tier honest; NOT live-validated"
+	V160_FAILS=0
+	v160_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V160_FAILS=$((V160_FAILS + 1)); fi; }
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures/iac-v160"; REG="$ROOT/docs/main-gate-live-evidence.md"
+	PS="$ROOT/docs/product-status.md"; DSN="$ROOT/docs/iac-evidence-consumer-design.md"; ADO="$ROOT/docs/enterprise-iac-adoption.md"
+
+	# (C/D/E/F) the real CI artifacts (sanitized) map through the unmodified collectors.
+	v160_check "checkov CI fixture -> fail iac=27" "$(sh "$C/checkov.sh" --input "$F/checkov-ci.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:27"
+	v160_check "terrascan CI fixture -> fail iac=8" "$(sh "$C/terrascan.sh" --input "$F/terrascan-ci.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:8"
+	v160_check "conftest CI fixture -> fail iac=5" "$(sh "$C/conftest.sh" --input "$F/conftest-ci.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.iac_violations)"')" "fail:5"
+
+	# (I) fixtures carry no runner/absolute paths, no account IDs.
+	v160_check "iac-v160 JSON fixtures: no runner/abs paths or account IDs" "$( ( cd "$ROOT" && grep -rliE '/home/runner|/Users/|/Volumes/|[0-9]{12}' tests/fixtures/iac-v160/*.json 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	# (G) the registry + product-status cite the CI run ID and define the new tier honestly.
+	v160_check "registry cites IaC CI run 27636439883" "$(grep -qs '27636439883' "$REG" && echo yes || echo no)" "yes"
+	v160_check "product-status defines ci-validated (evidence-fixture) tier" "$(grep -qs 'ci-validated (evidence-fixture)' "$PS" && echo yes || echo no)" "yes"
+	v160_check "design doc + adoption doc exist" "$( [ -f "$DSN" ] && [ -f "$ADO" ] && echo yes || echo no )" "yes"
+
+	# (G/I) honesty: IaC must NOT be claimed live-validated anywhere (the whole point of the new tier).
+	v160_check "no doc claims Checkov/Terrascan/Conftest IS live-validated" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/product-status.md docs/enterprise-scanner-matrix.md docs/main-gate-live-evidence.md docs/iac-evidence-consumer-design.md docs/enterprise-iac-adoption.md docs/iac-local-evidence-v140.md 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+	# the registry explicitly states the NOT-live-validated boundary.
+	v160_check "registry states IaC NOT live-validated boundary" "$(grep -qsiE 'NOT.{0,3}(\`?live-validated|live-validated)' "$REG" && echo yes || echo no)" "yes"
+
+	# (I) evidence-consumer design forbids credentials/deploy (documented safety).
+	v160_check "design doc states no credentials / no deploy" "$(grep -qsiE 'No cloud credentials|No deploy' "$DSN" && echo yes || echo no)" "yes"
+
+	if [ "$V160_FAILS" -ne 0 ]; then log_error "v160-iac: $V160_FAILS case(s) failed"; return 1; fi
+	log_info "v160-iac: OK (IaC ci-validated on evidence fixture; run ID cited; NOT live-validated)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2290,6 +2323,7 @@ case "$SUB" in
 	v130-evidence) run_v130_evidence ;;
 	v140-iac) run_v140_iac ;;
 	v150-evidence) run_v150_evidence ;;
+	v160-iac) run_v160_iac ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2330,13 +2364,14 @@ case "$SUB" in
 		run_v130_evidence
 		run_v140_iac
 		run_v150_evidence
+		run_v160_iac
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|all)"
 		exit 2
 		;;
 esac

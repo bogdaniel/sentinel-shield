@@ -11,6 +11,7 @@ It is deliberately conservative: a capability is only `proven` if there is cited
 | `proven` | Live-validated in a real consumer CI **or** the engine's own blocking self-test. Cited evidence exists. |
 | `supported` | Runner/collector/self-test fixture exists and is deterministic, but **not yet run against a real consumer**. |
 | `experimental` | Wired, but the parser/severity mapping is coarse or noisy (e.g. OSV/CodeQL `level→severity`). Use with review. |
+| `ci-validated (evidence-fixture)` | Real scanner + real CI run ID + real artifact + collector-verified, but on a **dedicated, intentionally-insecure, non-deployed evidence fixture** (engineered findings). Stronger than `experimental`/local; **NOT** the same as third-party-production `live-validated`. (v1.6.0: Checkov/Terrascan/Conftest.) |
 | `manual` | Runs only on explicit operator action with a target + allowlist (DAST). Never a default gate. |
 | `template-only` | Workflow/docs exist; not executed by default and not yet validated on a consumer. |
 | `non-gating` | Produces advisory output only; never blocks a release by default (AI review). |
@@ -60,7 +61,7 @@ and infrastructure. Concretely it owns:
 | Scheduled / nightly gate | `template-only` | Not executed by default |
 | DAST (ZAP/Nuclei) | `manual` | Fail-closed guard + collector self-test; never live-run |
 | AI review (Claude Code Security Review / Kuzushi) | `non-gating` | Collector self-test; advisory only |
-| IaC (Checkov/Conftest/Terrascan) | `experimental` | Audit+collector+fixture; no consumer with IaC validated |
+| IaC (Checkov/Conftest/Terrascan) | `ci-validated (evidence-fixture)` | v1.6.0 run 27636439883 on the dedicated evidence consumer: Checkov 27 / Terrascan 8 / Conftest 5 `iac_violations`, collectors verified. **NOT** `live-validated` (engineered findings on a fixture; needs a real production consumer) |
 
 ## 4. Proven capabilities (cited evidence)
 
@@ -102,9 +103,12 @@ output). To promote: run on a consumer that configures them and cite the run.
 ## 6. Experimental / template-only capabilities
 
 - **Experimental** (coarse parser, live-validate before trusting severity):
-  OpenSSF Scorecard, TruffleHog, Checkov, Conftest/OPA, Terrascan, Trivy-image.
+  OpenSSF Scorecard, TruffleHog, Trivy-image.
   (**OWASP Dependency-Check is now `live-validated`** — local v0.1.27 + CI v0.1.30 — and is no
-  longer experimental; its *coarse severity* mapping remains best-effort.)
+  longer experimental; its *coarse severity* mapping remains best-effort.
+  **Checkov / Conftest / Terrascan are now `ci-validated (evidence-fixture)`** as of v1.6.0 —
+  CI run 27636439883 on the dedicated evidence consumer; not yet `live-validated` on a real
+  production consumer.)
   actionlint/zizmor run **advisory** in self-test.
 - **Template-only**: `sentinel-shield-main.yml`, `sentinel-shield-scheduled.yml` (and the
   combined `sentinel-shield.yml` against a real consumer pipeline).
@@ -166,6 +170,22 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.6.0 — IaC scanners CI-validated on a dedicated evidence-consumer (additive minor)
+**No STABLE change, no new scanners.** Engine stays `proven`. Introduces the
+**`ci-validated (evidence-fixture)`** tier and moves the three IaC scanners into it — the first IaC
+maturity change, on real CI evidence (not a `live-validated` claim).
+- **New evidence consumer:** `bogdaniel/sentinel-shield-iac-evidence` (public, evidence-only, no
+  credentials, no deploy) — intentionally-insecure AWS Terraform + Kubernetes YAML + real Rego.
+  Design: [`iac-evidence-consumer-design.md`](iac-evidence-consumer-design.md).
+- **Checkov / Terrascan / Conftest `experimental` → `ci-validated (evidence-fixture)`.** Workflow
+  `iac-evidence`, **run 27636439883** (all jobs success): Checkov 3.3.1 → `iac_violations=27`,
+  Terrascan 1.19.9 → `8`, Conftest 0.56.0/OPA 0.69.0 (real `policy/kubernetes.rego`) → `5`; all three
+  collectors verified on the real artifacts. Sanitized fixtures: `tests/fixtures/iac-v160/`.
+- **Explicitly NOT `live-validated`.** Findings are engineered on a dedicated fixture; full
+  `live-validated` still needs a real third-party-production consumer with a supported
+  AWS/Azure/GCP/Kubernetes surface. Self-test **583 → 593** (`v160-iac`). Drop-in from v1.5.0.
+  See [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+
 ## v1.5.0 — Deptrac CI Evidence; IaC consumer-CI promotion blocked (additive minor)
 **No STABLE change, no new scanners, no maturity promotions.** Engine stays `proven`.
 - **Deptrac stays `live-validated`** — now backed by a **consumer-CI run ID** (the v1.3.0 gap). Real

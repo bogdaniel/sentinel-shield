@@ -53,6 +53,8 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md) — real local IaC tool runs; diagnoses v1.3.0 blockers **[evidence]**
 - [`iac-evidence-candidate-matrix.md`](iac-evidence-candidate-matrix.md) — scanner/surface suitability for the next promotion **[experimental]**
 - [`deptrac-iac-promotion-plan.md`](deptrac-iac-promotion-plan.md) — promotion criteria **[experimental]**
+- [`iac-evidence-consumer-design.md`](iac-evidence-consumer-design.md) — dedicated IaC evidence consumer (v1.6.0) **[evidence]**
+- [`enterprise-iac-adoption.md`](enterprise-iac-adoption.md) — enterprise IaC adoption & scale **[reference]**
 - [`install-sync-scale-v140.md`](install-sync-scale-v140.md) — 8-profile install/sync re-validation **[evidence]**
 
 ### Enterprise / hardening

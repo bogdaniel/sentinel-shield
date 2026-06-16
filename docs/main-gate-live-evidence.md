@@ -342,3 +342,28 @@ Kubernetes (ADR 0002). On that surface:
 IaC was fabricated to force findings (forbidden). The v1.4.0 **local** evidence + diagnostics stand;
 promotion still requires a real **AWS/Azure/GCP/Kubernetes** consumer with a cited CI run. Until such a
 consumer exists, IaC promotion is honestly **blocked**, not pending-an-attempt.
+
+## v1.6.0 — IaC scanners CI-VALIDATED on a dedicated evidence-consumer (new tier)
+
+> **New tier: `ci-validated (evidence-fixture)`.** Real scanners, real CI run ID, real artifacts,
+> collectors verified — but on a **dedicated, intentionally-insecure, non-deployed evidence repo**
+> (`bogdaniel/sentinel-shield-iac-evidence`), so findings are **engineered**. This is strictly
+> stronger than v1.4.0 local runs (now in CI with a run ID) but **explicitly NOT** the
+> third-party-production `live-validated` tier (CodeQL/OSV/Grype/Dockle/Dependency-Check/Deptrac).
+> Design: [`iac-evidence-consumer-design.md`](iac-evidence-consumer-design.md).
+
+Evidence consumer: **bogdaniel/sentinel-shield-iac-evidence** (public; evidence-only, no credentials,
+no deploy). Workflow `iac-evidence`, **run 27636439883** (all jobs success).
+
+| Tool | Version | Surface | Artifact | Collector → `iac_violations` | Tier |
+|---|---|---|---|---|---|
+| **Checkov** | 3.3.1 (`pip`, `--framework terraform`) | AWS Terraform (5 resources) | `checkov.json` (149 KB, valid) | `fail` / **27** | **ci-validated (evidence-fixture)** |
+| **Terrascan** | 1.19.9 | AWS Terraform | `terrascan.json` (4.3 KB, valid) | `fail` / **8** | **ci-validated (evidence-fixture)** |
+| **Conftest** | 0.56.0 / OPA 0.69.0 | Kubernetes YAML + real Rego (`policy/kubernetes.rego`) | `conftest-report.json` (448 B, valid) | `fail` / **5** | **ci-validated (evidence-fixture)** |
+
+Sanitized derived fixtures committed at `tests/fixtures/iac-v160/`; guarded by `self-test v160-iac`.
+**Promotion:** Checkov/Conftest/Terrascan move `experimental` → **`ci-validated (evidence-fixture)`**.
+They are **NOT** `live-validated` — that still requires a real third-party-production consumer with a
+supported AWS/Azure/GCP/Kubernetes surface. Conftest note: the output file must **not** be named
+`conftest.{json,toml,yaml}` (conftest auto-loads those as config — the v1.6.0 CI fix uses
+`conftest-report.json`).

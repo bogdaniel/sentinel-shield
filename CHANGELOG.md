@@ -6,6 +6,30 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.6.0] — Supported IaC Evidence Consumer; IaC scanners ci-validated
+
+**Additive minor.** No STABLE contract change, no new scanners, no gates weakened. Introduces the
+**`ci-validated (evidence-fixture)`** maturity tier (distinct from `live-validated`). Drop-in from v1.5.0.
+
+### Added — dedicated IaC evidence consumer + first IaC maturity change
+- **`bogdaniel/sentinel-shield-iac-evidence`** (public, evidence-only, no credentials, no deploy):
+  intentionally-insecure AWS Terraform + Kubernetes YAML + real Rego. Static scanners only.
+  Design doc [`iac-evidence-consumer-design.md`](docs/iac-evidence-consumer-design.md).
+- **Checkov / Terrascan / Conftest `experimental` → `ci-validated (evidence-fixture)`.** Real CI:
+  workflow `iac-evidence`, **run 27636439883** (all jobs success) — Checkov 3.3.1 → `iac_violations=27`,
+  Terrascan 1.19.9 → `8`, Conftest 0.56.0/OPA 0.69.0 (real `policy/kubernetes.rego`) → `5`; collectors
+  verified on the real artifacts. Sanitized fixtures `tests/fixtures/iac-v160/`.
+- **Self-test `v160-iac`** — guards the CI fixtures map (27/8/5), the run ID is cited, the new tier is
+  honest, and IaC is still NOT claimed `live-validated`. Self-test **583 → 593 PASS / 0 FAIL**.
+- **Enterprise adoption** [`enterprise-iac-adoption.md`](docs/enterprise-iac-adoption.md): supported vs
+  unsupported provider table, evidence-consumer pattern, bring-your-own-IaC, multi-team + maturity
+  checklists, regulated rollout. Defaults unchanged.
+
+### Honest scope
+- **NOT `live-validated`.** Findings are engineered on a dedicated fixture; `live-validated` still
+  requires a real third-party-production consumer with a supported AWS/Azure/GCP/Kubernetes surface.
+- Conftest CI fix: output file must not be named `conftest.{json,toml,yaml}` (auto-loaded as config).
+
 ## [1.5.0] — Deptrac CI Evidence; IaC consumer-CI promotion blocked
 
 **Additive minor.** No STABLE contract change, no new scanners, no gates weakened, **no maturity

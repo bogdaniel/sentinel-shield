@@ -1,0 +1,24 @@
+[
+	{
+		"filename": "kubernetes/deployment.yaml",
+		"namespace": "main",
+		"successes": 0,
+		"failures": [
+			{
+				"msg": "Deployment must not use hostNetwork: true"
+			},
+			{
+				"msg": "Deployment must not use hostPID: true"
+			},
+			{
+				"msg": "container 'app' must not allow privilege escalation"
+			},
+			{
+				"msg": "container 'app' must not run privileged"
+			},
+			{
+				"msg": "container 'app' must set resources.limits"
+			}
+		]
+	}
+]

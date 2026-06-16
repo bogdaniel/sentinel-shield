@@ -1,0 +1,187 @@
+{
+  "check_type": "terraform",
+  "summary": {
+    "passed": 14,
+    "failed": 27,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "resource_count": 5,
+    "checkov_version": "3.3.1"
+  },
+  "results": {
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_54",
+        "check_name": "Ensure S3 bucket has block public policy enabled",
+        "resource": "aws_s3_bucket_public_access_block.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_53",
+        "check_name": "Ensure S3 bucket has block public ACLS enabled",
+        "resource": "aws_s3_bucket_public_access_block.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_55",
+        "check_name": "Ensure S3 bucket has ignore public ACLs enabled",
+        "resource": "aws_s3_bucket_public_access_block.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_56",
+        "check_name": "Ensure S3 bucket has 'restrict_public_buckets' enabled",
+        "resource": "aws_s3_bucket_public_access_block.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_382",
+        "check_name": "Ensure no security groups allow egress from 0.0.0.0:0 to port -1",
+        "resource": "aws_security_group.evidence_open_ssh",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_24",
+        "check_name": "Ensure no security groups allow ingress from 0.0.0.0:0 to port 22",
+        "resource": "aws_security_group.evidence_open_ssh",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_23",
+        "check_name": "Ensure every security group and rule has a description",
+        "resource": "aws_security_group.evidence_open_ssh",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_118",
+        "check_name": "Ensure that enhanced monitoring is enabled for Amazon RDS instances",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_157",
+        "check_name": "Ensure that RDS instances have Multi-AZ enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_293",
+        "check_name": "Ensure that AWS database instances have deletion protection enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_17",
+        "check_name": "Ensure all data stored in RDS is not publicly accessible",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_129",
+        "check_name": "Ensure that respective logs of Amazon Relational Database Service (Amazon RDS) are enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_16",
+        "check_name": "Ensure all data stored in the RDS is securely encrypted at rest",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_226",
+        "check_name": "Ensure DB instance gets all minor upgrades automatically",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_161",
+        "check_name": "Ensure RDS database has IAM authentication enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_353",
+        "check_name": "Ensure that RDS instances have performance insights enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_5",
+        "check_name": "Ensure that Security Groups are attached to another resource",
+        "resource": "aws_security_group.evidence_open_ssh",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_60",
+        "check_name": "Ensure RDS instance with copy tags to snapshots is enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_145",
+        "check_name": "Ensure that S3 buckets are encrypted with KMS by default",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_18",
+        "check_name": "Ensure the S3 bucket has access logging enabled",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_144",
+        "check_name": "Ensure that S3 bucket has cross-region replication enabled",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_30",
+        "check_name": "Ensure Postgres RDS as aws_db_instance has Query Logging enabled",
+        "resource": "aws_db_instance.evidence_db",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_62",
+        "check_name": "Ensure S3 buckets should have event notifications enabled",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_20",
+        "check_name": "S3 Bucket has an ACL defined which allows public READ access.",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_61",
+        "check_name": "Ensure that an S3 bucket has a lifecycle configuration",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV_AWS_21",
+        "check_name": "Ensure all data stored in the S3 bucket have versioning enabled",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      },
+      {
+        "check_id": "CKV2_AWS_6",
+        "check_name": "Ensure that S3 bucket has a Public Access block",
+        "resource": "aws_s3_bucket.evidence_public",
+        "file_path": "/main.tf"
+      }
+    ],
+    "passed_checks": [
+      {
+        "check_id": "CKV_AWS_41",
+        "resource": "aws.default"
+      },
+      {
+        "check_id": "CKV_AWS_93",
+        "resource": "aws_s3_bucket.evidence_public"
+      }
+    ]
+  }
+}
