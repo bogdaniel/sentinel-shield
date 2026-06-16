@@ -55,6 +55,12 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`deptrac-iac-promotion-plan.md`](deptrac-iac-promotion-plan.md) — promotion criteria **[experimental]**
 - [`iac-evidence-consumer-design.md`](iac-evidence-consumer-design.md) — dedicated IaC evidence consumer (v1.6.0) **[evidence]**
 - [`enterprise-iac-adoption.md`](enterprise-iac-adoption.md) — enterprise IaC adoption & scale **[reference]**
+- [`evidence-platform.md`](evidence-platform.md) — evidence platform architecture **[reference]**
+- [`evidence-contribution-guide.md`](evidence-contribution-guide.md) — evidence contribution rules **[reference]**
+- [`scanner-maturity-policy.md`](scanner-maturity-policy.md) — maturity labels + promotion/demotion **[reference]**
+- [`live-validation-playbook.md`](live-validation-playbook.md) — ci-validated → live-validated on a real consumer **[reference]**
+- [`public-adoption-kit.md`](public-adoption-kit.md) — one-stop adoption entry point **[reference]**
+- [`enterprise-buyer-pack.md`](enterprise-buyer-pack.md) — buyer/architect evaluation pack **[reference]**
 - [`install-sync-scale-v140.md`](install-sync-scale-v140.md) — 8-profile install/sync re-validation **[evidence]**
 
 ### Enterprise / hardening

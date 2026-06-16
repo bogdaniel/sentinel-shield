@@ -6,6 +6,31 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.7.0] — Evidence Platform and Public Adoption Kit
+
+**Additive minor — documentation/platform only.** No engine/STABLE change, no new scanners, no gates
+touched, **no maturity promotions** (IaC stays `ci-validated (evidence-fixture)`; Deptrac stays
+`live-validated`). Drop-in from v1.6.0.
+
+### Added
+- **Evidence platform** [`evidence-platform.md`](docs/evidence-platform.md) — engine↔evidence-repo
+  model, repo categories (evidence-fixture / real-consumer / private-aggregate), required metadata,
+  artifact/run-ID/version/sanitization conventions.
+- **Evidence contribution rules** [`evidence-contribution-guide.md`](docs/evidence-contribution-guide.md)
+  — what qualifies/disqualifies, no-fake-output & no-deploy policy, reviewer checklist.
+- **Scanner maturity policy v2** [`scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) —
+  label definitions + promotion/demotion/caveat rules; `ci-validated` kept **distinct** from `live-validated`.
+- **Live-validation playbook** [`live-validation-playbook.md`](docs/live-validation-playbook.md) —
+  how to promote `ci-validated` → `live-validated` on a real consumer.
+- **Public adoption kit** [`public-adoption-kit.md`](docs/public-adoption-kit.md) and **enterprise
+  buyer pack** [`enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md).
+- **Self-test `v170-platform`** — guards the new docs exist + are linked, the maturity vocabulary,
+  and that `ci-validated` is never called `live-validated`. Self-test **593 → 613 PASS / 0 FAIL**.
+
+### Honest scope
+- No tool changed maturity. IaC remains `ci-validated (evidence-fixture)` (CI run 27636439883),
+  **not** `live-validated`. Platform/docs only.
+
 ## [1.6.0] — Supported IaC Evidence Consumer; IaC scanners ci-validated
 
 **Additive minor.** No STABLE contract change, no new scanners, no gates weakened. Introduces the

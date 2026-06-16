@@ -2283,6 +2283,40 @@ run_v160_iac() {
 	log_info "v160-iac: OK (IaC ci-validated on evidence fixture; run ID cited; NOT live-validated)"
 }
 
+# --- v1.7.0: evidence platform + adoption docs exist, linked, honest; ci-validated != live-validated ---
+run_v170_platform() {
+	log_info "v170-platform: platform/adoption/policy docs exist + linked; maturity honest"
+	V170_FAILS=0
+	v170_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V170_FAILS=$((V170_FAILS + 1)); fi; }
+	D="$ROOT/docs"; IDX="$D/index.md"; PS="$D/product-status.md"
+
+	# (A-G) the six new docs exist.
+	for f in evidence-platform.md evidence-contribution-guide.md scanner-maturity-policy.md \
+	         live-validation-playbook.md public-adoption-kit.md enterprise-buyer-pack.md; do
+		v170_check "doc exists: $f" "$( [ -f "$D/$f" ] && echo yes || echo no )" "yes"
+		v170_check "doc linked from index: $f" "$(grep -qs "($f)" "$IDX" && echo yes || echo no)" "yes"
+	done
+
+	# (D/H) maturity vocabulary: both tiers defined, kept distinct.
+	v170_check "product-status defines ci-validated tier" "$(grep -qs 'ci-validated (evidence-fixture)' "$PS" && echo yes || echo no)" "yes"
+	v170_check "maturity policy defines live-validated" "$(grep -qs 'live-validated' "$D/scanner-maturity-policy.md" && echo yes || echo no)" "yes"
+	v170_check "maturity policy states ci-validated is weaker/distinct" "$(grep -qsiE 'strictly weaker|MUST NOT be conflated|distinct' "$D/scanner-maturity-policy.md" && echo yes || echo no)" "yes"
+
+	# (H) honesty: IaC scanners must NOT be called live-validated anywhere (incl. all new docs).
+	v170_check "no doc claims Checkov/Terrascan/Conftest IS live-validated" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/ 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+	# (H) no-fake-output policy is stated in the contribution guide.
+	v170_check "contribution guide states no-fake-output policy" "$(grep -qsiE 'Fabricated|faked-clean|no-fake' "$D/evidence-contribution-guide.md" && echo yes || echo no)" "yes"
+	# (I) buyer pack does not overclaim ("all scanners proven").
+	v170_check "buyer pack disclaims 'all scanners proven'" "$(grep -qsiE 'NOT .30 scanners all proven|Not .30 scanners' "$D/enterprise-buyer-pack.md" && echo yes || echo no)" "yes"
+
+	# (H/I) hygiene.
+	v170_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+	v170_check "no private raw artifact tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -cE '(^reports/|raw-consumer|consumer-artifacts)' ) )" "0"
+
+	if [ "$V170_FAILS" -ne 0 ]; then log_error "v170-platform: $V170_FAILS case(s) failed"; return 1; fi
+	log_info "v170-platform: OK (evidence platform + adoption docs present, linked, honest)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2324,6 +2358,7 @@ case "$SUB" in
 	v140-iac) run_v140_iac ;;
 	v150-evidence) run_v150_evidence ;;
 	v160-iac) run_v160_iac ;;
+	v170-platform) run_v170_platform ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2365,13 +2400,14 @@ case "$SUB" in
 		run_v140_iac
 		run_v150_evidence
 		run_v160_iac
+		run_v170_platform
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|all)"
 		exit 2
 		;;
 esac

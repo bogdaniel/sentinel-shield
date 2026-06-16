@@ -27,6 +27,10 @@ This repository is not a demo. It is intended for use in real production project
 > [`docs/v1-readiness.md`](docs/v1-readiness.md); canonical maturity:
 > [`docs/product-status.md`](docs/product-status.md). `v1.x` is **not** a claim that every optional
 > scanner is a production default — see the carried known limitations in `product-status.md`.
+> **Adopting / evaluating?** → [`docs/public-adoption-kit.md`](docs/public-adoption-kit.md) and
+> [`docs/enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md). **How evidence works** →
+> [`docs/evidence-platform.md`](docs/evidence-platform.md) +
+> [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`).
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage
