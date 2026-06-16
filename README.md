@@ -13,14 +13,20 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status: `v1.1.0` — released (additive minor over `v1.0.0` GA).** The STABLE surfaces follow
-> **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6 = migration + semver) —
-> `v1.1.0` adds only opt-in/default-off capabilities and is **drop-in** from `v1.0.0`. Start here: the
-> stability contract, the [`v1.1.0 onboarding & migration`](docs/v1.1-onboarding-and-migration.md) guide,
-> the readiness/blocker table [`docs/v1-readiness.md`](docs/v1-readiness.md), and the canonical maturity
-> source of truth [`docs/product-status.md`](docs/product-status.md). `v1.0.0`/`v1.1.0` is **not** a
-> claim that every optional scanner is a production default — see the carried known limitations in
-> `product-status.md` and the CHANGELOG.
+> **Release status: `v1.2.0` — released (additive minor; docs/adoption/enterprise hardening).** The
+> STABLE surfaces follow **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3,
+> §6) — `v1.2.0` is docs-only/opt-in and **drop-in** from `v1.0.0`/`v1.1.0` (no contract change).
+>
+> **📖 Start here → the documentation hub: [`docs/index.md`](docs/index.md)** (Start Here, reader
+> paths, canonical doc map). Fast paths: **install & run in <30 min** →
+> [`docs/quickstart.md`](docs/quickstart.md); **roll out across projects** →
+> [`docs/production-rollout.md`](docs/production-rollout.md); **harden for enterprise** →
+> [`docs/enterprise-hardening.md`](docs/enterprise-hardening.md); **debug** →
+> [`docs/troubleshooting.md`](docs/troubleshooting.md) / [`docs/faq.md`](docs/faq.md). Stability:
+> [`docs/product-contract.md`](docs/product-contract.md); readiness:
+> [`docs/v1-readiness.md`](docs/v1-readiness.md); canonical maturity:
+> [`docs/product-status.md`](docs/product-status.md). `v1.x` is **not** a claim that every optional
+> scanner is a production default — see the carried known limitations in `product-status.md`.
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage

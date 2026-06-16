@@ -2110,6 +2110,50 @@ run_v110_postga() {
 	log_info "v110-postga: OK (transitive knobs default-off & additive, hardened pins, planning-only promo, hygiene/migration docs)"
 }
 
+# --- v1.2.0 docs: required adoption docs exist, hub links resolve, no maturity promotion ---
+DV_FAILS=0
+dv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; DV_FAILS=$((DV_FAILS + 1)); fi; }
+
+run_v120_docs() {
+	log_info "v120-docs: adoption docs exist, hub links resolve, Deptrac/IaC NOT promoted, README navigable"
+	D="$ROOT/docs"
+
+	# (111) the v1.2.0 adoption/support docs all exist.
+	for _doc in index quickstart production-rollout enterprise-hardening dependency-check-runbook \
+		deptrac-evidence-guide iac-evidence-guide troubleshooting faq; do
+		dv_check "doc exists: $_doc.md" "$([ -f "$D/$_doc.md" ] && echo yes || echo no)" "yes"
+	done
+
+	# (112) README is navigable: links the hub + the fast-path docs.
+	dv_check "README links docs/index.md hub" "$(grep -qs 'docs/index.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
+	dv_check "README links quickstart" "$(grep -qs 'docs/quickstart.md' "$ROOT/README.md" && echo yes || echo no)" "yes"
+
+	# (113) every relative .md link in the hub resolves to an existing file (no broken hub links).
+	_broken=0
+	for _t in $(grep -oE '\]\(([a-z0-9._-]+\.md)\)' "$D/index.md" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//' | sort -u); do
+		[ -f "$D/$_t" ] || { log_error "FAIL: hub broken link -> $_t"; _broken=$((_broken + 1)); }
+	done
+	dv_check "docs/index.md: all relative .md links resolve" "$_broken" "0"
+	# the hub routes to each new adoption doc.
+	dv_check "hub links the new adoption docs" "$(grep -qs 'quickstart.md' "$D/index.md" && grep -qs 'production-rollout.md' "$D/index.md" && grep -qs 'enterprise-hardening.md' "$D/index.md" && grep -qs 'troubleshooting.md' "$D/index.md" && echo yes || echo no)" "yes"
+
+	# (114/115) MATURITY HONESTY: Deptrac/IaC are NOT promoted — evidence guides are PLANNING; the
+	# canonical product-status.md still lists Deptrac/IaC as unproven/experimental (not live-validated).
+	dv_check "deptrac evidence guide is PLANNING (not a promotion)" "$(grep -qsiE 'PLANNING ONLY|no maturity change' "$D/deptrac-evidence-guide.md" && echo yes || echo no)" "yes"
+	dv_check "iac evidence guide is PLANNING (not a promotion)" "$(grep -qsiE 'PLANNING ONLY|no maturity change' "$D/iac-evidence-guide.md" && echo yes || echo no)" "yes"
+	dv_check "product-status: Deptrac/IaC still unproven (not promoted)" "$(grep -qsE 'Deptrac/IaC still unproven|Deptrac.*no .deptrac.yaml.*|IaC .*no IaC' "$D/product-status.md" && echo yes || echo no)" "yes"
+	# the evidence guides must NOT assert Deptrac/IaC are live-validated as a CURRENT state.
+	dv_check "deptrac guide does NOT claim Deptrac IS live-validated" "$(grep -cE 'Deptrac is (now )?(live-validated|proven)' "$D/deptrac-evidence-guide.md")" "0"
+	dv_check "iac guide does NOT claim IaC IS live-validated" "$(grep -ciE '(checkov|terrascan|conftest|iac) (is|are) (now )?(live-validated|proven)' "$D/iac-evidence-guide.md")" "0"
+
+	# (119/120) hygiene cross-checks (no secret/agent metadata sneaked in via docs).
+	dv_check "no NVD key value in any new doc" "$(grep -lIE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$D/quickstart.md" "$D/enterprise-hardening.md" "$D/dependency-check-runbook.md" "$D/troubleshooting.md" "$D/faq.md" 2>/dev/null | wc -l | tr -d ' ')" "0"
+	dv_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+
+	if [ "$DV_FAILS" -ne 0 ]; then log_error "v120-docs: $DV_FAILS case(s) failed"; return 1; fi
+	log_info "v120-docs: OK (adoption docs present, hub links resolve, Deptrac/IaC planning-only, README navigable)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2146,6 +2190,7 @@ case "$SUB" in
 	v030-live) run_v030_dc_ci_cache ;;
 	rc1-soak) run_v100rc_soak ;;
 	v110-postga) run_v110_postga ;;
+	v120-docs) run_v120_docs ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2182,13 +2227,14 @@ case "$SUB" in
 		run_v030_dc_ci_cache
 		run_v100rc_soak
 		run_v110_postga
+		run_v120_docs
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|all)"
 		exit 2
 		;;
 esac

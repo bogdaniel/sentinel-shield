@@ -6,6 +6,37 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.2.0] — Documentation, Adoption, Enterprise Hardening, and Evidence Readiness
+
+**Additive minor — docs/adoption only.** No STABLE contract change (engine scripts, exit codes, env
+vars, schemas, modes byte-for-byte unchanged), no new scanners, no gates weakened, **no maturity
+promotions** (Deptrac/IaC stay `experimental` — the new guides are evidence-readiness *planning*, not
+promotions). Drop-in from v1.0.0/v1.1.0.
+
+### Added — adoption & support documentation
+- **Documentation hub** [`docs/index.md`](docs/index.md): Start Here, "which guide should I read?" by
+  role (new adopter / production adopter / security engineer / platform engineer / maintainer /
+  auditor), and a canonical doc map tagged stable/advanced/reference/experimental/evidence. README now
+  leads with the hub + fast paths.
+- **Quickstart** [`docs/quickstart.md`](docs/quickstart.md) — install & run in <30 min, reading
+  `security-summary.json`/enforcement output, common first-run failures, rollback.
+- **Production rollout** [`docs/production-rollout.md`](docs/production-rollout.md) — pilot → staged →
+  default, mode selection, accepted-risk governance, ownership model (SS owns engine/templates/gates;
+  consumer owns profile/accepted-risks/findings/remediation), rollout + readiness checklists.
+- **Enterprise hardening** [`docs/enterprise-hardening.md`](docs/enterprise-hardening.md) — readable
+  tags vs digest-pinned production overrides, SHA-pinned Actions, minimal permissions, branch
+  protection, secret/NVD-key handling, strict-vs-regulated, DAST/AI posture (opt-in; not forced).
+- **Dependency-Check runbook** [`docs/dependency-check-runbook.md`](docs/dependency-check-runbook.md) —
+  committed vs transitive surfaces, NVD key + cold/warm cache, the H2/permission fixes, non-zero-exit
+  semantics, troubleshooting table, recommended production settings.
+- **Deptrac / IaC evidence-readiness guides** ([`docs/deptrac-evidence-guide.md`](docs/deptrac-evidence-guide.md),
+  [`docs/iac-evidence-guide.md`](docs/iac-evidence-guide.md)) — prerequisites, raw paths, collector
+  mappings, promotion criteria. **PLANNING ONLY — no maturity change.**
+- **Troubleshooting + FAQ** ([`docs/troubleshooting.md`](docs/troubleshooting.md),
+  [`docs/faq.md`](docs/faq.md)) — symptom→cause→fix and frequent questions.
+- Self-test `v120-docs` (+20): required docs exist, hub links **mechanically resolve** (no broken
+  links), README navigable, Deptrac/IaC not promoted (planning-only), no key/`.claude` leakage.
+
 ## [1.1.0] — Post-GA Adoption and Hardening
 
 **Additive minor release (semver minor).** No STABLE contract change — engine CLIs, exit codes,

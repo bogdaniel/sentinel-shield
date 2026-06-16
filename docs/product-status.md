@@ -161,6 +161,17 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.2.0 — Documentation, Adoption, Enterprise Hardening, Evidence Readiness (additive minor)
+**Docs/adoption only — no STABLE change, no maturity promotions.** Engine stays `proven`; Deptrac/IaC
+stay `experimental` (the new evidence-readiness guides are *planning*, not promotions). Added a
+documentation hub ([`index.md`](index.md)) with role-based reader paths, plus canonical guides:
+[`quickstart.md`](quickstart.md), [`production-rollout.md`](production-rollout.md),
+[`enterprise-hardening.md`](enterprise-hardening.md), [`dependency-check-runbook.md`](dependency-check-runbook.md),
+[`deptrac-evidence-guide.md`](deptrac-evidence-guide.md), [`iac-evidence-guide.md`](iac-evidence-guide.md),
+[`troubleshooting.md`](troubleshooting.md), [`faq.md`](faq.md). README leads with the hub. Self-test
+**530 → 550** (`v120-docs`: docs exist, hub links mechanically resolve, Deptrac/IaC not promoted).
+Drop-in from v1.0.0/v1.1.0.
+
 ## v1.1.0 — Post-GA Adoption and Hardening (additive minor)
 **Additive minor release — no STABLE contract change, no maturity promotions.** Engine stays `proven`.
 New, all **opt-in / default-off**: transitive Dependency-Check CI knobs (`INSTALL_PHP`/`INSTALL_NODE`,

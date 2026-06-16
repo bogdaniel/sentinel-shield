@@ -217,3 +217,12 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
 - **Still open for a future minor (needs real evidence):** promote Deptrac (consumer with `deptrac.yaml`)
   and IaC (Checkov/Conftest/Terrascan on a repo with IaC); digest-pinned-by-default hardened profile;
   broaden install/sync onboarding; refine coarse scanner severity. All semver-additive.
+
+### v1.2.0 — Documentation, Adoption, Enterprise Hardening, Evidence Readiness (RELEASED; additive minor)
+- **Shipped (docs/adoption only, no STABLE change):** documentation hub (`index.md`) + role-based
+  reader paths; quickstart, production-rollout, enterprise-hardening, dependency-check-runbook,
+  troubleshooting, faq guides; Deptrac/IaC **evidence-readiness** guides (planning only).
+- **No maturity promotion:** Deptrac/IaC remain `experimental` — promotion still requires a real cited
+  consumer run per their evidence guides. Mechanically guarded by `self-test v120-docs`.
+- **Next (needs real evidence):** capture a real Deptrac run (consumer with `deptrac.yaml`) and a real
+  IaC run, then promote with cited run IDs in a future minor (`v1.3.0`).
