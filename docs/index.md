@@ -50,7 +50,10 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`main-gate-live-evidence.md`](main-gate-live-evidence.md) — cited live-validation runs **[evidence]**
 - [`deptrac-evidence-guide.md`](deptrac-evidence-guide.md) — Deptrac promotion readiness **[experimental]**
 - [`iac-evidence-guide.md`](iac-evidence-guide.md) — Checkov/Conftest/Terrascan readiness **[experimental]**
+- [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md) — real local IaC tool runs; diagnoses v1.3.0 blockers **[evidence]**
+- [`iac-evidence-candidate-matrix.md`](iac-evidence-candidate-matrix.md) — scanner/surface suitability for the next promotion **[experimental]**
 - [`deptrac-iac-promotion-plan.md`](deptrac-iac-promotion-plan.md) — promotion criteria **[experimental]**
+- [`install-sync-scale-v140.md`](install-sync-scale-v140.md) — 8-profile install/sync re-validation **[evidence]**
 
 ### Enterprise / hardening
 - [`enterprise-hardening.md`](enterprise-hardening.md) — hardened usage (opt-in) **[advanced]**

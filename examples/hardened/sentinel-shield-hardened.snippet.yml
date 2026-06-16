@@ -32,3 +32,41 @@ hardened_action_pins:
   - uses: google/osv-scanner-action/osv-scanner-action@19ec1116569a47416e11a45848722b1af31a857b # v1.9.0
   - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
   - uses: anchore/sbom-action@d8a2c0130026bf585de5c176ab8f7ce62d75bf04       # v0.20.7
+
+# -----------------------------------------------------------------------------
+# v1.4.0 — operational hardening block (additive; EXAMPLE, opt-in).
+# These are workflow-level hardening defaults for production/regulated adopters.
+# They do NOT change Sentinel Shield's engine or default onboarding — copy what
+# you need into your consumer workflow. Nothing here is forced on any user.
+# -----------------------------------------------------------------------------
+
+# Least-privilege token: grant only what the gate needs; add scopes per step, not globally.
+hardened_permissions:
+  permissions:
+    contents: read            # checkout
+    security-events: write    # SARIF upload (CodeQL), if used
+    actions: read
+    # id-token: write         # only if using OIDC/keyless
+
+# Cancel superseded runs on the same ref so stale gates do not race the latest commit.
+hardened_concurrency:
+  concurrency:
+    group: sentinel-shield-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+# Bound every scanner job so a hung container (e.g. a cold NVD pull) cannot run forever.
+hardened_job_limits:
+  timeout-minutes: 30         # tune per gate; Dependency-Check nightly may need more
+
+# Always upload evidence even on gate failure; keep it long enough for audit, not forever.
+hardened_artifacts:
+  upload:
+    if: always()              # never lose the raw report when the gate fails
+    retention-days: 30        # audit window; raise for regulated retention policy
+
+# Branch protection (set in repo settings, not the workflow): require the PR-fast gate to pass,
+# require review, disallow force-push to the default branch. Rollback: digests are immutable, so
+# pinning the previous @sha256 restores the exact validated image even if a tag moves.
+# Cache reset: clear the NVD cache namespace if Dependency-Check hits an H2 lock
+# (see ../../docs/dependency-check-ci-cache.md). NVD key: store as a repo secret, rotate per
+# ../../docs/security-hygiene.md — never inline it here.

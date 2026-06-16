@@ -91,6 +91,48 @@ make it parse.
 
 ---
 
+## IaC: Checkov / Terrascan / Conftest
+
+These are the v1.3.0/v1.4.0 IaC blockers, with the **root cause** of each (see
+[`iac-local-evidence-v140.md`](iac-local-evidence-v140.md)). IaC scanners are `experimental`;
+the consumer owns IaC remediation.
+
+<a id="checkov-resource_count-0"></a>
+**Symptom: Checkov reports `resource_count: 0` / `failed: 0` on real Terraform.**
+Cause: the **Docker image** is not analyzing Terraform (this was the v1.3.0 blocker). It is **not**
+the wrapper, the collector, or your TF. Fix: run Checkov via **`pip install checkov`** or the
+**official GitHub Action** instead of the image. Verified locally: Checkov 3.3.1 via `pip` →
+3 resources / 16 findings / 0 parsing errors on the same fixture the image scored 0 on.
+
+**Symptom: Terrascan returns `0 passed / 0 violated` (no findings) on valid Terraform.**
+Cause: **provider has no Terrascan policies.** Terrascan ships AWS/Azure/GCP/Kubernetes policies
+only — **Hetzner (`hcloud`) is unsupported** (the v1.3.0 surface). Fix: point Terrascan at an
+AWS/Azure/GCP/k8s surface (verified: 4 high violations on AWS TF), or use Checkov for `hcloud`.
+
+**Symptom: Conftest produces no output / 0 failures despite a policy that should fire.**
+Cause: **namespace + input-shape mismatch.** The repo Rego (`policies/opa/terraform.rego`) is
+`package sentinel.terraform` and reads `input.resource_changes` (the `terraform show -json` plan
+shape). Running it against raw HCL in the default `main` namespace yields 0. Fix: feed plan-JSON
+(`terraform plan -out tfplan && terraform show -json tfplan > plan.json`) and select the namespace
+(`conftest test --namespace sentinel.terraform plan.json`). Verified: 2 real failures.
+
+**Reminder:** none of the above is fake-clean — a scanner that genuinely finds nothing maps to
+`pass`/0; a scanner that cannot run maps to `unavailable`. IaC is **not** live-validated; promotion
+requires a cited consumer-CI run ([`main-gate-live-evidence.md`](main-gate-live-evidence.md)).
+
+---
+
+## Deptrac: missing config / binary
+
+**Symptom: Deptrac collector reports `unavailable`.**
+Cause: no `deptrac.yaml` in the consumer, or the `deptrac` binary/PHP runtime is absent. This is
+**not** fake-clean. Fix: add a real `deptrac.yaml` (layers + ruleset) and run
+`vendor/bin/deptrac analyse --formatter=json`; the collector maps `.Report.Violations` →
+`architecture_violations`. Deptrac is `live-validated` (v1.3.0, real consumers) — severity is
+binary (violation count), not graded.
+
+---
+
 ## Dependency-Check: NVD failures
 
 **Symptom: HTTP 429 / rate-limited during the NVD update.**

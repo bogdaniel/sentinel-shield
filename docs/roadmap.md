@@ -38,6 +38,11 @@ definition of done, and risks.
 - **Remaining work:** run CodeQL, OSV, Grype, Dependency-Check, Trivy, Syft, IaC on a real consumer
   via the harness; refine OSV/CodeQL severity parsing; pin digests; record cited evidence in
   [`pilot-consumers.md`](pilot-consumers.md). **The harness existing is not live validation.**
+- **IaC update (v1.4.0):** the v1.3.0 IaC dead-ends are now **diagnosed** via real LOCAL runs —
+  Checkov works via `pip`/Action (the image was the fault), Terrascan works on AWS (not `hcloud`),
+  Conftest works with the right namespace + plan-JSON. Collectors verified on real artifacts. This
+  is **not** live validation (no consumer run); it makes the next IaC consumer-CI attempt a
+  known-good recipe. See [`iac-local-evidence-v140.md`](iac-local-evidence-v140.md).
 - **Definition of done:** each main-gate tool has a cited consumer run with raw→summary-key
   evidence and a pinned ref; severities reviewed.
 - **Risks:** coarse severity → false gates; long runtimes blowing the CI budget
