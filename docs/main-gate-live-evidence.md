@@ -238,3 +238,47 @@ promoted to **`v1.0.0` (GA)**.
 **Outcome:** rc.2 soaked **clean** — exit-code contract verified in CI, transitive DC complete,
 strict delta visible, nothing suppressed, no STABLE regression. All 10 final-release criteria pass →
 **`v1.0.0` released.** Strict remains opt-in/non-required (correctly red on real findings).
+
+## v1.3.0 — Deptrac PROMOTED (real consumer evidence); IaC stays experimental (blockers documented)
+
+### Deptrac — `experimental` → `live-validated`
+
+Real **Deptrac 1.0.2** runs on **real consumer projects** with **genuine `deptrac.yaml`** files
+(layers `Controller`/`Service`/`Repository` + ruleset `Controller→Service`, `Service→Repository`). The
+SS collector (`scripts/collectors/deptrac.sh`) parsed each artifact → `architecture_violations`. Raw
+artifacts kept **local** (private consumers); only counts cited. Both the clean and violation paths are
+exercised on real data:
+
+| Consumer (private) | Deptrac | `Report.Violations` | Collector → `architecture_violations` | Result |
+|---|---|---|---|---|
+| `commerce-bridge` | 1.0.2 | 0 | 0 | **pass** (clean architecture) |
+| `octo-cms` | 1.0.2 | 4 | 4 | **fail** (real layer-rule violations) |
+| `silver-potato` | 1.0.2 | 4 | 4 | **fail** |
+
+**Reproducible command** (local; private consumer, raw kept local):
+```sh
+docker run --rm -v <consumer>:/app -v /tmp/out:/out -w /app php:8.3-cli \
+  php vendor/bin/deptrac analyse --formatter=json --output=/out/deptrac.json --no-progress
+sh scripts/collectors/deptrac.sh --input /tmp/out/deptrac.json   # -> architecture_violations
+```
+
+Committed evidence (synthetic, derived from the real `Report` block only — no private class/path
+data): `tests/fixtures/deptrac-v130/{clean,violations}.json`, guarded by `self-test v130-evidence`.
+**Promotion:** Deptrac → **live-validated** (`architecture_violations`). Caveat: validated on the
+local CLI path with genuine consumer configs; severity is binary (violation count), not graded.
+
+### IaC (Checkov / Conftest / Terrascan) — NOT promoted (exact blockers)
+
+Attempted on **real Terraform** (`zenchron-infra/terraform`, Hetzner `hcloud` provider, ~561 lines +
+modules). **No usable evidence was produced** — so, per the rules, **no IaC promotion**:
+
+| Tool | Version | Attempt | Blocker → status |
+|---|---|---|---|
+| **Checkov** | 3.3.0 | `-d /tf --framework terraform` | `resource_count: 0` **even on a trivial known-bad AWS TF** → the Checkov image is not parsing Terraform in this environment. **No evidence.** |
+| **Terrascan** | latest | `scan -i terraform` | scanned but **0 applicable policies for the `hcloud`/Hetzner provider** (Terrascan ships AWS/Azure/GCP/K8s policies) → 0 passed / 0 violated. **No real findings on this surface.** |
+| **Conftest** | latest | `test --parser hcl2 -p policies/opa/terraform.rego` | no output (parser/policy/image mismatch). **No evidence.** |
+
+**Decision:** Checkov/Conftest/Terrascan remain **`experimental`** — promotion still requires a real
+cited run that parses real IaC into a non-trivial `iac_violations` count. Next attempt: an AWS/Azure/GCP
+or Kubernetes IaC surface (which the tools have policies for) and a working scanner image. The wrappers
+correctly report `unavailable`/0 — they never fake a clean IaC report.

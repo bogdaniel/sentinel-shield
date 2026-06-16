@@ -2141,7 +2141,7 @@ run_v120_docs() {
 	# canonical product-status.md still lists Deptrac/IaC as unproven/experimental (not live-validated).
 	dv_check "deptrac evidence guide is PLANNING (not a promotion)" "$(grep -qsiE 'PLANNING ONLY|no maturity change' "$D/deptrac-evidence-guide.md" && echo yes || echo no)" "yes"
 	dv_check "iac evidence guide is PLANNING (not a promotion)" "$(grep -qsiE 'PLANNING ONLY|no maturity change' "$D/iac-evidence-guide.md" && echo yes || echo no)" "yes"
-	dv_check "product-status: Deptrac/IaC still unproven (not promoted)" "$(grep -qsE 'Deptrac/IaC still unproven|Deptrac.*no .deptrac.yaml.*|IaC .*no IaC' "$D/product-status.md" && echo yes || echo no)" "yes"
+	dv_check "product-status: IaC (Checkov/Conftest/Terrascan) still unproven" "$(grep -qsiE 'IaC \(Checkov/Conftest/Terrascan\) still unproven|Checkov/Conftest/Terrascan.*(still )?(unproven|experimental)' "$D/product-status.md" && echo yes || echo no)" "yes"
 	# the evidence guides must NOT assert Deptrac/IaC are live-validated as a CURRENT state.
 	dv_check "deptrac guide does NOT claim Deptrac IS live-validated" "$(grep -cE 'Deptrac is (now )?(live-validated|proven)' "$D/deptrac-evidence-guide.md")" "0"
 	dv_check "iac guide does NOT claim IaC IS live-validated" "$(grep -ciE '(checkov|terrascan|conftest|iac) (is|are) (now )?(live-validated|proven)' "$D/iac-evidence-guide.md")" "0"
@@ -2152,6 +2152,41 @@ run_v120_docs() {
 
 	if [ "$DV_FAILS" -ne 0 ]; then log_error "v120-docs: $DV_FAILS case(s) failed"; return 1; fi
 	log_info "v120-docs: OK (adoption docs present, hub links resolve, Deptrac/IaC planning-only, README navigable)"
+}
+
+# --- v1.3.0 evidence: Deptrac promoted WITH cited evidence; IaC NOT promoted (mechanical guards) ---
+EV_FAILS=0
+ev_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; EV_FAILS=$((EV_FAILS + 1)); fi; }
+
+run_v130_evidence() {
+	log_info "v130-evidence: Deptrac promotion is evidence-backed; IaC NOT promoted; fixtures parse"
+	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; REG="$ROOT/docs/main-gate-live-evidence.md"
+
+	# (B/19) the derived-from-real Deptrac fixtures parse: clean -> 0/pass, violations -> 4/fail.
+	ev_check "deptrac fixture clean -> pass arch=0" "$(sh "$C/deptrac.sh" --input "$F/deptrac-v130/clean.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.architecture_violations)"')" "pass:0"
+	ev_check "deptrac fixture violations -> fail arch=4" "$(sh "$C/deptrac.sh" --input "$F/deptrac-v130/violations.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.architecture_violations)"')" "fail:4"
+	# fixtures carry NO private class/path data (Report block only).
+	ev_check "deptrac fixtures: no private file/class details" "$(jq -c '.files' "$F/deptrac-v130/clean.json" "$F/deptrac-v130/violations.json" 2>/dev/null | grep -vc '^{}$')" "0"
+
+	# (79/81) Deptrac promotion is EVIDENCE-BACKED: the registry records the v1.3.0 Deptrac run with the
+	# required fields (tool+version, real consumer, collector result, reproducible command, caveat).
+	ev_check "registry: Deptrac v1.3.0 promotion section" "$(grep -qs 'Deptrac PROMOTED' "$REG" && echo yes || echo no)" "yes"
+	ev_check "registry: Deptrac evidence cites tool version (deptrac 1.0.2)" "$(grep -qs 'Deptrac 1.0.2' "$REG" && echo yes || echo no)" "yes"
+	ev_check "registry: Deptrac evidence cites a reproducible command" "$(grep -qs 'vendor/bin/deptrac analyse' "$REG" && echo yes || echo no)" "yes"
+	ev_check "registry: Deptrac evidence cites collector result (architecture_violations)" "$(grep -qs 'architecture_violations' "$REG" && echo yes || echo no)" "yes"
+	ev_check "product-status: Deptrac is live-validated" "$(grep -qsiE 'Deptrac.*live-validated|Deptrac .experimental. → .live-validated.' "$ROOT/docs/product-status.md" && echo yes || echo no)" "yes"
+
+	# (80) IaC must NOT be claimed live-validated without evidence — the registry documents the BLOCKERS
+	# and keeps Checkov/Conftest/Terrascan experimental.
+	ev_check "registry: IaC NOT promoted (blockers documented)" "$(grep -qsE 'IaC .*NOT promoted|Checkov / Conftest / Terrascan.*NOT promoted' "$REG" && echo yes || echo no)" "yes"
+	ev_check "no doc claims Checkov/Terrascan/Conftest IS live-validated" "$( ( cd "$ROOT" && grep -rilE '(checkov|terrascan|conftest) (is|are) (now )?live-validated' docs/product-status.md docs/enterprise-scanner-matrix.md docs/main-gate-live-evidence.md 2>/dev/null | wc -l | tr -d ' ' ) )" "0"
+
+	# (82/83/84) hygiene cross-checks.
+	ev_check "no .claude/ tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -c '^\.claude/' ) )" "0"
+	ev_check "no private deptrac/checkov/terrascan raw artifact tracked" "$( ( cd "$ROOT" && git ls-files 2>/dev/null | grep -cE 'reports/raw/(deptrac|checkov|terrascan|conftest)\.json' ) )" "0"
+
+	if [ "$EV_FAILS" -ne 0 ]; then log_error "v130-evidence: $EV_FAILS case(s) failed"; return 1; fi
+	log_info "v130-evidence: OK (Deptrac promoted with cited evidence; IaC blockers documented, not promoted)"
 }
 
 case "$SUB" in
@@ -2191,6 +2226,7 @@ case "$SUB" in
 	rc1-soak) run_v100rc_soak ;;
 	v110-postga) run_v110_postga ;;
 	v120-docs) run_v120_docs ;;
+	v130-evidence) run_v130_evidence ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2228,13 +2264,14 @@ case "$SUB" in
 		run_v100rc_soak
 		run_v110_postga
 		run_v120_docs
+		run_v130_evidence
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|all)"
 		exit 2
 		;;
 esac

@@ -54,7 +54,7 @@ and infrastructure. Concretely it owns:
 | Install / sync engine (laravel-react-docker) | `proven` | Self-test `install-sync`, `fixtures` round-trip |
 | Raw-report contract + collectors (core 14) | `proven` | Self-test fixtures + zenchron pilot |
 | PR-fast gate (`sentinel-shield-pr-fast.yml`) | `proven` | zenchron run 27170148123 (baseline PASS, no regression) |
-| Main-branch gate (`sentinel-shield-main.yml`) | `supported` (partial) | CodeQL/OSV/Trivy-fs/Syft **live-validated** (run 27214865086); **Grype/Dockle live-validated** (run 27239206382); **OWASP Dependency-Check live-validated** (local v0.1.27 + CI v0.1.30, run 27530386965 + transitive run 27573703800); **Deptrac/IaC still unproven** |
+| Main-branch gate (`sentinel-shield-main.yml`) | `supported` (partial) | CodeQL/OSV/Trivy-fs/Syft **live-validated** (run 27214865086); **Grype/Dockle live-validated** (run 27239206382); **OWASP Dependency-Check live-validated** (local v0.1.27 + CI v0.1.30, run 27530386965 + transitive run 27573703800); **Deptrac live-validated** (v1.3.0, deptrac 1.0.2 on real consumers — 0/4/4 violations); **IaC (Checkov/Conftest/Terrascan) still unproven** |
 | Main-gate validation harness (`run-main-gate-validation.sh`) | `proven` (engine) | Self-test `main-gate-harness`; runs main-gate wrappers branch-safely, unavailable-not-fake. **Running scanners ≠ live-validated** |
 | Profile system (Laravel/React/Node/Docker) | `supported` | Manifests + dry-run; only laravel-react-docker has a full fixture round-trip |
 | Scheduled / nightly gate | `template-only` | Not executed by default |
@@ -93,8 +93,8 @@ Scanners live-validated on **bogdaniel/zenchron-tools** (run 27170148123, baseli
 
 Collector + deterministic self-test fixture exists; **no live consumer run** yet:
 
-- npm audit, ESLint, Vitest/Jest adapters, Deptrac, Psalm,
-  third-party Semgrep channel.
+- npm audit, ESLint, Vitest/Jest adapters, Psalm,
+  third-party Semgrep channel. (**Deptrac is now `live-validated`** — see v1.3.0 below.)
 
 These were `not-configured` on the pilot (the runners correctly reported `unavailable` — no fake
 output). To promote: run on a consumer that configures them and cite the run.
@@ -114,8 +114,10 @@ output). To promote: run on a consumer that configures them and cite the run.
 - **Main-gate live validation — mostly closed (as of v0.1.30).** v0.1.18 promoted **CodeQL,
   OSV-Scanner, Trivy-fs, Syft SBOM** (run 27214865086); v0.1.20 promoted **Grype, Dockle** (run
   27239206382); **OWASP Dependency-Check** is live-validated (local v0.1.27 + CI v0.1.30, runs
-  27530386965 / 27573703800). Still **not** live-validated: **Deptrac** (no `deptrac.yaml`),
-  **Checkov/Conftest/Terrascan** (no IaC). Promotion requires a real cited run in
+  27530386965 / 27573703800); **Deptrac** is live-validated (v1.3.0, deptrac 1.0.2 on real consumers,
+  0/4/4 violations). Still **not** live-validated: **Checkov/Conftest/Terrascan** (IaC) — v1.3.0
+  attempt produced no usable evidence (Checkov image not parsing Terraform; Terrascan has no `hcloud`
+  policies; Conftest no output — see the registry). Promotion requires a real cited run in
   [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
 - **Install/sync covers four stacks, not arbitrary onboarding.** No `php-library` /`node-react`
   *named combination* manifest historically (php-library added in v0.1.16; node-react uses the
@@ -161,6 +163,21 @@ and Dockle (built-image-gated) now run predictably from the harness/templates �
   valid-JSON-with-non-zero-exit report and discards partial output (never fake-clean). See
   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md). Promotion still
   requires a real cited nightly run in [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+## v1.3.0 — Evidence-Based Deptrac Promotion (additive minor)
+**One evidence-backed maturity promotion; IaC honestly NOT promoted.** No STABLE change, no new scanners.
+- **Deptrac `experimental` → `live-validated`.** Real **deptrac 1.0.2** runs on real consumer projects
+  with genuine `deptrac.yaml` (Controller/Service/Repository layers + ruleset): `commerce-bridge` → 0
+  violations (pass), `octo-cms`/`silver-potato` → 4 violations (fail). SS collector maps
+  `.Report.Violations` → `architecture_violations` (both clean and violation paths exercised). Raw
+  artifacts kept local (private consumers); derived fixtures committed
+  (`tests/fixtures/deptrac-v130/`). [`main-gate-live-evidence.md`](main-gate-live-evidence.md).
+- **IaC (Checkov/Conftest/Terrascan) stays `experimental` — NO promotion.** v1.3.0 attempted real
+  Terraform (`zenchron-infra`, Hetzner `hcloud`): Checkov 3.3.0 parsed 0 resources (image not analyzing
+  TF, confirmed on a trivial known-bad TF); Terrascan has no `hcloud` policies (0/0); Conftest produced
+  no output. Honest blockers documented; wrappers reported `unavailable`/0, never fake-clean.
+- Self-test **550 → 562** (`v130-evidence`: deptrac fixtures parse, Deptrac promotion cites evidence,
+  IaC NOT claimed live-validated). Drop-in from v1.2.0.
+
 ## v1.2.0 — Documentation, Adoption, Enterprise Hardening, Evidence Readiness (additive minor)
 **Docs/adoption only — no STABLE change, no maturity promotions.** Engine stays `proven`; Deptrac/IaC
 stay `experimental` (the new evidence-readiness guides are *planning*, not promotions). Added a

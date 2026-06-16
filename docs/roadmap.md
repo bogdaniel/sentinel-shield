@@ -226,3 +226,12 @@ enabled); IaC/deptrac/architecture fixtures; supply-chain reproducibility (diges
   consumer run per their evidence guides. Mechanically guarded by `self-test v120-docs`.
 - **Next (needs real evidence):** capture a real Deptrac run (consumer with `deptrac.yaml`) and a real
   IaC run, then promote with cited run IDs in a future minor (`v1.3.0`).
+
+### v1.3.0 — Evidence-based promotion (RELEASED; additive minor)
+- **Deptrac promoted `experimental` → `live-validated`** with real evidence: deptrac 1.0.2 on real
+  consumers with genuine `deptrac.yaml` (0 / 4 / 4 violations; collector → `architecture_violations`).
+- **IaC NOT promoted (honest):** the v1.3.0 attempt on real Terraform produced no usable evidence
+  (Checkov image not parsing TF; Terrascan no `hcloud` policies; Conftest no output). Stays `experimental`.
+- **Still open for a future minor (needs real evidence):** promote **IaC** on an AWS/Azure/GCP/K8s
+  surface the scanners have policies for, with a working scanner image; refine coarse scanner severity;
+  digest-pinned-by-default hardened profile. All semver-additive.

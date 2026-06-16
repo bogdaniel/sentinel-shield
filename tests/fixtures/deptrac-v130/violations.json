@@ -1,0 +1,5 @@
+{
+  "_comment": "Synthetic fixture derived from a REAL deptrac 1.0.2 run (octo-cms / silver-potato, genuine deptrac.yaml). Report block only (collector reads .Report.Violations -> architecture_violations); no private paths. 4 real layer-rule violations. See docs/main-gate-live-evidence.md (v1.3.0).",
+  "Report": { "Violations": 4, "Skipped violations": 0, "Uncovered": 27, "Allowed": 0, "Warnings": 0, "Errors": 0 },
+  "files": {}
+}

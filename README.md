@@ -13,7 +13,7 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status: `v1.2.0` — released (additive minor; docs/adoption/enterprise hardening).** The
+> **Release status: `v1.3.0` — released (additive minor; evidence-based Deptrac promotion).** The
 > STABLE surfaces follow **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3,
 > §6) — `v1.2.0` is docs-only/opt-in and **drop-in** from `v1.0.0`/`v1.1.0` (no contract change).
 >

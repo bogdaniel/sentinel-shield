@@ -141,3 +141,12 @@ download (357,832 records via the API key), valid `dependency-check.json`, colle
 fixed (`chmod a+rwX` mounted data/report dirs). DC is now live-validated **in CI** (committed surface,
 69 deps) **and** locally on a dependency-rich surface (v0.1.27, 9,289 deps). Canonical:
 [`dependency-check-ci-evidence-v030.md`](dependency-check-ci-evidence-v030.md). Deptrac/IaC unchanged.
+
+## v1.3.0 — Deptrac live-validated (real consumer evidence); IaC unchanged
+**Deptrac `experimental` → `live-validated`** (`architecture_violations`): real deptrac 1.0.2 runs on
+real consumers with genuine `deptrac.yaml` — 0 violations (commerce-bridge, pass) and 4 violations
+(octo-cms / silver-potato, fail); collector parses `.Report.Violations`. Canonical:
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). **IaC (Checkov/Conftest/Terrascan) remain
+`experimental`** — the v1.3.0 attempt on real Terraform produced no usable evidence (Checkov image not
+parsing TF; Terrascan no `hcloud` policies; Conftest no output). No fake-clean; promotion still pending
+real cited IaC evidence.

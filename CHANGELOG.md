@@ -6,6 +6,35 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.3.0] — Evidence-Based Deptrac and IaC Promotion
+
+**Additive minor.** No STABLE contract change, no new scanners, no gates weakened. **One
+evidence-backed maturity promotion (Deptrac); IaC honestly NOT promoted** (no usable evidence).
+Drop-in from v1.2.0.
+
+### Promoted (with real cited evidence)
+- **Deptrac `experimental` → `live-validated`.** Real **deptrac 1.0.2** runs on real consumer projects
+  with genuine `deptrac.yaml` (Controller/Service/Repository layers + ruleset): `commerce-bridge` → 0
+  violations (pass), `octo-cms`/`silver-potato` → 4 violations (fail). The SS collector
+  (`scripts/collectors/deptrac.sh`) maps `.Report.Violations` → `architecture_violations` — both the
+  clean and violation paths exercised on real data. Raw artifacts kept **local** (private consumers);
+  fixtures derived from the real `Report` block only (no private class/path data) committed at
+  `tests/fixtures/deptrac-v130/`. [`main-gate-live-evidence.md`](docs/main-gate-live-evidence.md).
+
+### NOT promoted (honest blockers — no fake evidence)
+- **IaC (Checkov / Conftest / Terrascan) stays `experimental`.** v1.3.0 attempted real Terraform
+  (`zenchron-infra`, Hetzner `hcloud`): **Checkov 3.3.0** parsed 0 resources (image not analyzing
+  Terraform — confirmed on a trivial known-bad TF); **Terrascan** has no `hcloud` policies (0/0);
+  **Conftest** produced no output. No usable `iac_violations` evidence → no promotion. Wrappers
+  reported `unavailable`/0, never fake-clean. Exact blockers in the registry.
+
+### Added
+- Self-test `v130-evidence` (+12): Deptrac fixtures parse (clean→0/pass, violations→4/fail), Deptrac
+  promotion is evidence-backed (registry cites tool version + reproducible command + collector result),
+  IaC is NOT claimed live-validated, fixtures carry no private data, no raw artifacts tracked.
+- Adoption smoke test confirmed the v1.2.0 quickstart works end-to-end (detect→install→enforce) for a
+  fresh fixture — no doc changes needed.
+
 ## [1.2.0] — Documentation, Adoption, Enterprise Hardening, and Evidence Readiness
 
 **Additive minor — docs/adoption only.** No STABLE contract change (engine scripts, exit codes, env
