@@ -6,6 +6,17 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [1.9.1] — Pin managed workflow actions
+
+**Additive patch — supply-chain hardening only.** No engine/STABLE change, no flag change, no
+scanner/maturity change. Drop-in from v1.9.0.
+
+### Changed
+- `templates/workflows/sentinel-shield.yml`: pin all third-party GitHub Actions to full 40-char
+  commit SHAs (version retained as a trailing comment). Satisfies the `unsafe_github_actions` gate
+  for consumers and removes moving-tag supply-chain risk. Consumers pick this up via
+  `sync-baseline.sh --apply --force`.
+
 ## [1.9.0] — AI-Assisted Install Guide
 
 **Additive minor — docs/tooling only.** No engine/STABLE change, no install/sync flag change, no new
