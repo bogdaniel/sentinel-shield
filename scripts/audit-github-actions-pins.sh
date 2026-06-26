@@ -64,9 +64,15 @@ for f in $FILES; do
 		_ln=$((_ln + 1))
 		# strip trailing inline comment for ref extraction (keep the # vTag comment out)
 		_code=$(printf '%s' "$line" | sed 's/[[:space:]]*#.*$//')
-		case "$_code" in
-			*uses:*)
-				_ref=$(printf '%s' "$_code" | sed -n 's/.*uses:[[:space:]]*//p' | tr -d '"'"'"' ' )
+		# Only treat uses:/container:/image: as a YAML KEY when it begins the
+		# (optionally list-marked) line. Matching them as a substring anywhere on
+		# the line false-positives on `run:` shell blocks that merely mention the
+		# words — e.g. a grep pattern like `grep -E 'image:...:latest'`. Strip the
+		# leading indent and an optional `- ` list marker, then prefix-match.
+		_key=$(printf '%s' "$_code" | sed -e 's/^[[:space:]]*//' -e 's/^-[[:space:]]*//')
+		case "$_key" in
+			uses:*)
+				_ref=$(printf '%s' "$_key" | sed -n 's/^uses:[[:space:]]*//p' | tr -d '"'"'"' ' )
 				[ -n "$_ref" ] || continue
 				case "$_ref" in
 					./*|.\\*) : ;;                                  # local action — allow
@@ -84,15 +90,15 @@ for f in $FILES; do
 					*)
 						emit "$f" "$_ln" "action" "$_ref" "action ref has no @version (defaults to a moving branch)" ;;
 				esac ;;
-			*container:*)
-				_img=$(printf '%s' "$_code" | sed -n 's/.*container:[[:space:]]*//p' | tr -d '"'"'"' ')
+			container:*)
+				_img=$(printf '%s' "$_key" | sed -n 's/^container:[[:space:]]*//p' | tr -d '"'"'"' ')
 				case "$_img" in
 					''|'{'*) : ;;                                   # empty or a map (image: under it handled below)
 					*@sha256:*) : ;;
 					*:*) emit "$f" "$_ln" "image" "$_img" "container image not pinned by @sha256 digest" ;;
 				esac ;;
-			*image:*)
-				_img=$(printf '%s' "$_code" | sed -n 's/.*image:[[:space:]]*//p' | tr -d '"'"'"' ')
+			image:*)
+				_img=$(printf '%s' "$_key" | sed -n 's/^image:[[:space:]]*//p' | tr -d '"'"'"' ')
 				case "$_img" in
 					''|*'${{'*) : ;;                                # interpolated — skip (project env)
 					*@sha256:*) : ;;

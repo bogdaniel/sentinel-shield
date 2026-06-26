@@ -524,11 +524,11 @@ run_adapters() {
 	# --- GitHub Actions pin audit ---
 	mkdir -p "$_d/wf"
 	printf 'on: [push]\njobs:\n  a:\n    container: node:20-alpine\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@main\n' > "$_d/wf/bad.yml"
-	printf 'on: [push]\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n      - uses: ./.github/actions/x\n' > "$_d/wf/good.yml"
+	printf 'on: [push]\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4\n      - uses: ./.github/actions/x\n      - run: |\n          grep -E "image:[[:space:]]*\\S+:latest" f || true\n          echo "uses: a/b@v1 and container: x:latest are just text"\n' > "$_d/wf/good.yml"
 	sh scripts/audit-github-actions-pins.sh --output "$_d/ghbad.json" "$_d/wf/bad.yml" >/dev/null 2>&1
 	ad_check "GH pin audit flags tag/branch/container refs" "$(jq 'length' "$_d/ghbad.json" 2>/dev/null)" "3"
 	sh scripts/audit-github-actions-pins.sh --output "$_d/ghgood.json" "$_d/wf/good.yml" >/dev/null 2>&1
-	ad_check "GH pin audit passes SHA + local refs" "$(jq 'length' "$_d/ghgood.json" 2>/dev/null)" "0"
+	ad_check "GH pin audit passes SHA + local refs, ignores run: block text" "$(jq 'length' "$_d/ghgood.json" 2>/dev/null)" "0"
 	ad_check "GH pin collector -> unsafe_github_actions" "$(sh scripts/collectors/github-actions-pins.sh --input "$_d/ghbad.json" 2>/dev/null | jq -r '.summary.unsafe_github_actions')" "3"
 
 	# --- Docker base digest detector ---
