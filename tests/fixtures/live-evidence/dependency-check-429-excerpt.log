@@ -1,0 +1,6 @@
+Unable to find image 'owasp/dependency-check:latest' locally
+Caused by: io.github.jeremylong.openvulnerability.client.nvd.NvdApiException: NVD Returned Status Code: 429
+[WARN] Unable to update 1 or more Cached Web DataSource, using local data instead. Results may not include recent vulnerabilities.
+[ERROR] Unable to continue dependency-check analysis.
+[ERROR] One or more fatal errors occurred
+[sentinel-shield] dependency-check unavailable: tool exited 13 without valid JSON (timed out, NVD download incomplete, or crashed) — no fake-clean report (no report written).

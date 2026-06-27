@@ -3,6 +3,8 @@
 # examples/**/reports/ (with committed .gitkeep) is not ignored.
 /reports/
 *.log
+# ...except committed test-fixture evidence excerpts (self-test depends on them).
+!tests/fixtures/**/*.log
 .DS_Store
 
 # Baseline / scan caches that may appear in consuming projects.
