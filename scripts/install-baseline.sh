@@ -18,18 +18,35 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+# shellcheck source=scripts/lib/sentinel-shield-common.sh
+. "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/compat-resolver.sh
+. "$SCRIPT_DIR/lib/compat-resolver.sh"
 
 TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; MODE="report-only"
+TOOL_MODE="config-only"; EMIT_PLAN=""; NONINTERACTIVE=0
 
 usage() {
 	cat <<'EOF'
 Usage: install-baseline.sh --target <dir> [--profile <name>] [--mode <mode>] [--apply] [--force]
-  --target <dir>   Consuming project directory (required).
-  --profile <name> Profile manifest (default: laravel-react-docker). Also: laravel|react|node|docker.
-  --mode <mode>    report-only|baseline|strict|regulated (default: report-only) — written into profile.yaml.
-  --apply          Actually write files (default: dry-run).
-  --force          Overwrite MANAGED files (overwrite-if-force mode); never touches project-local files.
-  -h, --help       Show help.
+                           [--tool-mode <config-only|require-existing|bootstrap-tools>]
+                           [--emit-plan <path>] [--non-interactive]
+  --target <dir>     Consuming project directory (required).
+  --profile <name>   Profile manifest (default: laravel-react-docker). Also: laravel|react|node|docker.
+  --mode <mode>      report-only|baseline|strict|regulated (default: report-only) — written into profile.yaml.
+  --apply            Actually write files (and, in bootstrap-tools mode, install packages). Default: dry-run.
+  --force            Overwrite MANAGED files (overwrite-if-force mode); never touches project-local files.
+  --tool-mode <m>    How the profile's tools are provisioned (default: config-only):
+                       config-only       install SS files only; do NOT touch composer.json/package.json;
+                                         report which required tools are missing (non-fatal).
+                       require-existing  install no packages; FAIL preflight if a required tool's
+                                         executable is absent (recommended absent -> warning).
+                       bootstrap-tools   inspect versions via compat-resolver and print the exact
+                                         install plan (dry-run); with --apply, install packages,
+                                         validate the lockfile, run tests, and roll back on failure.
+  --emit-plan <path> Write the read-only tool resolution plan (JSON) to <path>.
+  --non-interactive  Never prompt (accepted for CI parity; this installer does not prompt).
+  -h, --help         Show help.
 Manifest file modes: create-if-missing | overwrite-if-force | sync-managed-block | manual.
 EOF
 }
@@ -41,6 +58,9 @@ while [ $# -gt 0 ]; do
 		--mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
 		--apply) APPLY=1; shift ;;
 		--force) FORCE=1; shift ;;
+		--tool-mode) TOOL_MODE="${2:?--tool-mode requires a value}"; shift 2 ;;
+		--emit-plan) EMIT_PLAN="${2:?--emit-plan requires a value}"; shift 2 ;;
+		--non-interactive) NONINTERACTIVE=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "error: unknown argument '$1'" >&2; usage; exit 2 ;;
 	esac
@@ -50,6 +70,7 @@ done
 [ -d "$TARGET" ] || { echo "error: target '$TARGET' is not a directory" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
 case "$MODE" in report-only|baseline|strict|regulated) ;; *) echo "error: invalid --mode '$MODE'" >&2; exit 2 ;; esac
+case "$TOOL_MODE" in config-only|require-existing|bootstrap-tools) ;; *) echo "error: invalid --tool-mode '$TOOL_MODE'" >&2; usage; exit 2 ;; esac
 
 # Resolve the manifest path from the profile name.
 MANIFEST=""
@@ -65,7 +86,68 @@ echo "Mode:     $MODE"
 echo "Source:   $ROOT"
 echo "Target:   $TARGET"
 echo "Force:    $([ "$FORCE" -eq 1 ] && echo yes || echo no)"
+echo "Tool-mode:$TOOL_MODE"
 echo "------------------------------------------------------------"
+
+# tool_audit <strict> — inspect required/recommended tools that declare an executable.
+# strict=1: FAIL (exit 1) when a required tool's executable is absent (require-existing).
+# strict=0: only report absent required tools (config-only). Tools without an executable[]
+# (external/CI-provided scanners such as gitleaks/semgrep) are not validated locally.
+tool_audit() {
+	_strict="$1"; _missing=""; _warn=""; _disabled=""
+	[ -f "$TARGET/.sentinel-shield/installation.json" ] \
+		&& _disabled=$(jq -r '(.disabled_tools // [])[]' "$TARGET/.sentinel-shield/installation.json" 2>/dev/null || true)
+	_keys=$(cr_tool_keys "$MANIFEST")
+	_oifs=$IFS
+	IFS='
+'
+	for _k in $_keys; do
+		IFS=$_oifs
+		[ -n "$_k" ] || { IFS='
+'; continue; }
+		if printf '%s\n' "$_disabled" | grep -qx "$_k"; then IFS='
+'; continue; fi
+		_pol=$(cr_tool_policy "$MANIFEST" "$_k")
+		_exes=$(cr_tool_executables "$MANIFEST" "$_k")
+		[ -n "$_exes" ] || { IFS='
+'; continue; }
+		if ! cr_tool_detected "$TARGET" "$MANIFEST" "$_k"; then
+			case "$_pol" in
+				required) _missing="$_missing $_k" ;;
+				recommended) _warn="$_warn $_k" ;;
+			esac
+		fi
+		IFS='
+'
+	done
+	IFS=$_oifs
+	[ -n "$_warn" ] && echo "tool-audit: recommended tools absent (warning):$_warn" >&2
+	if [ -n "$_missing" ]; then
+		if [ "$_strict" = "1" ]; then
+			echo "error: require-existing: required tools absent (no executable found):$_missing" >&2
+			echo "       install them, or use --tool-mode bootstrap-tools, before installing the baseline." >&2
+			exit 1
+		fi
+		echo "tool-audit: required tools absent (config-only does not install them):$_missing"
+	else
+		echo "tool-audit: all required tools with executables are present."
+	fi
+}
+
+# --emit-plan: write the read-only resolver plan (JSON) by delegating to resolve-tool-plan.sh.
+# ponytail: resolve-tool-plan.sh resolves only profiles/<name>/; for a combinations/<name>
+# profile this prints a warning instead of failing the install.
+if [ -n "$EMIT_PLAN" ]; then
+	if sh "$SCRIPT_DIR/resolve-tool-plan.sh" --profile "$PROFILE" --target "$TARGET" --format json > "$EMIT_PLAN" 2>/dev/null; then
+		echo "Tool plan written: $EMIT_PLAN"
+	else
+		echo "warn: could not emit tool plan to '$EMIT_PLAN' (combination profiles are not supported by the resolver)." >&2
+		rm -f "$EMIT_PLAN" 2>/dev/null || true
+	fi
+fi
+
+# require-existing: validate BEFORE writing any files; fail fast if a required tool is absent.
+[ "$TOOL_MODE" = "require-existing" ] && tool_audit 1
 
 # Protected (never created/overwritten) — manifest never_touch + hard defaults.
 PROTECT=" .sentinel-shield/accepted-risks.json phpstan-baseline.neon "
@@ -127,3 +209,25 @@ else
 	echo "  3. Copy .sentinel-shield/accepted-risks.example.json -> accepted-risks.json ONLY when accepting a risk (owner-approved)."
 	echo "  4. Run the pipeline (push/PR or workflow_dispatch)."
 fi
+
+# --- tool provisioning (per --tool-mode) ------------------------------------
+echo "------------------------------------------------------------"
+case "$TOOL_MODE" in
+	config-only)
+		echo "tool-mode=config-only: dependency files (composer.json/package.json) left untouched."
+		tool_audit 0
+		;;
+	require-existing)
+		echo "tool-mode=require-existing: required tools validated above; no packages installed."
+		;;
+	bootstrap-tools)
+		echo "tool-mode=bootstrap-tools: delegating to bootstrap-profile-tools.sh ($([ "$APPLY" -eq 1 ] && echo 'apply' || echo 'dry-run'))."
+		if [ "$APPLY" -eq 1 ]; then
+			sh "$SCRIPT_DIR/bootstrap-profile-tools.sh" --profile "$PROFILE" --target "$TARGET" --apply \
+				|| { echo "error: tool bootstrap failed (dependency files were rolled back)." >&2; exit 1; }
+		else
+			sh "$SCRIPT_DIR/bootstrap-profile-tools.sh" --profile "$PROFILE" --target "$TARGET" --dry-run \
+				|| { echo "error: tool bootstrap planning failed." >&2; exit 1; }
+		fi
+		;;
+esac

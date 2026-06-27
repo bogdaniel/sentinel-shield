@@ -86,7 +86,8 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["pass", "fail", "warn", "skipped", "unavailable"]
+            "enum": ["pass", "fail", "warn", "skipped", "unavailable", "findings", "not-configured", "not-applicable", "execution-error", "disabled"],
+            "description": "Tool execution/result state. Legacy: pass/fail/warn/skipped/unavailable. v1.10+ tool-policy states: findings (ran, found issues), not-configured (no config file), not-applicable (stack absent), execution-error (crashed/invalid output), disabled (turned off by policy). Mapping per docs/profile-tool-policy.md: an unavailable/execution-error tool is NEVER rewritten as a clean 0."
           },
           "findings": { "type": "integer", "minimum": 0 },
           "critical": { "type": "integer", "minimum": 0 },

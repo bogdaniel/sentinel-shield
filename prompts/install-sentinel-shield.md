@@ -10,6 +10,15 @@ repository, safely. Sentinel Shield normalizes and gates external scanner output
 bundle scanners. Work in small, reviewable steps. **Audit before you install. Never fake a clean
 gate.**
 
+**Installing a profile does NOT make its tools available.** A profile only *declares* a tool policy
+(per `schemas/tool-policy.schema.json` / `docs/profile-tool-policy.md`): each tool has a `policy`
+(`required` / `recommended` / `optional` / `one-of` / `disabled` / `external`), an `executable[]`
+detection list, optional `packages[]`, and a `runner`. Whether those tools actually get installed is
+controlled by the **tool provisioning mode** you pick at install time (`--tool-mode`). After install
+you MUST report, per the tool policy, which **required** tools are installed vs missing and which
+**recommended** tools are installed vs skipped — a missing `required` tool is a config failure, not a
+silent pass.
+
 ## Non-negotiables (hard stops)
 
 - Do **not** rewrite git history. Do **not** mutate or move tags. Do **not** force-push.
@@ -18,6 +27,8 @@ gate.**
 - Do **not** modify Sentinel Shield's managed scripts/workflows locally — override via
   `.sentinel-shield/profile.yaml`, never by editing managed files.
 - Do **not** suppress, downgrade, or remediate findings just to make the gate green.
+- Do **not** downgrade a framework or package to satisfy a tool; only `bootstrap-tools` with explicit
+  consent may add dev tools, and it must roll back if it breaks the build.
 - Do **not** enable AWS / Kubernetes / IaC **live** validation unless explicitly requested
   (IaC stays `ci-validated (evidence-fixture)`).
 - If anything is ambiguous or fails, **stop and report honestly** — do not guess.
@@ -41,10 +52,32 @@ auto-run `composer install` against private registries without consumer auth. Re
 **5. Profile selection.** List profiles (`ls -d profiles/*/ profiles/combinations/*.manifest.json`)
 and pick the one matching the stack (or `hardened-enterprise` if asked). State your choice + why.
 
-**6. Sentinel Shield installation.** Run **dry-run first**:
-`sh scripts/install-baseline.sh --target . --profile <name>` — review the planned writes. Then
-`--apply --mode report-only`. Confirm project-local files (`accepted-risks.json`, baselines) were
-**not** touched.
+**5a. Tool-policy resolution.** Resolve the profile's declared tool policy *before* installing so you
+know what the profile demands and what the project already has:
+`sh scripts/resolve-tool-plan.sh --profile <name> --target . --format text`. Classify each tool by
+`policy` (`required` / `recommended` / `optional` / `one-of` / `disabled` / `external`) and by whether
+its `executable[]` is already detected. This is the basis for the install report — do **not** assume a
+declared tool is present.
+
+**6. Sentinel Shield installation.** Pick a **tool provisioning mode** (`--tool-mode`) and state why:
+
+- `config-only` (default) — installs Sentinel Shield's managed files only; does **not** touch
+  `composer.json` / `package.json`. Missing required tools are **reported, non-fatal**. Safest first
+  step.
+- `require-existing` — installs **no** packages but **fails preflight** if a `required` tool's
+  executable is absent (recommended absent → warning). Use when tools are expected to be present
+  already.
+- `bootstrap-tools` — resolves compatible versions and prints the exact install plan (dry-run); with
+  `--apply` it installs packages, validates the lockfile, runs tests, and **rolls back on failure**.
+  Only with explicit consent (it mutates dependency manifests). Never downgrade a framework/package.
+
+Run **dry-run first**:
+`sh scripts/install-baseline.sh --target . --profile <name> --tool-mode <mode>` — review the planned
+writes (and, for `bootstrap-tools`, the dependency plan). Then
+`--apply --mode report-only --tool-mode <mode>`. Confirm project-local files (`accepted-risks.json`,
+baselines) were **not** touched. Re-run `resolve-tool-plan.sh` (or read
+`.sentinel-shield/installation.json`'s `enabled_tools` / `disabled_tools`) to confirm what is actually
+present.
 
 **7. Practical non-IaC gate integration.** Wire the **PR-fast** gate first (pinned actions/images).
 Keep IaC/DAST/AI out of the default gate. Start in `report-only` or `baseline`.
@@ -87,10 +120,16 @@ baseline/report-first unless the repo is mature.
 Sentinel Shield install report
 - repo / stack detected:
 - profile selected (+ why):
-- adoption mode:
+- adoption mode (report-only/baseline/strict/regulated):
+- tool provisioning mode (config-only / require-existing / bootstrap-tools):
+- required tools INSTALLED (executable detected):
+- required tools MISSING (config failure — do NOT mask):
+- recommended tools INSTALLED:
+- recommended tools SKIPPED (warning only):
 - installed tag/version:
 - files written (managed):    # from install-baseline dry-run/apply
 - project-local files preserved (accepted-risks.json, baselines): yes/no
+- active workflow jobs (PR / main / scheduled):
 - gate wired (PR-fast / main): + pinned? yes/no
 - Deptrac: wired / skipped (+ why)
 - accepted risks created? : yes/no (+ justification)

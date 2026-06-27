@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../profiles/profile.manifest.schema.json",
+  "profile": "v2-conflict",
+  "description": "Self-test fixture: tools pin a NON-auto Composer version so a clashing app dependency is classified as a conflict (the resolver must recommend an isolated install, never a downgrade).",
+  "tool_policy_version": 2,
+  "tools": {
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [{ "name": "phpstan/phpstan", "scope": "dev", "compatibility": "1.11.0" }],
+      "executable": ["vendor/bin/phpstan", "phpstan"],
+      "missing_behavior": "fail"
+    },
+    "deptrac": {
+      "policy": "recommended",
+      "category": "architecture",
+      "packages": [{ "name": "qossmic/deptrac-shim", "scope": "dev", "compatibility": "1.0.2" }],
+      "executable": ["vendor/bin/deptrac", "deptrac"],
+      "missing_behavior": "warn"
+    }
+  }
+}

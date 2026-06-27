@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/installation.schema.json",
+  "title": "Sentinel Shield installation record",
+  "description": "Records what the installer placed into a consuming project, written to .sentinel-shield/installation.json. Lets sync/upgrade reason about managed vs project-owned files and which tools are enabled. Contains NO secrets, tokens, or credentials.",
+  "type": "object",
+  "required": [
+    "version",
+    "profile",
+    "profile_schema",
+    "tool_mode",
+    "installed_at",
+    "managed_files",
+    "project_owned_files",
+    "enabled_tools",
+    "disabled_tools"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Sentinel Shield version that performed the install/sync, e.g. '1.9.0'."
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Installed profile name, e.g. 'laravel'."
+    },
+    "profile_schema": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "tool_policy_version of the profile manifest that was installed (lets upgrades detect policy-schema drift)."
+    },
+    "tool_mode": {
+      "type": "string",
+      "enum": ["config-only", "require-existing", "bootstrap-tools"],
+      "description": "Provisioning mode used at install/sync time (matches install-baseline.sh --tool-mode), recorded so future updates are deterministic."
+    },
+    "installed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the install/sync, e.g. '2026-06-27T12:00:00Z'."
+    },
+    "managed_files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Project-relative paths Sentinel Shield owns and may overwrite on sync."
+    },
+    "project_owned_files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Project-relative paths created once or owned by the project; never overwritten."
+    },
+    "enabled_tools": {
+      "type": "array",
+      "items": { "$ref": "tool-policy.schema.json#/$defs/toolKey" },
+      "description": "Tool keys active in this installation."
+    },
+    "disabled_tools": {
+      "type": "array",
+      "items": { "$ref": "tool-policy.schema.json#/$defs/toolKey" },
+      "description": "Tool keys explicitly disabled in this installation."
+    }
+  }
+}

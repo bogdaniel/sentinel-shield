@@ -20,3 +20,6 @@ graphify-out/
 
 # v1.4.0 sprint scratch (ledgers / working artifacts — never commit)
 .sprint-v140/
+
+# Isolated tool installs (scripts/lib/isolated-tools.sh) — commit composer.json + composer.lock, ignore vendor/.
+tools/*/vendor/

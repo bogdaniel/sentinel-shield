@@ -1,0 +1,4 @@
+# v2 self-test fixture — INVALID: 'policy' is not in the policy enum.
+tools:
+  deptrac:
+    policy: bogus

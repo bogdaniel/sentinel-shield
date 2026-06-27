@@ -16,5 +16,161 @@
   "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests"],
   "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check"],
   "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
-  "recommended_raw_reports": ["npm-audit.json", "tests.json", "gitleaks.json", "semgrep.json"]
+  "recommended_raw_reports": ["npm-audit.json", "tests.json", "gitleaks.json", "semgrep.json"],
+  "tool_policy_version": 2,
+  "tools": {
+    "deps-install": {
+      "policy": "required",
+      "category": "setup",
+      "executable": ["npm", "pnpm", "yarn"],
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": true }
+    },
+    "eslint": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [{ "name": "eslint", "scope": "dev", "compatibility": "auto" }],
+      "executable": ["node_modules/.bin/eslint", "eslint"],
+      "runner": "scripts/runners/eslint.sh",
+      "report": "reports/raw/eslint.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": false },
+      "config": { "path": "eslint.config.js", "classification": "project-owned" }
+    },
+    "typescript": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [{ "name": "typescript", "scope": "dev", "compatibility": "auto" }],
+      "executable": ["node_modules/.bin/tsc", "tsc"],
+      "runner": "scripts/runners/typescript.sh",
+      "report": "reports/raw/typescript.json",
+      "missing_behavior": "fail",
+      "requires": ["deps-install"],
+      "execution": { "pr": true, "main": true, "scheduled": false },
+      "config": { "path": "tsconfig.json", "classification": "project-owned" }
+    },
+    "tests": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": ["jest", "vitest"],
+      "report": "reports/raw/tests.json",
+      "requires": ["deps-install"],
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "jest": {
+      "policy": "one-of",
+      "category": "tests",
+      "packages": [{ "name": "jest", "scope": "dev", "compatibility": "auto" }],
+      "executable": ["node_modules/.bin/jest", "jest"],
+      "alternatives": ["vitest"],
+      "report": "reports/raw/tests.json",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "vitest": {
+      "policy": "one-of",
+      "category": "tests",
+      "packages": [{ "name": "vitest", "scope": "dev", "compatibility": "auto" }],
+      "executable": ["node_modules/.bin/vitest", "vitest"],
+      "alternatives": ["jest"],
+      "report": "reports/raw/tests.json",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "npm-audit": {
+      "policy": "required",
+      "category": "sca",
+      "executable": ["npm", "pnpm", "yarn"],
+      "runner": "scripts/collectors/npm-audit.sh",
+      "report": "reports/raw/npm-audit.json",
+      "missing_behavior": "fail",
+      "requires": ["deps-install"],
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "gitleaks": {
+      "policy": "required",
+      "category": "secrets",
+      "executable": ["gitleaks"],
+      "runner": "scripts/collectors/gitleaks.sh",
+      "report": "reports/raw/gitleaks.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": true }
+    },
+    "semgrep": {
+      "policy": "required",
+      "category": "static-analysis",
+      "executable": ["semgrep"],
+      "runner": "scripts/collectors/semgrep.sh",
+      "report": "reports/raw/semgrep.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "actionlint": {
+      "policy": "required",
+      "category": "ci",
+      "executable": ["actionlint"],
+      "runner": "scripts/runners/actionlint.sh",
+      "report": "reports/raw/actionlint.json",
+      "missing_behavior": "warn",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "zizmor": {
+      "policy": "required",
+      "category": "ci",
+      "executable": ["zizmor"],
+      "runner": "scripts/runners/zizmor.sh",
+      "report": "reports/raw/zizmor.json",
+      "missing_behavior": "warn",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "codeql": {
+      "policy": "required",
+      "category": "static-analysis",
+      "executable": ["codeql"],
+      "runner": "scripts/runners/codeql-export.sh",
+      "report": "reports/raw/codeql.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": false, "main": true, "scheduled": true }
+    },
+    "osv-scanner": {
+      "policy": "required",
+      "category": "sca",
+      "executable": ["osv-scanner"],
+      "runner": "scripts/collectors/osv-scanner.sh",
+      "report": "reports/raw/osv-scanner.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": false, "main": true, "scheduled": true }
+    },
+    "trivy-fs": {
+      "policy": "required",
+      "category": "sca",
+      "executable": ["trivy"],
+      "runner": "scripts/collectors/trivy.sh",
+      "report": "reports/raw/trivy-fs.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": false, "main": true, "scheduled": true }
+    },
+    "syft": {
+      "policy": "required",
+      "category": "supply-chain",
+      "executable": ["syft"],
+      "report": "reports/raw/syft.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": false, "main": true, "scheduled": true }
+    },
+    "grype": {
+      "policy": "required",
+      "category": "sca",
+      "executable": ["grype"],
+      "runner": "scripts/collectors/grype.sh",
+      "report": "reports/raw/grype.json",
+      "missing_behavior": "fail",
+      "requires": ["syft"],
+      "execution": { "pr": false, "main": true, "scheduled": true }
+    }
+  },
+  "tool_notes": {
+    "typescript": "policy:required applies when tsconfig.json is present; JS-only projects (no tsconfig.json): not-applicable. A JS-only project must NOT fail for absent TypeScript; a TS project MUST fail when the typecheck is unavailable.",
+    "package-manager": "Detect npm/pnpm/yarn from the lockfile (package-lock.json -> npm, pnpm-lock.yaml -> pnpm, yarn.lock -> yarn); deps-install/npm-audit use that manager. NEVER switch the project's package manager.",
+    "tests": "one-of jest|vitest; only gated when a test setup is configured. If neither is present and no tests are configured, the group is not-applicable.",
+    "ci-linters": "actionlint and zizmor apply when .github/workflows/ exists; otherwise not-applicable (missing_behavior:warn so an absent linter never hard-fails)."
+  }
 }

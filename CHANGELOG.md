@@ -6,6 +6,50 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement
+
+**MAJOR (alpha).** Changes the meaning of a profile: a profile now declares a machine-readable
+**tool policy** (required/recommended/optional/one-of/disabled/external) and the toolchain is
+explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live consumer CI evidence
+(Laravel/Symfony run IDs), beta/RC/GA soak are deferred. Not yet a drop-in upgrade — read
+`docs/v2-migration-guide.md` first.
+
+### Added
+- **Tool-policy schema** (`schemas/tool-policy.schema.json`) — per-tool `policy`, `category`,
+  `packages`, `executable`, `runner`, `report`, `missing_behavior`, `requires`, `alternatives`,
+  `execution`, `config`. Profile manifests extended additively with `tools`, `extends`,
+  `tool_policy_version`. Per-tool status enum gains `findings`, `not-configured`, `not-applicable`,
+  `execution-error`, `disabled`. Contract: `docs/profile-tool-policy.md`.
+- **Profile tool policies** for laravel, symfony, php-library, node, react, and composed
+  combinations (laravel-react-docker, node-react, hardened-enterprise) via `extends` with
+  `required>recommended>optional>disabled` precedence (`scripts/lib/profile-compose.sh`).
+- **Compatibility resolver** (`scripts/lib/compat-resolver.sh`, `scripts/resolve-tool-plan.sh`) —
+  inspects PHP/framework/lock state, emits an install plan, never downgrades app/framework deps;
+  conflicts → isolated-tool recommendation.
+- **Provisioning** — `install-baseline.sh`/`sync-baseline.sh` gain `--tool-mode`
+  `config-only|require-existing|bootstrap-tools`, `--emit-plan`, `--non-interactive`;
+  `scripts/bootstrap-profile-tools.sh` (dry-run default, explicit `--apply`, rollback on failure);
+  isolated-tool manager (`scripts/lib/isolated-tools.sh`).
+- **Runners** — new deterministic PHP/Node runners: larastan, pint, php-cs-fixer, rector, pest,
+  phpunit, composer-audit, npm-audit (honest `unavailable`, never fake-clean).
+- **Doctor + maturity** report activation state (installed/configured/executed/gate-enforced);
+  `doctor.sh` exits 3 when required tools are absent under `require-existing`/`bootstrap-tools`.
+- **Upgrade UX** — `scripts/plan-upgrade.sh` (text/markdown/json, mutates nothing),
+  installation metadata (`schemas/installation.schema.json`, `scripts/lib/installation-metadata.sh`),
+  project override (`schemas/tool-policy-override.schema.json`, `scripts/lib/tool-policy-override.sh`),
+  v1 migration (`scripts/migrate-v1.sh`).
+- **Prompts/docs** — `prompts/update-sentinel-shield.md` (17 safety clauses), updated
+  `prompts/install-sentinel-shield.md`; `docs/upgrading.md`, `v2-migration-guide.md`,
+  `tool-provisioning.md`, `workflow-execution-model.md`, `ai-assisted-update.md`.
+- **Self-tests** — `self-test.sh v2-toolpolicy` covers the 30 required v2 cases (policy semantics,
+  one-of, composition precedence, SHA-pin verification, every-required-tool-in-workflow, override
+  validation, migration preservation, no-leak).
+
+### Deferred
+- Live Laravel/Symfony consumer CI run IDs (beta/RC/GA gate); `--apply` bootstrap exercised against
+  real composer/npm; pre-existing unpinned `@v4` in non-canonical templates
+  (dast/pr-fast/dependency-check/ai-review).
+
 ## [1.9.1] — Pin managed workflow actions
 
 **Additive patch — supply-chain hardening only.** No engine/STABLE change, no flag change, no

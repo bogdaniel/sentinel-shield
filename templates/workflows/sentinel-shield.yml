@@ -146,6 +146,15 @@ jobs:
           # phpstan.neon + phpstan-baseline.neon; writes reports/raw/phpstan.json or leaves
           # it 'unavailable' with debug logs — NEVER a fake clean report).
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
+          # Additional REQUIRED php-quality runners (policy: php-syntax/larastan/pint required,
+          # deptrac recommended-when-configured). Each follows the runner contract: it runs the
+          # tool without mutating the project and writes reports/raw/<tool>.json, or — when the
+          # binary/config is absent — leaves the report absent + exits 0 so the builder marks the
+          # tool 'unavailable' (NEVER a fake clean report). The gate reasons over the policy.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/larastan.sh || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/pint.sh || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/deptrac.sh reports/raw/deptrac.json || true
           # Normalize PHPUnit JUnit -> reports/raw/tests.json via the UPSTREAM adapter.
           if [ -f reports/raw/phpunit.xml ]; then
             php ${{ env.SENTINEL_SHIELD_PATH }}/scripts/adapters/phpunit-to-tests-json.php reports/raw/phpunit.xml reports/raw/tests.json || true
@@ -190,6 +199,11 @@ jobs:
           fi
           npm ci || true
           npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
+          # REQUIRED JS/TS quality runners (eslint, typescript --noEmit). Each runs the tool via
+          # the UPSTREAM runner and writes its raw report, or self-skips to 'unavailable' (honest,
+          # never a fake clean report) when the binary is absent. The gate reasons over the policy.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/eslint.sh reports/raw/eslint.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/typescript.sh reports/raw/typescript.json || true
           # Tests: run your runner with JSON output, then normalize via the UPSTREAM adapter.
           # Vitest example (Jest: use jest-to-tests-json.mjs). Do NOT fake tests.json — if no
           # runner is wired, tests stay 'unavailable'.
@@ -344,6 +358,62 @@ jobs:
           path: .
           format: spdx-json
           output-file: reports/sbom.spdx.json
+        continue-on-error: true
+      - name: CI workflow security lint (actionlint + zizmor)
+        # REQUIRED PR-fast tools. We install the CLIs from PINNED upstream RELEASE
+        # artifacts (not new GitHub Actions — keeps the "every action pinned to a
+        # verified SHA" invariant intact, since we add no new `uses:`), then invoke
+        # the UPSTREAM runners. Each runner self-skips to 'unavailable' if its binary
+        # is missing — never a fake clean report.
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          # ponytail: pin by release version (not SHA-pinned action). Install best-effort;
+          # on failure the runner reports the tool 'unavailable' and the gate decides.
+          ACTIONLINT_VERSION=1.7.7
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin actionlint 2>/dev/null || true
+          pipx install "zizmor==1.5.2" 2>/dev/null || python3 -m pip install --user "zizmor==1.5.2" 2>/dev/null || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/actionlint.sh reports/raw/actionlint.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/zizmor.sh reports/raw/zizmor.json || true
+        continue-on-error: true
+      - name: Main-branch deep scans (osv-scanner, grype, dependency-check, codeql export)
+        # REQUIRED main-gate tools (execution.main only). Self-gated to master/dispatch so PRs
+        # stay fast. CLIs are installed from PINNED upstream releases (no new Actions added).
+        # trivy-fs is already covered by the Trivy step above; syft/SBOM by the SBOM step.
+        # CodeQL itself runs via github/codeql-action in the consuming project (pinned by SHA);
+        # this exports its SARIF — absent SARIF -> honest 'unavailable', never a fake 0.
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          # ponytail: pinned CLI installs via official release artifacts; best-effort, the
+          # collector marks the tool 'unavailable' if an install/run fails (never faked).
+          OSV_VERSION=1.9.2
+          curl -fsSL -o /usr/local/bin/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" \
+            && chmod +x /usr/local/bin/osv-scanner || true
+          osv-scanner --format json --output reports/raw/osv-scanner.json -r . || true
+          GRYPE_VERSION=0.87.0
+          curl -fsSL "https://raw.githubusercontent.com/anchore/grype/v${GRYPE_VERSION}/install.sh" \
+            | sh -s -- -b /usr/local/bin "v${GRYPE_VERSION}" || true
+          grype dir:. -o json --file reports/raw/grype.json || true
+          # OWASP dependency-check (Java; uses the runner's pre-installed JRE). Reliable scans
+          # need an NVD_API_KEY secret — best-effort here, collector marks unavailable if it fails.
+          DEPCHECK_VERSION=11.1.0
+          curl -fsSL -o /tmp/depcheck.zip \
+            "https://github.com/dependency-check/DependencyCheck/releases/download/v${DEPCHECK_VERSION}/dependency-check-${DEPCHECK_VERSION}-release.zip" || true
+          (cd /tmp && unzip -oq depcheck.zip) || true
+          /tmp/dependency-check/bin/dependency-check.sh --scan . --format JSON \
+            --out reports/raw/dependency-check.json --prettyPrint \
+            ${NVD_API_KEY:+--nvdApiKey "$NVD_API_KEY"} || true
+          [ -f reports/raw/dependency-check.json ] || \
+            [ ! -f /tmp/dependency-check/dependency-check.json ] || \
+            mv /tmp/dependency-check/dependency-check.json reports/raw/dependency-check.json || true
+          # Export CodeQL SARIF (if the project's codeql-action produced one) -> reports/raw/codeql.json.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/codeql-export.sh || true
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         continue-on-error: true
       - name: Upload generic raw reports
         if: always()   # preserve raw reports even when a scan step fails

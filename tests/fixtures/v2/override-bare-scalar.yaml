@@ -1,0 +1,3 @@
+# v2 self-test fixture — INVALID: a bare scalar instead of the required { policy: <x> } shape.
+tools:
+  deptrac: optional

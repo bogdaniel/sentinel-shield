@@ -8,6 +8,11 @@
     "node",
     "docker"
   ],
+  "extends": [
+    "laravel",
+    "node",
+    "docker"
+  ],
   "files": [
     {
       "source": "templates/profile.yaml",

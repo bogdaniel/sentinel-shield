@@ -15,7 +15,10 @@
     "docs": { "$ref": "#/$defs/entryList" },
     "never_touch": { "type": "array", "items": { "type": "string" }, "description": "Project-local paths the installer/sync MUST never create or overwrite (e.g. accepted-risks.json, phpstan-baseline.neon)." },
     "required_scripts": { "type": "array", "items": { "type": "string" }, "description": "Upstream Sentinel Shield scripts the installed workflow calls (informational; they live in Sentinel Shield, not copied)." },
-    "recommended_raw_reports": { "type": "array", "items": { "type": "string" } }
+    "recommended_raw_reports": { "type": "array", "items": { "type": "string" } },
+    "tool_policy_version": { "type": "integer", "minimum": 0, "description": "Version of the tool-policy vocabulary this manifest's 'tools' map conforms to. Lets the installer/sync detect policy-schema drift (recorded as profile_schema in .sentinel-shield/installation.json)." },
+    "extends": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Names of base profiles this profile composes; their 'tools' maps merge first, then this profile's 'tools' override per tool key (precedence required > recommended > optional > disabled)." },
+    "tools": { "$ref": "../schemas/tool-policy.schema.json#/$defs/toolsMap", "description": "Per-tool policy declarations (key = TOOL_TABLE key). See schemas/tool-policy.schema.json and docs/profile-tool-policy.md." }
   },
   "$defs": {
     "entryList": {
