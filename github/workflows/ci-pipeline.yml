@@ -41,7 +41,7 @@ jobs:
       commit: ${{ steps.meta.outputs.commit }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -98,7 +98,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
 
       - name: Upload PHP raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-php
           path: reports/raw/*.json
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -144,7 +144,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
 
       - name: Upload Node raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-node
           path: reports/raw/*.json
@@ -157,7 +157,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -189,7 +189,7 @@ jobs:
 
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
         if: steps.detect.outputs.present == 'true'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -199,7 +199,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Docker raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-docker
           path: reports/raw/*.json
@@ -212,7 +212,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -261,7 +261,7 @@ jobs:
         continue-on-error: true
 
       - name: Trivy filesystem (JSON → reports/raw/trivy.json)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -273,7 +273,7 @@ jobs:
       - name: SBOM (SPDX → reports/sbom.spdx.json)
         # If this is skipped/fails, missing_sbom stays true and strict/regulated
         # gates fail later — we do NOT pretend an SBOM exists.
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
@@ -281,7 +281,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload generic raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security
           path: reports/raw/*.json
@@ -289,7 +289,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-sbom
           path: reports/sbom.spdx.json
@@ -302,7 +302,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -310,7 +310,7 @@ jobs:
         run: mkdir -p reports/raw
 
       - name: Download all raw artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
@@ -318,7 +318,7 @@ jobs:
         continue-on-error: true
 
       - name: Download SBOM (sets evidence.sbom.present)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sentinel-shield-sbom
           path: reports
@@ -340,7 +340,7 @@ jobs:
             --workflow "${GITHUB_WORKFLOW}"
 
       - name: Upload security summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-security-summary
           path: reports/security-summary.json
@@ -348,7 +348,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload merged raw artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-merged
           path: reports/raw/*.json
@@ -362,7 +362,7 @@ jobs:
     environment: production   # protected: require reviewers before this gate releases
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -370,7 +370,7 @@ jobs:
         run: mkdir -p reports
 
       - name: Download security summary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sentinel-shield-security-summary
           path: reports
@@ -379,7 +379,7 @@ jobs:
         # v0.1.10: enforce-gates.sh matches unsafe_docker findings against the raw reports
         # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Without them
         # finding-scope records cannot match and the gate fails closed. Best-effort.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
@@ -431,7 +431,7 @@ jobs:
 
       - name: Upload gate resolution
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-gate-resolution
           path: |
@@ -443,7 +443,7 @@ jobs:
 
       - name: Upload enforcement
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-enforcement
           path: |
@@ -454,7 +454,7 @@ jobs:
 
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-release-evidence
           path: reports/release-evidence.md
