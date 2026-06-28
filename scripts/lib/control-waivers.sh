@@ -30,28 +30,48 @@ __SENTINEL_SHIELD_CONTROL_WAIVERS_LOADED=1
 
 if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
 	_cw_d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-	if [ -f "$_cw_d/sentinel-shield-common.sh" ]; then . "$_cw_d/sentinel-shield-common.sh"
-	elif [ -f "$_cw_d/lib/sentinel-shield-common.sh" ]; then . "$_cw_d/lib/sentinel-shield-common.sh"
-	else printf '%s\n' "[sentinel-shield][error] control-waivers: cannot locate sentinel-shield-common.sh" >&2; exit 2
+	# $0-based locations work when this lib is EXECUTED or sourced by a scripts/ wrapper;
+	# the PWD-relative fallbacks let it be sourced standalone from the repo root, e.g.
+	#   sh -c '. scripts/lib/control-waivers.sh; cw_validate_file "$1"' sh <file>
+	for _cw_c in "$_cw_d/sentinel-shield-common.sh" "$_cw_d/lib/sentinel-shield-common.sh" \
+		"scripts/lib/sentinel-shield-common.sh" "./sentinel-shield-common.sh"; do
+		# shellcheck source=scripts/lib/sentinel-shield-common.sh
+		[ -f "$_cw_c" ] && { . "$_cw_c"; break; }
+	done
+	if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
+		printf '%s\n' "[sentinel-shield][error] control-waivers: cannot locate sentinel-shield-common.sh" >&2; exit 2
 	fi
 fi
 
 # cw_today_utc — current date as YYYY-MM-DD in UTC.
 cw_today_utc() { date -u +%Y-%m-%d; }
 
+# cw_decimal <numeric-string> — strip leading zeros WITHOUT Bash base syntax
+# ($((10#08)) is not POSIX and dash errors on 08/09). Returns the base-10 value as a
+# plain decimal string ("0" for all-zeros/empty). Only call AFTER format validation.
+cw_decimal() {
+	_v=${1:-0}
+	while [ "${_v#0}" != "$_v" ]; do _v=${_v#0}; done
+	[ -n "$_v" ] || _v=0
+	printf '%s' "$_v"
+}
+
 # cw__valid_date <YYYY-MM-DD> — 0 if it is a REAL calendar date (pure shell, no
-# date(1) parsing — portable + deterministic). Rejects 2026-99-99, 2026-02-31, etc.
+# date(1) parsing — portable + deterministic). Rejects 2026-99-99, 2026-02-31,
+# 0000-01-01, etc. POSIX /bin/sh safe (no $((10#..)) — Issue 1 / SC3052).
 cw__valid_date() {
 	_d="${1:-}"
-	# strict shape first
+	# strict shape first — guarantees the fields are 4/2/2 digits before arithmetic.
 	case "$_d" in
 		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
 		*) return 1 ;;
 	esac
 	_y=${_d%%-*}; _rest=${_d#*-}; _m=${_rest%%-*}; _day=${_rest#*-}
-	# strip leading zeros for arithmetic (base-10), guard empty
-	_yn=$((10#$_y)); _mn=$((10#$_m)); _dn=$((10#$_day))
+	# POSIX-safe base-10 normalization (no leading-zero octal/base pitfalls).
+	_yn=$(cw_decimal "$_y"); _mn=$(cw_decimal "$_m"); _dn=$(cw_decimal "$_day")
+	[ "$_yn" -ge 1 ] || return 1            # reject year 0000
 	[ "$_mn" -ge 1 ] && [ "$_mn" -le 12 ] || return 1
+	[ "$_dn" -ge 1 ] || return 1
 	[ "$_dn" -ge 1 ] || return 1
 	case "$_mn" in
 		1|3|5|7|8|10|12) _max=31 ;;
@@ -72,39 +92,74 @@ cw__valid_date() {
 # cw_validate_file <file> — full structural validation (NOT expiry). Returns:
 #   0 valid (or file absent/empty — no waivers is valid)
 #   2 malformed JSON / shape / missing field / bad date / self-approval
+# Supported control-waiver schema version (fail closed on anything else — Issue 2).
+CW_SCHEMA_VERSION="1"
+# Safe waiver tool-key grammar — a single shell-safe token (Issue 3). No whitespace,
+# tabs, newlines, slashes, path traversal, shell metacharacters or empty value, so a
+# value can never split into multiple waived controls.
+CW_TOOLKEY_RE='^[A-Za-z0-9_.-]+$'
+
+# cw_validate_file <file> [known-keys-space-list] — full structural validation
+# (NOT expiry). With an optional space-separated list of effective tool/one-of keys,
+# also rejects waivers for tools the active profile does not declare. Returns:
+#   0 valid (or file absent/empty — no waivers is valid)
+#   2 malformed JSON / shape / bad version / missing field / unsafe-or-unknown tool
+#     key / bad date / created_at>expires_at / self-approval
 cw_validate_file() {
-	_f="${1:-}"
+	_f="${1:-}"; _known="${2:-}"
 	[ -n "$_f" ] && [ -f "$_f" ] && [ -s "$_f" ] || return 0   # absent = no waivers
 	command_exists jq || { log_error "control-waivers: jq is required."; return 2; }
 	jq -e . "$_f" >/dev/null 2>&1 || { log_error "control-waivers: not valid JSON: $_f"; return 2; }
-	# top-level shape
+	# top-level shape + REQUIRED version == "1" (string). Unknown/empty/numeric fail closed.
 	jq -e 'type=="object" and has("waivers") and (.waivers|type=="array")' "$_f" >/dev/null 2>&1 \
 		|| { log_error "control-waivers: must be an object with a 'waivers' array: $_f"; return 2; }
-	# every record: required non-empty fields + self-approval check (cross-field —
-	# JSON Schema can't express owner!=approved_by, so enforce it here, Part B1).
+	if ! jq -e --arg v "$CW_SCHEMA_VERSION" '(.version|type=="string") and (.version==$v)' "$_f" >/dev/null 2>&1; then
+		log_error "control-waivers: top-level 'version' must be the string \"$CW_SCHEMA_VERSION\" (got $(jq -c '.version // "<missing>"' "$_f" 2>/dev/null)): $_f"
+		return 2
+	fi
+	# every record: required non-empty string fields + self-approval check (cross-field —
+	# JSON Schema can't express owner!=approved_by, so enforce it here).
 	_bad=$(jq -r '
 		.waivers | to_entries[]
 		| .key as $i | .value as $w
 		| [ "tool","justification","owner","approved_by","created_at","expires_at","tracking_issue" ]
 		  as $req
 		| ( [ $req[] | select((($w[.]?) // "") | (type!="string") or (length==0)) ] ) as $missing
-		| if ($missing|length) > 0 then "record \($i): missing/empty \($missing|join(","))"
+		| if ($w|type != "object") then "record \($i): not an object"
+		  elif ($missing|length) > 0 then "record \($i): missing/empty \($missing|join(","))"
 		  elif ($w.owner == $w.approved_by) then "record \($i): owner == approved_by (self-approval) for tool \($w.tool)"
 		  else empty end' "$_f" 2>/dev/null || true)
 	if [ -n "$_bad" ]; then
 		printf '%s\n' "$_bad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "control-waivers: $_l"; done
 		return 2
 	fi
-	# date reality (created_at + expires_at) — pure-shell calendar check.
-	_dates=$(jq -r '.waivers[] | "\(.tool)\t\(.created_at)\t\(.expires_at)"' "$_f" 2>/dev/null || true)
+	# per-record: safe tool-key grammar, optional known-key membership, real calendar
+	# dates, and created_at <= expires_at. Tab-delimited read in a here-doc (not a pipe)
+	# so a failure flips _rc in THIS shell.
+	_recs=$(jq -r '.waivers[] | "\(.tool)\t\(.created_at)\t\(.expires_at)"' "$_f" 2>/dev/null || true)
 	_rc=0
-	# read in a here-doc (not a pipe) so a failure flips _rc in this shell.
-	while IFS="$(printf '\t')" read -r _tool _cre _exp; do
+	_ktab="$(printf '\t')"
+	while IFS="$_ktab" read -r _tool _cre _exp; do
 		[ -n "$_tool" ] || continue
-		cw__valid_date "$_cre" || { log_error "control-waivers: invalid created_at '$_cre' for tool '$_tool'"; _rc=2; }
-		cw__valid_date "$_exp" || { log_error "control-waivers: invalid expires_at '$_exp' for tool '$_tool'"; _rc=2; }
+		case "$_tool" in
+			*[!A-Za-z0-9_.-]*|*..*|"") log_error "control-waivers: unsafe tool key '$_tool' (must match $CW_TOOLKEY_RE, no whitespace/slash/metachar/traversal)"; _rc=2; continue ;;
+		esac
+		if [ -n "$_known" ]; then
+			case " $_known " in *" $_tool "*) : ;; *) log_error "control-waivers: waiver targets unknown tool '$_tool' (not declared by the active profile)"; _rc=2; continue ;; esac
+		fi
+		if cw__valid_date "$_cre" && cw__valid_date "$_exp"; then
+			# created_at <= expires_at. Compare as YYYYMMDD integers (POSIX-safe; avoids
+			# SC3012 lexicographic test \> which is undefined in /bin/sh).
+			_cn=$(printf '%s' "$_cre" | tr -d -); _en=$(printf '%s' "$_exp" | tr -d -)
+			if [ "$_cn" -gt "$_en" ]; then
+				log_error "control-waivers: created_at '$_cre' is after expires_at '$_exp' for tool '$_tool'"; _rc=2
+			fi
+		else
+			cw__valid_date "$_cre" || { log_error "control-waivers: invalid created_at '$_cre' for tool '$_tool'"; _rc=2; }
+			cw__valid_date "$_exp" || { log_error "control-waivers: invalid expires_at '$_exp' for tool '$_tool'"; _rc=2; }
+		fi
 	done <<EOF
-$_dates
+$_recs
 EOF
 	return "$_rc"
 }

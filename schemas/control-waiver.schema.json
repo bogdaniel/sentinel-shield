@@ -4,13 +4,22 @@
   "title": "Sentinel Shield control waivers",
   "description": "Explicit, owner-bound, expiring waivers for a REQUIRED tool/control. Distinct from accepted-risks (which suppress finding gates): a control-waiver downgrades a required-tool failure (unavailable / not-configured / disabled) to a prominently-reported, time-boxed waiver. Consumed by scripts/enforce-gates.sh. NEVER auto-applied: an unexpired waiver only changes the report wording, the underlying control is still flagged. A waiver does NOT suppress findings; use accepted-risks for that.",
   "type": "object",
-  "required": ["version", "waivers"],
+  "required": [
+    "version",
+    "waivers"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": { "type": "string" },
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Only \"1\" is supported; consumers fail closed on anything else."
+    },
     "waivers": {
       "type": "array",
-      "items": { "$ref": "#/$defs/waiver" }
+      "items": {
+        "$ref": "#/$defs/waiver"
+      }
     }
   },
   "$defs": {
@@ -30,8 +39,9 @@
       "properties": {
         "tool": {
           "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$",
           "minLength": 1,
-          "description": "Tool key this waiver covers (e.g. 'larastan'). Matches the emitted summary.tools key / effective-profile tool key."
+          "description": "Tool/one-of-group key this waiver covers (e.g. 'larastan', 'php-tests'). Must be a single shell-safe token: letters/digits/._- only, so it can never split into multiple controls."
         },
         "justification": {
           "type": "string",
