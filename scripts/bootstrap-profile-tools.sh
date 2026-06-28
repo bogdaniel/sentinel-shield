@@ -19,13 +19,19 @@
 #   --apply           Actually run composer require / npm install (explicit).
 #   -h, --help        Show help.
 # Exit: 0 plan printed / install succeeded; 1 install/validate/tests failed (rolled back);
-#       2 invalid invocation / missing jq / missing manifest.
+#       2 invalid invocation / missing jq / missing manifest / malformed control-waivers;
+#       3 a REQUIRED tool (or one-of group fallback) is disabled in installation.json
+#         with no valid control-waiver, or a required package manager is unavailable;
+#       4 install partially succeeded then failed and the installed tree could not be
+#         reconstructed during rollback.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 TAB=$(printf '\t')
@@ -88,6 +94,15 @@ INSTALL_JSON="$TARGET/.sentinel-shield/installation.json"
 [ -f "$INSTALL_JSON" ] && DISABLED=$(jq -r '(.disabled_tools // [])[]' "$INSTALL_JSON" 2>/dev/null || true)
 is_disabled() { printf '%s\n' "$DISABLED" | grep -qx "$1"; }
 
+# Control-waivers (A3): a REQUIRED tool/group disabled in installation.json may be
+# temporarily allowed ONLY by a valid, unexpired control-waiver. Use the SHARED
+# validator (do NOT parse waivers here): a malformed file fails closed (exit 2).
+CONTROL_WAIVERS_FILE="$TARGET/.sentinel-shield/control-waivers.json"
+cw_validate_file "$CONTROL_WAIVERS_FILE" || { log_error "bootstrap: control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)."; exit 2; }
+WAIVED_KEYS=" "
+for _wk in $(cw_valid_keys "$CONTROL_WAIVERS_FILE" 2>/dev/null); do WAIVED_KEYS="${WAIVED_KEYS}${_wk} "; done
+is_waived() { case "$WAIVED_KEYS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
 # bpt_ecosystem <manifest> <toolkey> -> composer | npm
 # ponytail: ecosystem is inferred from the executable path (vendor/ vs node_modules/),
 # falling back to the package name shape. The manifest has no explicit ecosystem field.
@@ -133,7 +148,14 @@ bpt_pkg_manager() {
 	# shellcheck disable=SC2086
 	set -- $_found
 	if [ "$#" -gt 1 ]; then
-		[ -n "$_pm" ] && { printf '%s' "$_pm"; return 0; }
+		# Ambiguous: a declared packageManager resolves it ONLY when its OWN lockfile
+		# is among those present (never switch to a manager whose lock is absent).
+		if [ -n "$_pm" ]; then
+			case " $* " in
+				*" $_pm "*) printf '%s' "$_pm"; return 0 ;;
+				*) log_error "bootstrap: package.json 'packageManager' ($_pm) does not match present lockfiles ($*) — refusing to switch managers."; exit 2 ;;
+			esac
+		fi
 		log_error "bootstrap: multiple Node lockfiles present ($*) — ambiguous package manager; set package.json 'packageManager' to resolve."
 		exit 2
 	fi
@@ -224,6 +246,8 @@ printf '\n'
 printf 'Required tools:\n'
 
 COMPOSER_DEV=""; COMPOSER_PROD=""; NPM_DEV=""; NPM_PROD=""
+# A3 accumulators: required+disabled tools that are waived (reported) vs fatal (no waiver).
+WAIVED_REPORT=""; FATAL_DISABLED=""
 ANY_REQ=0
 KEYS=$(cr_tool_keys "$EFFECTIVE")
 _oifs=$IFS
@@ -238,7 +262,13 @@ for k in $KEYS; do
 '; continue; }
 	ANY_REQ=1
 	if is_disabled "$k"; then
-		printf '  - %-20s %-18s %s\n' "$k" "disabled" "disabled in installation.json; skipped"
+		if is_waived "$k"; then
+			printf '  - %-20s %-18s %s\n' "$k" "waived" "required but disabled in installation.json; covered by control-waiver"
+			WAIVED_REPORT="$WAIVED_REPORT $k"
+		else
+			printf '  - %-20s %-18s %s\n' "$k" "DISABLED-FAIL" "required tool disabled in installation.json with NO valid control-waiver"
+			FATAL_DISABLED="$FATAL_DISABLED $k"
+		fi
 		IFS='
 '; continue
 	fi
@@ -283,7 +313,13 @@ for g in $ONEOF_GROUPS; do
 '; continue
 	fi
 	if is_disabled "$fb"; then
-		printf '  - %-20s %-18s %s\n' "$g" "disabled" "fallback '$fb' disabled in installation.json; skipped"
+		if is_waived "$fb" || is_waived "$g"; then
+			printf '  - %-20s %-18s %s\n' "$g" "waived" "required group; fallback '$fb' disabled but covered by control-waiver"
+			WAIVED_REPORT="$WAIVED_REPORT $fb"
+		else
+			printf '  - %-20s %-18s %s\n' "$g" "DISABLED-FAIL" "required group fallback '$fb' disabled with NO valid control-waiver"
+			FATAL_DISABLED="$FATAL_DISABLED $fb"
+		fi
 		IFS='
 '; continue
 	fi
@@ -297,6 +333,25 @@ for g in $ONEOF_GROUPS; do
 done
 IFS=$_oifs
 [ "$ANY_GROUP" -eq 1 ] || printf '  (none)\n'
+
+# --- A3: required+disabled gate (fail closed BEFORE any mutation) ------------
+# A REQUIRED tool/group disabled in installation.json without a valid control-
+# waiver must NOT be silently skipped. Report waived ones prominently; refuse to
+# proceed (exit 3) if any required tool is disabled with no valid waiver. This
+# runs before the dry-run exit AND before any dependency mutation.
+if [ -n "$WAIVED_REPORT" ]; then
+	printf '\n'
+	printf 'Waived (required but disabled in installation.json; covered by control-waiver):\n'
+	for _w in $WAIVED_REPORT; do
+		printf '  - %s (waiver: %s)\n' "$_w" "$CONTROL_WAIVERS_FILE"
+	done
+fi
+if [ -n "$FATAL_DISABLED" ]; then
+	printf '\n'
+	log_error "bootstrap: required tool(s) disabled in installation.json with NO valid control-waiver:$FATAL_DISABLED"
+	log_error "bootstrap: enable the tool(s), or add an unexpired control-waiver in $CONTROL_WAIVERS_FILE. Refusing to proceed; no dependency files were modified."
+	exit 3
+fi
 
 # --- render the exact commands ----------------------------------------------
 printf '\n'
@@ -387,23 +442,29 @@ run_or_rollback() { # run "$@"; on non-zero: roll back + exit (1 or 4)
 	fi
 }
 
+# Set the TOUCHED_* flag BEFORE running each mutating command (B3): a partial
+# failure inside run_or_rollback exits via fail_rollback, so the flag must already
+# be set for rollback to reconstruct the installed tree.
 # shellcheck disable=SC2086
-[ -n "$COMPOSER_DEV" ]  && { run_or_rollback composer --working-dir="$TARGET" require --dev $COMPOSER_DEV; TOUCHED_COMPOSER=1; }
+[ -n "$COMPOSER_DEV" ]  && { TOUCHED_COMPOSER=1; run_or_rollback composer --working-dir="$TARGET" require --dev $COMPOSER_DEV; }
 # shellcheck disable=SC2086
-[ -n "$COMPOSER_PROD" ] && { run_or_rollback composer --working-dir="$TARGET" require $COMPOSER_PROD; TOUCHED_COMPOSER=1; }
+[ -n "$COMPOSER_PROD" ] && { TOUCHED_COMPOSER=1; run_or_rollback composer --working-dir="$TARGET" require $COMPOSER_PROD; }
 case "$NPM_PM" in
-	# shellcheck disable=SC2086
-	npm)  [ -n "$NPM_DEV" ]  && { run_or_rollback npm --prefix "$TARGET" install --save-dev $NPM_DEV; TOUCHED_NPM=1; }
-	      # shellcheck disable=SC2086
-	      [ -n "$NPM_PROD" ] && { run_or_rollback npm --prefix "$TARGET" install --save $NPM_PROD; TOUCHED_NPM=1; } ;;
-	# shellcheck disable=SC2086
-	pnpm) [ -n "$NPM_DEV" ]  && { run_or_rollback pnpm --dir "$TARGET" add --save-dev $NPM_DEV; TOUCHED_NPM=1; }
-	      # shellcheck disable=SC2086
-	      [ -n "$NPM_PROD" ] && { run_or_rollback pnpm --dir "$TARGET" add --save-prod $NPM_PROD; TOUCHED_NPM=1; } ;;
-	# shellcheck disable=SC2086
-	yarn) [ -n "$NPM_DEV" ]  && { run_or_rollback yarn --cwd "$TARGET" add --dev $NPM_DEV; TOUCHED_NPM=1; }
-	      # shellcheck disable=SC2086
-	      [ -n "$NPM_PROD" ] && { run_or_rollback yarn --cwd "$TARGET" add $NPM_PROD; TOUCHED_NPM=1; } ;;
+	npm)
+		# shellcheck disable=SC2086
+		[ -n "$NPM_DEV" ]  && { TOUCHED_NPM=1; run_or_rollback npm --prefix "$TARGET" install --save-dev $NPM_DEV; }
+		# shellcheck disable=SC2086
+		[ -n "$NPM_PROD" ] && { TOUCHED_NPM=1; run_or_rollback npm --prefix "$TARGET" install --save $NPM_PROD; } ;;
+	pnpm)
+		# shellcheck disable=SC2086
+		[ -n "$NPM_DEV" ]  && { TOUCHED_NPM=1; run_or_rollback pnpm --dir "$TARGET" add --save-dev $NPM_DEV; }
+		# shellcheck disable=SC2086
+		[ -n "$NPM_PROD" ] && { TOUCHED_NPM=1; run_or_rollback pnpm --dir "$TARGET" add --save-prod $NPM_PROD; } ;;
+	yarn)
+		# shellcheck disable=SC2086
+		[ -n "$NPM_DEV" ]  && { TOUCHED_NPM=1; run_or_rollback yarn --cwd "$TARGET" add --dev $NPM_DEV; }
+		# shellcheck disable=SC2086
+		[ -n "$NPM_PROD" ] && { TOUCHED_NPM=1; run_or_rollback yarn --cwd "$TARGET" add $NPM_PROD; } ;;
 esac
 
 # Validate lockfiles, then run the project's tests if configured. Failure -> rollback.
