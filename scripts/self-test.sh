@@ -2866,8 +2866,10 @@ v2e_pkgmgr() {
 	mkdir -p "$_ts/node_modules/.bin"; printf '#!/bin/sh\n' > "$_ts/node_modules/.bin/vitest"; chmod +x "$_ts/node_modules/.bin/vitest"
 	tpe_check "pkgmgr: TS project -> typescript required+applicable" \
 		"$(sh "$RES" --profile node --target "$_ts" --format json 2>/dev/null | jq -r '.tools.typescript.policy + "/" + .tools.typescript.applicability')" "required/applicable"
-	# seed every required report EXCEPT typescript, declassify reportless deps-install.
-	printf '{"tools":{"deps-install":{"policy":"external"}}}' > "$_ts/ovr.json"
+	# seed every required report EXCEPT typescript. deps-install is a reportless
+	# precondition satisfied by a package manager being present (npm is on PATH in any
+	# node-test env), so it needs no override (a deps-install->external override would be
+	# correctly REJECTED as a required-control downgrade, A1).
 	for _r in $(sh "$RES" --profile node --target "$_ts" --format json 2>/dev/null \
 		| jq -r '[.tools|to_entries[]|select(.value.policy=="required" and (.value.applicability//"")!="not-applicable")|(.value.report//empty|sub(".*/";""))]|unique[]'); do
 		[ "$_r" = "typescript.json" ] && continue
@@ -2875,7 +2877,7 @@ v2e_pkgmgr() {
 	done
 	printf '{}' > "$_ts/reports/raw/tests.json"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_ts/reports/raw" --output "$_ts/ss.json" \
-		--profile node --target "$_ts" --override "$_ts/ovr.json" >/dev/null 2>&1 || true
+		--profile node --target "$_ts" >/dev/null 2>&1 || true
 	tpe_atleast "pkgmgr: TS required report missing -> required_tool_failures>=1 (gate fails)" \
 		"$(jq -r '.summary.required_tool_failures // 0' "$_ts/ss.json" 2>/dev/null || echo 0)"
 	tpe_check "pkgmgr: the missing required tool is typescript" \
@@ -2947,12 +2949,22 @@ v2e_workflow() {
 		rm -rf "$_w"
 	done
 
-	# laravel additionally REACHES status=ran for every required PR tool (its runner
-	# scripts exist and the seeded reports validate). Real.
+	# laravel: run-tool-plan ATTEMPTS every required PR tool — each appears in the
+	# execution manifest (none silently dropped). Without the e2e fakes the real tools
+	# are absent so they record 'unavailable' (B17 deletes any seeded report before
+	# running), which is the honest outcome; that they reach 'ran' with real/faked tools
+	# is proven end-to-end by scripts/e2e-harness.sh. Here we assert COVERAGE: every
+	# required PR tool from the resolver plan is present in the manifest.
 	_wl=$(mktemp -d); cp -R "$ROOT/tests/e2e/laravel/." "$_wl/" 2>/dev/null || true
 	sh "$ROOT/scripts/run-tool-plan.sh" --profile laravel --target "$_wl" --stage pr >/dev/null 2>&1 || true
-	tpe_check "workflow: laravel PR plan executes all required PR tools (none unran)" \
-		"$(jq '[ (.tools // {})|to_entries[] | select(.value.policy=="required" and .value.status!="ran" and .value.status!="findings") ] | length' "$_wl/reports/pr-execution.json" 2>/dev/null || echo 99)" "0"
+	_plan_req=$(sh "$RES" --profile laravel --target "$_wl" --format json 2>/dev/null \
+		| jq -r '[.tools|to_entries[]|select(.value.policy=="required" and (.value.applicability//"")!="not-applicable" and (.value.execution.pr==true))|.key]|sort|join(" ")')
+	_missing_in_manifest=0
+	for _t in $_plan_req; do
+		jq -e --arg t "$_t" '((.tools // {})|has($t)) or ((.one_of_groups // {})|has($t))' "$_wl/reports/pr-execution.json" >/dev/null 2>&1 || _missing_in_manifest=$((_missing_in_manifest+1))
+	done
+	tpe_check "workflow: laravel run-tool-plan attempts every required PR tool (manifest coverage)" \
+		"$_missing_in_manifest" "0"
 	rm -rf "$_wl"
 
 	# php-library AVOIDS Laravel bootstrap: no larastan, and phpstan uses the GENERIC
@@ -2996,6 +3008,390 @@ run_v2_enforcement() {
 	v2e_workflow
 	if [ "$TPE_FAILS" -ne 0 ]; then log_error "v2-enforcement: $TPE_FAILS case(s) failed"; return 1; fi
 	log_info "v2-enforcement: OK (composition + tool-states/gate + one-of + package-managers + provisioning + workflow + cross-subsystem consistency)"
+}
+
+# --- v2-review: Part D regression matrix + Part C cross-subsystem consistency -
+# A faithful matrix over the REAL v2 scripts (canonical resolver, control-waivers
+# lib, bootstrap, doctor, run-tool-plan, resolve-workflow-plan, build-security-
+# summary, enforce-gates). Every case drives an actual CLI/lib and asserts an exact
+# exit code / output substring. Items that cannot be exercised live this session are
+# marked [structural] / [simulated]. Owns tests/fixtures/v2/{profiles/oneof-only,
+# profiles/noop-required,runners/*}.
+VR_FAILS=0
+vr_check()   { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; VR_FAILS=$((VR_FAILS + 1)); fi; }
+vr_atleast() { vr_check "$1" "$([ "${2:-0}" -ge 1 ] && echo yes || echo no)" "yes"; }
+vr_contains(){ case "$2" in *"$3"*) vr_check "$1" yes yes ;; *) vr_check "$1" "no($2)" yes ;; esac; }
+# vr_run <expected-exit> <desc> <command...> — run (stdout/stderr hidden), compare exit.
+# A leading `env VAR=val` is supported because it is just part of the command vector.
+vr_run() {
+	vrr_e=$1; vrr_desc=$2; shift 2
+	if "$@" >/dev/null 2>&1; then vrr_rc=0; else vrr_rc=$?; fi
+	vr_check "$vrr_desc" "$vrr_rc" "$vrr_e"
+}
+
+# vr_mksum <out> <tools-json> <summary-overrides-json> — craft a v2 security summary
+# (clean baseline counts + a tools{} policy block + summary overrides). No committed
+# fixture is mutated; everything is built deterministically with jq.
+vr_mksum() {
+	jq -n --argjson tools "$2" --argjson so "$3" '
+		{ version:"1.0", generated_at:"2026-01-01T00:00:00Z",
+		  project:{name:"t",type:"laravel",criticality:"high"},
+		  source:{commit:"c",branch:"b",workflow:"w"},
+		  summary:({ secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
+			medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
+			test_failures:0, unsafe_docker:0, unsafe_github_actions:0, expired_exceptions:0,
+			missing_sbom:false, missing_release_evidence:false } + $so),
+		  tools:$tools, one_of_groups:{},
+		  exceptions:{active:0,expired:0},
+		  evidence:{ sbom:{present:true,path:"x"}, release_evidence:{present:true,path:"y"} } }' > "$1"
+}
+
+# vr_waiver_json <out> <tool> <expires_at> [approved_by] — write a schema-conformant
+# control-waivers file. approved_by defaults to a DISTINCT approver (no self-approval).
+vr_waiver_json() {
+	jq -n --arg t "$2" --arg exp "$3" --arg ap "${4:-bob}" '
+		{version:"1", waivers:[{tool:$t, justification:"self-test", owner:"alice",
+		 approved_by:$ap, created_at:"2020-01-01", expires_at:$exp, tracking_issue:"ISSUE-1"}]}' > "$1"
+}
+
+# --- (D) project tool-policy override: weaken/strengthen/keys/policy/waiver ----
+vr_override() {
+	_R="$ROOT/scripts/resolve-effective-profile.sh"
+	_d=$(mktemp -d)
+	# Overrides (built inline — no secrets, no abs paths).
+	printf '{"tools":{"phpstan":{"policy":"optional"}}}'  > "$_d/weaken-required.json"   # required -> optional
+	printf '{"tools":{"tests":{"policy":"optional"}}}'    > "$_d/weaken-oneof.json"      # one-of -> optional
+	printf '{"tools":{"deptrac":{"policy":"required"}}}'  > "$_d/strengthen.json"        # recommended -> required
+	printf '{"tools":{"not_a_real_tool":{"policy":"required"}}}' > "$_d/typo.json"
+	printf '{"tools":{" ":{"policy":"required"}}}'        > "$_d/blank-key.json"
+	printf '{"tools":{"phpstan":{"policy":null}}}'        > "$_d/pol-null.json"
+	printf '{"tools":{"phpstan":{}}}'                     > "$_d/pol-missing.json"
+	printf '{"tools":{"phpstan":{"policy":5}}}'           > "$_d/pol-numeric.json"
+	printf '{"tools":{"phpstan":{"policy":"bogus"}}}'     > "$_d/pol-unknown.json"
+	printf '{"tools":{"phpstan":"required"}}'             > "$_d/pol-nonobject.json"
+
+	# no-downgrade: a required / one-of control cannot be weakened (exit 2); strengthen OK (exit 0).
+	vr_run 2 "(D) override weakening a REQUIRED control -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.json" --format json
+	vr_run 2 "(D) override weakening a ONE-OF control -> exit 2"    sh "$_R" --profile laravel --override "$_d/weaken-oneof.json" --format json
+	vr_run 0 "(D) override STRENGTHENING (recommended->required) -> exit 0" sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json
+	vr_check "(D) strengthen actually raises deptrac -> required" \
+		"$(sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
+
+	# unknown/typo + blank key => exit 2.
+	vr_run 2 "(D) unknown/typo override key -> exit 2"  sh "$_R" --profile laravel --override "$_d/typo.json" --format json
+	vr_run 2 "(D) blank override key -> exit 2"         sh "$_R" --profile laravel --override "$_d/blank-key.json" --format json
+
+	# invalid override policy values (null/missing/numeric/unknown/non-object) => exit 2.
+	vr_run 2 "(D) override policy null -> exit 2"        sh "$_R" --profile laravel --override "$_d/pol-null.json" --format json
+	vr_run 2 "(D) override policy missing -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-missing.json" --format json
+	vr_run 2 "(D) override policy numeric -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-numeric.json" --format json
+	vr_run 2 "(D) override policy unknown-enum -> exit 2" sh "$_R" --profile laravel --override "$_d/pol-unknown.json" --format json
+	vr_run 2 "(D) override entry non-object -> exit 2"   sh "$_R" --profile laravel --override "$_d/pol-nonobject.json" --format json
+
+	# weakening WITH a valid waiver => exit 0; with self-approved / expired / invalid-date => still exit 2.
+	vr_waiver_json "$_d/w-valid.json"   phpstan 2999-12-31
+	vr_waiver_json "$_d/w-self.json"    phpstan 2999-12-31 alice          # owner==approved_by
+	vr_waiver_json "$_d/w-expired.json" phpstan 2000-01-02
+	vr_waiver_json "$_d/w-baddate.json" phpstan 2026-99-99
+	vr_run 0 "(D) weaken required WITH valid waiver -> exit 0"       sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-valid.json" --format json
+	vr_run 2 "(D) weaken required + self-approved waiver -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-self.json" --format json
+	vr_run 2 "(D) weaken required + EXPIRED waiver -> exit 2"        sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-expired.json" --format json
+	vr_run 2 "(D) weaken required + invalid-date waiver -> exit 2"   sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-baddate.json" --format json
+
+	# missing override validator (temporarily hide tool-policy-override.sh) + --override => exit 2 (no bypass).
+	_lib="$ROOT/scripts/lib/tool-policy-override.sh"
+	if [ -f "$_lib" ]; then
+		mv "$_lib" "$_lib.vrhidden"
+		if sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json >/dev/null 2>&1; then _r=0; else _r=$?; fi
+		mv "$_lib.vrhidden" "$_lib"            # restore unconditionally, before asserting
+		vr_check "(D) missing override validator + --override -> exit 2 (no bypass)" "$_r" "2"
+		vr_check "(D) override validator restored after hide" "$([ -f "$_lib" ] && echo yes || echo no)" "yes"
+	else
+		log_warn "(D) tool-policy-override.sh absent; SKIPPING hidden-validator case"
+	fi
+
+	# --profile and --manifest together => exit 2; neither => exit 2.
+	vr_run 2 "(D) --profile AND --manifest together -> exit 2" sh "$_R" --profile laravel --manifest "$ROOT/profiles/laravel/profile.manifest.json" --format json
+	vr_run 2 "(D) neither --profile nor --manifest -> exit 2"  sh "$_R" --format json
+
+	rm -rf "$_d"
+}
+
+# --- (D) control-waiver validation via the SHARED lib (cw_validate_file/keys) --
+vr_waivers() {
+	# Source the canonical validator and exercise it directly (no consumer parses waivers).
+	# NOTE: the lib's functions use internal `_d`/`_f`/`_today`/`_rc` (POSIX sh has no
+	# function scope), so this helper deliberately uses _wd/_wt to avoid clobbering.
+	# shellcheck source=scripts/lib/control-waivers.sh
+	. "$ROOT/scripts/lib/control-waivers.sh"
+	_wt=$(cw_today_utc)
+	_wd=$(mktemp -d)
+	# valid future + valid today -> validate OK and the key is APPLIED (appears in cw_valid_keys).
+	vr_waiver_json "$_wd/future.json" larastan 2999-12-31
+	vr_waiver_json "$_wd/today.json"  larastan "$_wt"
+	vr_run 0 "(D) waiver valid future -> cw_validate_file rc 0"  cw_validate_file "$_wd/future.json"
+	vr_check "(D) valid future waiver is APPLIED (key listed)" \
+		"$(cw_valid_keys "$_wd/future.json" 2>/dev/null | grep -c '^larastan$')" "1"
+	vr_run 0 "(D) waiver expiring TODAY -> cw_validate_file rc 0" cw_validate_file "$_wd/today.json"
+	vr_check "(D) today waiver is APPLIED (valid through end of UTC day)" \
+		"$(cw_valid_keys "$_wd/today.json" "$_wt" 2>/dev/null | grep -c '^larastan$')" "1"
+	# expired -> structurally valid but NOT applied (absent from cw_valid_keys).
+	vr_waiver_json "$_wd/expired.json" larastan 2000-01-02
+	vr_run 0 "(D) expired waiver -> still structurally valid (rc 0)" cw_validate_file "$_wd/expired.json"
+	vr_check "(D) expired waiver is NOT applied (key absent)" \
+		"$(cw_valid_keys "$_wd/expired.json" 2>/dev/null | grep -c '^larastan$')" "0"
+	# self-approved -> invalid (owner==approved_by).
+	vr_waiver_json "$_wd/self.json" larastan 2999-12-31 alice
+	vr_run 2 "(D) self-approved waiver -> invalid (rc 2)" cw_validate_file "$_wd/self.json"
+	# missing approved_by -> invalid.
+	jq -n '{version:"1",waivers:[{tool:"larastan",justification:"x",owner:"alice",created_at:"2020-01-01",expires_at:"2999-12-31",tracking_issue:"I"}]}' > "$_wd/missing-approver.json"
+	vr_run 2 "(D) missing approved_by -> invalid (rc 2)" cw_validate_file "$_wd/missing-approver.json"
+	# bad dates: invalid month / feb-31 / non-date text / empty expires_at -> invalid.
+	vr_waiver_json "$_wd/badmonth.json" larastan 2026-99-99
+	vr_waiver_json "$_wd/feb31.json"    larastan 2026-02-31
+	vr_waiver_json "$_wd/text.json"     larastan soon
+	vr_waiver_json "$_wd/emptyexp.json" larastan ""
+	vr_run 2 "(D) invalid month 2026-99-99 -> invalid (rc 2)" cw_validate_file "$_wd/badmonth.json"
+	vr_run 2 "(D) feb-31 (2026-02-31) -> invalid (rc 2)"      cw_validate_file "$_wd/feb31.json"
+	vr_run 2 "(D) non-date text expires_at -> invalid (rc 2)" cw_validate_file "$_wd/text.json"
+	vr_run 2 "(D) empty expires_at -> invalid (rc 2)"         cw_validate_file "$_wd/emptyexp.json"
+	rm -rf "$_wd"
+}
+
+# --- (D) bootstrap: required-disabled gate, package-manager, rollback, lint ----
+vr_bootstrap() {
+	_B="$ROOT/scripts/bootstrap-profile-tools.sh"
+
+	# required tool disabled in installation.json WITHOUT a waiver => fail (exit 3) BEFORE any mutation.
+	_dt=$(mktemp -d); mkdir -p "$_dt/.sentinel-shield"; printf '{"require":{}}' > "$_dt/composer.json"
+	printf '{"disabled_tools":["phpstan"]}' > "$_dt/.sentinel-shield/installation.json"
+	_before=$(cat "$_dt/composer.json")
+	vr_run 3 "(D) bootstrap required-disabled, no waiver -> exit 3" sh "$_B" --profile laravel --target "$_dt" --apply
+	vr_check "(D) bootstrap fails BEFORE mutation (composer.json unchanged)" "$(cat "$_dt/composer.json")" "$_before"
+	# WITH a valid control-waiver => reported WAIVED (exit 0).
+	vr_waiver_json "$_dt/.sentinel-shield/control-waivers.json" phpstan 2999-12-31
+	_out=$(sh "$_B" --profile laravel --target "$_dt" --dry-run 2>&1); _r=$?
+	vr_check "(D) bootstrap required-disabled WITH valid waiver -> exit 0" "$_r" "0"
+	vr_contains "(D) bootstrap reports the disabled-required tool as waived" "$_out" "waived"
+	rm -rf "$_dt"
+
+	# Node package-manager resolution from multiple lockfiles.
+	_pm=$(mktemp -d); printf '{"name":"x","packageManager":"yarn@1.22.0"}' > "$_pm/package.json"
+	printf '{}' > "$_pm/package-lock.json"; printf '' > "$_pm/yarn.lock"
+	vr_run 0 "(D) multi-lockfile + MATCHING packageManager -> exit 0" sh "$_B" --profile node --target "$_pm" --dry-run
+	rm -rf "$_pm"
+	_pm=$(mktemp -d); printf '{"name":"x","packageManager":"pnpm@8"}' > "$_pm/package.json"
+	printf '{}' > "$_pm/package-lock.json"; printf '' > "$_pm/yarn.lock"
+	vr_run 2 "(D) multi-lockfile + NON-matching packageManager -> exit 2" sh "$_B" --profile node --target "$_pm" --dry-run
+	rm -rf "$_pm"
+	_pm=$(mktemp -d); printf '{"name":"x"}' > "$_pm/package.json"
+	printf '{}' > "$_pm/package-lock.json"; printf '' > "$_pm/yarn.lock"
+	vr_run 2 "(D) multi-lockfile + NO packageManager -> exit 2" sh "$_B" --profile node --target "$_pm" --dry-run
+	rm -rf "$_pm"
+
+	# rollback: a mutating command failing AFTER the touched-flag is set must roll back
+	# the dependency-declaration files and exit non-zero. Failure is injected with a stub
+	# composer on PATH (no real composer this session).
+	_rb=$(mktemp -d); printf '{"name":"app/app","require":{}}' > "$_rb/composer.json"
+	_before=$(cat "$_rb/composer.json")
+	_fbin=$(mktemp -d)
+	cat > "$_fbin/composer" <<'FAKE'
+#!/bin/sh
+case "$*" in *validate*) exit 0 ;; *) echo "fake composer: forced failure ($*)" >&2; exit 1 ;; esac
+FAKE
+	chmod +x "$_fbin/composer"
+	if _log=$(PATH="$_fbin:$PATH" sh "$_B" --profile laravel --target "$_rb" --apply 2>&1); then _r=0; else _r=$?; fi
+	vr_atleast "(D) bootstrap rollback: failed install exits non-zero" "$([ "$_r" -ne 0 ] && echo 1 || echo 0)"
+	vr_contains "(D) bootstrap rollback: failure reports a rollback" "$_log" "roll"
+	vr_check "(D) bootstrap rollback: composer.json restored" "$(cat "$_rb/composer.json")" "$_before"
+	rm -rf "$_rb" "$_fbin"
+
+	# Lint bootstrap with ShellCheck. The whole repo intentionally uses the mandated
+	# `SCRIPT_DIR=$(CDPATH= cd -- ...)` idiom which trips the SC1007 *warning* in EVERY
+	# script, so the contract here is "no ERROR-severity findings" (-S error). See limitations.
+	if command_exists shellcheck; then
+		vr_run 0 "(D) shellcheck parses bootstrap (no error-severity findings)" \
+			shellcheck -x -S error "$ROOT/scripts/bootstrap-profile-tools.sh"
+	else
+		log_warn "(D) shellcheck not present; SKIPPING bootstrap lint (validate with: shellcheck -x -S error scripts/bootstrap-profile-tools.sh)"
+	fi
+}
+
+# --- (D) planners + summary: target scoping, one-of gating, applicability ------
+vr_planning() {
+	_FX="$ROOT/tests/fixtures/v2"
+
+	# build-security-summary target probes do NOT fall back to the SS repo: an EMPTY
+	# target makes required tools unavailable/not-configured (never a spoofed pass).
+	_e=$(mktemp -d); mkdir -p "$_e/reports/raw"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_e/reports/raw" --output "$_e/ss.json" \
+		--profile laravel --target "$_e" >/dev/null 2>&1 || true
+	vr_check "(D) build-summary: empty target -> required phpstan unavailable (no SS-repo fallback)" \
+		"$(jq -r '.tools.phpstan.status' "$_e/ss.json" 2>/dev/null)" "unavailable"
+	vr_atleast "(D) build-summary: empty target -> required_tool_failures>=1" \
+		"$(jq -r '.summary.required_tool_failures // 0' "$_e/ss.json" 2>/dev/null)"
+	rm -rf "$_e"
+
+	# doctor: an UNSATISFIED required one-of group fails under require-existing (exit 3);
+	# satisfying it (pest only) passes (exit 0). Isolated via the oneof-only fixture.
+	_e=$(mktemp -d)
+	vr_run 3 "(D) doctor: unsatisfied required one-of (neither pest nor phpunit) -> exit 3" \
+		env EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/doctor.sh" --target "$_e" --profile oneof-only --tool-mode require-existing --quiet
+	mkdir -p "$_e/vendor/bin"; printf '#!/bin/sh\n' > "$_e/vendor/bin/pest"; chmod +x "$_e/vendor/bin/pest"
+	vr_run 0 "(D) doctor: required one-of satisfied (pest only) -> exit 0" \
+		env EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/doctor.sh" --target "$_e" --profile oneof-only --tool-mode require-existing --quiet
+	rm -rf "$_e"
+
+	# resolve-workflow-plan excludes a not-applicable tool: node WITHOUT tsconfig drops
+	# typescript from the PR plan; WITH tsconfig it appears (proves it is the applicability
+	# filter, not mere absence).
+	_js="$ROOT/tests/e2e/js-only"
+	vr_check "(D) workflow-plan: node w/o tsconfig EXCLUDES typescript (not-applicable)" \
+		"$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile node --target "$_js" --stage pr 2>/dev/null | jq -r '[.tools[].tool]|map(select(.=="typescript"))|length')" "0"
+	_ts=$(mktemp -d); printf '{"name":"x"}' > "$_ts/package.json"; printf '{}' > "$_ts/package-lock.json"; printf '{}' > "$_ts/tsconfig.json"
+	vr_check "(D) workflow-plan: node WITH tsconfig INCLUDES typescript (applicable)" \
+		"$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile node --target "$_ts" --stage pr 2>/dev/null | jq -r '[.tools[].tool]|map(select(.=="typescript"))|length')" "1"
+	rm -rf "$_ts"
+
+	# the workflow PLAN scheduled set equals the run-tool-plan scheduled execution set
+	# (both consume the one canonical resolver; one-of members do not run in scheduled).
+	_w=$(mktemp -d); cp -R "$_js/." "$_w/" 2>/dev/null || true
+	_wp=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile node --target "$_w" --stage scheduled 2>/dev/null | jq -S -c '[.tools[].tool]|sort')
+	sh "$ROOT/scripts/run-tool-plan.sh" --profile node --target "$_w" --stage scheduled >/dev/null 2>&1 || true
+	_rtp=$(jq -S -c '[((.tools // {})|keys[]), ((.one_of_groups // {})|keys[])]|sort' "$_w/reports/scheduled-execution.json" 2>/dev/null || echo NA)
+	vr_check "(D) workflow-plan scheduled set == run-tool-plan scheduled set" "$_wp" "$_rtp"
+	rm -rf "$_w"
+
+	# run-tool-plan: a STALE valid report cannot satisfy a no-op runner (B17 deletes it
+	# first) -> the required tool is unavailable -> exit 3.
+	_e=$(mktemp -d); mkdir -p "$_e/reports/raw"; printf '{"stale":true}' > "$_e/reports/raw/noop.json"
+	vr_run 3 "(D) run-tool-plan: stale report + no-op runner -> exit 3" \
+		env EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/run-tool-plan.sh" --profile noop-required --target "$_e" --stage pr
+	vr_check "(D) run-tool-plan: stale report did NOT satisfy (status unavailable)" \
+		"$(jq -r '.tools.noop.status' "$_e/reports/pr-execution.json" 2>/dev/null)" "unavailable"
+	vr_check "(D) run-tool-plan: no fabricated report_present from stale" \
+		"$(jq -r '.tools.noop.report_present' "$_e/reports/pr-execution.json" 2>/dev/null)" "false"
+	rm -rf "$_e"
+
+	# run-tool-plan: a required one-of group with NEITHER member present -> exit 3;
+	# with a member present (pest) the selected member runs -> exit 0.
+	_e=$(mktemp -d)
+	vr_run 3 "(D) run-tool-plan: one-of neither member present -> exit 3" \
+		env EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/run-tool-plan.sh" --profile oneof-only --target "$_e" --stage pr
+	vr_check "(D) run-tool-plan: one-of unsatisfied recorded" \
+		"$(jq -r '.one_of_groups.tests.status' "$_e/reports/pr-execution.json" 2>/dev/null)" "unsatisfied"
+	mkdir -p "$_e/vendor/bin"; printf '#!/bin/sh\n' > "$_e/vendor/bin/pest"; chmod +x "$_e/vendor/bin/pest"
+	vr_run 0 "(D) run-tool-plan: one-of satisfied (pest selected + ran) -> exit 0" \
+		env EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/run-tool-plan.sh" --profile oneof-only --target "$_e" --stage pr
+	vr_check "(D) run-tool-plan: selected member ran" \
+		"$(jq -r '.one_of_groups.tests.status' "$_e/reports/pr-execution.json" 2>/dev/null)" "ran"
+	rm -rf "$_e"
+}
+
+# --- (D) enforce-gates: summary-only counter + policy-only failure visibility --
+vr_gate_env() { sh "$ROOT/scripts/resolve-gates.sh" --profile "$ROOT/templates/profile.yaml" --mode baseline --output-dir "$1" --format env >/dev/null 2>&1; }
+vr_gate() {
+	_d=$(mktemp -d); vr_gate_env "$_d"; _genv="$_d/sentinel-shield-gates.env"
+
+	# summary-only required_tool_failures>0 (no detailed .tools records) => fail.
+	vr_mksum "$_d/summ-only.json" '{}' '{"required_tool_failures":1}'
+	vr_run 1 "(D) enforce: summary-only required_tool_failures>0 -> exit 1" \
+		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/summ-only.json" --output-dir "$_d" --format json
+	vr_contains "(D) enforce: summary-only failure surfaces required_tool_policy in JSON" \
+		"$(jq -c '.failed_gates' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)" "required_tool_policy"
+
+	# policy-only failure (a required tool unavailable; ALL finding counts 0) must show in
+	# JSON failed_gates AND markdown (NOT 'None') AND the exit code.
+	vr_mksum "$_d/policy.json" '{"phpstan":{"tool":"phpstan","policy":"required","status":"unavailable","gate_enforced":true}}' '{}'
+	vr_run 1 "(D) enforce: policy-only failure -> exit 1" \
+		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/policy.json" --output-dir "$_d" --format all
+	vr_contains "(D) enforce: policy-only failure in JSON failed_gates" \
+		"$(jq -c '.failed_gates' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)" "required_tool_policy"
+	# the Failed-gates section of the markdown lists required_tool_policy (not 'None.').
+	_mdfail=$(awk '/^## Failed gates/{f=1;next} f&&/^## /{f=0} f' "$_d/sentinel-shield-enforcement.md" 2>/dev/null)
+	vr_contains "(D) enforce: policy-only failure in markdown Failed-gates (not None)" "$_mdfail" "required_tool_policy"
+	rm -rf "$_d"
+}
+
+# --- (C1) cross-subsystem consistency: same normalized policy set everywhere ----
+vr_consistency() {
+	_PK='[.tools|to_entries[]|select(.value.policy=="required" or .value.policy=="recommended")|{(.key):.value.policy}]|add'
+	_PW='[.stages|to_entries[].value[]|select(.policy=="required" or .policy=="recommended")|{(.tool):.policy}]|add'
+	_PS='[.tools|to_entries[]|select(.value|type=="object" and has("policy"))|select(.value.policy=="required" or .value.policy=="recommended")|{(.value.tool):.value.policy}]|add'
+	_d=$(mktemp -d); mkdir -p "$_d/raw"
+	for _p in laravel laravel-react-docker; do
+		_eff=$(sh "$ROOT/scripts/resolve-effective-profile.sh" --profile "$_p" --format json 2>/dev/null || true)
+		_tp=$(sh "$ROOT/scripts/resolve-tool-plan.sh" --profile "$_p" --format json 2>/dev/null || true)
+		_wp=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile "$_p" --stage all 2>/dev/null || true)
+		sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/ss.json" --profile "$_p" >/dev/null 2>&1 || true
+		_he=$(printf '%s' "$_eff" | jq -S -c "$_PK" 2>/dev/null || echo NAe)
+		_ht=$(printf '%s' "$_tp"  | jq -S -c "$_PK" 2>/dev/null || echo NAt)
+		_hw=$(printf '%s' "$_wp"  | jq -S -c "$_PW" 2>/dev/null || echo NAw)
+		_hs=$(jq -S -c "$_PS" "$_d/ss.json" 2>/dev/null || echo NAs)
+		vr_check "(C1)[$_p] resolve-tool-plan set == resolver set"        "$_ht" "$_he"
+		vr_check "(C1)[$_p] resolve-workflow-plan set == resolver set"    "$_hw" "$_he"
+		vr_check "(C1)[$_p] build-security-summary set == resolver set"   "$_hs" "$_he"
+	done
+	rm -rf "$_d"
+}
+
+# --- (C2) a valid waiver is VISIBLE and does NOT flip the tool to pass/optional -
+vr_waiver_visibility() {
+	_FX="$ROOT/tests/fixtures/v2"
+	# doctor: a valid waiver for the unsatisfied one-of GROUP surfaces a WAIVED line and
+	# downgrades exit to 0, but the group is still reported as a one-of control (not flipped).
+	_e=$(mktemp -d); vr_waiver_json "$_e/cw.json" tests 2999-12-31
+	_out=$(EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/doctor.sh" --target "$_e" --profile oneof-only \
+		--tool-mode require-existing --control-waivers "$_e/cw.json" 2>&1); _r=$?
+	vr_check "(C2) doctor with valid waiver -> exit 0" "$_r" "0"
+	vr_contains "(C2) doctor shows the waiver (WAIVED line for the group)" "$_out" "WAIVED"
+	vr_contains "(C2) doctor still lists the group as one-of (not flipped to pass/optional)" "$_out" "one-of tests"
+	rm -rf "$_e"
+
+	# enforce-gates: a valid waiver for a required-unavailable tool surfaces in JSON
+	# (.tool_policy.waived) AND markdown, downgrades the gate (exit 0), and keeps the
+	# tool's policy as required (never rewritten to pass/optional).
+	_d=$(mktemp -d); vr_gate_env "$_d"; _genv="$_d/sentinel-shield-gates.env"
+	vr_mksum "$_d/p.json" '{"phpstan":{"tool":"phpstan","policy":"required","status":"unavailable","gate_enforced":true}}' '{}'
+	vr_waiver_json "$_d/cw.json" phpstan 2999-12-31
+	vr_run 0 "(C2) enforce with valid waiver -> exit 0 (downgraded)" \
+		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/p.json" --control-waivers "$_d/cw.json" --output-dir "$_d" --format all
+	vr_check "(C2) enforce JSON records the tool as waived" \
+		"$(jq -r '[.tool_policy.waived[].tool]|index("phpstan")!=null' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)" "true"
+	vr_contains "(C2) enforce markdown mentions the waiver" "$(cat "$_d/sentinel-shield-enforcement.md" 2>/dev/null)" "waived"
+	vr_check "(C2) waiver does NOT flip the tool policy (still required)" \
+		"$(jq -r '.tools.phpstan.policy' "$_d/p.json")" "required"
+	vr_check "(C2) waiver does NOT show the tool as a required-tool-failure" \
+		"$(jq -r '[.tool_policy.required_tool_failures[]?.tool]|index("phpstan")//"none"' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)" "none"
+	rm -rf "$_d"
+}
+
+# --- (C3) a control-waiver does NOT suppress findings -------------------------
+vr_findings_not_suppressed() {
+	_d=$(mktemp -d); vr_gate_env "$_d"; _genv="$_d/sentinel-shield-gates.env"
+	# semgrep RAN and reported findings (high_vulnerabilities=1); a control-waiver exists
+	# for semgrep (availability channel) — it must NOT suppress the finding gate.
+	vr_mksum "$_d/f.json" '{"semgrep":{"tool":"semgrep","policy":"required","status":"findings","gate_enforced":true}}' '{"high_vulnerabilities":1}'
+	vr_waiver_json "$_d/cw.json" semgrep 2999-12-31
+	vr_run 1 "(C3) waiver does NOT suppress findings: high_vulnerabilities still fails" \
+		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/f.json" --control-waivers "$_d/cw.json" --output-dir "$_d" --format json
+	vr_contains "(C3) the finding gate (high_vulnerabilities) is the failure" \
+		"$(jq -c '.failed_gates' "$_d/sentinel-shield-enforcement.json" 2>/dev/null)" "high_vulnerabilities"
+	rm -rf "$_d"
+}
+
+run_v2_review() {
+	log_info "v2-review: Part D regression matrix + Part C cross-subsystem consistency (override / waivers / bootstrap / planners / gate)"
+	vr_override
+	vr_waivers
+	vr_bootstrap
+	vr_planning
+	vr_gate
+	vr_consistency
+	vr_waiver_visibility
+	vr_findings_not_suppressed
+	if [ "$VR_FAILS" -ne 0 ]; then log_error "v2-review: $VR_FAILS case(s) failed"; return 1; fi
+	log_info "v2-review: OK (override no-downgrade + waivers + bootstrap gate/rollback + planners + enforce-gate + cross-subsystem consistency + waiver visibility/non-suppression)"
 }
 
 # --- e2e: run the LOCAL end-to-end harness (policy->gate over tests/e2e/) -----
@@ -3051,6 +3447,7 @@ case "$SUB" in
 	v190-ai-install) run_v190_ai_install ;;
 	v2-toolpolicy) run_v2_toolpolicy ;;
 	v2-enforcement) run_v2_enforcement ;;
+	v2-review) run_v2_review ;;
 	e2e) run_e2e ;;
 	all)
 		run_syntax
@@ -3098,14 +3495,15 @@ case "$SUB" in
 		run_v190_ai_install
 		run_v2_toolpolicy
 		run_v2_enforcement
+		run_v2_review
 		run_e2e
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|e2e|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|e2e|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|e2e|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|e2e|all)"
 		exit 2
 		;;
 esac
