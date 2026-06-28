@@ -22,16 +22,20 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 TAB=$(printf '\t')
 FORMAT="md"
 TARGET="."
 PROFILES_CLI=""
+WAIVERS_CLI=""
 while [ $# -gt 0 ]; do case "$1" in
   --format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
   --target) TARGET="${2:?--target requires a value}"; shift 2 ;;
   --profile) PROFILES_CLI="$PROFILES_CLI ${2:?--profile requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: maturity-report.sh [--format md|json] [--target <dir>] [--profile <name>]..."; exit 0 ;;
+  --control-waivers) WAIVERS_CLI="${2:?--control-waivers requires a value}"; shift 2 ;;
+  -h|--help) echo "Usage: maturity-report.sh [--format md|json] [--target <dir>] [--profile <name>]... [--control-waivers <path>]"; exit 0 ;;
   *) log_error "maturity-report: unknown argument: $1"; exit 2 ;;
 esac; done
 case "$FORMAT" in md|json) ;; *) log_error "maturity-report: --format must be md or json"; exit 2 ;; esac
@@ -59,6 +63,24 @@ scorecard|Scorecard / TruffleHog / Trivy-image|misc|experimental|—|*.json|coar
 RESOLVE=0
 TMPM=""
 SUMMARY="$TARGET/reports/security-summary.json"
+# Control-waivers: explicit --control-waivers wins, else the target default. Validated via the
+# SHARED lib (full schema + real-date + self-approval); a MALFORMED file => exit 2 (fail closed).
+# WAIVED_KEYS holds tool/group keys with a VALID, UNEXPIRED waiver; surfaced per-tool as a flag
+# WITHOUT converting the tool to pass/optional (C2).
+if [ -n "$WAIVERS_CLI" ]; then WAIVERS_FILE="$WAIVERS_CLI"; else WAIVERS_FILE="$TARGET/.sentinel-shield/control-waivers.json"; fi
+WAIVED_KEYS=""
+if command_exists jq; then
+  cw_validate_file "$WAIVERS_FILE" || { log_error "maturity-report: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
+  WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
+fi
+# mr_is_waived <key> — 0 if <key> has a valid, unexpired control-waiver.
+mr_is_waived() {
+  case "
+$WAIVED_KEYS
+" in *"
+$1
+"*) return 0 ;; *) return 1 ;; esac
+}
 if command_exists jq; then
   PROFILES_RESOLVED="$PROFILES_CLI"
   PF="$TARGET/.sentinel-shield/profile.yaml"
@@ -99,11 +121,14 @@ if command_exists jq; then
   fi
 fi
 
-# resolve_activation <key> — echo 7 TAB-separated, always-non-empty fields:
-#   profile_policy installed configured executed gate_enforced last_result report
+# resolve_activation <key> — echo 8 TAB-separated, always-non-empty fields:
+#   profile_policy installed configured executed gate_enforced last_result report waived
+# `waived` reflects a valid control-waiver for this tool key; it is informational and does
+# NOT change the tool's policy/last_result (the tool stays required, not pass/optional).
 resolve_activation() {
   _pol="not-declared"; _inst="unknown"; _cfg="unknown"; _exe="unknown"
   _ge="unknown"; _lr="none"; _rep="reports/raw/$1.json"
+  if mr_is_waived "$1"; then _wv="yes"; else _wv="no"; fi
   if [ "$RESOLVE" = 1 ]; then
     if jq -e --arg k "$1" '.tools | has($k)' "$TMPM" >/dev/null 2>&1 \
        && [ "$(jq -r --arg k "$1" '.tools | has($k)' "$TMPM")" = "true" ]; then
@@ -127,7 +152,7 @@ resolve_activation() {
       _pol="not-declared"; _inst="-"; _cfg="-"; _exe="-"; _ge="no"
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "$_pol" "$_inst" "$_cfg" "$_exe" "$_ge" "$_lr" "$_rep"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$_pol" "$_inst" "$_cfg" "$_exe" "$_ge" "$_lr" "$_rep" "$_wv"
 }
 
 if [ "$FORMAT" = "json" ]; then
@@ -137,10 +162,10 @@ if [ "$FORMAT" = "json" ]; then
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
     _oifs=$IFS; IFS="$TAB"; set -- $act; IFS=$_oifs
-    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6; rep=$7
+    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6; rep=$7; wv=$8
     [ "$first" = 1 ] || printf ','; first=0
-    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","gate_enforced":"%s","last_result":"%s","report":"%s"}' \
-      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$rep"
+    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","gate_enforced":"%s","last_result":"%s","report":"%s","waived":"%s"}' \
+      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$rep" "$wv"
   done
   printf ']}\n'
 else
@@ -152,14 +177,14 @@ else
   echo "PRODUCT support (\`maturity\`) is NOT this project's activation. Activation columns report"
   echo "\`unknown\`/\`not-declared\` unless a profile + target is resolvable (\`resolved_activation=$([ "$RESOLVE" = 1 ] && echo true || echo false)\`)."
   echo
-  echo "| Tool | Category | Maturity (product) | Evidence run | Caveat | Default | Gating | Policy | Installed | Configured | Executed | Gate enforced | Last result |"
-  echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+  echo "| Tool | Category | Maturity (product) | Evidence run | Caveat | Default | Gating | Policy | Installed | Configured | Executed | Gate enforced | Last result | Waived |"
+  echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
     _oifs=$IFS; IFS="$TAB"; set -- $act; IFS=$_oifs
-    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr"
+    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6; wv=$8
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$wv"
   done
 fi
 [ -n "$TMPM" ] && rm -f "$TMPM"

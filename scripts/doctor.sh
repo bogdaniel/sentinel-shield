@@ -9,16 +9,23 @@
 # Output contract:
 #   exit 0  -> informational success (ran; recommended/optional warnings may be printed)
 #   exit 1  -> generic error (reserved)
-#   exit 2  -> invalid invocation / unreadable config
+#   exit 2  -> invalid invocation / unreadable config (incl. a MALFORMED control-waivers file)
 #   exit 3  -> profile-REQUIRED tool(s) absent (not installed / not configured) — distinct gate
 #
-# Usage: sh scripts/doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode <mode>] [--quiet]
+# Usage: sh scripts/doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode <mode>]
+#                             [--control-waivers <path>] [--quiet]
 #   --profile <name>   Active profile name(s) (repeatable). Default: read from
 #                      <target>/.sentinel-shield/profile.yaml (the `profiles:` list).
 #   --tool-mode <mode> config-only | require-existing | bootstrap-tools (matches
 #                      install-baseline.sh). config-only does NOT gate on absent required
 #                      tools (warn only); require-existing/bootstrap-tools exit 3 if any are
 #                      absent. A tool whose POLICY is `external` is never gated regardless.
+#   --control-waivers <path>  Required-tool control-waivers file (default:
+#                      <target>/.sentinel-shield/control-waivers.json). Validated via the
+#                      shared lib (scripts/lib/control-waivers.sh): a malformed file => exit 2.
+#                      A valid, UNEXPIRED waiver lets a missing REQUIRED tool — or an
+#                      UNSATISFIED required one-of GROUP — report WAIVED instead of hard-failing
+#                      exit 3. A one-of group is keyed by the GROUP name (e.g. `tests`).
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -26,17 +33,21 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 TARGET="."
 QUIET=0
 PROFILES_CLI=""
 TOOL_MODE=""
+WAIVERS_CLI=""
 while [ $# -gt 0 ]; do case "$1" in
   --target) TARGET="${2:?--target requires a value}"; shift 2 ;;
   --profile) PROFILES_CLI="$PROFILES_CLI ${2:?--profile requires a value}"; shift 2 ;;
   --tool-mode) TOOL_MODE="${2:?--tool-mode requires a value}"; shift 2 ;;
+  --control-waivers) WAIVERS_CLI="${2:?--control-waivers requires a value}"; shift 2 ;;
   --quiet) QUIET=1; shift ;;
-  -h|--help) echo "Usage: doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode config-only|require-existing|bootstrap-tools] [--quiet]"; exit 0 ;;
+  -h|--help) echo "Usage: doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode config-only|require-existing|bootstrap-tools] [--control-waivers <path>] [--quiet]"; exit 0 ;;
   *) log_error "doctor: unknown argument: $1"; exit 2 ;;
 esac; done
 [ -d "$TARGET" ] || { log_error "doctor: target not a directory: $TARGET"; exit 2; }
@@ -45,9 +56,30 @@ case "$TOOL_MODE" in
   *) log_error "doctor: invalid --tool-mode '$TOOL_MODE' (config-only|require-existing|bootstrap-tools)"; exit 2 ;;
 esac
 
+# Control-waivers file: explicit --control-waivers wins, else the target default.
+# Validate up front via the SHARED lib (full schema + real-date + self-approval);
+# a MALFORMED file is a configuration failure -> exit 2 (fail closed, before any table).
+# WAIVED_KEYS holds the tool/group keys covered by a VALID, UNEXPIRED waiver.
+if [ -n "$WAIVERS_CLI" ]; then WAIVERS_FILE="$WAIVERS_CLI"; else WAIVERS_FILE="$TARGET/.sentinel-shield/control-waivers.json"; fi
+WAIVED_KEYS=""
+if command_exists jq; then
+  cw_validate_file "$WAIVERS_FILE" || { log_error "doctor: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
+  WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
+fi
+# is_waived <key> — 0 if <key> (tool or one-of group) has a valid, unexpired waiver.
+is_waived() {
+  case "
+$WAIVED_KEYS
+" in *"
+$1
+"*) return 0 ;; *) return 1 ;; esac
+}
+
 WARN=0
+WAIVED_COUNT=0
 ok()   { [ "$QUIET" = 1 ] || printf '  ok    %s\n' "$*"; }
 warn() { WARN=$((WARN+1)); printf '  WARN  %s\n' "$*"; }
+waived() { WAIVED_COUNT=$((WAIVED_COUNT+1)); printf '  WAIVED  %s\n' "$*"; }
 have() { command_exists "$1" && ok "$1 present ($(command -v "$1"))" || warn "$2"; }
 
 # --- profile tool-policy resolution (jq-dependent) ---------------------------
@@ -183,20 +215,38 @@ else
         cfg=$(pt_configured "$TARGET" "$TMPM" "$k")
         exe=$(pt_executed "$TARGET" "$TMPM" "$k")
         [ "$QUIET" = 1 ] || printf '  %-22s %-12s %-10s %-11s %-9s\n' "$k" "$pol" "$inst" "$cfg" "$exe"
-        # ponytail: only policy=required gates exit 3; one-of group satisfaction (an absent
-        # tool covered by an installed alternative) is shown but not hard-enforced here.
-        if [ "$pol" = "required" ]; then
-          [ "$inst" = "no" ] && REQUIRED_MISSING="$REQUIRED_MISSING $k(not-installed)"
-          [ "$cfg" = "no" ] && REQUIRED_MISSING="$REQUIRED_MISSING $k(not-configured)"
+        # policy=required gates exit 3 (one-of GROUP satisfaction is enforced separately
+        # below). A required tool that is missing but covered by a VALID control-waiver
+        # reports WAIVED and is NOT accumulated into REQUIRED_MISSING (C2).
+        if [ "$pol" = "required" ] && { [ "$inst" = "no" ] || [ "$cfg" = "no" ]; }; then
+          _why=""
+          [ "$inst" = "no" ] && _why="not-installed"
+          [ "$cfg" = "no" ] && _why="${_why:+$_why,}not-configured"
+          if is_waived "$k"; then
+            waived "required tool '$k' ($_why) — covered by valid control-waiver ($WAIVERS_FILE)"
+          else
+            REQUIRED_MISSING="$REQUIRED_MISSING $k($_why)"
+          fi
         fi
       done
-      # one-of group satisfaction (from the resolver): a required GROUP (e.g. tests)
-      # is satisfied when any alternative is installed. Shown, not separately gated.
+      # one-of group satisfaction (from the resolver): a required GROUP (e.g. tests) is
+      # satisfied when any alternative is installed. An effective required one-of GROUP is
+      # GATING like a required tool (B6): an UNSATISFIED group is accumulated into
+      # REQUIRED_MISSING so doctor exits 3 under require-existing/bootstrap-tools (config-only
+      # warns only, via the same accumulator handling below). A VALID control-waiver keyed by
+      # the GROUP name (e.g. `tests`) downgrades an unsatisfied group to WAIVED (C2).
       for g in $(printf '%s' "$ONEOF" | jq -r 'keys[]' 2>/dev/null); do
         gstatus=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].status // "unknown"')
         gsel=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].selected // "none"')
         galt=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '(.[$g].alternatives // []) | join("|")')
         [ "$QUIET" = 1 ] || printf '  one-of %-15s %-12s selected=%s (alts: %s)\n' "$g" "$gstatus" "${gsel:-none}" "$galt"
+        if [ "$gstatus" = "unsatisfied" ]; then
+          if is_waived "$g"; then
+            waived "required one-of group '$g' (unsatisfied; alts: $galt) — covered by valid control-waiver ($WAIVERS_FILE)"
+          else
+            REQUIRED_MISSING="$REQUIRED_MISSING $g(one-of-unsatisfied)"
+          fi
+        fi
       done
       rm -f "$TMPM"
       if [ -n "$REQUIRED_MISSING" ]; then
@@ -206,6 +256,8 @@ else
           printf '  FAIL  profile-required tool(s) absent:%s\n' "$REQUIRED_MISSING"
           REQ_FAIL=1
         fi
+      elif [ "$WAIVED_COUNT" -gt 0 ]; then
+        ok "all profile-required tools installed + configured (with $WAIVED_COUNT active control-waiver(s) — see WAIVED lines above)"
       else
         ok "all profile-required tools installed + configured"
       fi
@@ -214,6 +266,7 @@ else
 fi
 
 echo "----"
+[ "$WAIVED_COUNT" -gt 0 ] && echo "doctor: $WAIVED_COUNT active control-waiver(s) — see WAIVED lines above (file: $WAIVERS_FILE)"
 if [ "$WARN" -eq 0 ]; then echo "doctor: no warnings"; else echo "doctor: $WARN warning(s) — see WARN lines above"; fi
 echo "Next: docs/troubleshooting.md ; share diagnostics safely with scripts/support-bundle.sh"
 if [ "$REQ_FAIL" -eq 1 ]; then
