@@ -33,27 +33,51 @@ emit_name_for() {
 }
 
 # tool_exe_present <space-separated-executables> <target-dir> — best-effort install
-# probe. A bare name is looked up on PATH; a path (contains '/') is checked relative
-# to the target dir and the cwd. Empty list -> not present.
+# probe. Target scoping (B5): when <target-dir> is set, a RELATIVE path-bearing
+# executable is resolved ONLY under the target — the Sentinel Shield repo (cwd) must
+# never satisfy a consumer's missing dependency. When <target-dir> is empty the
+# cwd-relative path may be used. Absolute paths are checked as-is in both cases.
+# Bare global names (no slash) prefer a project-local copy under the target first,
+# then fall back to global PATH (bare names denote globally-installed tools); we
+# never probe a cwd-relative "./name", so a repo-local file cannot masquerade as the
+# target's. Empty list -> not present.
 tool_exe_present() {
 	_exes=$1; _tgt=$2
 	[ -n "$_exes" ] || return 1
 	for _x in $_exes; do
 		case "$_x" in
-			*/*)
-				if [ -n "$_tgt" ] && [ -x "$_tgt/$_x" ]; then return 0; fi
+			/*)
+				# absolute path: check as given.
 				[ -x "$_x" ] && return 0 ;;
+			*/*)
+				# relative path-bearing: under <target> only when set, else cwd.
+				if [ -n "$_tgt" ]; then
+					[ -x "$_tgt/$_x" ] && return 0
+				else
+					[ -x "$_x" ] && return 0
+				fi ;;
 			*)
+				# bare global name: project-local-first (target only), then PATH.
+				if [ -n "$_tgt" ] && [ -x "$_tgt/$_x" ]; then return 0; fi
 				command_exists "$_x" && return 0 ;;
 		esac
 	done
 	return 1
 }
 
-# config_present <config-path> <target-dir> — true when the config file exists
-# (relative to target, else cwd).
+# config_present <config-path> <target-dir> — true when the config file exists.
+# Target scoping (B5): when <target-dir> is set, a RELATIVE config path is resolved
+# ONLY under the target — the Sentinel Shield repo (cwd) must never satisfy a missing
+# consumer config. When <target-dir> is empty the cwd-relative path may be used.
+# Absolute paths are checked as-is in both cases.
 config_present() {
-	if [ -n "$2" ] && [ -f "$2/$1" ]; then return 0; fi
+	case "$1" in
+		/*) [ -f "$1" ] && return 0; return 1 ;;
+	esac
+	if [ -n "$2" ]; then
+		[ -f "$2/$1" ] && return 0
+		return 1
+	fi
 	[ -f "$1" ] && return 0
 	return 1
 }
@@ -336,6 +360,16 @@ if [ -n "$PROFILE_NAME" ]; then
 			status="not-applicable"
 		elif [ "$_disabled" -eq 1 ]; then
 			status="disabled"
+		elif [ -z "$trep" ]; then
+			# Precondition tool (no report declared, e.g. deps-install / category=setup):
+			# it produces no scanner report, so its "execution" is satisfied purely by
+			# its executable being present — installed => pass, absent => unavailable.
+			# (Never execution-error: there is no report to be missing.)
+			if tool_exe_present "$texe" "$TARGET_DIR"; then
+				installed=true; executed=true; status="pass"
+			else
+				status="unavailable"
+			fi
 		elif [ "$report_ok" -eq 1 ]; then
 			executed=true; installed=true
 			case "$cstatus" in
@@ -385,10 +419,28 @@ EOF
 
 	POLICY_TOOLS=$(printf '%s' "$POLICY_COLLECTED" | jq -s 'reduce .[] as $o ({}; .[$o._emit] = ($o | del(._emit)))')
 
-	# one-of group echo + unsatisfied groups fail the gate.
-	ONEOF_ECHO=$(printf '%s' "$EFF" | jq '(.one_of_groups // {})
-		| with_entries(.value = { status: (.value.status // "unknown"), selected: (.value.selected // null) })')
-	_unsat=$(printf '%s' "$EFF" | jq '[ (.one_of_groups // {})[] | select((.status // "unknown") == "unsatisfied") ] | length')
+	# one-of group echo + unsatisfied groups fail the gate. POST-EXECUTION the REPORT
+	# is the source of truth: a group whose normalized report (e.g. reports/raw/tests.json)
+	# is present + valid JSON is SATISFIED — a member actually ran and produced evidence —
+	# regardless of whether a member executable is on PATH right now (the resolver's
+	# exe-based status is only a pre-flight heuristic). Absent/invalid report => fall back
+	# to the resolver status; a required group with neither is unsatisfied (gate fails).
+	ONEOF_ECHO='{}'
+	_unsat=0
+	for _g in $(printf '%s' "$EFF" | jq -r '(.one_of_groups // {}) | keys[]'); do
+		_grep=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '(.tools[$g].report // (.one_of_groups[$g].alternatives[]? as $m | .tools[$m].report) // "")' | head -n1)
+		_gsel=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].selected // ""')
+		_gstatus=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].status // "unknown"')
+		if [ -n "$_grep" ]; then
+			_grf="$RAW_DIR/$(basename -- "$_grep")"
+			if [ -f "$_grf" ] && [ -s "$_grf" ] && jq -e . "$_grf" >/dev/null 2>&1; then
+				_gstatus="satisfied"
+			fi
+		fi
+		[ "$_gstatus" = "unsatisfied" ] && _unsat=$((_unsat + 1))
+		ONEOF_ECHO=$(printf '%s' "$ONEOF_ECHO" | jq --arg g "$_g" --arg st "$_gstatus" --arg sel "$_gsel" \
+			'. + {($g): {status: $st, selected: (if $sel=="" then null else $sel end)}}')
+	done
 	REQ_FAIL=$((REQ_FAIL + _unsat))
 
 	# Merge policy objects onto the collector tool reports (policy fields win; the
