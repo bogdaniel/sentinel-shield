@@ -2509,15 +2509,15 @@ run_v2_toolpolicy() {
 		"$(cr_classify_tool "$_cf" "$FX/conflict-manifest.json" phpstan | cut -f2- | grep -c 'isolated install')"
 	rm -rf "$_cf"
 
-	# (17) composition precedence: a child profile that `extends` a base inherits the base's tools and
-	# its own per-tool policy REPLACES the inherited one (precedence). Tested through the workflow
-	# planner's composition (resolve-workflow-plan.sh, last-wins by chain order). NOTE: the rank-based
-	# "required > recommended > optional > disabled" ladder lives in profile-compose.sh, which has a
-	# latent recursion bug for a child that BOTH `extends` AND declares its own `tools` (see
-	# limitations); we therefore test the planner's composition, which the CI workflow actually uses.
+	# (17) composition precedence (canonical resolver, strongest-policy): a child that `extends` a
+	# base inherits the base's tools, and a child can NEVER WEAKEN a required parent tool by
+	# redeclaring it (Blocker 1: "must not downgrade a required parent tool merely by redeclaring it
+	# as optional"). compose-child extends `node` (typescript=required) and redeclares typescript as
+	# `optional`; the effective policy MUST stay `required`. resolve-workflow-plan --manifest now
+	# delegates to the ONE canonical resolver (Significant fix 11), so this is the unified behavior.
 	_comp=$(sh scripts/resolve-workflow-plan.sh --manifest "$FX/compose-child.manifest.json" --stage pr 2>/dev/null)
-	tpv2_check "(17) composition: child override replaces inherited base policy (typescript -> optional)" \
-		"$(printf '%s' "$_comp" | jq -r '.tools[]|select(.tool=="typescript").policy')" "optional"
+	tpv2_check "(17) composition: child CANNOT downgrade a required parent tool (typescript stays required)" \
+		"$(printf '%s' "$_comp" | jq -r '.tools[]|select(.tool=="typescript").policy')" "required"
 	tpv2_check "(17) composition: base tool inherited unchanged (eslint stays required)" \
 		"$(printf '%s' "$_comp" | jq -r '.tools[]|select(.tool=="eslint").policy')" "required"
 
@@ -2651,6 +2651,360 @@ run_v2_toolpolicy() {
 	log_info "v2-toolpolicy: OK (required/recommended/optional + one-of + composition + override + upgrade/migrate)"
 }
 
+# --- v2-enforcement: full v2 policy->gate matrix ----------------------------
+# A faithful matrix over the REAL v2 scripts (canonical resolver, run-tool-plan,
+# build-security-summary --profile, enforce-gates, bootstrap, compat-resolver). Each
+# case drives an actual CLI/lib and asserts the contracted outcome. Items that cannot
+# be exercised live this session (real composer/npm installs) are marked [structural]
+# or [simulated] in their description. The end-to-end policy->gate path is proven by
+# the companion LOCAL harness (scripts/e2e-harness.sh, `self-test.sh e2e`).
+TPE_FAILS=0
+tpe_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; TPE_FAILS=$((TPE_FAILS + 1)); fi; }
+tpe_atleast() { tpe_check "$1" "$([ "${2:-0}" -ge 1 ] && echo yes || echo no)" "yes"; }
+tpe_contains() { case "$2" in *"$3"*) tpe_check "$1" "yes" "yes" ;; *) tpe_check "$1" "no($2)" "yes" ;; esac; }
+
+# Normalized (tool-key:policy) projection (required+recommended) per subsystem shape.
+TPE_PROJ_KEYS='[.tools|to_entries[]|select(.value.policy=="required" or .value.policy=="recommended")|{(.key):.value.policy}]|add'
+TPE_PROJ_WF='[.stages|to_entries[].value[]|select(.policy=="required" or .policy=="recommended")|{(.tool):.policy}]|add'
+TPE_PROJ_SS='[.tools|to_entries[]|select(.value|type=="object" and has("policy"))|select(.value.policy=="required" or .value.policy=="recommended")|{(.value.tool):.value.policy}]|add'
+
+# --- composition (canonical resolver + planner) ------------------------------
+v2e_composition() {
+	FX="$ROOT/tests/fixtures/v2"
+	RES="$ROOT/scripts/resolve-effective-profile.sh"
+
+	# base+child required precedence: a combination profile that `extends` multiple
+	# bases inherits each base's REQUIRED tools (strongest-policy composition). Real.
+	_lrd=$(sh "$RES" --profile laravel-react-docker --format json 2>/dev/null || true)
+	tpe_check "composition: combination inherits larastan=required (from laravel base)" \
+		"$(printf '%s' "$_lrd" | jq -r '.tools.larastan.policy')" "required"
+	tpe_check "composition: combination inherits typescript=required (from node base)" \
+		"$(printf '%s' "$_lrd" | jq -r '.tools.typescript.policy')" "required"
+	tpe_check "composition: combination inherits eslint=required (from node base)" \
+		"$(printf '%s' "$_lrd" | jq -r '.tools.eslint.policy')" "required"
+
+	# unknown parent => exit 2 AND no effective profile on stdout. Real (fixture).
+	_rc=0; _out=$(EP_REPO_ROOT="$FX" sh "$RES" --profile orphan-child --format json 2>/dev/null) || _rc=$?
+	tpe_check "composition: unknown parent -> exit 2" "$_rc" "2"
+	tpe_check "composition: unknown parent -> no stdout" "$([ -z "$_out" ] && echo empty || echo nonempty)" "empty"
+
+	# inheritance cycle => exit 2 AND the cycle path is reported. Real (fixtures).
+	_rc=0; _err=$(EP_REPO_ROOT="$FX" sh "$RES" --profile cycle-a --format json 2>&1 >/dev/null) || _rc=$?
+	tpe_check "composition: inheritance cycle -> exit 2" "$_rc" "2"
+	tpe_contains "composition: inheritance cycle reports the path (cycle-a -> cycle-b -> cycle-a)" "$_err" "cycle-a -> cycle-b -> cycle-a"
+
+	# override application: a project override RAISES deptrac recommended -> required. Real.
+	tpe_check "composition: base deptrac policy is recommended" \
+		"$(sh "$RES" --profile laravel --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "recommended"
+	tpe_check "composition: override raises deptrac -> required" \
+		"$(sh "$RES" --profile laravel --override "$FX/override-raise-deptrac.json" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
+
+	# required-disable rejection: an override that disables a NON-SUPPRESSIBLE control
+	# (gitleaks) is fail-closed (exit 2) with a clear message. Real.
+	_rc=0; _err=$(sh "$RES" --profile laravel --override "$FX/override-disable-gitleaks.json" --format json 2>&1 >/dev/null) || _rc=$?
+	tpe_check "composition: override disabling gitleaks -> exit 2" "$_rc" "2"
+	tpe_contains "composition: gitleaks disable rejected as non-suppressible" "$_err" "non-suppressible"
+
+	# Child that BOTH `extends` a base AND declares its own tools, resolved through the ONE canonical
+	# resolver (resolve-workflow-plan --manifest now delegates to it — Significant fix 11). A child
+	# CANNOT weaken a required parent tool: compose-child redeclares node's required typescript as
+	# optional, and the effective policy stays required (strongest-policy precedence, no downgrade).
+	_comp=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --manifest "$FX/compose-child.manifest.json" --stage pr 2>/dev/null || true)
+	tpe_check "composition: child cannot downgrade a required parent tool (typescript stays required)" \
+		"$(printf '%s' "$_comp" | jq -r '.tools[]|select(.tool=="typescript").policy')" "required"
+	tpe_check "composition: inherited base tool unchanged (eslint stays required) [resolver]" \
+		"$(printf '%s' "$_comp" | jq -r '.tools[]|select(.tool=="eslint").policy')" "required"
+}
+
+# --- combination-profile consistency (Blocker 4 / Fix 11) --------------------
+# The SAME normalized (tool-key:policy) set must be seen by every v2 subsystem, since
+# they ALL consume the one canonical resolver. We compute the required+recommended
+# projection from each subsystem's own output and assert byte-identical canonical JSON
+# (an equivalent, more-portable form of "hash the normalized set and assert equal").
+v2e_consistency() {
+	_t=$(mktemp -d); mkdir -p "$_t/vendor/bin" "$_t/reports/raw"
+	printf '{}' > "$_t/composer.json"
+	printf '#!/bin/sh\n' > "$_t/vendor/bin/pest"; chmod +x "$_t/vendor/bin/pest"
+	for _r in actionlint codeql composer-audit dependency-check gitleaks grype larastan \
+		osv-scanner php-syntax phpstan pint semgrep syft trivy-fs zizmor tests deptrac psalm rector; do
+		printf '{}' > "$_t/reports/raw/$_r.json"
+	done
+
+	_eff=$(sh "$ROOT/scripts/resolve-effective-profile.sh" --profile laravel --target "$_t" --format json 2>/dev/null || true)
+	_tp=$(sh "$ROOT/scripts/resolve-tool-plan.sh" --profile laravel --target "$_t" --format json 2>/dev/null || true)
+	_wp=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile laravel --stage all 2>/dev/null || true)
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_t/reports/raw" --output "$_t/ss.json" \
+		--profile laravel --target "$_t" >/dev/null 2>&1 || true
+
+	_h_eff=$(printf '%s' "$_eff" | jq -S -c "$TPE_PROJ_KEYS" 2>/dev/null || echo NA1)
+	_h_tp=$(printf '%s' "$_tp" | jq -S -c "$TPE_PROJ_KEYS" 2>/dev/null || echo NA2)
+	_h_wp=$(printf '%s' "$_wp" | jq -S -c "$TPE_PROJ_WF" 2>/dev/null || echo NA3)
+	_h_ss=$(jq -S -c "$TPE_PROJ_SS" "$_t/ss.json" 2>/dev/null || echo NA4)
+	tpe_check "consistency[laravel]: resolve-tool-plan set == resolver set" "$_h_tp" "$_h_eff"
+	tpe_check "consistency[laravel]: resolve-workflow-plan set == resolver set" "$_h_wp" "$_h_eff"
+	tpe_check "consistency[laravel]: build-security-summary set == resolver set" "$_h_ss" "$_h_eff"
+
+	# combination profile, across the three pure resolvers (no target/reports needed).
+	_ce=$(sh "$ROOT/scripts/resolve-effective-profile.sh" --profile laravel-react-docker --format json 2>/dev/null || true)
+	_ct=$(sh "$ROOT/scripts/resolve-tool-plan.sh" --profile laravel-react-docker --format json 2>/dev/null || true)
+	_cw=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile laravel-react-docker --stage all 2>/dev/null || true)
+	_hce=$(printf '%s' "$_ce" | jq -S -c "$TPE_PROJ_KEYS" 2>/dev/null || echo NA5)
+	_hct=$(printf '%s' "$_ct" | jq -S -c "$TPE_PROJ_KEYS" 2>/dev/null || echo NA6)
+	_hcw=$(printf '%s' "$_cw" | jq -S -c "$TPE_PROJ_WF" 2>/dev/null || echo NA7)
+	tpe_check "consistency[combination]: resolve-tool-plan set == resolver set" "$_hct" "$_hce"
+	tpe_check "consistency[combination]: resolve-workflow-plan set == resolver set" "$_hcw" "$_hce"
+
+	# doctor + maturity emit tables/partial JSON, not a full policy set; assert they
+	# CONSUME the one canonical resolver (no private composition). [structural]
+	tpe_atleast "consistency: doctor delegates to resolve-effective-profile" \
+		"$(grep -c 'resolve-effective-profile' "$ROOT/scripts/doctor.sh")"
+	tpe_atleast "consistency: maturity-report delegates to resolve-effective-profile" \
+		"$(grep -c 'resolve-effective-profile' "$ROOT/scripts/maturity-report.sh")"
+
+	rm -rf "$_t"
+}
+
+# --- tool states / gate (crafted summaries -> enforce-gates) -----------------
+v2e_make_summary() { # <out> <tools-json> <oneof-json>
+	jq -n --argjson tools "$2" --argjson oneof "$3" '
+		{ version:"1.0", generated_at:"2026-01-01T00:00:00Z",
+		  project:{name:"t",type:"laravel",criticality:"high"},
+		  source:{commit:"c",branch:"b",workflow:"w"},
+		  summary:{ secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
+			medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
+			test_failures:0, unsafe_docker:0, unsafe_github_actions:0, expired_exceptions:0,
+			missing_sbom:false, missing_release_evidence:false,
+			required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0 },
+		  tools:$tools, one_of_groups:$oneof,
+		  exceptions:{active:0,expired:0},
+		  evidence:{ sbom:{present:true,path:"x"}, release_evidence:{present:true,path:"y"} } }' > "$1"
+}
+v2e_tool() { # <emit> <tool> <policy> <status> <gate_enforced-bool>
+	jq -n --arg e "$1" --arg t "$2" --arg p "$3" --arg s "$4" --argjson ge "$5" \
+		'{($e):{tool:$t,policy:$p,status:$s,gate_enforced:$ge}}'
+}
+v2e_states() {
+	_d=$(mktemp -d)
+	# A clean baseline gates env (no finding gate trips; all crafted counts are 0).
+	sh "$ROOT/scripts/resolve-gates.sh" --profile "$ROOT/templates/profile.yaml" --mode baseline \
+		--output-dir "$_d" --format env >/dev/null 2>&1 || true
+	_genv="$_d/sentinel-shield-gates.env"
+
+	_gate() { # <desc> <tools-json> <oneof-json> <expected-exit>
+		v2e_make_summary "$_d/ss.json" "$2" "$3"
+		_rc=0
+		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/ss.json" \
+			--output-dir "$_d" --format json >/dev/null 2>&1 || _rc=$?
+		tpe_check "$1" "$_rc" "$4"
+		printf '%s' "$_rc"
+	}
+
+	_gate "gate: required+pass -> exit 0"          "$(v2e_tool phpstan phpstan required pass true)"            '{}' 0 >/dev/null
+	_gate "gate: required+findings -> exit 0 (count gates decide)" "$(v2e_tool phpstan phpstan required findings true)" '{}' 0 >/dev/null
+	_gate "gate: required+unavailable -> exit 1"   "$(v2e_tool larastan larastan required unavailable true)"   '{}' 1 >/dev/null
+	_gate "gate: required+not-configured -> exit 1" "$(v2e_tool pint pint required not-configured true)"        '{}' 1 >/dev/null
+	_gate "gate: required+execution-error -> exit 1" "$(v2e_tool phpstan phpstan required execution-error true)" '{}' 1 >/dev/null
+	_gate "gate: required+disabled -> exit 1"      "$(v2e_tool gitleaks gitleaks required disabled true)"      '{}' 1 >/dev/null
+	_gate "gate: recommended+unavailable -> warn, exit 0" "$(v2e_tool deptrac deptrac recommended unavailable true)" '{}' 0 >/dev/null
+	_gate "gate: optional+unavailable -> info, exit 0"    "$(v2e_tool trufflehog trufflehog optional unavailable true)" '{}' 0 >/dev/null
+	_gate "gate: required+not-applicable -> no fail, exit 0" "$(v2e_tool typescript typescript required not-applicable false)" '{}' 0 >/dev/null
+	_gate "gate: one-of group satisfied -> exit 0" '{}' '{"tests":{"status":"satisfied","selected":"pest"}}' 0 >/dev/null
+	_gate "gate: one-of group unsatisfied -> exit 1" '{}' '{"tests":{"status":"unsatisfied","selected":null}}' 1 >/dev/null
+
+	# execution-error is DISTINGUISHABLE from a plain unavailable in the report.
+	v2e_make_summary "$_d/ss.json" "$(v2e_tool phpstan phpstan required execution-error true)" '{}'
+	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/ss.json" --output-dir "$_d" --format json >/dev/null 2>&1 || true
+	tpe_atleast "gate: execution-error is recorded distinctly in the enforcement report" \
+		"$(jq -r '[.. | strings | select(test("execution-error"))] | length' "$_d/sentinel-shield-enforcement.json" 2>/dev/null || echo 0)"
+
+	# unavailable NEVER becomes a clean 0: a collector with a missing input reports
+	# 'unavailable' (exit 0) and a malformed input is an execution-error (exit 2).
+	_o=$(sh "$ROOT/scripts/collectors/eslint.sh" --input "$_d/nope.json" 2>/dev/null); _orc=$?
+	tpe_check "gate: missing scanner input -> collector exit 0" "$_orc" "0"
+	tpe_check "gate: missing scanner input -> status unavailable (not fake-clean)" \
+		"$(printf '%s' "$_o" | jq -r .status)" "unavailable"
+	_mrc=0; sh "$ROOT/scripts/collectors/eslint.sh" --input "$ROOT/tests/fixtures/v2/malformed-eslint.json" >/dev/null 2>&1 || _mrc=$?
+	tpe_check "gate: malformed scanner input -> collector exit 2 (execution-error)" "$_mrc" "2"
+
+	rm -rf "$_d"
+}
+
+# --- package managers --------------------------------------------------------
+v2e_pkgmgr() {
+	RES="$ROOT/scripts/resolve-effective-profile.sh"
+	BPT="$ROOT/scripts/bootstrap-profile-tools.sh"
+
+	# npm / pnpm / yarn detection from the lockfile (bootstrap dry-run reports it). Real.
+	for _pm in npm pnpm yarn; do
+		_pd=$(mktemp -d); printf '{"name":"x"}' > "$_pd/package.json"
+		case "$_pm" in
+			npm)  printf '{}' > "$_pd/package-lock.json" ;;
+			pnpm) printf '' > "$_pd/pnpm-lock.yaml" ;;
+			yarn) printf '' > "$_pd/yarn.lock" ;;
+		esac
+		_det=$(sh "$BPT" --profile node --target "$_pd" --dry-run 2>&1 | awk -F'Node PM:' 'NF>1{gsub(/ /,"",$2);print $2;exit}')
+		tpe_check "pkgmgr: $_pm lockfile -> detected manager $_pm" "$_det" "$_pm"
+		rm -rf "$_pd"
+	done
+
+	# multiple distinct lockfiles -> ambiguous -> exit 2. Real.
+	_md=$(mktemp -d); printf '{"name":"x"}' > "$_md/package.json"
+	printf '{}' > "$_md/package-lock.json"; printf '' > "$_md/yarn.lock"
+	_rc=0; sh "$BPT" --profile node --target "$_md" --dry-run >/dev/null 2>&1 || _rc=$?
+	tpe_check "pkgmgr: multiple lockfiles -> exit 2 (ambiguous)" "$_rc" "2"
+	rm -rf "$_md"
+
+	# JS-without-TS: typescript is NOT-APPLICABLE (no tsconfig) -> never fails. Real.
+	_js=$(mktemp -d); printf '{"name":"x"}' > "$_js/package.json"; printf '{}' > "$_js/package-lock.json"
+	tpe_check "pkgmgr: JS-only (no tsconfig) -> typescript not-applicable" \
+		"$(sh "$RES" --profile node --target "$_js" --format json 2>/dev/null | jq -r '.tools.typescript.applicability')" "not-applicable"
+	rm -rf "$_js"
+
+	# TS project: typescript is REQUIRED+APPLICABLE; a missing report fails the gate. Real.
+	_ts=$(mktemp -d); mkdir -p "$_ts/reports/raw"; printf '{"name":"x"}' > "$_ts/package.json"
+	printf '{}' > "$_ts/package-lock.json"; printf '{}' > "$_ts/tsconfig.json"
+	mkdir -p "$_ts/node_modules/.bin"; printf '#!/bin/sh\n' > "$_ts/node_modules/.bin/vitest"; chmod +x "$_ts/node_modules/.bin/vitest"
+	tpe_check "pkgmgr: TS project -> typescript required+applicable" \
+		"$(sh "$RES" --profile node --target "$_ts" --format json 2>/dev/null | jq -r '.tools.typescript.policy + "/" + .tools.typescript.applicability')" "required/applicable"
+	# seed every required report EXCEPT typescript, declassify reportless deps-install.
+	printf '{"tools":{"deps-install":{"policy":"external"}}}' > "$_ts/ovr.json"
+	for _r in $(sh "$RES" --profile node --target "$_ts" --format json 2>/dev/null \
+		| jq -r '[.tools|to_entries[]|select(.value.policy=="required" and (.value.applicability//"")!="not-applicable")|(.value.report//empty|sub(".*/";""))]|unique[]'); do
+		[ "$_r" = "typescript.json" ] && continue
+		printf '{}' > "$_ts/reports/raw/$_r"
+	done
+	printf '{}' > "$_ts/reports/raw/tests.json"
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_ts/reports/raw" --output "$_ts/ss.json" \
+		--profile node --target "$_ts" --override "$_ts/ovr.json" >/dev/null 2>&1 || true
+	tpe_atleast "pkgmgr: TS required report missing -> required_tool_failures>=1 (gate fails)" \
+		"$(jq -r '.summary.required_tool_failures // 0' "$_ts/ss.json" 2>/dev/null || echo 0)"
+	tpe_check "pkgmgr: the missing required tool is typescript" \
+		"$(jq -r '.tools|to_entries[]|select(.value|type=="object" and .policy=="required" and .status=="unavailable")|.value.tool' "$_ts/ss.json" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')" "typescript"
+	rm -rf "$_ts"
+}
+
+# --- provisioning (bootstrap + compat-resolver) ------------------------------
+v2e_provisioning() {
+	# shellcheck source=scripts/lib/compat-resolver.sh
+	. "$ROOT/scripts/lib/compat-resolver.sh"
+	FX="$ROOT/tests/fixtures/v2"; BPT="$ROOT/scripts/bootstrap-profile-tools.sh"
+
+	# dry-run mutates nothing. Real.
+	_dd=$(mktemp -d); printf '{"require":{}}' > "$_dd/composer.json"
+	sh "$BPT" --profile laravel --target "$_dd" --dry-run >/dev/null 2>&1 || true
+	tpe_check "provisioning: --dry-run writes no new files" \
+		"$(find "$_dd" -type f ! -name composer.json | wc -l | tr -d ' ')" "0"
+	rm -rf "$_dd"
+
+	# version conflict -> classified 'conflict' (never silently applied). Real.
+	_cf=$(mktemp -d); printf '{"require":{"phpstan/phpstan":"1.0.0"}}' > "$_cf/composer.json"
+	tpe_check "provisioning: pinned tool clashing with app prod require -> conflict" \
+		"$(cr_classify_tool "$_cf" "$FX/conflict-manifest.json" phpstan | cut -f1)" "conflict"
+	# framework-downgrade rejected: the conflict advises an ISOLATED install (no downgrade). Real.
+	tpe_atleast "provisioning: conflict advises isolated install (no framework downgrade)" \
+		"$(cr_classify_tool "$_cf" "$FX/conflict-manifest.json" phpstan | cut -f2- | grep -c 'isolated install')"
+	rm -rf "$_cf"
+
+	# rollback on failure: stub composer to FAIL the require; bootstrap --apply must
+	# roll back the dependency files and exit non-zero. [failure-injection — no real composer]
+	_rb=$(mktemp -d); printf '{"name":"app/app","require":{}}' > "$_rb/composer.json"
+	_before=$(cat "$_rb/composer.json")
+	_fbin=$(mktemp -d)
+	cat > "$_fbin/composer" <<'FAKE'
+#!/bin/sh
+case "$*" in *validate*) exit 0 ;; *) echo "fake composer: forced failure ($*)" >&2; exit 1 ;; esac
+FAKE
+	chmod +x "$_fbin/composer"
+	_rc=0; _log=$(PATH="$_fbin:$PATH" sh "$BPT" --profile laravel --target "$_rb" --apply 2>&1) || _rc=$?
+	tpe_atleast "provisioning: failed install exits non-zero" "$([ "$_rc" -ne 0 ] && echo 1 || echo 0)"
+	tpe_contains "provisioning: failure reports a rollback" "$_log" "roll"
+	tpe_check "provisioning: composer.json restored after rollback" "$(cat "$_rb/composer.json")" "$_before"
+	rm -rf "$_rb" "$_fbin"
+}
+
+# --- workflow plan / templates ----------------------------------------------
+v2e_workflow() {
+	WF="$ROOT/templates/workflows/sentinel-shield.yml"
+
+	# laravel/symfony plans EXECUTE every required tool: run the real planner on a
+	# seeded fixture and parse the pr-execution manifest. EVERY required PR tool the
+	# resolver expects must appear in the manifest (the plan selected + attempted it).
+	# Real. NOTE: status=ran additionally requires the tool's runner SCRIPT to exist;
+	# the symfony profile references runner scripts (phpstan.sh / phpstan-symfony.sh)
+	# that are not present in scripts/runners/, so those land as 'unavailable' (a real
+	# provisioning gap, see limitations) — hence the membership assertion for symfony
+	# and the stricter all-ran assertion only for laravel (whose runners exist).
+	for _p in laravel symfony; do
+		_w=$(mktemp -d); cp -R "$ROOT/tests/e2e/$_p/." "$_w/" 2>/dev/null || { rm -rf "$_w"; continue; }
+		sh "$ROOT/scripts/run-tool-plan.sh" --profile "$_p" --target "$_w" --stage pr >/dev/null 2>&1 || true
+		_m="$_w/reports/pr-execution.json"
+		_eff=$(sh "$ROOT/scripts/resolve-effective-profile.sh" --profile "$_p" --target "$_w" --format json 2>/dev/null || true)
+		_missing=0
+		for _k in $(printf '%s' "$_eff" | jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.pr==true and (.value.applicability//"unknown")!="not-applicable")|.key'); do
+			jq -e --arg k "$_k" '(.tools[$k] // .one_of_groups[$k]) != null' "$_m" >/dev/null 2>&1 || _missing=$((_missing + 1))
+		done
+		tpe_check "workflow: $_p PR plan includes every required PR tool (manifest)" "$_missing" "0"
+		rm -rf "$_w"
+	done
+
+	# laravel additionally REACHES status=ran for every required PR tool (its runner
+	# scripts exist and the seeded reports validate). Real.
+	_wl=$(mktemp -d); cp -R "$ROOT/tests/e2e/laravel/." "$_wl/" 2>/dev/null || true
+	sh "$ROOT/scripts/run-tool-plan.sh" --profile laravel --target "$_wl" --stage pr >/dev/null 2>&1 || true
+	tpe_check "workflow: laravel PR plan executes all required PR tools (none unran)" \
+		"$(jq '[ (.tools // {})|to_entries[] | select(.value.policy=="required" and .value.status!="ran" and .value.status!="findings") ] | length' "$_wl/reports/pr-execution.json" 2>/dev/null || echo 99)" "0"
+	rm -rf "$_wl"
+
+	# php-library AVOIDS Laravel bootstrap: no larastan, and phpstan uses the GENERIC
+	# runner (not laravel-phpstan.sh which boots artisan). Real (manifest assertion).
+	_pl="$ROOT/profiles/php-library/profile.manifest.json"
+	tpe_check "workflow: php-library declares NO larastan tool" \
+		"$(jq -r '.tools | has("larastan")' "$_pl")" "false"
+	tpe_check "workflow: php-library phpstan uses the generic runner (no artisan boot)" \
+		"$(jq -r '.tools.phpstan.runner' "$_pl")" "scripts/runners/phpstan.sh"
+	_lara=0; for _r in $(jq -r '[.tools[].runner // empty]|.[]' "$_pl" 2>/dev/null); do
+		case "$_r" in *laravel*) _lara=$((_lara+1)) ;; esac; done
+	tpe_check "workflow: php-library wires no laravel-* runner" "$_lara" "0"
+
+	# JS-only avoids required TS; TS runs typecheck (typescript runner wired). Real.
+	tpe_check "workflow: node profile wires the typescript runner (typecheck)" \
+		"$(jq -r '.tools.typescript.runner' "$ROOT/profiles/node/profile.manifest.json")" "scripts/runners/typescript.sh"
+
+	# every `uses:` in the CANONICAL workflow template is 40-hex SHA-pinned (local
+	# `./` composite actions exempt). The split per-stage templates intentionally show
+	# `@vN` tags with a documented "pin before production" caveat (see limitations), so
+	# the canonical template is the pin contract. Real.
+	tpe_check "workflow: canonical template — all 'uses:' SHA-pinned (40-hex)" \
+		"$(grep -hE '^[[:space:]]*uses:[[:space:]]' "$WF" | grep -vE 'uses:[[:space:]]*\./' | grep -cvE '@[0-9a-fA-F]{40}')" "0"
+
+	# no template uses the dangerous pull_request_target trigger (only in comments). Real.
+	tpe_check "workflow: no template uses an active pull_request_target trigger" \
+		"$(grep -rlE '^[[:space:]]*pull_request_target:' "$ROOT/templates/workflows/" 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+	# default-branch handling is present in the canonical template (main-gate stage). Real.
+	tpe_atleast "workflow: canonical template handles the default branch" \
+		"$(grep -cE 'default_branch' "$WF")"
+}
+
+run_v2_enforcement() {
+	log_info "v2-enforcement: full policy->gate matrix (composition / states / one-of / pkgmgr / provisioning / workflow / consistency)"
+	v2e_composition
+	v2e_consistency
+	v2e_states
+	v2e_pkgmgr
+	v2e_provisioning
+	v2e_workflow
+	if [ "$TPE_FAILS" -ne 0 ]; then log_error "v2-enforcement: $TPE_FAILS case(s) failed"; return 1; fi
+	log_info "v2-enforcement: OK (composition + tool-states/gate + one-of + package-managers + provisioning + workflow + cross-subsystem consistency)"
+}
+
+# --- e2e: run the LOCAL end-to-end harness (policy->gate over tests/e2e/) -----
+run_e2e() {
+	log_info "e2e: LOCAL end-to-end harness (scripts/e2e-harness.sh) — proves the full policy->gate path"
+	sh "$ROOT/scripts/e2e-harness.sh" || { log_error "e2e: harness reported a broken fixture path"; return 1; }
+	log_info "e2e: OK (local-harness; not a real CI run)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -2696,6 +3050,8 @@ case "$SUB" in
 	v180-completion) run_v180_completion ;;
 	v190-ai-install) run_v190_ai_install ;;
 	v2-toolpolicy) run_v2_toolpolicy ;;
+	v2-enforcement) run_v2_enforcement ;;
+	e2e) run_e2e ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -2741,13 +3097,15 @@ case "$SUB" in
 		run_v180_completion
 		run_v190_ai_install
 		run_v2_toolpolicy
+		run_v2_enforcement
+		run_e2e
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|e2e|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|e2e|all)"
 		exit 2
 		;;
 esac

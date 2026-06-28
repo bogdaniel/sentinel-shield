@@ -1,0 +1,7 @@
+{
+  "profile": "orphan-child",
+  "description": "Self-test fixture: extends a non-existent parent. Resolver MUST fail-closed (exit 2) and emit NO effective profile.",
+  "extends": ["does-not-exist-parent"],
+  "tool_policy_version": 2,
+  "tools": {}
+}

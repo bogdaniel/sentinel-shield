@@ -1,0 +1,7 @@
+{
+  "profile": "cycle-b",
+  "description": "Self-test fixture: other half of the inheritance cycle (b -> a).",
+  "extends": ["cycle-a"],
+  "tool_policy_version": 2,
+  "tools": {}
+}
