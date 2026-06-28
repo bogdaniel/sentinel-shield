@@ -34,8 +34,9 @@ Tool **keys** are the keys of `TOOL_TABLE` in `scripts/build-security-summary.sh
 | `disabled`    | Deliberately turned off for this profile/project. Never run; never gates.                         |
 | `external`    | Provided/run outside Sentinel Shield (results may be imported). Not installed or executed by us.  |
 
-**Precedence** (when a project override or `extends` merge conflicts):
-`required > recommended > optional > disabled`.
+**Precedence** (when a project override or `extends` merge conflicts), as ranked by
+the canonical resolver (`scripts/lib/effective-profile.sh`):
+`required > one-of > recommended > optional > external > disabled`.
 
 ### States (what actually *happened* to a tool — per-tool `status` in the summary)
 
@@ -205,12 +206,28 @@ How it gates:
 ```yaml
 tools:
   scorecard: { policy: optional }     # downgrade a noisy recommended check
-  # gitleaks: { policy: disabled }    # REJECTED: secrets is non-suppressible
-                                       # without a documented accepted-risk record
+  # gitleaks: { policy: disabled }    # REJECTED: secrets scanners (gitleaks,
+                                       # trufflehog) are non-suppressible — the
+                                       # resolver fails closed (exit 2)
   # phpstan:  { policy: disabled }    # allowed only if not non-suppressible;
                                        # cannot turn an execution-error into pass
 ```
 
-The resolver applies precedence `required > recommended > optional > disabled`,
-refuses to disable non-suppressible controls without a documented policy record,
-and refuses to convert `execution-error` to `pass`.
+The resolver applies precedence
+`required > one-of > recommended > optional > external > disabled`, refuses to set a
+non-suppressible control (`gitleaks`, `trufflehog`) to `disabled` (fail-closed,
+exit 2), and refuses to convert `execution-error` to `pass`.
+
+### Disabling a required control (control-waiver, not `disabled_tools`)
+
+`tool-policy.yaml` cannot silence a **required** control by flipping it to
+`disabled`: a required tool recorded as disabled in `installation.json`
+(`disabled_tools`) still surfaces as `status: disabled` and **fails the gate**
+unless covered by an unexpired **control-waiver**. A control-waiver lives in
+`.sentinel-shield/control-waivers.json` ([schema](../schemas/control-waiver.schema.json)),
+is owner-bound, justified, dated, expiring, and issue-linked, and is consumed by
+`enforce-gates.sh`. It only downgrades a required-tool failure
+(`unavailable`/`not-configured`/`disabled`) to a **prominently-reported, time-boxed
+waiver** — it does **not** suppress findings (use accepted-risks for finding gates)
+and is never auto-applied. Non-suppressible secrets scanners cannot be waived this
+way.

@@ -22,7 +22,8 @@ explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live con
   `execution-error`, `disabled`. Contract: `docs/profile-tool-policy.md`.
 - **Profile tool policies** for laravel, symfony, php-library, node, react, and composed
   combinations (laravel-react-docker, node-react, hardened-enterprise) via `extends` with
-  `required>recommended>optional>disabled` precedence (`scripts/lib/profile-compose.sh`).
+  `required>one-of>recommended>optional>external>disabled` precedence, composed by the
+  canonical resolver (`scripts/resolve-effective-profile.sh`, `scripts/lib/effective-profile.sh`).
 - **Compatibility resolver** (`scripts/lib/compat-resolver.sh`, `scripts/resolve-tool-plan.sh`) —
   inspects PHP/framework/lock state, emits an install plan, never downgrades app/framework deps;
   conflicts → isolated-tool recommendation.
@@ -44,6 +45,31 @@ explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live con
 - **Self-tests** — `self-test.sh v2-toolpolicy` covers the 30 required v2 cases (policy semantics,
   one-of, composition precedence, SHA-pin verification, every-required-tool-in-workflow, override
   validation, migration preservation, no-leak).
+
+### Enforcement (remediation)
+- **Required-tool gate is the single decision point.** `enforce-gates.sh` derives required-tool
+  status from report presence/validity and returns only `0/1/2`: a required tool that is
+  `unavailable`/`not-configured` (contract code 3) or produced no valid report / `execution-error`
+  (contract code 4) surfaces **here as a gate failure (exit 1)**, not 3/4 — those belong to the
+  runners/orchestrator upstream. Legacy runners keep the honest-absent pattern (report absent,
+  exit 0); `unavailable` is never converted to a clean `0`.
+- **Control-waiver, not `disabled_tools`, waives a required control.** A required tool recorded as
+  disabled (`installation.json` `disabled_tools`) still fails the gate unless covered by an
+  unexpired, owner-bound, expiring waiver in `.sentinel-shield/control-waivers.json`
+  (`schemas/control-waiver.schema.json`). A waiver only re-words the failure as a prominently-
+  reported, time-boxed waiver; it never suppresses findings (use accepted-risks) and is never
+  auto-applied.
+- **Non-suppressible secrets scanners fail closed.** `tool-policy.yaml` cannot set `gitleaks` or
+  `trufflehog` to `disabled`; the effective-profile resolver rejects it (exit 2). Overrides may not
+  convert an `execution-error` into `pass`.
+- **Node package-manager ambiguity is fatal.** `bootstrap-profile-tools.sh` exits 2 when multiple
+  distinct Node lockfiles are present (resolve via `package.json` `packageManager`); pnpm/yarn/npm
+  are selected by lockfile (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`).
+- **Rollback limitations documented honestly.** `bootstrap-profile-tools.sh` rolls back
+  dependency manifests/lockfiles on install/test failure; engine + managed-file rollback is
+  re-pinning `SENTINEL_SHIELD_REF` to the prior tag and re-running `sync-baseline.sh --apply
+  --force`. Doc over-claims from the prior pass (e.g. "accepted-risk record" to disable a control)
+  were removed.
 
 ### Deferred
 - Live Laravel/Symfony consumer CI run IDs (beta/RC/GA gate); `--apply` bootstrap exercised against

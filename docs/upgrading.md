@@ -74,9 +74,12 @@ Tags are immutable, so the prior behavior is always retrievable:
 - **Engine version:** set `SENTINEL_SHIELD_REF` back to the prior tag and re-run
   `sync-baseline.sh --apply --force` to restore the prior managed files.
 - **Dependency files:** `bootstrap-profile-tools.sh` rolls back
-  `composer.json/lock` + `package.json/lock` automatically on any install/test
-  failure. If you committed an upgrade you regret, `git revert` the dependency
-  commit.
+  `composer.json/lock` + `package.json/lock` (+ `pnpm-lock.yaml`/`yarn.lock`)
+  automatically on any install/test failure. Limitation: it restores the
+  manifests/lockfiles but can only rebuild `node_modules/` if the package manager
+  is present — otherwise it reports **rollback-incomplete** and you re-run the
+  install yourself. If you committed an upgrade you regret, `git revert` the
+  dependency commit.
 - **Adoption mode:** lower `gates.mode` in `.sentinel-shield/profile.yaml`
   (e.g. `strict → baseline`) — no engine change needed.
 - **Scanner image digests:** keep the prior `@sha256:` pin

@@ -26,10 +26,15 @@ Output (JSON) per tool: `tool`, `policy`, `category`, `runner`, `report`,
 and whose `execution.<stage>` is `true`. Each entry carries its `policy` so the
 consumer can filter to the gating set (`required` / `one-of`).
 
-**Composition:** if a manifest declares `extends: [base, …]`, the base profiles'
-`tools` maps merge first (depth-first, deduped), and the child profile's whole
-`toolPolicy` object replaces a base's for the same key (last-wins). Cycles are
-guarded; a missing base is warned and ignored.
+**Composition:** all composition is delegated to the one canonical resolver
+([`resolve-effective-profile.sh`](../scripts/resolve-effective-profile.sh)); no
+other script merges manifests. If a manifest declares `extends: [base, …]`, the
+base profiles' `tools` maps merge depth-first and the **strongest policy wins**
+(`required > one-of > recommended > optional > external > disabled`) — a child can
+**never** weaken a required parent tool by redeclaring it. The resolver is
+**fail-closed**: an unknown/missing/invalid parent, an inheritance cycle (it
+prints the path), an invalid policy value, or an illegal override all exit `2`
+with **no plan** — never a warned-and-ignored weaker policy.
 
 ## Migrating the workflow on upgrade
 
@@ -94,6 +99,28 @@ This is distinct from the provisioning `--tool-mode` on `install-baseline.sh`
 (`config-only` / `require-existing` / `bootstrap-tools`) — that one decides *how
 tools get installed*; this one decides *how strictly their absence gates*. See
 [`tool-provisioning.md`](tool-provisioning.md).
+
+## Exit-code contract (v2)
+
+The orchestrator/gate scripts share one exit-code vocabulary:
+
+| code | meaning |
+| --- | --- |
+| `0` | success — a report may still contain findings |
+| `1` | policy / gate failure |
+| `2` | invalid invocation / configuration |
+| `3` | a required tool / dependency is unavailable |
+| `4` | execution failure / malformed-or-missing valid report |
+
+**Runner honest-absent exception (do not "fix"):** the legacy runners in
+`scripts/runners/*.sh` signal "unavailable" by leaving their report **absent** and
+exiting **0** — their self-tests depend on this. `run-tool-plan.sh`,
+`build-security-summary.sh`, and `enforce-gates.sh` then **derive** each tool's
+status from report presence/validity. The gate is the final decision point:
+`enforce-gates.sh` returns only `0/1/2`, folding a required tool that is
+`unavailable` (would-be 3) or produced no valid report / `execution-error`
+(would-be 4) into a **gate failure (exit 1)**. Codes `3`/`4` belong upstream
+(`doctor.sh` exits 3 for absent required tools under `require-existing`/`bootstrap-tools`).
 
 ## Verifying the model holds
 

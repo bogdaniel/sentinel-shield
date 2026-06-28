@@ -76,9 +76,26 @@ resolver choose) or a literal constraint string in the manifest.
 4. Runs the project's `test` script if one exists.
 5. **Rolls back all dependency files** to their prior state on *any* failure.
 
+Rollback restores the snapshotted manifests/lockfiles (`composer.json/lock`,
+`package.json/lock`, `pnpm-lock.yaml`, `yarn.lock`). Reconstructing the installed
+tree (`node_modules/`) from the restored lockfile needs the package manager
+present; if it is unavailable the manifests are restored but the install tree may
+not be — reported as **rollback-incomplete** (re-run the package manager's install
+to finish).
+
 It never silently mutates dependency files — `--apply` is always explicit, and
 nothing is committed for you. `install-baseline.sh --tool-mode bootstrap-tools
 --apply` delegates to this script.
+
+### Node package manager detection
+
+The Node package manager is chosen by lockfile: `pnpm-lock.yaml` ⇒ pnpm,
+`yarn.lock` ⇒ yarn, `package-lock.json` ⇒ npm. If **multiple** distinct Node
+lockfiles are present the package manager is ambiguous and
+`bootstrap-profile-tools.sh` exits **2** — set `package.json`'s `packageManager`
+field to disambiguate. (The `npm-audit` runner independently picks pnpm/yarn/npm
+the same way, and with no lockfile leaves its report absent — `unavailable`, never
+fake-clean.)
 
 ## Managed vs project-owned files
 

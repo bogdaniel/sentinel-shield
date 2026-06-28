@@ -75,10 +75,14 @@ You do not have to enable everything at once.
    packages for you (with automatic rollback). See
    [`tool-provisioning.md`](tool-provisioning.md).
 4. **Tune policy per project** in `.sentinel-shield/tool-policy.yaml` (e.g.
-   downgrade a noisy `recommended` to `optional`). You **cannot** disable a
-   non-suppressible control (e.g. `secrets`) without a documented accepted-risk
-   record, and you **cannot** convert an `execution-error` into a `pass`
-   ([`accepted-risk-suppression.md`](accepted-risk-suppression.md)).
+   downgrade a noisy `recommended` to `optional`). You **cannot** set a
+   non-suppressible secrets scanner (`gitleaks`, `trufflehog`) to `disabled` — the
+   resolver fails closed (exit 2) — and you **cannot** convert an
+   `execution-error` into a `pass`. Disabling a **required** tool does not silence
+   its gate: it still fails unless covered by an unexpired **control-waiver**
+   (`.sentinel-shield/control-waivers.json`, not `installation.json`'s
+   `disabled_tools`) — see
+   [`profile-tool-policy.md`](profile-tool-policy.md#disabling-a-required-control-control-waiver-not-disabled_tools).
 
 ## Rollback
 
