@@ -3051,7 +3051,7 @@ vr_mksum() {
 vr_waiver_json() {
 	jq -n --arg t "$2" --arg exp "$3" --arg ap "${4:-bob}" '
 		{version:"1", waivers:[{tool:$t, justification:"self-test", owner:"alice",
-		 approved_by:$ap, created_at:"2020-01-01", expires_at:$exp, tracking_issue:"ISSUE-1"}]}' > "$1"
+		 approved_by:$ap, created_at:"2000-01-01", expires_at:$exp, tracking_issue:"ISSUE-1"}]}' > "$1"
 }
 
 # --- (D) project tool-policy override: weaken/strengthen/keys/policy/waiver ----
@@ -3060,7 +3060,7 @@ vr_override() {
 	_d=$(mktemp -d)
 	# Overrides (built inline — no secrets, no abs paths).
 	printf '{"tools":{"phpstan":{"policy":"optional"}}}'  > "$_d/weaken-required.json"   # required -> optional
-	printf '{"tools":{"tests":{"policy":"optional"}}}'    > "$_d/weaken-oneof.json"      # one-of -> optional
+	printf '{"tools":{"php-tests":{"policy":"optional"}}}' > "$_d/weaken-oneof.json"     # one-of (php-tests) -> optional
 	printf '{"tools":{"deptrac":{"policy":"required"}}}'  > "$_d/strengthen.json"        # recommended -> required
 	printf '{"tools":{"not_a_real_tool":{"policy":"required"}}}' > "$_d/typo.json"
 	printf '{"tools":{" ":{"policy":"required"}}}'        > "$_d/blank-key.json"
@@ -3098,14 +3098,19 @@ vr_override() {
 	vr_run 2 "(D) weaken required + EXPIRED waiver -> exit 2"        sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-expired.json" --format json
 	vr_run 2 "(D) weaken required + invalid-date waiver -> exit 2"   sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-baddate.json" --format json
 
-	# missing override validator (temporarily hide tool-policy-override.sh) + --override => exit 2 (no bypass).
-	_lib="$ROOT/scripts/lib/tool-policy-override.sh"
-	if [ -f "$_lib" ]; then
-		mv "$_lib" "$_lib.vrhidden"
-		if sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json >/dev/null 2>&1; then _r=0; else _r=$?; fi
-		mv "$_lib.vrhidden" "$_lib"            # restore unconditionally, before asserting
+	# missing override validator + --override => exit 2 (no bypass). (Issue 10) Run
+	# against a TEMP COPY of scripts/ with the validator removed — NEVER rename the real
+	# repo file (an interrupted rename would leave the worktree broken). EP_REPO_ROOT
+	# points the copied resolver at the real profiles/.
+	if [ -f "$ROOT/scripts/lib/tool-policy-override.sh" ]; then
+		_tcp=$(mktemp -d)
+		cp -R "$ROOT/scripts" "$_tcp/scripts"
+		rm -f "$_tcp/scripts/lib/tool-policy-override.sh"
+		if EP_REPO_ROOT="$ROOT" sh "$_tcp/scripts/resolve-effective-profile.sh" \
+			--profile laravel --override "$_d/strengthen.json" --format json >/dev/null 2>&1; then _r=0; else _r=$?; fi
+		rm -rf "$_tcp"
 		vr_check "(D) missing override validator + --override -> exit 2 (no bypass)" "$_r" "2"
-		vr_check "(D) override validator restored after hide" "$([ -f "$_lib" ] && echo yes || echo no)" "yes"
+		vr_check "(D) real override validator untouched (temp-copy method)" "$([ -f "$ROOT/scripts/lib/tool-policy-override.sh" ] && echo yes || echo no)" "yes"
 	else
 		log_warn "(D) tool-policy-override.sh absent; SKIPPING hidden-validator case"
 	fi
@@ -3394,6 +3399,139 @@ run_v2_review() {
 	log_info "v2-review: OK (override no-downgrade + waivers + bootstrap gate/rollback + planners + enforce-gate + cross-subsystem consistency + waiver visibility/non-suppression)"
 }
 
+# --- round 3: POSIX waivers, stale runners, quoting/globbing, php/js test split ---
+VR3_FAILS=0
+v3_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; VR3_FAILS=$((VR3_FAILS + 1)); fi; }
+# v3_rc <expected> <desc> -- run last arg as a command (via the CALLER's "$@"); compare exit.
+v3_rc() { _exp="$1"; _desc="$2"; shift 2; if "$@" >/dev/null 2>&1; then _g=0; else _g=$?; fi; v3_check "$_desc" "$_g" "$_exp"; }
+
+# Issue 1/2/3: waiver validation portability + version + safe keys (validator run via /bin/sh).
+v3_waivers() {
+	_w=$(mktemp -d)
+	_b='{"version":"1","waivers":[{"tool":"%s","justification":"x","owner":"a","approved_by":"b","created_at":"%s","expires_at":"%s","tracking_issue":"#1"}]}'
+	printf "$_b" phpstan 2026-08-09 2026-09-08 > "$_w/p0809.json"
+	printf "$_b" phpstan 2028-02-01 2028-02-29 > "$_w/leap.json"
+	printf "$_b" phpstan 2026-01-01 2026-02-29 > "$_w/nonleap.json"
+	printf "$_b" phpstan 2026-01-01 2026-04-31 > "$_w/apr31.json"
+	printf "$_b" phpstan 0000-01-01 2026-01-01 > "$_w/yr0.json"
+	echo '{"waivers":[]}' > "$_w/nover.json"; echo '{"version":"2","waivers":[]}' > "$_w/v2.json"
+	echo '{"version":"1","waivers":[]}' > "$_w/v1.json"
+	printf "$_b" 'phpstan semgrep' 2026-01-01 2099-01-01 > "$_w/space.json"
+	printf "$_b" '../phpstan' 2026-01-01 2099-01-01 > "$_w/trav.json"
+	printf 'phpstan\tsemgrep' > "$_w/tk"; printf "$_b" "$(cat "$_w/tk")" 2026-01-01 2099-01-01 > "$_w/tab.json"
+	# run EXACTLY as the prompt specifies — via /bin/sh, sourcing the lib standalone.
+	# `if` so a non-zero exit does not trip the harness's set -e before we print it.
+	V(){ if sh -c '. scripts/lib/control-waivers.sh; cw_validate_file "$1"' sh "$1" >/dev/null 2>&1; then echo 0; else echo $?; fi; }
+	v3_check "(1) /bin/sh validates 2026-08-09/2026-09-08 (no \$((10#..)))" "$(V "$_w/p0809.json")" "0"
+	v3_check "(1) /bin/sh accepts leap 2028-02-29" "$(V "$_w/leap.json")" "0"
+	v3_check "(1) /bin/sh rejects 2026-02-29" "$(V "$_w/nonleap.json")" "2"
+	v3_check "(1) /bin/sh rejects 2026-04-31" "$(V "$_w/apr31.json")" "2"
+	v3_check "(1) /bin/sh rejects year 0000" "$(V "$_w/yr0.json")" "2"
+	v3_check "(2) missing version -> exit 2" "$(V "$_w/nover.json")" "2"
+	v3_check "(2) unsupported version 2 -> exit 2" "$(V "$_w/v2.json")" "2"
+	v3_check "(2) version 1 -> valid" "$(V "$_w/v1.json")" "0"
+	v3_check "(3) tool key with space -> exit 2" "$(V "$_w/space.json")" "2"
+	v3_check "(3) tool key traversal ../ -> exit 2" "$(V "$_w/trav.json")" "2"
+	v3_check "(3) tool key with TAB -> exit 2" "$(V "$_w/tab.json")" "2"
+	rm -rf "$_w"
+}
+
+# Issue 4/5: doctor + maturity validate a malformed waiver fail-closed even without jq on PATH.
+v3_nojq_failclosed() {
+	_t=$(mktemp -d); mkdir -p "$_t/.sentinel-shield"
+	printf '{"version":"1","waivers":[{"tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"  # malformed (unsafe key + missing fields)
+	# shim PATH with no jq (keep sh/printf/etc. from a minimal busybox-like set: easiest is to
+	# point PATH at an empty dir + the real coreutils EXCEPT jq — we hide jq via a wrapper dir).
+	_bin=$(mktemp -d)
+	for _c in sh dirname basename cat printf grep sed awk tr date mktemp rm mkdir jq; do _p=$(command -v "$_c" 2>/dev/null) && ln -s "$_p" "$_bin/$_c" 2>/dev/null; done
+	rm -f "$_bin/jq"   # hide jq only
+	v3_rc 2 "(4) doctor: malformed waiver + no jq -> exit 2" env PATH="$_bin" sh "$ROOT/scripts/doctor.sh" --target "$_t" --profile laravel
+	v3_rc 2 "(5) maturity: malformed waiver + no jq -> exit 2" env PATH="$_bin" sh "$ROOT/scripts/maturity-report.sh" --target "$_t" --profile laravel
+	# valid waiver file + jq present => doctor does not fail FOR THE WAIVER (may still exit 3 for
+	# missing required tools, which is separate); malformed + jq present => exit 2.
+	printf '{"version":"1","waivers":[{"tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"
+	v3_rc 2 "(4) doctor: malformed waiver + jq present -> exit 2" sh "$ROOT/scripts/doctor.sh" --target "$_t" --profile laravel
+	rm -rf "$_t" "$_bin"
+}
+
+# Issue 7: direct runner invocation clears a stale report when the tool/runtime is absent.
+v3_stale_runners() {
+	_t=$(mktemp -d); mkdir -p "$_t/reports/raw"; cd "$_t"
+	for _r in phpstan:phpstan.json:SENTINEL_SHIELD_PHPSTAN_BIN jest:js-tests.json:SENTINEL_SHIELD_JEST_BIN vitest:js-tests.json:SENTINEL_SHIELD_VITEST_BIN; do
+		_name=${_r%%:*}; _rest=${_r#*:}; _rep=${_rest%%:*}; _env=${_rest#*:}
+		echo '{"stale":"VALID"}' > "reports/raw/$_rep"
+		env "$_env=/nonexistent-bin" sh "$ROOT/scripts/runners/$_name.sh" --output "reports/raw/$_rep" >/dev/null 2>&1
+		v3_check "(7) direct $_name: stale report cleared when tool absent" "$([ -f "reports/raw/$_rep" ] && echo present || echo absent)" "absent"
+	done
+	cd "$ROOT"; rm -rf "$_t"
+}
+
+# Issue 8: resolve-workflow-plan handles --target paths with spaces and glob chars.
+v3_target_quoting() {
+	for _name in 'sp ace' 'glob[1]' 'normal'; do
+		_t=$(mktemp -d)/"$_name"; mkdir -p "$_t"
+		_out=$(sh "$ROOT/scripts/resolve-workflow-plan.sh" --profile laravel --target "$_t" --stage pr 2>/dev/null | jq -r '.stage' 2>/dev/null)
+		v3_check "(8) workflow-plan target '$_name' resolves" "$_out" "pr"
+		rm -rf "$(dirname "$_t")"
+	done
+}
+
+# Issue 9: maturity activation parsing is glob-proof (files named * ? in CWD do not alter columns).
+v3_maturity_glob() {
+	_t=$(mktemp -d); cd "$_t"; : > '*'; : > '?'
+	_out=$(sh "$ROOT/scripts/maturity-report.sh" --format md 2>/dev/null)
+	v3_check "(9) maturity output does not leak CWD glob ('*' file)" "$(printf '%s' "$_out" | grep -c "$(basename "$_t")")" "0"
+	v3_check "(9) maturity still produces a table" "$(printf '%s' "$_out" | grep -c '^| Tool ')" "1"
+	cd "$ROOT"; rm -rf "$_t"
+}
+
+# Issue 6: summary-only required-failure count stays numeric (empty REQF_REC + summary count 1).
+v3_summary_numeric() {
+	_t=$(mktemp -d); mkdir -p "$_t"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_t" --format env >/dev/null 2>&1
+	printf '{"version":"1.0","generated_at":"t","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"expired_exceptions":0,"missing_sbom":false,"missing_release_evidence":false,"required_tool_failures":1},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"exceptions":{"active":0,"expired":0}}' > "$_t/s.json"
+	if sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_t/sentinel-shield-gates.env" --summary "$_t/s.json" --output-dir "$_t" --format all >/dev/null 2>&1; then _r=0; else _r=$?; fi
+	v3_check "(6) summary-only required_tool_failures=1 -> gate fail (exit 1, no arith error)" "$_r" "1"
+	v3_check "(6) enforcement JSON valid" "$(jq -e . "$_t/sentinel-shield-enforcement.json" >/dev/null 2>&1 && echo ok || echo bad)" "ok"
+	rm -rf "$_t"
+}
+
+# Issue 11: php-tests and js-tests are INDEPENDENT one-of groups.
+v3_test_split() {
+	_R="$ROOT/scripts/resolve-effective-profile.sh"
+	v3_check "(11) laravel one-of groups = php-tests" "$(sh "$_R" --profile laravel 2>/dev/null | jq -rc '.one_of_groups|keys')" '["php-tests"]'
+	v3_check "(11) react one-of groups = js-tests" "$(sh "$_R" --profile react 2>/dev/null | jq -rc '.one_of_groups|keys')" '["js-tests"]'
+	v3_check "(11) laravel-react-docker has BOTH php-tests + js-tests" "$(sh "$_R" --profile laravel-react-docker 2>/dev/null | jq -rc '.one_of_groups|keys|sort')" '["js-tests","php-tests"]'
+	# satisfaction independence (with --target): pest satisfies php-tests, NOT js-tests; vitest the reverse.
+	_t=$(mktemp -d); mkdir -p "$_t/vendor/bin" "$_t/node_modules/.bin"
+	printf '#!/bin/sh\n' > "$_t/vendor/bin/pest"; chmod +x "$_t/vendor/bin/pest"
+	v3_check "(11) laravel + pest only -> php-tests satisfied" "$(sh "$_R" --profile laravel --target "$_t" 2>/dev/null | jq -r '.one_of_groups["php-tests"].status')" "satisfied"
+	v3_check "(11) combined + pest only -> js-tests UNSATISFIED" "$(sh "$_R" --profile laravel-react-docker --target "$_t" 2>/dev/null | jq -r '.one_of_groups["js-tests"].status')" "unsatisfied"
+	printf '#!/bin/sh\n' > "$_t/node_modules/.bin/vitest"; chmod +x "$_t/node_modules/.bin/vitest"
+	v3_check "(11) react + vitest only -> js-tests satisfied" "$(sh "$_R" --profile react --target "$_t" 2>/dev/null | jq -r '.one_of_groups["js-tests"].status')" "satisfied"
+	v3_check "(11) combined + pest+vitest -> php-tests satisfied" "$(sh "$_R" --profile laravel-react-docker --target "$_t" 2>/dev/null | jq -r '.one_of_groups["php-tests"].status')" "satisfied"
+	v3_check "(11) combined + pest+vitest -> js-tests satisfied" "$(sh "$_R" --profile laravel-react-docker --target "$_t" 2>/dev/null | jq -r '.one_of_groups["js-tests"].status')" "satisfied"
+	# remove BOTH runners: a PHP-only project (pest, no js runner) leaves js-tests unsatisfied.
+	rm -f "$_t/vendor/bin/pest" "$_t/node_modules/.bin/vitest"
+	printf '#!/bin/sh\n' > "$_t/vendor/bin/pest"; chmod +x "$_t/vendor/bin/pest"
+	v3_check "(11) combined + pest but NO js runner -> js-tests unsatisfied" "$(sh "$_R" --profile laravel-react-docker --target "$_t" 2>/dev/null | jq -r '.one_of_groups["js-tests"].status')" "unsatisfied"
+	v3_check "(11) combined + pest but NO js runner -> php-tests satisfied" "$(sh "$_R" --profile laravel-react-docker --target "$_t" 2>/dev/null | jq -r '.one_of_groups["php-tests"].status')" "satisfied"
+	rm -rf "$_t"
+}
+
+run_v2_review_round3() {
+	log_info "v2-review-round3: POSIX waivers + version/keys + fail-closed validation + stale runners + quoting/globbing + php/js test split"
+	v3_waivers
+	v3_nojq_failclosed
+	v3_stale_runners
+	v3_target_quoting
+	v3_maturity_glob
+	v3_summary_numeric
+	v3_test_split
+	if [ "$VR3_FAILS" -ne 0 ]; then log_error "v2-review-round3: $VR3_FAILS case(s) failed"; return 1; fi
+	log_info "v2-review-round3: OK (portable waivers + safe keys + fail-closed + stale-runner + quoting + glob-proof + php/js test split)"
+}
+
 # --- e2e: run the LOCAL end-to-end harness (policy->gate over tests/e2e/) -----
 run_e2e() {
 	log_info "e2e: LOCAL end-to-end harness (scripts/e2e-harness.sh) — proves the full policy->gate path"
@@ -3448,6 +3586,7 @@ case "$SUB" in
 	v2-toolpolicy) run_v2_toolpolicy ;;
 	v2-enforcement) run_v2_enforcement ;;
 	v2-review) run_v2_review ;;
+	v2-review-round3) run_v2_review_round3 ;;
 	e2e) run_e2e ;;
 	all)
 		run_syntax
@@ -3496,14 +3635,15 @@ case "$SUB" in
 		run_v2_toolpolicy
 		run_v2_enforcement
 		run_v2_review
+		run_v2_review_round3
 		run_e2e
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|e2e|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|e2e|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|all)"
 		exit 2
 		;;
 esac
