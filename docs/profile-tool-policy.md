@@ -254,8 +254,8 @@ present-but-jq-missing → fail closed; malformed → fail closed).
 ```json
 { "version": "1",
   "waivers": [
-    { "tool": "larastan", "owner": "alice", "approved_by": "bob",
-      "justification": "extension upgrade in flight", "created_at": "2026-08-09",
+    { "tool": "phpstan", "owner": "alice", "approved_by": "bob",
+      "justification": "static-analysis upgrade in flight", "created_at": "2026-08-09",
       "expires_at": "2026-09-08", "tracking_issue": "SEC-123" } ] }
 ```
 

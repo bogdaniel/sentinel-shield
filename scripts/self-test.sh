@@ -3419,9 +3419,11 @@ v3_waivers() {
 	printf "$_b" 'phpstan semgrep' 2026-01-01 2099-01-01 > "$_w/space.json"
 	printf "$_b" '../phpstan' 2026-01-01 2099-01-01 > "$_w/trav.json"
 	printf 'phpstan\tsemgrep' > "$_w/tk"; printf "$_b" "$(cat "$_w/tk")" 2026-01-01 2099-01-01 > "$_w/tab.json"
-	# run EXACTLY as the prompt specifies — via /bin/sh, sourcing the lib standalone.
-	# `if` so a non-zero exit does not trip the harness's set -e before we print it.
-	V(){ if sh -c '. scripts/lib/control-waivers.sh; cw_validate_file "$1"' sh "$1" >/dev/null 2>&1; then echo 0; else echo $?; fi; }
+	# run EXACTLY as the prompt specifies — via /bin/sh, sourcing the lib standalone —
+	# but cwd-independent ($ROOT subshell) so the probe (and the lib's relative
+	# common-lib lookup) work regardless of where self-test was launched from. `if` so
+	# a non-zero exit does not trip the harness's set -e before we print it.
+	V(){ if ( cd "$ROOT" && sh -c '. scripts/lib/control-waivers.sh; cw_validate_file "$1"' sh "$1" ) >/dev/null 2>&1; then echo 0; else echo $?; fi; }
 	v3_check "(1) /bin/sh validates 2026-08-09/2026-09-08 (no \$((10#..)))" "$(V "$_w/p0809.json")" "0"
 	v3_check "(1) /bin/sh accepts leap 2028-02-29" "$(V "$_w/leap.json")" "0"
 	v3_check "(1) /bin/sh rejects 2026-02-29" "$(V "$_w/nonleap.json")" "2"
