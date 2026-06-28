@@ -108,6 +108,7 @@ phpstan|phpstan.json|phpstan.sh|phpstan
 psalm|psalm.json|psalm.sh|psalm
 deptrac|deptrac.json|deptrac.sh|deptrac
 tests|tests.json|tests.sh|tests
+js-tests|js-tests.json|tests.sh|js_tests
 hadolint|hadolint.json|hadolint.sh|hadolint
 actionlint|actionlint.json|actionlint.sh|actionlint
 zizmor|zizmor.json|zizmor.sh|zizmor

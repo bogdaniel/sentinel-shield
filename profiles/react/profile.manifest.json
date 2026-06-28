@@ -145,23 +145,6 @@
         "classification": "project-owned"
       }
     },
-    "tests": {
-      "policy": "one-of",
-      "category": "tests",
-      "alternatives": [
-        "jest",
-        "vitest"
-      ],
-      "report": "reports/raw/tests.json",
-      "requires": [
-        "deps-install"
-      ],
-      "execution": {
-        "pr": true,
-        "main": true,
-        "scheduled": false
-      }
-    },
     "jest": {
       "policy": "one-of",
       "category": "tests",
@@ -179,7 +162,7 @@
       "alternatives": [
         "vitest"
       ],
-      "report": "reports/raw/tests.json",
+      "report": "reports/raw/js-tests.json",
       "execution": {
         "pr": true,
         "main": true,
@@ -204,7 +187,7 @@
       "alternatives": [
         "jest"
       ],
-      "report": "reports/raw/tests.json",
+      "report": "reports/raw/js-tests.json",
       "execution": {
         "pr": true,
         "main": true,
@@ -362,6 +345,23 @@
         "pr": false,
         "main": true,
         "scheduled": true
+      }
+    },
+    "js-tests": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": [
+        "jest",
+        "vitest"
+      ],
+      "report": "reports/raw/js-tests.json",
+      "requires": [
+        "deps-install"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
       }
     }
   },
