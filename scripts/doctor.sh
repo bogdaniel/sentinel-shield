@@ -62,8 +62,12 @@ esac
 # WAIVED_KEYS holds the tool/group keys covered by a VALID, UNEXPIRED waiver.
 if [ -n "$WAIVERS_CLI" ]; then WAIVERS_FILE="$WAIVERS_CLI"; else WAIVERS_FILE="$TARGET/.sentinel-shield/control-waivers.json"; fi
 WAIVED_KEYS=""
+# Validate the waivers file UNCONDITIONALLY (Issue 4): the shared validator handles
+# absent => ok, present-but-jq-missing => fail closed, malformed => fail closed. A
+# malformed waiver must never skip validation just because jq is absent.
+cw_validate_file "$WAIVERS_FILE" || { log_error "doctor: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
+# Key extraction needs jq; the validity DECISION above does not depend on it.
 if command_exists jq; then
-  cw_validate_file "$WAIVERS_FILE" || { log_error "doctor: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
   WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
 fi
 # is_waived <key> — 0 if <key> (tool or one-of group) has a valid, unexpired waiver.

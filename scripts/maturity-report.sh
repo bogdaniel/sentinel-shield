@@ -69,8 +69,10 @@ SUMMARY="$TARGET/reports/security-summary.json"
 # WITHOUT converting the tool to pass/optional (C2).
 if [ -n "$WAIVERS_CLI" ]; then WAIVERS_FILE="$WAIVERS_CLI"; else WAIVERS_FILE="$TARGET/.sentinel-shield/control-waivers.json"; fi
 WAIVED_KEYS=""
+# Validate UNCONDITIONALLY (Issue 5) — same fail-closed decision as doctor/gate even
+# when jq is absent. Key extraction (needs jq) stays conditional below.
+cw_validate_file "$WAIVERS_FILE" || { log_error "maturity-report: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
 if command_exists jq; then
-  cw_validate_file "$WAIVERS_FILE" || { log_error "maturity-report: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
   WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
 fi
 # mr_is_waived <key> — 0 if <key> has a valid, unexpired control-waiver.
@@ -161,8 +163,11 @@ if [ "$FORMAT" = "json" ]; then
   first=1
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
-    _oifs=$IFS; IFS="$TAB"; set -- $act; IFS=$_oifs
-    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6; rep=$7; wv=$8
+    # (Issue 9) Tab-aware unpack with NO word-splitting/glob expansion (set -- $act
+    # would expand * ? in a field against the CWD). Here-doc keeps it in this shell.
+    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
+$act
+EOF
     [ "$first" = 1 ] || printf ','; first=0
     printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","gate_enforced":"%s","last_result":"%s","report":"%s","waived":"%s"}' \
       "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$rep" "$wv"
@@ -181,8 +186,10 @@ else
   echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
-    _oifs=$IFS; IFS="$TAB"; set -- $act; IFS=$_oifs
-    pol=$1; inst=$2; cfg=$3; exe=$4; ge=$5; lr=$6; wv=$8
+    # (Issue 9) Tab-aware unpack; no word-splitting/glob expansion.
+    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
+$act
+EOF
     printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
       "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$wv"
   done
