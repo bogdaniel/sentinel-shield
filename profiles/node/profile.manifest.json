@@ -2,169 +2,358 @@
   "$schema": "../profile.manifest.schema.json",
   "profile": "node",
   "description": "Node stack. npm audit + Jest/Vitest test adapters. tsconfig/eslint are project-local.",
-  "stacks": ["node"],
+  "stacks": [
+    "node"
+  ],
   "files": [
-    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
-    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" }
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/accepted-risks.example.json",
+      "target": ".sentinel-shield/accepted-risks.example.json",
+      "mode": "create-if-missing"
+    }
   ],
   "workflows": [
-    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+    {
+      "source": "templates/workflows/sentinel-shield.yml",
+      "target": ".github/workflows/sentinel-shield.yml",
+      "mode": "overwrite-if-force"
+    }
   ],
   "docs": [],
-  "never_touch": [".sentinel-shield/accepted-risks.json"],
-  "required_scripts": ["scripts/adapters/jest-to-tests-json.mjs", "scripts/adapters/vitest-to-tests-json.mjs", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests"],
-  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
-  "recommended_raw_reports": ["npm-audit.json", "tests.json", "gitleaks.json", "semgrep.json"],
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json"
+  ],
+  "required_scripts": [
+    "scripts/adapters/jest-to-tests-json.mjs",
+    "scripts/adapters/vitest-to-tests-json.mjs",
+    "scripts/build-security-summary.sh",
+    "scripts/enforce-gates.sh"
+  ],
+  "recommended_pr_fast_tools": [
+    "npm-audit",
+    "eslint",
+    "typescript",
+    "gitleaks",
+    "semgrep",
+    "tests"
+  ],
+  "recommended_main_gate_tools": [
+    "codeql",
+    "osv-scanner",
+    "trivy-fs",
+    "syft",
+    "grype",
+    "dependency-check"
+  ],
+  "recommended_scheduled_tools": [
+    "trufflehog",
+    "scorecard",
+    "dependency-check",
+    "grype-fs"
+  ],
+  "recommended_raw_reports": [
+    "npm-audit.json",
+    "tests.json",
+    "gitleaks.json",
+    "semgrep.json"
+  ],
   "tool_policy_version": 2,
   "tools": {
     "deps-install": {
       "policy": "required",
       "category": "setup",
-      "executable": ["npm", "pnpm", "yarn"],
+      "executable": [
+        "npm",
+        "pnpm",
+        "yarn"
+      ],
       "missing_behavior": "fail",
-      "execution": { "pr": true, "main": true, "scheduled": true }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": true
+      }
     },
     "eslint": {
       "policy": "required",
       "category": "static-analysis",
-      "packages": [{ "name": "eslint", "scope": "dev", "compatibility": "auto" }],
-      "executable": ["node_modules/.bin/eslint", "eslint"],
+      "packages": [
+        {
+          "name": "eslint",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/eslint",
+        "eslint"
+      ],
       "runner": "scripts/runners/eslint.sh",
       "report": "reports/raw/eslint.json",
       "missing_behavior": "fail",
-      "execution": { "pr": true, "main": true, "scheduled": false },
-      "config": { "path": "eslint.config.js", "classification": "project-owned" }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "eslint.config.js",
+        "classification": "project-owned"
+      }
     },
     "typescript": {
       "policy": "required",
       "category": "static-analysis",
-      "packages": [{ "name": "typescript", "scope": "dev", "compatibility": "auto" }],
-      "executable": ["node_modules/.bin/tsc", "tsc"],
+      "packages": [
+        {
+          "name": "typescript",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/tsc",
+        "tsc"
+      ],
       "runner": "scripts/runners/typescript.sh",
       "report": "reports/raw/typescript.json",
       "missing_behavior": "fail",
-      "requires": ["deps-install"],
-      "execution": { "pr": true, "main": true, "scheduled": false },
-      "config": { "path": "tsconfig.json", "classification": "project-owned" }
+      "requires": [
+        "deps-install"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "tsconfig.json",
+        "classification": "project-owned"
+      }
     },
     "tests": {
       "policy": "one-of",
       "category": "tests",
-      "alternatives": ["jest", "vitest"],
+      "alternatives": [
+        "jest",
+        "vitest"
+      ],
       "report": "reports/raw/tests.json",
-      "requires": ["deps-install"],
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "requires": [
+        "deps-install"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
     },
     "jest": {
       "policy": "one-of",
       "category": "tests",
-      "packages": [{ "name": "jest", "scope": "dev", "compatibility": "auto" }],
-      "executable": ["node_modules/.bin/jest", "jest"],
-      "alternatives": ["vitest"],
+      "packages": [
+        {
+          "name": "jest",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/jest",
+        "jest"
+      ],
+      "alternatives": [
+        "vitest"
+      ],
       "report": "reports/raw/tests.json",
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "runner": "scripts/runners/jest.sh"
     },
     "vitest": {
       "policy": "one-of",
       "category": "tests",
-      "packages": [{ "name": "vitest", "scope": "dev", "compatibility": "auto" }],
-      "executable": ["node_modules/.bin/vitest", "vitest"],
-      "alternatives": ["jest"],
+      "packages": [
+        {
+          "name": "vitest",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/vitest",
+        "vitest"
+      ],
+      "alternatives": [
+        "jest"
+      ],
       "report": "reports/raw/tests.json",
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "runner": "scripts/runners/vitest.sh"
     },
     "npm-audit": {
       "policy": "required",
       "category": "sca",
-      "executable": ["npm", "pnpm", "yarn"],
-      "runner": "scripts/collectors/npm-audit.sh",
+      "executable": [
+        "npm",
+        "pnpm",
+        "yarn"
+      ],
+      "runner": "scripts/runners/npm-audit.sh",
       "report": "reports/raw/npm-audit.json",
       "missing_behavior": "fail",
-      "requires": ["deps-install"],
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "requires": [
+        "deps-install"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
     },
     "gitleaks": {
       "policy": "required",
       "category": "secrets",
-      "executable": ["gitleaks"],
-      "runner": "scripts/collectors/gitleaks.sh",
+      "executable": [
+        "gitleaks"
+      ],
       "report": "reports/raw/gitleaks.json",
       "missing_behavior": "fail",
-      "execution": { "pr": true, "main": true, "scheduled": true }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": true
+      }
     },
     "semgrep": {
       "policy": "required",
       "category": "static-analysis",
-      "executable": ["semgrep"],
-      "runner": "scripts/collectors/semgrep.sh",
+      "executable": [
+        "semgrep"
+      ],
       "report": "reports/raw/semgrep.json",
       "missing_behavior": "fail",
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
     },
     "actionlint": {
       "policy": "required",
       "category": "ci",
-      "executable": ["actionlint"],
+      "executable": [
+        "actionlint"
+      ],
       "runner": "scripts/runners/actionlint.sh",
       "report": "reports/raw/actionlint.json",
       "missing_behavior": "warn",
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
     },
     "zizmor": {
       "policy": "required",
       "category": "ci",
-      "executable": ["zizmor"],
+      "executable": [
+        "zizmor"
+      ],
       "runner": "scripts/runners/zizmor.sh",
       "report": "reports/raw/zizmor.json",
       "missing_behavior": "warn",
-      "execution": { "pr": true, "main": true, "scheduled": false }
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
     },
     "codeql": {
       "policy": "required",
       "category": "static-analysis",
-      "executable": ["codeql"],
+      "executable": [
+        "codeql"
+      ],
       "runner": "scripts/runners/codeql-export.sh",
       "report": "reports/raw/codeql.json",
       "missing_behavior": "fail",
-      "execution": { "pr": false, "main": true, "scheduled": true }
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
     },
     "osv-scanner": {
       "policy": "required",
       "category": "sca",
-      "executable": ["osv-scanner"],
-      "runner": "scripts/collectors/osv-scanner.sh",
+      "executable": [
+        "osv-scanner"
+      ],
       "report": "reports/raw/osv-scanner.json",
       "missing_behavior": "fail",
-      "execution": { "pr": false, "main": true, "scheduled": true }
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
     },
     "trivy-fs": {
       "policy": "required",
       "category": "sca",
-      "executable": ["trivy"],
-      "runner": "scripts/collectors/trivy.sh",
+      "executable": [
+        "trivy"
+      ],
       "report": "reports/raw/trivy-fs.json",
       "missing_behavior": "fail",
-      "execution": { "pr": false, "main": true, "scheduled": true }
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
     },
     "syft": {
       "policy": "required",
       "category": "supply-chain",
-      "executable": ["syft"],
+      "executable": [
+        "syft"
+      ],
       "report": "reports/raw/syft.json",
       "missing_behavior": "fail",
-      "execution": { "pr": false, "main": true, "scheduled": true }
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
     },
     "grype": {
       "policy": "required",
       "category": "sca",
-      "executable": ["grype"],
-      "runner": "scripts/collectors/grype.sh",
+      "executable": [
+        "grype"
+      ],
       "report": "reports/raw/grype.json",
       "missing_behavior": "fail",
-      "requires": ["syft"],
-      "execution": { "pr": false, "main": true, "scheduled": true }
+      "requires": [
+        "syft"
+      ],
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
     }
   },
   "tool_notes": {
