@@ -114,12 +114,17 @@ REQ_UNAVAIL=0     # a required tool/group is unavailable (-> exit 3)
 eff_get() { printf '%s' "$EFF" | jq -r "$1"; }
 
 # run_runner <runner-rel-path> <report-path> <log-name> — invoke a runner and
-# classify the outcome. Sets globals RC (runner exit as JSON: a number or "null")
-# and STATUS (ran | unavailable | error | skipped).
+# classify the outcome. Sets globals RC (runner exit as JSON: a number or "null"),
+# STATUS (ran | unavailable | error | skipped), STARTED_AT/FINISHED_AT (UTC, "" if
+# the runner was not invoked) and REPORT_PRESENT (true if a valid JSON report exists
+# AFTER this invocation, else false).
 run_runner() {
 	_runner="$1"; _report="$2"; _log="$3"
 	RC=null
 	STATUS=skipped
+	STARTED_AT=""
+	FINISHED_AT=""
+	REPORT_PRESENT=false
 	# Nothing to run and nothing to verify (e.g. a setup tool like deps-install).
 	if [ -z "$_runner" ] && [ -z "$_report" ]; then
 		STATUS=skipped
@@ -132,13 +137,22 @@ run_runner() {
 			RC=null
 			return 0
 		fi
+		# (B17) Remove any STALE report left by a previous run BEFORE invoking the
+		# runner, so a failed/no-op execution cannot inherit a stale valid report
+		# and look successful. Status is classified ONLY from artifacts produced by
+		# THIS invocation. (Legacy runners signal "unavailable" by leaving the
+		# report absent + exit 0, which this deletion makes detectable.)
+		[ -n "$_report" ] && rm -f -- "$_report"
 		_rc=0
+		STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 		sh "$REPO_ROOT/$_runner" >"$RAW_DIR/${_log}.run.log" 2>&1 || _rc=$?
+		FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 		RC=$_rc
 	fi
 	if [ -n "$_report" ]; then
 		if jq -e . "$_report" >/dev/null 2>&1; then
 			STATUS=ran
+			REPORT_PRESENT=true
 		elif [ "$RC" != "null" ] && [ "$RC" -ne 0 ]; then
 			STATUS=error
 		else
@@ -184,7 +198,8 @@ for KEY in $NORMAL_KEYS; do
 	note_required_outcome "$POLICY" "$STATUS"
 	log_info "tool $KEY: policy=$POLICY status=$STATUS runner_exit=$RC"
 	TOOLS_ACC="${TOOLS_ACC}$(jq -nc --arg k "$KEY" --arg p "$POLICY" --argjson re "$RC" --arg st "$STATUS" --arg rep "$REPORT" \
-		'{key:$k, policy:$p, runner_exit:$re, status:$st, report:(if $rep=="" then null else $rep end)}')
+		--arg sa "$STARTED_AT" --arg fa "$FINISHED_AT" --argjson rp "$REPORT_PRESENT" \
+		'{key:$k, policy:$p, runner_exit:$re, status:$st, report:(if $rep=="" then null else $rep end), started_at:(if $sa=="" then null else $sa end), finished_at:(if $fa=="" then null else $fa end), report_present:$rp}')
 "
 	IFS='
 '
@@ -210,6 +225,9 @@ for GKEY in $GROUP_KEYS; do
 	if [ -z "$SEL" ]; then
 		STATUS=unsatisfied
 		RC=null
+		STARTED_AT=""
+		FINISHED_AT=""
+		REPORT_PRESENT=false
 		log_warn "one-of group $GKEY: no member selected (unsatisfied)"
 	else
 		MRUNNER=$(eff_get '.tools["'"$SEL"'"].runner // ""')
@@ -221,7 +239,8 @@ for GKEY in $GROUP_KEYS; do
 	fi
 	note_required_outcome "$GPOLICY" "$STATUS"
 	GROUPS_ACC="${GROUPS_ACC}$(jq -nc --arg k "$GKEY" --arg p "$GPOLICY" --arg sel "$SEL" --argjson re "$RC" --arg st "$STATUS" --arg rep "$GREPORT" \
-		'{key:$k, policy:$p, selected:(if $sel=="" then null else $sel end), status:$st, runner_exit:$re, report:(if $rep=="" then null else $rep end)}')
+		--arg sa "$STARTED_AT" --arg fa "$FINISHED_AT" --argjson rp "$REPORT_PRESENT" \
+		'{key:$k, policy:$p, selected:(if $sel=="" then null else $sel end), status:$st, runner_exit:$re, report:(if $rep=="" then null else $rep end), started_at:(if $sa=="" then null else $sa end), finished_at:(if $fa=="" then null else $fa end), report_present:$rp}')
 "
 	IFS='
 '
@@ -229,8 +248,8 @@ done
 IFS=$_oifs
 
 # --- write the stage execution manifest (ALWAYS, before any non-zero exit) ----
-TOOLS_JSON=$(printf '%s' "$TOOLS_ACC" | jq -s 'map({(.key): {policy:.policy, runner_exit:.runner_exit, status:.status, report:.report}}) | add // {}')
-GROUPS_JSON=$(printf '%s' "$GROUPS_ACC" | jq -s 'map({(.key): {policy:.policy, selected:.selected, status:.status, runner_exit:.runner_exit, report:.report}}) | add // {}')
+TOOLS_JSON=$(printf '%s' "$TOOLS_ACC" | jq -s 'map({(.key): {policy:.policy, runner_exit:.runner_exit, status:.status, report:.report, report_present:.report_present, started_at:.started_at, finished_at:.finished_at}}) | add // {}')
+GROUPS_JSON=$(printf '%s' "$GROUPS_ACC" | jq -s 'map({(.key): {policy:.policy, selected:.selected, status:.status, runner_exit:.runner_exit, report:.report, report_present:.report_present, started_at:.started_at, finished_at:.finished_at}}) | add // {}')
 jq -n \
 	--arg profile "$PROFILE" \
 	--arg stage "$STAGE" \

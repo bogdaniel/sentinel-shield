@@ -46,16 +46,18 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 usage() {
-	printf 'Usage: resolve-workflow-plan.sh (--profile <name> | --manifest <path>) [--stage pr|main|scheduled|all]\n'
+	printf 'Usage: resolve-workflow-plan.sh (--profile <name> | --manifest <path>) [--target <dir>] [--stage pr|main|scheduled|all]\n'
 }
 
 PROFILE=""
 MANIFEST=""
+TARGET=""
 STAGE="all"
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--profile) PROFILE="${2:?--profile requires a value}"; shift 2 ;;
 		--manifest) MANIFEST="${2:?--manifest requires a value}"; shift 2 ;;
+		--target) TARGET="${2:?--target requires a value}"; shift 2 ;;
 		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) log_error "unknown argument: $1"; usage >&2; exit 2 ;;
@@ -79,6 +81,7 @@ render_plan() {
 		def plan($s):
 			to_entries
 			| map(select((.value.policy // "") | (. != "disabled" and . != "external")))
+			| map(select((.value.applicability // "unknown") != "not-applicable"))
 			| map(select(.value.execution[$s] == true))
 			| map({
 				tool: .key,
@@ -100,13 +103,20 @@ render_plan() {
 # 11 — no independent composition algorithm lives here). The resolver is
 # fail-closed (exit 2 on unknown/missing parent, cycle, invalid policy), so an
 # extends-unknown profile/manifest produces NO plan and a non-zero exit instead
-# of a silently-degraded one.
+# of a silently-degraded one. --target (when given) is forwarded so applicability
+# is evaluated against the real project and not-applicable tools are filtered out.
+_tgt_args=""
+if [ -n "$TARGET" ]; then
+	[ -d "$TARGET" ] || { log_error "target directory not found: $TARGET"; exit 2; }
+	_tgt_args="--target $TARGET"
+fi
+# shellcheck disable=SC2086
 if [ -n "$MANIFEST" ]; then
 	[ -f "$MANIFEST" ] || { log_error "profile manifest not found: $MANIFEST"; exit 2; }
-	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --manifest "$MANIFEST" --format json) || exit $?
+	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --manifest "$MANIFEST" $_tgt_args --format json) || exit $?
 else
 	[ -n "$PROFILE" ] || { log_error "one of --profile or --manifest is required"; usage >&2; exit 2; }
-	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --profile "$PROFILE" --format json) || exit $?
+	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --profile "$PROFILE" $_tgt_args --format json) || exit $?
 fi
 [ -n "$PROFILE" ] || PROFILE=$(printf '%s' "$EFF" | jq -r '.profile')
 TPV=$(printf '%s' "$EFF" | jq '.tool_policy_version')
