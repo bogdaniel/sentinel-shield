@@ -80,6 +80,14 @@ done
 [ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)" >&2; exit 2; }
 jq -e . "$MANIFEST" >/dev/null 2>&1 || { echo "error: manifest is not valid JSON: $MANIFEST" >&2; exit 2; }
 
+# Tool audits consume the COMPOSED effective profile (Blocker 4) — NOT the raw
+# manifest — so combination profiles validate their full php+node tool set and
+# one-of groups, identical to scripts/resolve-effective-profile.sh. The resolver
+# exits 2 on unknown/invalid profiles.
+EFFECTIVE=$(mktemp 2>/dev/null || mktemp -t ssinstall)
+trap 'rm -f "$EFFECTIVE"' EXIT INT TERM
+cr_effective_profile "$ROOT" "$PROFILE" "$TARGET" > "$EFFECTIVE"
+
 [ "$APPLY" -eq 0 ] && echo "DRY-RUN (no files written). Re-run with --apply." || echo "APPLY mode."
 echo "Profile:  $PROFILE   ($MANIFEST)"
 echo "Mode:     $MODE"
@@ -94,10 +102,10 @@ echo "------------------------------------------------------------"
 # strict=0: only report absent required tools (config-only). Tools without an executable[]
 # (external/CI-provided scanners such as gitleaks/semgrep) are not validated locally.
 tool_audit() {
-	_strict="$1"; _missing=""; _warn=""; _disabled=""
+	_strict="$1"; _missing=""; _warn=""; _disabled=""; _oneof_unsat=""
 	[ -f "$TARGET/.sentinel-shield/installation.json" ] \
 		&& _disabled=$(jq -r '(.disabled_tools // [])[]' "$TARGET/.sentinel-shield/installation.json" 2>/dev/null || true)
-	_keys=$(cr_tool_keys "$MANIFEST")
+	_keys=$(cr_tool_keys "$EFFECTIVE")
 	_oifs=$IFS
 	IFS='
 '
@@ -107,11 +115,11 @@ tool_audit() {
 '; continue; }
 		if printf '%s\n' "$_disabled" | grep -qx "$_k"; then IFS='
 '; continue; fi
-		_pol=$(cr_tool_policy "$MANIFEST" "$_k")
-		_exes=$(cr_tool_executables "$MANIFEST" "$_k")
+		_pol=$(cr_tool_policy "$EFFECTIVE" "$_k")
+		_exes=$(cr_tool_executables "$EFFECTIVE" "$_k")
 		[ -n "$_exes" ] || { IFS='
 '; continue; }
-		if ! cr_tool_detected "$TARGET" "$MANIFEST" "$_k"; then
+		if ! cr_tool_detected "$TARGET" "$EFFECTIVE" "$_k"; then
 			case "$_pol" in
 				required) _missing="$_missing $_k" ;;
 				recommended) _warn="$_warn $_k" ;;
@@ -121,6 +129,11 @@ tool_audit() {
 '
 	done
 	IFS=$_oifs
+	# one-of groups: a group is satisfied when the resolver selected a present member.
+	for _g in $(jq -r '(.one_of_groups // {}) | keys[]' "$EFFECTIVE" 2>/dev/null || true); do
+		_sel=$(jq -r --arg g "$_g" '.one_of_groups[$g].selected // ""' "$EFFECTIVE")
+		[ -n "$_sel" ] && [ "$_sel" != "null" ] || _oneof_unsat="$_oneof_unsat $_g"
+	done
 	[ -n "$_warn" ] && echo "tool-audit: recommended tools absent (warning):$_warn" >&2
 	if [ -n "$_missing" ]; then
 		if [ "$_strict" = "1" ]; then
@@ -132,16 +145,24 @@ tool_audit() {
 	else
 		echo "tool-audit: all required tools with executables are present."
 	fi
+	# one-of: none-present under require-existing is a missing required dependency (exit 3).
+	if [ -n "$_oneof_unsat" ]; then
+		if [ "$_strict" = "1" ]; then
+			echo "error: require-existing: one-of group(s) unsatisfied (no alternative present):$_oneof_unsat" >&2
+			echo "       install one alternative, or use --tool-mode bootstrap-tools, before installing the baseline." >&2
+			exit 3
+		fi
+		echo "tool-audit: one-of group(s) unsatisfied (config-only does not install them):$_oneof_unsat"
+	fi
 }
 
-# --emit-plan: write the read-only resolver plan (JSON) by delegating to resolve-tool-plan.sh.
-# ponytail: resolve-tool-plan.sh resolves only profiles/<name>/; for a combinations/<name>
-# profile this prints a warning instead of failing the install.
+# --emit-plan: write the read-only resolver plan (JSON) by delegating to resolve-tool-plan.sh,
+# which now resolves the COMPOSED effective profile (named OR combinations/<name>).
 if [ -n "$EMIT_PLAN" ]; then
 	if sh "$SCRIPT_DIR/resolve-tool-plan.sh" --profile "$PROFILE" --target "$TARGET" --format json > "$EMIT_PLAN" 2>/dev/null; then
 		echo "Tool plan written: $EMIT_PLAN"
 	else
-		echo "warn: could not emit tool plan to '$EMIT_PLAN' (combination profiles are not supported by the resolver)." >&2
+		echo "warn: could not emit tool plan to '$EMIT_PLAN' (profile '$PROFILE' could not be resolved)." >&2
 		rm -f "$EMIT_PLAN" 2>/dev/null || true
 	fi
 fi
@@ -156,7 +177,7 @@ for p in $(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null); do PROTECT="
 is_protected() { case "$PROTECT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # Results accumulate in a temp file (the entry loop runs in a subshell via the pipe).
-SUM=$(mktemp); : > "$SUM"; trap 'rm -f "$SUM"' EXIT INT TERM
+SUM=$(mktemp); : > "$SUM"; trap 'rm -f "$SUM" "$EFFECTIVE"' EXIT INT TERM
 
 do_entry() { # do_entry <source> <target> <mode>
 	_src="$ROOT/$1"; _tgt="$TARGET/$2"; _mode="$3"

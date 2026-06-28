@@ -83,6 +83,21 @@ cr_framework() {
 # cr_manifest_path <repo_root> <profile> — print the named manifest path.
 cr_manifest_path() { printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"; }
 
+# cr_effective_profile <repo_root> <profile> [target] — emit the COMPOSED,
+# override-aware effective profile JSON (the SINGLE source of the tool set) by
+# delegating to the canonical resolver scripts/resolve-effective-profile.sh.
+# NEVER merge profiles here. The resolver's .tools{} shape is identical to a raw
+# manifest's, so the cr_tool_* readers below consume the emitted JSON unchanged.
+# The resolver exits 2 on unknown/invalid/cyclic profiles; that propagates to the
+# caller (which runs under set -e), keeping the shared exit contract intact.
+cr_effective_profile() {
+	if [ -n "${3:-}" ]; then
+		sh "$1/scripts/resolve-effective-profile.sh" --profile "$2" --target "$3" --format json
+	else
+		sh "$1/scripts/resolve-effective-profile.sh" --profile "$2" --format json
+	fi
+}
+
 # cr_tool_keys <manifest> — list tool keys, one per line, in manifest order.
 cr_tool_keys() { jq -r '(.tools // {}) | keys_unsorted[]' "$1" 2>/dev/null || true; }
 

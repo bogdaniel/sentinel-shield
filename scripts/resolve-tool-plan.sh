@@ -50,9 +50,14 @@ else
 	exit 2
 fi
 
-MANIFEST=$(cr_manifest_path "$REPO_ROOT" "$PROFILE")
-[ -f "$MANIFEST" ] || { log_error "profile manifest not found: $MANIFEST"; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { log_error "invalid JSON in manifest: $MANIFEST"; exit 2; }
+# Consume the COMPOSED effective profile (Blocker 4) — NOT the raw named manifest.
+# This makes combination profiles (e.g. laravel-react-docker) resolve their full
+# php+node tool set, identical to scripts/resolve-effective-profile.sh. All
+# composition/override/one-of logic lives in the canonical resolver; we only read
+# the .tools{} it emits. The resolver exits 2 on unknown/invalid profiles.
+EFFECTIVE=$(mktemp 2>/dev/null || mktemp -t sstoolplan)
+trap 'rm -f "$EFFECTIVE"' EXIT INT TERM
+cr_effective_profile "$REPO_ROOT" "$PROFILE" "$TARGET" > "$EFFECTIVE"
 
 # --- inspect the environment (read-only) ------------------------------------
 PHPV=$(cr_php_version "$TARGET")
@@ -60,7 +65,7 @@ MINSTAB=$(cr_min_stability "$TARGET")
 FW=$(cr_framework "$TARGET")
 
 # --- classify every required/recommended/one-of tool ------------------------
-KEYS=$(cr_tool_keys "$MANIFEST")
+KEYS=$(cr_tool_keys "$EFFECTIVE")
 REQ=""
 REC=""
 ONE=""
@@ -72,13 +77,13 @@ for k in $KEYS; do
 	IFS=$_oifs
 	[ -n "$k" ] || { IFS='
 '; continue; }
-	policy=$(cr_tool_policy "$MANIFEST" "$k")
+	policy=$(cr_tool_policy "$EFFECTIVE" "$k")
 	case "$policy" in
 		required | recommended | one-of) ;;
 		*) IFS='
 '; continue ;;
 	esac
-	res=$(cr_classify_tool "$TARGET" "$MANIFEST" "$k")
+	res=$(cr_classify_tool "$TARGET" "$EFFECTIVE" "$k")
 	decision=${res%%"$TAB"*}
 	reason=${res#*"$TAB"}
 	line=$(printf '  - %-20s %-18s %s' "$k" "$decision" "$reason")

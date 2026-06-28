@@ -59,14 +59,13 @@ done
 [ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE'" >&2; exit 2; }
 jq -e . "$MANIFEST" >/dev/null 2>&1 || { echo "error: manifest not valid JSON: $MANIFEST" >&2; exit 2; }
 
-# --emit-plan: write the read-only resolver plan (JSON) via resolve-tool-plan.sh.
-# ponytail: the resolver handles only profiles/<name>/; a combinations/<name> profile
-# prints a warning instead of failing the sync.
+# --emit-plan: write the read-only resolver plan (JSON) via resolve-tool-plan.sh, which now
+# resolves the COMPOSED effective profile (named OR combinations/<name>).
 if [ -n "$EMIT_PLAN" ]; then
 	if sh "$SCRIPT_DIR/resolve-tool-plan.sh" --profile "$PROFILE" --target "$TARGET" --format json > "$EMIT_PLAN" 2>/dev/null; then
 		echo "Tool plan written: $EMIT_PLAN"
 	else
-		echo "warn: could not emit tool plan to '$EMIT_PLAN' (combination profiles are not supported by the resolver)." >&2
+		echo "warn: could not emit tool plan to '$EMIT_PLAN' (profile '$PROFILE' could not be resolved)." >&2
 		rm -f "$EMIT_PLAN" 2>/dev/null || true
 	fi
 fi
