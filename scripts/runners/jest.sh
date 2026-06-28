@@ -20,7 +20,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
 
-OUTPUT="reports/raw/tests.json"
+OUTPUT="reports/raw/js-tests.json"
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
@@ -28,6 +28,10 @@ while [ $# -gt 0 ]; do
 		*) log_error "unknown argument: $1"; exit 2 ;;
 	esac
 done
+# (Issue 7) Clear any STALE report up-front so a direct invocation is honest even
+# when the tool/runtime is absent or the run fails (run-tool-plan also clears, but a
+# direct call must not inherit a previous run's valid report).
+rm -f -- "$OUTPUT" 2>/dev/null || true
 
 command_exists jq || { log_error "jest: jq is required."; exit 2; }
 command_exists node || { log_warn "jest: node not found; leaving '$OUTPUT' absent (tool unavailable)."; exit 0; }

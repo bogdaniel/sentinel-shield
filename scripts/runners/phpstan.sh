@@ -33,6 +33,10 @@ while [ $# -gt 0 ]; do
 		*) log_error "unknown argument: $1"; exit 2 ;;
 	esac
 done
+# (Issue 7) Clear any STALE report up-front so a direct invocation is honest even
+# when the tool/runtime is absent or the run fails (run-tool-plan also clears, but a
+# direct call must not inherit a previous run's valid report).
+rm -f -- "$OUTPUT" 2>/dev/null || true
 
 MEM="${SENTINEL_SHIELD_PHPSTAN_MEMORY_LIMIT:-1G}"
 CONFIG="${SENTINEL_SHIELD_PHPSTAN_CONFIG:-}"
@@ -66,7 +70,8 @@ _err="$_dir/$(basename "$OUTPUT" .json).stderr.log"
 set -- analyse --no-progress --error-format=json --memory-limit="$MEM"
 [ -n "$CONFIG" ] && set -- "$@" --configuration "$CONFIG"
 if [ -n "$PATHS" ] && [ -z "$CONFIG" ]; then
-	# shellcheck disable=SC2086
+	# Intentional word-split of a comma-separated PATHS list into separate args.
+	# shellcheck disable=SC2086,SC2046
 	set -- "$@" $(printf '%s' "$PATHS" | tr ',' ' ')
 elif [ -z "$PATHS" ] && [ -z "$CONFIG" ]; then
 	set -- "$@" src

@@ -25,6 +25,10 @@ while [ $# -gt 0 ]; do
 		*) log_error "unknown argument: $1"; exit 2 ;;
 	esac
 done
+# (Issue 7) Clear any STALE report up-front so a direct invocation is honest even
+# when the tool/runtime is absent or the run fails (run-tool-plan also clears, but a
+# direct call must not inherit a previous run's valid report).
+rm -f -- "$OUTPUT" 2>/dev/null || true
 
 command_exists jq || { log_error "rector: jq is required."; exit 2; }
 
