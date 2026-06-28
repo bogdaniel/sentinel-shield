@@ -28,8 +28,13 @@
 #   { "tool", "policy", "category", "runner", "report", "missing_behavior" }
 #
 # Usage:
-#   resolve-workflow-plan.sh --profile <name> [--stage pr|main|scheduled|all]
-#   resolve-workflow-plan.sh --manifest <path> [--stage ...]
+#   resolve-workflow-plan.sh --profile <name> [--target <dir>] [--stage pr|main|scheduled|all]
+#   resolve-workflow-plan.sh --manifest <path> [--target <dir>] [--stage ...]
+#
+# --target is the consuming project root; it is passed through to the canonical
+# resolver so applicability (and one-of selection) is evaluated against the real
+# project. Without it, applicability is "unknown" and project-local tools (e.g.
+# typescript without tsconfig.json) cannot be filtered out of the plan.
 # Exit: 0 on success (the plan is the output); 2 for invalid invocation / missing jq.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
