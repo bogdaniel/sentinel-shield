@@ -29,6 +29,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 # die_cfg <message...> — configuration/input/parsing error -> exit 2.
 die_cfg() {
@@ -523,6 +525,7 @@ done
 # "disabled" in the summary: a disabled REQUIRED tool without a valid waiver is a
 # configuration failure (never silently skipped).
 POLICY_FAIL=0
+POLICY_INCONSISTENT=0
 HAS_POLICY=$(jq -r '
 	if ((.tools // {}) | to_entries | any(.value | (type=="object") and has("policy")))
 	   or ((.summary // {}) | has("required_tool_failures"))
@@ -531,18 +534,14 @@ HAS_POLICY=$(jq -r '
 REQF_REC=""; CFGF_REC=""; EXEF_REC=""; WAIVED_REC=""; WARN_REC=""; INFO_REC=""; ONEOF_REC=""
 
 if [ "$HAS_POLICY" = "1" ]; then
-	# Load valid (unexpired) control-waiver tool keys.
+	# Load valid (unexpired) control-waiver tool keys via the SHARED validator
+	# (B1/B10/A4): full schema validation, real calendar-date check, self-approval
+	# rejection. A malformed waivers file is a configuration failure (fail closed).
+	cw_validate_file "$CONTROL_WAIVERS_FILE" || die_cfg "control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)"
 	WAIVED_TOOLS=" "
-	if [ -f "$CONTROL_WAIVERS_FILE" ] && [ -s "$CONTROL_WAIVERS_FILE" ]; then
-		jq -e . "$CONTROL_WAIVERS_FILE" >/dev/null 2>&1 || die_cfg "control-waivers file is not valid JSON: $CONTROL_WAIVERS_FILE"
-		for _wt in $(jq -r --arg today "$TODAY" '
-			[ (.waivers // [])[]
-			  | select(((.tool // "") != "") and ((.expires_at // "") >= $today)
-			           and ((.owner // "") != "") and ((.justification // "") != "")) | .tool ] | unique[]' \
-			"$CONTROL_WAIVERS_FILE" 2>/dev/null); do
-			WAIVED_TOOLS="${WAIVED_TOOLS}${_wt} "
-		done
-	fi
+	for _wt in $(cw_valid_keys "$CONTROL_WAIVERS_FILE" "$TODAY" 2>/dev/null); do
+		WAIVED_TOOLS="${WAIVED_TOOLS}${_wt} "
+	done
 	is_waived() { case "$WAIVED_TOOLS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 	# Per-tool policy records: emit|tool|policy|status|gate_enforced
@@ -602,6 +601,32 @@ EOF
 
 	[ -n "$REQF_REC" ] && POLICY_FAIL=1
 	[ -n "$ONEOF_REC" ] && POLICY_FAIL=1
+
+	# (B9) Fail closed on the SUMMARY-level counter even when detailed .tools records
+	# are absent/legacy/incomplete. Reconcile against the detailed count: if both
+	# exist and disagree, that is a configuration inconsistency (fail closed, never
+	# trust the lower value).
+	SUMMARY_REQF=$(jqr '.summary.required_tool_failures')
+	case "$SUMMARY_REQF" in ''|*[!0-9]*) SUMMARY_REQF="" ;; esac
+	DETAIL_REQF=$(printf '%s' "$REQF_REC" | grep -c '|' 2>/dev/null || printf 0)
+	if [ -n "$SUMMARY_REQF" ]; then
+		if [ "$SUMMARY_REQF" -gt 0 ]; then POLICY_FAIL=1; fi
+		# Only reconcile when detailed records were actually derivable (the .tools
+		# block carried gate_enforced policy entries). An empty REQF_REC with a
+		# summary count >0 still fails (above), but is not flagged "inconsistent"
+		# unless detailed required records exist AND undercount the summary.
+		if [ "$DETAIL_REQF" -gt 0 ] && [ "$DETAIL_REQF" -ne "$SUMMARY_REQF" ]; then
+			log_warn "policy: summary.required_tool_failures=$SUMMARY_REQF disagrees with detailed records=$DETAIL_REQF — failing closed on the inconsistency."
+			POLICY_FAIL=1
+			POLICY_INCONSISTENT=1
+		fi
+	fi
+fi
+
+# (B11) Surface policy failure as a first-class failed gate so JSON, Markdown, the
+# log summary and the exit code ALL agree — never "Failed gates: None" while exiting 1.
+if [ "$POLICY_FAIL" -eq 1 ]; then
+	case " $FAILED " in *" required_tool_policy "*) : ;; *) FAILED="$FAILED required_tool_policy" ;; esac
 fi
 
 RESULT="pass"
