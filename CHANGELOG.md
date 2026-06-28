@@ -46,6 +46,29 @@ explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live con
   one-of, composition precedence, SHA-pin verification, every-required-tool-in-workflow, override
   validation, migration preservation, no-leak).
 
+### Hardening (review round 3)
+- **Portable waiver validation.** `control-waivers.sh` date checks are POSIX `/bin/sh` safe
+  (no `$((10#..))`; `dash`-correct for `08`/`09`); reject year `0000`.
+- **Waiver schema v1 + safe keys.** `version` must be the string `"1"`; tool keys must match
+  `^[A-Za-z0-9_.-]+$` (a single shell-safe token — can never split into multiple controls);
+  `created_at <= expires_at`; UTC expiry. Schema `control-waiver.schema.json` updated.
+- **Fail-closed everywhere.** `doctor.sh` and `maturity-report.sh` validate the waiver file
+  **unconditionally** (a malformed file is rejected even when `jq` is absent) — same verdict
+  across doctor/maturity/gate/bootstrap/resolver.
+- **Numeric gate count.** `enforce-gates.sh` no longer mis-parses the detailed required-failure
+  count (`grep -c` no-match) — summary-only `required_tool_failures>0` still fails closed.
+- **Honest direct runners.** PHPStan/Jest/Vitest (and the other PR-added runners) clear any stale
+  report up-front, so a direct invocation can't inherit a previous run's valid report.
+- **Quoting/globbing safety.** `resolve-workflow-plan.sh` no longer flattens `--target` into an
+  unquoted scalar (paths with spaces/glob chars work); `maturity-report.sh` parses activation
+  records with tab-aware `read` (no word-splitting/pathname expansion).
+- **Independent test groups.** The shared `tests` one-of is split into `php-tests`
+  (`pest`|`phpunit`) and `js-tests` (`vitest`|`jest`); combined profiles require **both**
+  independently — a JS runner never satisfies a PHP test requirement or vice versa. Both reports
+  feed the `test_failures` gate.
+- Self-test: new `v2-review-round3` group; the validator-hidden case now runs against a temp copy
+  (never renames a repo file).
+
 ### Enforcement (remediation)
 - **Required-tool gate is the single decision point.** `enforce-gates.sh` derives required-tool
   status from report presence/validity and returns only `0/1/2`: a required tool that is

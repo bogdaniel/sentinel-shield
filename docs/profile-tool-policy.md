@@ -115,8 +115,17 @@ policy/state truth table it implements.
 ## 4. Worked example
 
 A `laravel` profile manifest fragment. `phpstan` is required, `larastan` is the
-package that provides PHPStan's Laravel rules, and `tests` is a `one-of` over
+package that provides PHPStan's Laravel rules, and `php-tests` is a `one-of` over
 `pest`/`phpunit`.
+
+> **Independent test groups (v2).** PHP and JavaScript test requirements are
+> **separate** one-of groups — `php-tests` (`pest`|`phpunit`, report
+> `reports/raw/tests.json`) and `js-tests` (`vitest`|`jest`, report
+> `reports/raw/js-tests.json`). They never share a key, so a PHP test runner can
+> never satisfy a JS requirement (or vice versa). `laravel`/`symfony`/`php-library`
+> require `php-tests`; `node`/`react` require `js-tests`; a combined profile such
+> as `laravel-react-docker` requires **both**, independently. Both reports feed the
+> `test_failures` gate.
 
 ```yaml
 # profiles/laravel/profile.manifest.json  (shown as YAML for readability)
@@ -137,7 +146,7 @@ tools:
     execution: { pr: true, main: true, scheduled: false }
     config: { path: phpstan.neon, classification: never-touch }
 
-  tests:
+  php-tests:                 # JS projects use a separate `js-tests` group (vitest|jest)
     policy: one-of
     category: tests
     alternatives: [pest, phpunit]
@@ -231,3 +240,35 @@ is owner-bound, justified, dated, expiring, and issue-linked, and is consumed by
 waiver** — it does **not** suppress findings (use accepted-risks for finding gates)
 and is never auto-applied. Non-suppressible secrets scanners cannot be waived this
 way.
+
+## 5. Control-waivers (`.sentinel-shield/control-waivers.json`)
+
+A control-waiver lets a **required** tool/control be temporarily absent without
+the gate failing — it never suppresses *findings* from a tool that ran (use
+accepted-risks for findings). Validated by the one shared library
+`scripts/lib/control-waivers.sh`, which every consumer (doctor, maturity, gate,
+bootstrap, resolver) calls — the SAME file gets the SAME verdict everywhere, and
+that verdict does **not** depend on `jq` being on `PATH` (absent → success;
+present-but-jq-missing → fail closed; malformed → fail closed).
+
+```json
+{ "version": "1",
+  "waivers": [
+    { "tool": "larastan", "owner": "alice", "approved_by": "bob",
+      "justification": "extension upgrade in flight", "created_at": "2026-08-09",
+      "expires_at": "2026-09-08", "tracking_issue": "SEC-123" } ] }
+```
+
+Rules (fail closed on any violation):
+
+- `version` **must** be the string `"1"` (unsupported/missing/numeric ⇒ rejected).
+- `tool` must match `^[A-Za-z0-9_.-]+$` — a single shell-safe token, so a value can
+  never split into multiple waived controls; whitespace/tabs/slashes/`..`/metachars
+  are rejected.
+- `owner` ≠ `approved_by` (no self-approval — enforced in the validator, not just schema).
+- `created_at`/`expires_at` are real calendar dates (`YYYY-MM-DD`), validated with
+  POSIX `/bin/sh` arithmetic (portable to `dash`; leading-zero months like `08`/`09`
+  are handled). `created_at <= expires_at`.
+- A waiver **applies** only while `expires_at >= today` in **UTC** (a waiver expiring
+  today is valid through the end of that UTC day); expired waivers validate but do not
+  downgrade the control.
