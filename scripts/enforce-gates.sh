@@ -608,7 +608,11 @@ EOF
 	# trust the lower value).
 	SUMMARY_REQF=$(jqr '.summary.required_tool_failures')
 	case "$SUMMARY_REQF" in ''|*[!0-9]*) SUMMARY_REQF="" ;; esac
-	DETAIL_REQF=$(printf '%s' "$REQF_REC" | grep -c '|' 2>/dev/null || printf 0)
+	# grep -c prints 0 AND exits non-zero on no match, so `|| printf 0` would append a
+	# SECOND 0 ("0\n0") and break the arithmetic below. Capture, default, and validate.
+	DETAIL_REQF=$(printf '%s' "$REQF_REC" | grep -c '|' 2>/dev/null || true)
+	DETAIL_REQF=${DETAIL_REQF:-0}
+	case "$DETAIL_REQF" in ''|*[!0-9]*) DETAIL_REQF=0 ;; esac
 	if [ -n "$SUMMARY_REQF" ]; then
 		if [ "$SUMMARY_REQF" -gt 0 ]; then POLICY_FAIL=1; fi
 		# Only reconcile when detailed records were actually derivable (the .tools
