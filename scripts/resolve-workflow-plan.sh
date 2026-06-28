@@ -8,10 +8,11 @@
 # workflow (templates/workflows/sentinel-shield.yml): a tool is only legitimately
 # "active" in CI when a job actually invokes its runner and produces its report.
 #
-# Composition: if the manifest declares `extends: [base, ...]`, the base profiles'
-# `tools` maps merge FIRST (depth-first, deduped) and this profile's `tools`
-# override per tool key (precedence handled by last-wins object merge; the child
-# profile's whole toolPolicy object replaces a base's for the same key).
+# Composition: ALL composition (extends, strongest-policy precedence, override,
+# applicability, one-of, cycle/fail-closed) is delegated to the ONE canonical
+# resolver (scripts/resolve-effective-profile.sh). This script implements NO
+# composition of its own (Significant fix 11); both --profile and --manifest just
+# call the resolver and render the per-stage plan from its `.tools`.
 #
 # Selection: every tool whose policy is NOT `disabled`/`external` and whose
 # `execution.<stage>` is true. Each entry carries its `policy` so the consumer can
@@ -62,77 +63,46 @@ case "$STAGE" in
 esac
 command_exists jq || { log_error "jq is required for JSON parsing but was not found. Install jq."; exit 2; }
 
-# Resolve the manifest path: --manifest wins; else derive from --profile.
-if [ -z "$MANIFEST" ]; then
-	[ -n "$PROFILE" ] || { log_error "one of --profile or --manifest is required"; usage >&2; exit 2; }
-	MANIFEST=$(cr_manifest_path "$REPO_ROOT" "$PROFILE")
-fi
-[ -f "$MANIFEST" ] || { log_error "profile manifest not found: $MANIFEST"; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { log_error "invalid JSON in manifest: $MANIFEST"; exit 2; }
-[ -n "$PROFILE" ] || PROFILE=$(jq -r '.profile // "unknown"' "$MANIFEST")
-
-# --- compose tools across `extends` (bases first, child last, deduped) --------
-# ORDER collects manifest paths in merge order; VISITED guards against cycles.
-ORDER=""
-VISITED=""
-collect_manifests() {
-	# $1 = manifest path
-	case " $VISITED " in *" $1 "*) return 0 ;; esac
-	VISITED="$VISITED $1"
-	_bases=$(jq -r '(.extends // [])[]' "$1" 2>/dev/null || true)
-	_oifs=$IFS
-	IFS='
-'
-	for _b in $_bases; do
-		IFS=$_oifs
-		[ -n "$_b" ] || { IFS='
-'; continue; }
-		_bm=$(cr_manifest_path "$REPO_ROOT" "$_b")
-		if [ -f "$_bm" ]; then
-			collect_manifests "$_bm"
+# render_plan <profile> <tpv-json> <stage> — read a composed tools{} JSON map on
+# stdin and emit the per-stage plan. Shared by BOTH resolution paths so the output
+# shape (stages.pr/main/scheduled tool lists) is identical regardless of source.
+render_plan() {
+	jq \
+		--arg profile "$1" \
+		--argjson tpv "$2" \
+		--arg stage "$3" '
+		def plan($s):
+			to_entries
+			| map(select((.value.policy // "") | (. != "disabled" and . != "external")))
+			| map(select(.value.execution[$s] == true))
+			| map({
+				tool: .key,
+				policy: .value.policy,
+				category: (.value.category // null),
+				runner: (.value.runner // null),
+				report: (.value.report // null),
+				missing_behavior: (.value.missing_behavior // null)
+			});
+		if $stage == "all" then
+			{ profile: $profile, tool_policy_version: $tpv,
+			  stages: { pr: plan("pr"), main: plan("main"), scheduled: plan("scheduled") } }
 		else
-			log_warn "extends base manifest not found: $_b ($_bm); ignoring"
-		fi
-		IFS='
-'
-	done
-	IFS=$_oifs
-	ORDER="$ORDER$1
-"
+			{ profile: $profile, tool_policy_version: $tpv, stage: $stage, tools: plan($stage) }
+		end'
 }
-collect_manifests "$MANIFEST"
 
-# Slurp every manifest in merge order and reduce their `tools` maps (last wins).
-_oifs=$IFS
-IFS='
-'
-# shellcheck disable=SC2086
-set -- $ORDER
-IFS=$_oifs
-TOOLS_JSON=$(jq -s 'map(.tools // {}) | reduce .[] as $t ({}; . + $t)' "$@")
-
-TPV=$(jq '.tool_policy_version // null' "$MANIFEST")
-
-# --- render the plan ---------------------------------------------------------
-printf '%s' "$TOOLS_JSON" | jq \
-	--arg profile "$PROFILE" \
-	--argjson tpv "$TPV" \
-	--arg stage "$STAGE" '
-	def plan($s):
-		to_entries
-		| map(select((.value.policy // "") | (. != "disabled" and . != "external")))
-		| map(select(.value.execution[$s] == true))
-		| map({
-			tool: .key,
-			policy: .value.policy,
-			category: (.value.category // null),
-			runner: (.value.runner // null),
-			report: (.value.report // null),
-			missing_behavior: (.value.missing_behavior // null)
-		});
-	if $stage == "all" then
-		{ profile: $profile, tool_policy_version: $tpv,
-		  stages: { pr: plan("pr"), main: plan("main"), scheduled: plan("scheduled") } }
-	else
-		{ profile: $profile, tool_policy_version: $tpv, stage: $stage, tools: plan($stage) }
-	end'
+# BOTH modes delegate ALL composition to the canonical resolver (Significant fix
+# 11 — no independent composition algorithm lives here). The resolver is
+# fail-closed (exit 2 on unknown/missing parent, cycle, invalid policy), so an
+# extends-unknown profile/manifest produces NO plan and a non-zero exit instead
+# of a silently-degraded one.
+if [ -n "$MANIFEST" ]; then
+	[ -f "$MANIFEST" ] || { log_error "profile manifest not found: $MANIFEST"; exit 2; }
+	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --manifest "$MANIFEST" --format json) || exit $?
+else
+	[ -n "$PROFILE" ] || { log_error "one of --profile or --manifest is required"; usage >&2; exit 2; }
+	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --profile "$PROFILE" --format json) || exit $?
+fi
+[ -n "$PROFILE" ] || PROFILE=$(printf '%s' "$EFF" | jq -r '.profile')
+TPV=$(printf '%s' "$EFF" | jq '.tool_policy_version')
+printf '%s' "$EFF" | jq '.tools' | render_plan "$PROFILE" "$TPV" "$STAGE"

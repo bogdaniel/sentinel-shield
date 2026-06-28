@@ -51,18 +51,10 @@ warn() { WARN=$((WARN+1)); printf '  WARN  %s\n' "$*"; }
 have() { command_exists "$1" && ok "$1 present ($(command -v "$1"))" || warn "$2"; }
 
 # --- profile tool-policy resolution (jq-dependent) ---------------------------
-MANIFESTS=""
-SEEN=" "
-# pt_add_manifest <profile-name> — append the profile's manifest (extends bases first), deduped.
-pt_add_manifest() {
-  _m="$REPO_ROOT/profiles/$1/profile.manifest.json"
-  case "$SEEN" in *" $_m "*) return 0 ;; esac
-  if [ ! -f "$_m" ]; then warn "profile '$1': no manifest at profiles/$1/profile.manifest.json (skipped)"; return 0; fi
-  if ! jq -e . "$_m" >/dev/null 2>&1; then warn "profile '$1': manifest is not valid JSON (skipped)"; return 0; fi
-  for _b in $(jq -r '(.extends // [])[]' "$_m" 2>/dev/null); do pt_add_manifest "$_b"; done
-  SEEN="$SEEN$_m "
-  MANIFESTS="$MANIFESTS $_m"
-}
+# Composition / inheritance / override / applicability / one-of are ALL delegated
+# to the canonical resolver (scripts/resolve-effective-profile.sh); doctor never
+# merges manifests itself. The helpers below read the resolver's composed
+# {"tools":...} map written to a temp file.
 # pt_installed <target> <composed-manifest> <key> — yes|no|- (- = no executable/package declared).
 pt_installed() {
   if cr_tool_detected "$1" "$2" "$3"; then echo yes; return 0; fi
@@ -154,18 +146,33 @@ else
   if [ -z "$PROFILES_RESOLVED" ]; then
     warn "no active profile resolved (pass --profile or add a 'profiles:' list to $PF) — skipping table"
   else
-    for p in $PROFILES_RESOLVED; do pt_add_manifest "$p"; done
-    if [ -z "$MANIFESTS" ]; then
+    # Resolve each active profile through the canonical resolver; the resolver
+    # owns ALL composition (extends), override, applicability and one-of. Pass
+    # --target so applicability + one-of satisfaction are computed.
+    RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
+    EFF_DOCS=""
+    for p in $PROFILES_RESOLVED; do
+      if _eff=$(sh "$RESOLVER" --profile "$p" --target "$TARGET" --format json 2>/dev/null); then
+        EFF_DOCS="$EFF_DOCS$_eff
+"
+      else
+        warn "profile '$p': effective-profile resolution failed (skipped)"
+      fi
+    done
+    if [ -z "$(printf '%s' "$EFF_DOCS" | tr -d '[:space:]')" ]; then
       warn "no usable profile manifests for: $PROFILES_RESOLVED"
     else
-      # Compose tools{} across profiles/extends; on a key clash keep the higher-precedence policy.
-      # shellcheck disable=SC2086
-      MERGED=$(jq -s '
+      # UNION sibling top-level profiles by the documented policy ladder (strongest
+      # wins). This is a union of already-composed profiles, NOT extends-composition
+      # (the resolver did that). ponytail: the resolver takes one profile, but
+      # doctor's --profile is repeatable, so the union lives here.
+      MERGED=$(printf '%s' "$EFF_DOCS" | jq -s '
         def rank(p): {"required":5,"one-of":4,"recommended":3,"optional":2,"external":1,"disabled":0}[p] // 0;
-        reduce .[] as $m ({};
-          reduce (($m.tools // {}) | to_entries[]) as $e (.;
+        reduce .[] as $d ({};
+          reduce (($d.tools // {}) | to_entries[]) as $e (.;
             if (has($e.key)|not) or (rank($e.value.policy) > rank(.[$e.key].policy))
-            then .[$e.key] = $e.value else . end))' $MANIFESTS)
+            then .[$e.key] = $e.value else . end))')
+      ONEOF=$(printf '%s' "$EFF_DOCS" | jq -s 'reduce .[] as $d ({}; . + ($d.one_of_groups // {}))')
       TMPM=$(mktemp 2>/dev/null || mktemp -t ssdoctor)
       printf '{"tools":%s}\n' "$MERGED" > "$TMPM"
       ok "active profile(s): $(echo $PROFILES_RESOLVED | tr '\n' ' ')${TOOL_MODE:+ (tool-mode=$TOOL_MODE)}"
@@ -182,6 +189,14 @@ else
           [ "$inst" = "no" ] && REQUIRED_MISSING="$REQUIRED_MISSING $k(not-installed)"
           [ "$cfg" = "no" ] && REQUIRED_MISSING="$REQUIRED_MISSING $k(not-configured)"
         fi
+      done
+      # one-of group satisfaction (from the resolver): a required GROUP (e.g. tests)
+      # is satisfied when any alternative is installed. Shown, not separately gated.
+      for g in $(printf '%s' "$ONEOF" | jq -r 'keys[]' 2>/dev/null); do
+        gstatus=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].status // "unknown"')
+        gsel=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].selected // "none"')
+        galt=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '(.[$g].alternatives // []) | join("|")')
+        [ "$QUIET" = 1 ] || printf '  one-of %-15s %-12s selected=%s (alts: %s)\n' "$g" "$gstatus" "${gsel:-none}" "$galt"
       done
       rm -f "$TMPM"
       if [ -n "$REQUIRED_MISSING" ]; then

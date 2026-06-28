@@ -33,12 +33,13 @@ if [ -f "$SCRIPT_DIR/lib/tool-policy-override.sh" ]; then
 	. "$SCRIPT_DIR/lib/tool-policy-override.sh"
 fi
 
-usage() { printf 'Usage: resolve-effective-profile.sh --profile <name> [--target <dir>] [--override <path>] [--format json]\n'; }
+usage() { printf 'Usage: resolve-effective-profile.sh (--profile <name> | --manifest <path>) [--target <dir>] [--override <path>] [--format json]\n'; }
 
-PROFILE=""; TARGET=""; OVERRIDE=""; FORMAT="json"
+PROFILE=""; MANIFEST=""; TARGET=""; OVERRIDE=""; FORMAT="json"
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--profile) PROFILE="${2:?--profile requires a value}"; shift 2 ;;
+		--manifest) MANIFEST="${2:?--manifest requires a value}"; shift 2 ;;
 		--target) TARGET="${2:?--target requires a value}"; shift 2 ;;
 		--override) OVERRIDE="${2:?--override requires a value}"; shift 2 ;;
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
@@ -47,7 +48,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$PROFILE" ] || { log_error "--profile is required"; usage >&2; exit 2; }
+[ -n "$PROFILE" ] || [ -n "$MANIFEST" ] || { log_error "one of --profile or --manifest is required"; usage >&2; exit 2; }
 case "$FORMAT" in json) ;; *) log_error "--format must be: json"; exit 2 ;; esac
 command_exists jq || { log_error "jq is required"; exit 2; }
 
@@ -66,5 +67,9 @@ if [ -n "$OVERRIDE" ]; then
 	fi
 fi
 
-ep_resolve "$PROFILE" "$OVR_JSON" "$TARGET"
+if [ -n "$MANIFEST" ]; then
+	ep_resolve_manifest "$MANIFEST" "$OVR_JSON" "$TARGET"
+else
+	ep_resolve "$PROFILE" "$OVR_JSON" "$TARGET"
+fi
 [ -n "$OVERRIDE" ] && [ "$OVR_JSON" != "$OVERRIDE" ] && rm -f "$OVR_JSON" 2>/dev/null || true

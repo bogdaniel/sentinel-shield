@@ -73,21 +73,25 @@ if command_exists jq; then
       }' "$PF")
   fi
   if [ -n "$PROFILES_RESOLVED" ]; then
-    MANIFESTS=""; SEEN=" "
+    # Composition / inheritance / override / applicability are delegated to the
+    # canonical resolver; maturity-report never merges manifests itself. Sibling
+    # top-level profiles are union'd by the policy ladder (strongest wins).
+    # ponytail: the resolver takes one profile, but --profile is repeatable here.
+    RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
+    EFF_DOCS=""
     for p in $PROFILES_RESOLVED; do
-      _m="$REPO_ROOT/profiles/$p/profile.manifest.json"
-      case "$SEEN" in *" $_m "*) continue ;; esac
-      [ -f "$_m" ] && jq -e . "$_m" >/dev/null 2>&1 || continue
-      SEEN="$SEEN$_m "; MANIFESTS="$MANIFESTS $_m"
+      if _eff=$(sh "$RESOLVER" --profile "$p" --target "$TARGET" --format json 2>/dev/null); then
+        EFF_DOCS="$EFF_DOCS$_eff
+"
+      fi
     done
-    if [ -n "$MANIFESTS" ]; then
-      # shellcheck disable=SC2086
-      MERGED=$(jq -s '
+    if [ -n "$(printf '%s' "$EFF_DOCS" | tr -d '[:space:]')" ]; then
+      MERGED=$(printf '%s' "$EFF_DOCS" | jq -s '
         def rank(p): {"required":5,"one-of":4,"recommended":3,"optional":2,"external":1,"disabled":0}[p] // 0;
-        reduce .[] as $m ({};
-          reduce (($m.tools // {}) | to_entries[]) as $e (.;
+        reduce .[] as $d ({};
+          reduce (($d.tools // {}) | to_entries[]) as $e (.;
             if (has($e.key)|not) or (rank($e.value.policy) > rank(.[$e.key].policy))
-            then .[$e.key] = $e.value else . end))' $MANIFESTS)
+            then .[$e.key] = $e.value else . end))')
       TMPM=$(mktemp 2>/dev/null || mktemp -t ssmaturity)
       printf '{"tools":%s}\n' "$MERGED" > "$TMPM"
       RESOLVE=1

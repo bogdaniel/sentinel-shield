@@ -187,7 +187,17 @@ ep__applicability() {
 	esac
 }
 
-# ep_resolve <profile> [override-json-file] [target] — emit the effective profile.
+# ep__validate_policies <manifest-path> — fail-closed on any invalid policy value.
+ep__validate_policies() {
+	_bp=$(jq -r '
+		(.tools // {}) | to_entries[]
+		| select((.value.policy // "") | IN("required","recommended","optional","one-of","disabled","external") | not)
+		| .key' "$1" 2>/dev/null || true)
+	[ -z "$_bp" ] || ep__die_cfg "invalid policy value for tool(s) in $1: $(printf '%s' "$_bp" | tr '\n' ' ')"
+}
+
+# ep_resolve <profile> [override-json-file] [target] — emit the effective profile
+# for a NAMED profile (resolved under profiles/).
 ep_resolve() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] || ep__die_cfg "ep_resolve: missing profile name."
@@ -195,13 +205,44 @@ ep_resolve() {
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
 	ep__collect "$_root" "$_profile" ""
-
 	_topmf=$(ep__manifest_path "$_root" "$_profile")
+	# shellcheck disable=SC2086
+	ep__finish "$_profile" "$_topmf" "$_ovrfile" "$_target" $EP_CHAIN
+}
+
+# ep_resolve_manifest <manifest-file> [override-json-file] [target] — emit the
+# effective profile for an arbitrary manifest FILE (e.g. a test fixture not under
+# profiles/). Its `extends` still resolve BY NAME against the repo, through the
+# SAME collect/merge/fail-closed path as ep_resolve — there is no second
+# composition algorithm (Significant fix 11).
+ep_resolve_manifest() {
+	command_exists jq || ep__die_cfg "effective-profile: jq is required."
+	[ -n "${1:-}" ] && [ -f "$1" ] || ep__die_cfg "ep_resolve_manifest: manifest file not found: ${1:-}"
+	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"
+	jq -e . "$_mf" >/dev/null 2>&1 || ep__die_cfg "invalid JSON in manifest: $_mf"
+	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
+	_profile=$(jq -r '.profile // "unknown"' "$_mf")
+	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
+	EP_VISITING=" $_profile "        # guard self-reference in the seed's extends
+	ep__validate_policies "$_mf"
+	for _parent in $(jq -r '.extends[]? // empty' "$_mf"); do
+		ep__collect "$_root" "$_parent" "$_profile -> "
+	done
+	# seed manifest merges LAST (most specific), like the child in ep__collect.
+	EP_CHAIN="$EP_CHAIN $_mf"
+	# shellcheck disable=SC2086
+	ep__finish "$_profile" "$_mf" "$_ovrfile" "$_target" $EP_CHAIN
+}
+
+# ep__finish <profile> <top-manifest> <override-file> <target> <chain...> — the
+# ONE merge+override+annotate+groups+emit tail shared by both entry points.
+ep__finish() {
+	_profile="$1"; _topmf="$2"; _ovrfile="$3"; _target="$4"; shift 4
 	_extends=$(jq -c '.extends // []' "$_topmf")
 	_tpv=$(jq '.tool_policy_version // null' "$_topmf")
 
 	# shellcheck disable=SC2086
-	_tools=$(ep__merge_tools $EP_CHAIN)
+	_tools=$(ep__merge_tools "$@")
 
 	# Project override (already JSON; the caller converts YAML→JSON + schema-validates).
 	_ovr=""
