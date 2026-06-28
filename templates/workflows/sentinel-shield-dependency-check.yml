@@ -43,10 +43,10 @@ jobs:
   dependency-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }
       - name: Checkout Sentinel Shield
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -67,7 +67,7 @@ jobs:
         id: month
         run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       - name: Restore NVD cache (monthly key; partial-reuse restore-keys)
-        uses: actions/cache@v4   # pin to a SHA before production
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .sentinel-shield/cache/dependency-check
           key: nvd-${{ runner.os }}-${{ steps.month.outputs.ym }}
@@ -91,6 +91,6 @@ jobs:
         run: |
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # scanner failure/findings must NOT erase the raw dependency-check.json
         with: { name: sentinel-shield-dependency-check, path: reports/**, retention-days: 30, if-no-files-found: warn }
