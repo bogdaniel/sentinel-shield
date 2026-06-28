@@ -105,18 +105,24 @@ render_plan() {
 # extends-unknown profile/manifest produces NO plan and a non-zero exit instead
 # of a silently-degraded one. --target (when given) is forwarded so applicability
 # is evaluated against the real project and not-applicable tools are filtered out.
-_tgt_args=""
-if [ -n "$TARGET" ]; then
-	[ -d "$TARGET" ] || { log_error "target directory not found: $TARGET"; exit 2; }
-	_tgt_args="--target $TARGET"
-fi
-# shellcheck disable=SC2086
+# (Issue 8) NEVER flatten --target into an unquoted scalar — that breaks paths with
+# spaces or glob characters. Use explicit, fully-quoted argument branches instead.
+RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
+[ -z "$TARGET" ] || [ -d "$TARGET" ] || { log_error "target directory not found: $TARGET"; exit 2; }
 if [ -n "$MANIFEST" ]; then
 	[ -f "$MANIFEST" ] || { log_error "profile manifest not found: $MANIFEST"; exit 2; }
-	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --manifest "$MANIFEST" $_tgt_args --format json) || exit $?
+	if [ -n "$TARGET" ]; then
+		EFF=$(sh "$RESOLVER" --manifest "$MANIFEST" --target "$TARGET" --format json) || exit $?
+	else
+		EFF=$(sh "$RESOLVER" --manifest "$MANIFEST" --format json) || exit $?
+	fi
 else
 	[ -n "$PROFILE" ] || { log_error "one of --profile or --manifest is required"; usage >&2; exit 2; }
-	EFF=$(sh "$SCRIPT_DIR/resolve-effective-profile.sh" --profile "$PROFILE" $_tgt_args --format json) || exit $?
+	if [ -n "$TARGET" ]; then
+		EFF=$(sh "$RESOLVER" --profile "$PROFILE" --target "$TARGET" --format json) || exit $?
+	else
+		EFF=$(sh "$RESOLVER" --profile "$PROFILE" --format json) || exit $?
+	fi
 fi
 [ -n "$PROFILE" ] || PROFILE=$(printf '%s' "$EFF" | jq -r '.profile')
 TPV=$(printf '%s' "$EFF" | jq '.tool_policy_version')
