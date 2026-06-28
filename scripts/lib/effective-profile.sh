@@ -41,8 +41,21 @@ if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
 	fi
 fi
 
+# Shared control-waiver validator (a project override may only WEAKEN a required /
+# one-of control when a valid, unexpired waiver covers that tool — Part A1/A4).
+if [ "${__SENTINEL_SHIELD_CONTROL_WAIVERS_LOADED:-}" != "1" ]; then
+	_ep_cw=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+	for _c in "$_ep_cw/control-waivers.sh" "$_ep_cw/lib/control-waivers.sh"; do
+		[ -f "$_c" ] && { . "$_c"; break; }
+	done
+fi
+
 # Policy precedence ranks (higher = stronger). Matches docs/profile-tool-policy.md.
 EP_RANK='{"required":5,"one-of":4,"recommended":3,"optional":2,"external":1,"disabled":0}'
+EP_VALID_POLICIES="required recommended optional one-of disabled external"
+
+# ep__rank <policy> — numeric strength (−1 for unknown).
+ep__rank() { printf '%s' "$EP_RANK" | jq -r --arg p "$1" '.[$p] // -1'; }
 # Non-suppressible security controls: a project override CANNOT set these to
 # disabled without a documented control waiver (Blocker 9 owns the waiver path).
 EP_NON_SUPPRESSIBLE=" gitleaks trufflehog "
@@ -116,22 +129,65 @@ ep__merge_tools() {
 #   - a non-suppressible control may NOT be set to disabled (fail-closed exit 2);
 #   - the override policy WINS for that tool (project intent is authoritative).
 # Emits the new tools JSON; appends notes to the global EP_DIAG (newline list).
+# ep__apply_override <tools-json> <override-json|""> <waivers-file|""> — apply a
+# project override, FAIL-CLOSED. Rules (Part A1/A2/B12):
+#   - every override entry must be an object with a `policy` in the valid enum;
+#     a malformed entry (null/missing/numeric/unknown policy, non-object) => exit 2.
+#   - an override for a tool the profile does NOT declare => exit 2 (no typos /
+#     undeclared tools in alpha).
+#   - an override may STRENGTHEN policy freely (rank up or equal).
+#   - an override may NOT WEAKEN a `required` or `one-of` control (rank down)
+#     unless a VALID, unexpired control-waiver covers that tool => otherwise exit 2.
+#   - a non-suppressible control can never be weakened, even with a waiver.
 ep__apply_override() {
-	_tools="$1"; _ovr="$2"
+	_tools="$1"; _ovr="$2"; _wf="${3:-}"
 	[ -n "$_ovr" ] || { printf '%s' "$_tools"; return 0; }
-	# unknown-tool and illegal-disable checks
-	_unknown=$(printf '%s' "$_tools" | jq -r --argjson o "$_ovr" '
-		($o.tools // {}) | keys[] as $k | select((. // {} | has($k)) | not) | $k' 2>/dev/null || true)
-	# (the above keeps unknowns as diagnostics, not fatal — a project may pin a tool
-	#  a future profile version will add; but it has no effect.)
-	_illegal=$(printf '%s' "$_tools" | jq -r --argjson o "$_ovr" --arg ns "$EP_NON_SUPPRESSIBLE" '
-		($ns | split(" ")) as $NS
-		| ($o.tools // {}) | to_entries[]
-		| select(.value.policy == "disabled" and (.key | IN($NS[])))
+
+	# (B12) structural validation of every override entry.
+	_malformed=$(printf '%s' "$_ovr" | jq -r --arg ok "$EP_VALID_POLICIES" '
+		($ok | split(" ")) as $OK
+		| (.tools // {}) | to_entries[]
+		| select((.value | type != "object")
+			or (.value | has("policy") | not)
+			or ((.value.policy | type) != "string")
+			or ((.value.policy) as $p | ($OK | index($p)) == null))
 		| .key' 2>/dev/null || true)
-	[ -z "$_illegal" ] || ep__die_cfg "tool-policy override may not disable non-suppressible control(s): $(printf '%s' "$_illegal" | tr '\n' ' ') (requires a documented control waiver)"
-	for _u in $_unknown; do EP_DIAG="${EP_DIAG}override for unknown tool '$_u' ignored (not declared by profile)
-"; done
+	[ -z "$_malformed" ] || ep__die_cfg "tool-policy override has malformed entry(ies) (need {\"policy\": one of $EP_VALID_POLICIES}): $(printf '%s' "$_malformed" | tr '\n' ' ')"
+
+	# (A2) unknown override tool key => fail closed.
+	_unknown=$(printf '%s' "$_tools" | jq -r --argjson o "$_ovr" '
+		. as $T | ($o.tools // {}) | keys[] as $k | select($T | has($k) | not) | $k' 2>/dev/null || true)
+	[ -z "$_unknown" ] || ep__die_cfg "tool-policy override references unknown tool(s) not declared by the profile: $(printf '%s' "$_unknown" | tr '\n' ' ') (typo? alpha does not allow undeclared override tools)"
+
+	# (A1) no-downgrade: reject weakening of required/one-of unless waived; never
+	# weaken a non-suppressible control even with a waiver.
+	_waived_keys=""
+	if [ -n "$_wf" ] && command -v cw_valid_keys >/dev/null 2>&1; then
+		_waived_keys=$(cw_valid_keys "$_wf") || ep__die_cfg "invalid control-waivers file: $_wf"
+	fi
+	for _k in $(printf '%s' "$_ovr" | jq -r '(.tools // {}) | keys[]'); do
+		_cur=$(printf '%s' "$_tools" | jq -r --arg k "$_k" '.[$k].policy // "-"')
+		_new=$(printf '%s' "$_ovr" | jq -r --arg k "$_k" '.tools[$k].policy')
+		_rc=$(ep__rank "$_cur"); _rn=$(ep__rank "$_new")
+		[ "$_rn" -ge "$_rc" ] && continue        # strengthen or equal: always allowed
+		# weakening: only blocked when the CURRENT control is required or one-of.
+		case "$_cur" in
+			required | one-of)
+				case " $EP_NON_SUPPRESSIBLE " in
+					*" $_k "*) ep__die_cfg "tool-policy override may not weaken non-suppressible control '$_k' ($_cur -> $_new)" ;;
+				esac
+				case "
+$_waived_keys
+" in
+					*"
+$_k
+"*) EP_DIAG="${EP_DIAG}override weakens '$_k' ($_cur -> $_new) under control-waiver
+" ;;
+					*) ep__die_cfg "tool-policy override may not weaken required/one-of control '$_k' ($_cur -> $_new) without a valid control-waiver" ;;
+				esac ;;
+		esac
+	done
+
 	printf '%s' "$_tools" | jq --argjson o "$_ovr" '
 		. as $t
 		| reduce (($o.tools // {}) | to_entries[]) as $e ($t;
@@ -196,12 +252,12 @@ ep__validate_policies() {
 	[ -z "$_bp" ] || ep__die_cfg "invalid policy value for tool(s) in $1: $(printf '%s' "$_bp" | tr '\n' ' ')"
 }
 
-# ep_resolve <profile> [override-json-file] [target] — emit the effective profile
-# for a NAMED profile (resolved under profiles/).
+# ep_resolve <profile> [override-json-file] [target] [waivers-file] — emit the
+# effective profile for a NAMED profile (resolved under profiles/).
 ep_resolve() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] || ep__die_cfg "ep_resolve: missing profile name."
-	_profile="$1"; _ovrfile="${2:-}"; _target="${3:-}"
+	_profile="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
 	ep__collect "$_root" "$_profile" ""
@@ -218,7 +274,7 @@ ep_resolve() {
 ep_resolve_manifest() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] && [ -f "$1" ] || ep__die_cfg "ep_resolve_manifest: manifest file not found: ${1:-}"
-	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"
+	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
 	jq -e . "$_mf" >/dev/null 2>&1 || ep__die_cfg "invalid JSON in manifest: $_mf"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
 	_profile=$(jq -r '.profile // "unknown"' "$_mf")
@@ -251,7 +307,7 @@ ep__finish() {
 		jq -e '.tools | type == "object"' "$_ovrfile" >/dev/null 2>&1 || ep__die_cfg "invalid tool-policy override (missing/!object 'tools'): $_ovrfile"
 		_ovr=$(cat "$_ovrfile")
 	fi
-	_tools=$(ep__apply_override "$_tools" "$_ovr")
+	_tools=$(ep__apply_override "$_tools" "$_ovr" "${EP_WAIVERS_FILE:-}")
 
 	# Annotate applicability per tool.
 	_annot="{}"

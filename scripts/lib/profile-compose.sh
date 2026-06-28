@@ -66,13 +66,16 @@ fi
 pc_compose_tools() {
 	command_exists jq || die_cfg "profile-compose: jq is required."
 	[ -n "${1:-}" ] || die_cfg "pc_compose_tools: missing profile name."
-	if [ -n "${PC_REPO_ROOT:-}" ]; then
-		EP_REPO_ROOT="$PC_REPO_ROOT"
-		export EP_REPO_ROOT
-	fi
+	# (B13) Do NOT mutate/export the caller's EP_REPO_ROOT. Run the resolver in a
+	# scoped subshell where EP_REPO_ROOT is set only for that call; the caller's
+	# environment is unchanged after pc_compose_tools returns.
 	# Capture first so the resolver's fail-closed exit(2) propagates (a pipeline
 	# would mask it behind jq's status).
-	_pc_eff=$(ep_resolve "$1") || return $?
+	if [ -n "${PC_REPO_ROOT:-}" ]; then
+		_pc_eff=$(EP_REPO_ROOT="$PC_REPO_ROOT" ep_resolve "$1") || return $?
+	else
+		_pc_eff=$(ep_resolve "$1") || return $?
+	fi
 	printf '%s\n' "$_pc_eff" | jq '.tools'
 }
 
