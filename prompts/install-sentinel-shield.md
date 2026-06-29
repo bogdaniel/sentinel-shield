@@ -71,13 +71,19 @@ declared tool is present.
   `--apply` it installs packages, validates the lockfile, runs tests, and **rolls back on failure**.
   Only with explicit consent (it mutates dependency manifests). Never downgrade a framework/package.
 
-Run **dry-run first**:
-`sh scripts/install-baseline.sh --target . --profile <name> --tool-mode <mode>` — review the planned
-writes (and, for `bootstrap-tools`, the dependency plan). Then
-`--apply --mode report-only --tool-mode <mode>`. Confirm project-local files (`accepted-risks.json`,
-baselines) were **not** touched. Re-run `resolve-tool-plan.sh` (or read
-`.sentinel-shield/installation.json`'s `enabled_tools` / `disabled_tools`) to confirm what is actually
-present.
+Two **independent** flags: `--tool-mode` (`config-only` | `require-existing` | `bootstrap-tools`) is
+*how tools are provisioned*; `--mode` (`report-only` | `baseline` | `strict` | `regulated`) is the
+*adoption/gate strictness* written into `.sentinel-shield/profile.yaml`. Run **dry-run first**:
+
+`sh scripts/install-baseline.sh --target . --profile <name> --tool-mode <mode> --emit-plan plan.json`
+— review the planned writes and the emitted plan (and, for `bootstrap-tools`, the dependency plan).
+Then apply:
+
+`sh scripts/install-baseline.sh --target . --profile <name> --tool-mode <mode> --mode baseline --apply [--non-interactive]`
+(`--non-interactive` for CI/automation; omit `--mode` to keep the default `report-only`). Confirm
+project-local files (`accepted-risks.json`, baselines) were **not** touched. Re-run
+`resolve-tool-plan.sh` (or read `.sentinel-shield/installation.json`'s `enabled_tools` /
+`disabled_tools`) to confirm what is actually present.
 
 **7. Practical non-IaC gate integration.** Wire the **PR-fast** gate first (pinned actions/images).
 Keep IaC/DAST/AI out of the default gate. Start in `report-only` or `baseline`.
