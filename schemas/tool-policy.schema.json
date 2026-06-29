@@ -13,23 +13,44 @@
     },
     "policy": {
       "type": "string",
-      "enum": ["required", "recommended", "optional", "one-of", "disabled", "external"],
-      "description": "required: must be present, configured, and pass — gates the build. recommended: should be present; absence warns. optional: nice-to-have; absence is informational. one-of: this tool satisfies a requirement together with its 'alternatives' (e.g. pest|phpunit); at least one of the set must be present+pass. disabled: deliberately turned off for this profile/project. external: provided/run outside Sentinel Shield (results may be imported); not installed or executed by the runner. Precedence when merged/resolved: required > recommended > optional > disabled."
+      "enum": [
+        "required",
+        "recommended",
+        "optional",
+        "one-of",
+        "disabled",
+        "external"
+      ],
+      "description": "required: must be present, configured, and pass \u2014 gates the build. recommended: should be present; absence warns. optional: nice-to-have; absence is informational. one-of: this tool satisfies a requirement together with its 'alternatives' (e.g. pest|phpunit); at least one of the set must be present+pass. disabled: deliberately turned off for this profile/project. external: provided/run outside Sentinel Shield (results may be imported); not installed or executed by the runner. Precedence when merged/resolved: required > recommended > optional > disabled."
     },
     "missingBehavior": {
       "type": "string",
-      "enum": ["fail", "warn", "info", "skip"],
+      "enum": [
+        "fail",
+        "warn",
+        "info",
+        "skip"
+      ],
       "description": "What happens when the tool is unavailable (not detected / no valid report). Typically derived from 'policy' (required->fail, recommended->warn, optional->info, disabled/external->skip) but may be set explicitly to override."
     },
     "package": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": { "type": "string", "minLength": 1, "description": "Package identifier, e.g. 'larastan/larastan' or 'eslint'." },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Package identifier, e.g. 'larastan/larastan' or 'eslint'."
+        },
         "scope": {
           "type": "string",
-          "enum": ["dev", "prod"],
+          "enum": [
+            "dev",
+            "prod"
+          ],
           "default": "dev",
           "description": "Dependency scope: dev (require-dev / devDependencies) or prod (runtime)."
         },
@@ -45,9 +66,18 @@
       "additionalProperties": false,
       "description": "Which CI phases run this tool. Absent keys default to false.",
       "properties": {
-        "pr": { "type": "boolean", "description": "Run on pull-request / fast feedback." },
-        "main": { "type": "boolean", "description": "Run on the main/protected-branch gate." },
-        "scheduled": { "type": "boolean", "description": "Run on scheduled/nightly scans." }
+        "pr": {
+          "type": "boolean",
+          "description": "Run on pull-request / fast feedback."
+        },
+        "main": {
+          "type": "boolean",
+          "description": "Run on the main/protected-branch gate."
+        },
+        "scheduled": {
+          "type": "boolean",
+          "description": "Run on scheduled/nightly scans."
+        }
       }
     },
     "config": {
@@ -55,10 +85,20 @@
       "additionalProperties": false,
       "description": "The tool's project-local configuration file and how Sentinel Shield treats it.",
       "properties": {
-        "path": { "type": "string", "minLength": 1, "description": "Project-relative config path, e.g. 'phpstan.neon'." },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative config path, e.g. 'phpstan.neon'."
+        },
         "classification": {
           "type": "string",
-          "enum": ["managed", "create-if-missing", "manual-template", "never-touch", "project-owned"],
+          "enum": [
+            "managed",
+            "create-if-missing",
+            "manual-template",
+            "never-touch",
+            "project-owned"
+          ],
           "description": "managed: Sentinel Shield owns/overwrites it. create-if-missing: written once, then project-owned. manual-template: printed for the maintainer to place by hand. never-touch: must never be created or overwritten. project-owned: exists and is owned by the project; read-only to the installer."
         }
       }
@@ -66,22 +106,31 @@
     "toolPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["policy"],
+      "required": [
+        "policy"
+      ],
       "description": "One tool's declared policy within a profile (or a policy-only override in a project tool-policy.yaml).",
       "properties": {
-        "policy": { "$ref": "#/$defs/policy" },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        },
         "category": {
           "type": "string",
           "description": "Grouping label for reporting, e.g. 'static-analysis', 'secrets', 'sca', 'tests', 'architecture', 'iac', 'container', 'dast', 'supply-chain'."
         },
         "packages": {
           "type": "array",
-          "items": { "$ref": "#/$defs/package" },
+          "items": {
+            "$ref": "#/$defs/package"
+          },
           "description": "Packages that provide this tool, with install scope and version compatibility."
         },
         "executable": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "description": "Ordered candidate executables; the runner picks the first that exists, e.g. ['vendor/bin/phpstan','phpstan']."
         },
         "runner": {
@@ -93,26 +142,65 @@
           "pattern": "^reports/raw/[^/]+\\.json$",
           "description": "Normalized JSON report path under reports/raw/, e.g. 'reports/raw/phpstan.json'."
         },
-        "missing_behavior": { "$ref": "#/$defs/missingBehavior" },
+        "missing_behavior": {
+          "$ref": "#/$defs/missingBehavior"
+        },
         "requires": {
           "type": "array",
-          "items": { "$ref": "#/$defs/toolKey" },
+          "items": {
+            "$ref": "#/$defs/toolKey"
+          },
           "description": "Other tool keys that must be present for this tool to be meaningful (hard prerequisites)."
         },
         "alternatives": {
           "type": "array",
-          "items": { "$ref": "#/$defs/toolKey" },
+          "items": {
+            "$ref": "#/$defs/toolKey"
+          },
           "description": "For policy=one-of: the sibling tool keys that together satisfy a single requirement (e.g. tests: alternatives [pest, phpunit])."
         },
-        "execution": { "$ref": "#/$defs/execution" },
-        "config": { "$ref": "#/$defs/config" }
-      }
+        "execution": {
+          "$ref": "#/$defs/execution"
+        },
+        "config": {
+          "$ref": "#/$defs/config"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "policy": {
+                "const": "one-of"
+              }
+            },
+            "required": [
+              "policy"
+            ]
+          },
+          "then": {
+            "required": [
+              "alternatives"
+            ],
+            "properties": {
+              "alternatives": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "toolsMap": {
       "type": "object",
       "description": "Map of tool key -> toolPolicy. This is the shape of a profile-level 'tools' object.",
-      "propertyNames": { "$ref": "#/$defs/toolKey" },
-      "additionalProperties": { "$ref": "#/$defs/toolPolicy" }
+      "propertyNames": {
+        "$ref": "#/$defs/toolKey"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/toolPolicy"
+      }
     }
   }
 }

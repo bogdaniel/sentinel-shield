@@ -60,6 +60,16 @@ EFFECTIVE=$(mktemp 2>/dev/null || mktemp -t sstoolplan)
 trap 'rm -f "$EFFECTIVE"' EXIT INT TERM
 cr_effective_profile "$REPO_ROOT" "$PROFILE" "$TARGET" > "$EFFECTIVE"
 
+# Project-disabled tools (.sentinel-shield/installation.json) are EXCLUDED from the
+# installable/missing plan — they are reported as 'disabled', never proposed for
+# install. (A required control cannot be disabled without a control-waiver; that is
+# enforced by the gate, not here — this only keeps the install plan honest.)
+DISABLED_SET=" "
+_im="$TARGET/.sentinel-shield/installation.json"
+if [ -f "$_im" ] && jq -e . "$_im" >/dev/null 2>&1; then
+	for _dt in $(jq -r '(.disabled_tools // [])[]' "$_im" 2>/dev/null); do DISABLED_SET="${DISABLED_SET}${_dt} "; done
+fi
+
 # --- inspect the environment (read-only) ------------------------------------
 PHPV=$(cr_php_version "$TARGET")
 MINSTAB=$(cr_min_stability "$TARGET")
@@ -70,6 +80,7 @@ KEYS=$(cr_tool_keys "$EFFECTIVE")
 REQ=""
 REC=""
 ONE=""
+DIS=""
 ACC=""
 _oifs=$IFS
 IFS='
@@ -84,18 +95,24 @@ for k in $KEYS; do
 		*) IFS='
 '; continue ;;
 	esac
-	res=$(cr_classify_tool "$TARGET" "$EFFECTIVE" "$k")
-	decision=${res%%"$TAB"*}
-	reason=${res#*"$TAB"}
-	line=$(printf '  - %-20s %-18s %s' "$k" "$decision" "$reason")
-	case "$policy" in
-		required) REQ="${REQ}${line}
-" ;;
-		recommended) REC="${REC}${line}
-" ;;
-		one-of) ONE="${ONE}${line}
-" ;;
+	case "$DISABLED_SET" in
+		*" $k "*) decision="disabled"; reason="disabled via .sentinel-shield/installation.json" ;;
+		*) res=$(cr_classify_tool "$TARGET" "$EFFECTIVE" "$k"); decision=${res%%"$TAB"*}; reason=${res#*"$TAB"} ;;
 	esac
+	line=$(printf '  - %-20s %-18s %s' "$k" "$decision" "$reason")
+	if [ "$decision" = "disabled" ]; then
+		DIS="${DIS}${line}
+"
+	else
+		case "$policy" in
+			required) REQ="${REQ}${line}
+" ;;
+			recommended) REC="${REC}${line}
+" ;;
+			one-of) ONE="${ONE}${line}
+" ;;
+		esac
+	fi
 	ACC="${ACC}$(jq -nc --arg k "$k" --arg p "$policy" --arg d "$decision" --arg r "$reason" \
 		'{key:$k, policy:$p, decision:$d, reason:$r}')
 "
@@ -138,4 +155,9 @@ if [ -n "$ONE" ]; then printf '%s' "$ONE"; else printf '  (none)\n'; fi
 printf '\n'
 printf 'Recommended:\n'
 if [ -n "$REC" ]; then printf '%s' "$REC"; else printf '  (none)\n'; fi
+if [ -n "$DIS" ]; then
+	printf '\n'
+	printf 'Disabled (installation.json; not installed):\n'
+	printf '%s' "$DIS"
+fi
 exit 0

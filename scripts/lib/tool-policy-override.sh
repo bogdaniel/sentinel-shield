@@ -107,6 +107,11 @@ tpo__to_json() {
 				if (ci==0) { print "ERR\tunsupported top-level line" > "/dev/stderr"; exit 3 }
 				key=trim(substr(content,1,ci-1))
 				if (key!="tools") { print "ERR\tunsupported top-level key: " key > "/dev/stderr"; exit 3 }
+				# `tools:` must introduce a MAP, not a scalar. Reject `tools: something`
+				# (anything non-empty after the colon that is not an inline `{}`) so a
+				# malformed override fails fast instead of becoming a silent empty map.
+				topval=trim(substr(content,ci+1))
+				if (topval!="" && topval !~ /^\{/) { print "ERR\ttools must be a mapping, got scalar: " topval > "/dev/stderr"; exit 3 }
 				in_tools=1; cur=""; next
 			}
 			if (!in_tools) next

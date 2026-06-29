@@ -165,6 +165,13 @@ echo "[profile tool-policy] (Policy | Installed | Configured | Executed; enforce
 REQ_FAIL=0
 REQUIRED_MISSING=""
 if ! command_exists jq; then
+  # Fail closed under enforced modes: without jq we cannot verify required tools, so
+  # require-existing / bootstrap-tools must NOT silently pass (exit 3). config-only
+  # (or no mode) only warns, matching its non-gating contract.
+  case "$TOOL_MODE" in
+    require-existing|bootstrap-tools)
+      log_error "doctor: jq absent — cannot verify profile-required tools under --tool-mode=$TOOL_MODE (failing closed)"; exit 3 ;;
+  esac
   warn "jq absent — cannot resolve the profile tool-policy table"
 else
   # Resolve active profile name(s): --profile wins; else the profile.yaml 'profiles:' list.

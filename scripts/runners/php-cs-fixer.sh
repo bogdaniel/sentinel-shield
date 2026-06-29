@@ -49,9 +49,10 @@ _raw="$_dir/php-cs-fixer.stdout.raw"
 _err="$_dir/php-cs-fixer.stderr.log"
 
 # --dry-run + --diff = report only, no mutation. --format=json -> stdout JSON.
-log_info "php-cs-fixer: $FIXER_BIN fix --dry-run --diff --format=json"
+# --using-cache=no keeps the --dry-run read-only (no .php-cs-fixer.cache written).
+log_info "php-cs-fixer: $FIXER_BIN fix --dry-run --diff --format=json --using-cache=no"
 _rc=0
-"$FIXER_BIN" fix --dry-run --diff --format=json >"$_raw" 2>"$_err" || _rc=$?
+"$FIXER_BIN" fix --dry-run --diff --format=json --using-cache=no >"$_raw" 2>"$_err" || _rc=$?
 
 if jq -e . "$_raw" >/dev/null 2>&1; then
 	cp "$_raw" "$OUTPUT"

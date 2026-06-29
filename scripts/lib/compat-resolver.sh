@@ -80,8 +80,19 @@ cr_framework() {
 
 # --- manifest readers --------------------------------------------------------
 
-# cr_manifest_path <repo_root> <profile> — print the named manifest path.
-cr_manifest_path() { printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"; }
+# cr_manifest_path <repo_root> <profile> — print the manifest path, resolving BOTH
+# standard profiles and combination manifests (matches the canonical resolver's
+# ep__manifest_path) so names like node-react / laravel-react-docker work. Falls
+# back to the standard path so a caller's "not found" message stays accurate.
+cr_manifest_path() {
+	if [ -f "$1/profiles/$2/profile.manifest.json" ]; then
+		printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"
+	elif [ -f "$1/profiles/combinations/$2.manifest.json" ]; then
+		printf '%s/profiles/combinations/%s.manifest.json' "$1" "$2"
+	else
+		printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"
+	fi
+}
 
 # cr_effective_profile <repo_root> <profile> [target] — emit the COMPOSED,
 # override-aware effective profile JSON (the SINGLE source of the tool set) by

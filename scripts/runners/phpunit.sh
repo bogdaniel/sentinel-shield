@@ -54,9 +54,10 @@ _junit="$_dir/phpunit.junit.xml"
 _err="$_dir/phpunit.stderr.log"
 rm -f "$_junit" 2>/dev/null || true
 
-log_info "phpunit: $PHPUNIT_BIN --log-junit $_junit"
+# --do-not-cache-result keeps the run read-only (no .phpunit.result.cache written).
+log_info "phpunit: $PHPUNIT_BIN --log-junit $_junit --do-not-cache-result"
 _rc=0
-"$PHPUNIT_BIN" --log-junit "$_junit" >"$_dir/phpunit.stdout.raw" 2>"$_err" || _rc=$?
+"$PHPUNIT_BIN" --log-junit "$_junit" --do-not-cache-result >"$_dir/phpunit.stdout.raw" 2>"$_err" || _rc=$?
 
 if [ ! -s "$_junit" ]; then
 	log_warn "phpunit: produced no JUnit report (exit ${_rc:-?}); leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_err."

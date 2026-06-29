@@ -3600,6 +3600,45 @@ v3_test_split() {
 	rm -rf "$_t"
 }
 
+# Batch-4 review fixes: schema guards, disabled-tool plan exclusion, doctor jq
+# fail-closed, combination manifest resolution, runner read-only flags.
+v3_batch4() {
+	_R="$ROOT/scripts/resolve-effective-profile.sh"
+	# schema: policy=one-of REQUIRES a non-empty alternatives array (if check-jsonschema present).
+	if command_exists check-jsonschema; then
+		_sd=$(mktemp -d)
+		printf '{"profile":"x","tool_policy_version":2,"files":[],"tools":{"t":{"policy":"one-of"}}}' > "$_sd/bad.json"
+		check-jsonschema --schemafile "$ROOT/profiles/profile.manifest.schema.json" "$_sd/bad.json" >/dev/null 2>&1 && _r=0 || _r=1
+		v3_check "(schema) one-of without alternatives -> rejected" "$_r" "1"
+		printf '{"profile":"x","tool_policy_version":9,"files":[]}' > "$_sd/badv.json"
+		check-jsonschema --schemafile "$ROOT/profiles/profile.manifest.schema.json" "$_sd/badv.json" >/dev/null 2>&1 && _r=0 || _r=1
+		v3_check "(schema) tool_policy_version 9 -> rejected (const 2)" "$_r" "1"
+		rm -rf "$_sd"
+	else
+		log_warn "(schema) check-jsonschema absent; SKIPPING schema-guard cases (jq-validity only)"
+	fi
+	# compat-resolver: cr_manifest_path resolves a combination profile.
+	v3_check "(compat) cr_manifest_path resolves combination" \
+		"$( ( cd "$ROOT" && sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/compat-resolver.sh; cr_manifest_path "$(pwd)" laravel-react-docker' ) 2>/dev/null | grep -c 'combinations/laravel-react-docker.manifest.json')" "1"
+	# resolve-tool-plan: a tool disabled via installation.json is reported 'disabled', not installable.
+	_dt=$(mktemp -d); mkdir -p "$_dt/.sentinel-shield"; printf '{"disabled_tools":["rector"]}' > "$_dt/.sentinel-shield/installation.json"
+	v3_check "(resolve-tool-plan) disabled tool -> decision=disabled" \
+		"$(sh "$ROOT/scripts/resolve-tool-plan.sh" --profile laravel --target "$_dt" --format json 2>/dev/null | jq -r '.tools.rector.decision // "absent"')" "disabled"
+	rm -rf "$_dt"
+	# doctor: jq absent + require-existing -> exit 3 (fail closed); config-only -> not 3.
+	_nb=$(mktemp -d); for _c in sh dirname basename cat printf grep sed awk tr date mktemp rm mkdir; do _p=$(command -v "$_c" 2>/dev/null) && ln -s "$_p" "$_nb/$_c" 2>/dev/null; done
+	_dd=$(mktemp -d)
+	if env PATH="$_nb" sh "$ROOT/scripts/doctor.sh" --target "$_dd" --profile laravel --tool-mode require-existing >/dev/null 2>&1; then _r=0; else _r=$?; fi
+	v3_check "(doctor) jq absent + require-existing -> exit 3 (fail closed)" "$_r" "3"
+	rm -rf "$_nb" "$_dd"
+	# runners: read-only cache flags present.
+	v3_check "(php-cs-fixer) invokes with --using-cache=no (read-only)" \
+		"$(grep -E '"\$FIXER_BIN".*--using-cache=no' "$ROOT/scripts/runners/php-cs-fixer.sh" >/dev/null && echo yes || echo no)" "yes"
+	v3_check "(phpunit) invokes with --do-not-cache-result (read-only)" \
+		"$(grep -E '"\$PHPUNIT_BIN".*--do-not-cache-result' "$ROOT/scripts/runners/phpunit.sh" >/dev/null && echo yes || echo no)" "yes"
+	v3_check "(npm-audit) differentiates Yarn classic vs berry" "$(grep -c '1\.\*)' "$ROOT/scripts/runners/npm-audit.sh")" "1"
+}
+
 # run_v2_review_round3 — self-test group 'v2-review-round3' (wired into the dispatch + 'all').
 run_v2_review_round3() {
 	log_info "v2-review-round3: POSIX waivers + version/keys + fail-closed validation + stale runners + quoting/globbing + php/js test split"
@@ -3611,6 +3650,7 @@ run_v2_review_round3() {
 	v3_summary_numeric
 	v3_report_shape
 	v3_test_split
+	v3_batch4
 	if [ "$VR3_FAILS" -ne 0 ]; then log_error "v2-review-round3: $VR3_FAILS case(s) failed"; return 1; fi
 	log_info "v2-review-round3: OK (portable waivers + safe keys + fail-closed + stale-runner + quoting + glob-proof + php/js test split)"
 }

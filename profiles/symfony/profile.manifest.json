@@ -258,7 +258,7 @@
         "phpunit"
       ],
       "runner": "scripts/runners/phpunit.sh",
-      "report": "reports/raw/phpunit.json",
+      "report": "reports/raw/tests.json",
       "alternatives": [
         "pest"
       ],
@@ -283,7 +283,7 @@
         "pest"
       ],
       "runner": "scripts/runners/pest.sh",
-      "report": "reports/raw/pest.json",
+      "report": "reports/raw/tests.json",
       "alternatives": [
         "phpunit"
       ],

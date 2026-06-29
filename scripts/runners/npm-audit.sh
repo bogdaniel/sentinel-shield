@@ -58,7 +58,13 @@ _err="$_dir/npm-audit.stderr.log"
 case "$PM" in
 	npm)  set -- audit --json ;;
 	pnpm) set -- audit --json ;;
-	yarn) set -- npm audit --json ;;   # Yarn Berry; classic yarn ignores the extra word
+	yarn)
+		# Yarn Classic (1.x): `yarn audit --json`. Yarn Berry (2+): `yarn npm audit --json`.
+		_yv=$(yarn --version 2>/dev/null || echo 0)
+		case "$_yv" in
+			1.*) set -- audit --json ;;
+			*)   set -- npm audit --json ;;
+		esac ;;
 esac
 
 log_info "npm-audit: $PM $* (lockfile-detected manager)."

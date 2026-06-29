@@ -230,8 +230,13 @@ eh_oneof_report() {
 # required tool that the gate must reject.
 eh_required_report() {
 	eh_resolve "$1" "$2" | jq -r '
-		( [ .tools | to_entries[]
+		# one-of group keys + their alternative members — explicitly excluded so the
+		# FAIL(required) variant only ever picks an ORDINARY required tool report
+		# (one-of coverage is exercised separately by eh_fail_oneof).
+		( [ (.one_of_groups // {}) | to_entries[] | (.key, (.value.alternatives[]?)) ] ) as $oneof
+		| ( [ .tools | to_entries[]
 		    | select(.value.policy=="required" and (.value.applicability//"unknown")!="not-applicable")
+		    | select(.key as $k | ($oneof | index($k)) | not)
 		    | (.value.report // empty) ] )
 		| sort | (.[0] // "") | sub(".*/";"")'
 }

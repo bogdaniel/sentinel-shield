@@ -102,6 +102,10 @@ im_write() {
 	_im_out=$(im_path "$_im_target") || return 2
 	ensure_dir "$(dirname -- "$_im_out")"
 
+	# ATOMIC write: build + validate a temp file in the SAME dir, then mv into place
+	# only on success — an interrupted/failed write never leaves a partial
+	# installation.json behind.
+	_im_tmp="$_im_out.tmp.$$"
 	jq -n \
 		--arg version "$2" \
 		--arg profile "$3" \
@@ -123,8 +127,9 @@ im_write() {
 			project_owned_files: lines($owned),
 			enabled_tools: lines($enabled),
 			disabled_tools: lines($disabled)
-		}' > "$_im_out" || { log_error "im_write: cannot write '$_im_out'"; return 1; }
+		}' > "$_im_tmp" || { log_error "im_write: cannot write '$_im_tmp'"; rm -f "$_im_tmp" 2>/dev/null || true; return 1; }
 
-	im_validate "$_im_out" || { log_error "im_write: produced a non-conforming record at '$_im_out'"; return 1; }
+	im_validate "$_im_tmp" || { log_error "im_write: produced a non-conforming record"; rm -f "$_im_tmp" 2>/dev/null || true; return 1; }
+	mv -- "$_im_tmp" "$_im_out" || { log_error "im_write: cannot move into place '$_im_out'"; rm -f "$_im_tmp" 2>/dev/null || true; return 1; }
 	log_info "installation-metadata: wrote $_im_out"
 }
