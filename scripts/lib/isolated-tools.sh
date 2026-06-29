@@ -81,6 +81,7 @@ isolated_tool_available() { [ -x "$(isolated_tool_bin "$1" "$2")" ]; }
 isolated_tool_install_command() {
 	printf 'composer --working-dir=%s install' "$(isolated_tool_root "$1")"
 }
+# isolated_tool_update_command — print the update command for an isolated tool install.
 isolated_tool_update_command() {
 	printf 'composer --working-dir=%s update' "$(isolated_tool_root "$1")"
 }

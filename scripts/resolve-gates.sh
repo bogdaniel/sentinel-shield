@@ -39,6 +39,7 @@ OUTPUT_DIR_CLI=""
 FORMAT="all"
 REQUIRE_PROFILE=0
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: resolve-gates.sh [options]
@@ -200,6 +201,7 @@ for _m in $VALID_MODES; do
 done
 [ "$_mode_ok" -eq 1 ] || die_cfg "invalid mode '$MODE' (expected one of: $VALID_MODES)"
 
+# mode_description — human-readable description of an adoption mode.
 mode_description() {
 	case "$1" in
 		report-only) printf 'Legacy visibility mode. Only leaked secrets and expired exceptions block.' ;;
@@ -326,6 +328,7 @@ write_env() {
 	log_info "wrote $_f"
 }
 
+# write_json — write the json output report.
 write_json() {
 	_f="$OUTPUT_DIR/sentinel-shield-gates.json"
 	# Count keys without clobbering the script's positional parameters.
@@ -370,6 +373,7 @@ write_json() {
 	log_info "wrote $_f"
 }
 
+# write_markdown — write the markdown output report.
 write_markdown() {
 	_f="$OUTPUT_DIR/sentinel-shield-gates.md"
 	{

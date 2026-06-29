@@ -81,6 +81,8 @@ log_info "phpstan: $PHPSTAN_BIN $* (memory=$MEM, config=${CONFIG:-<none>})"
 _rc=0
 "$PHPSTAN_BIN" "$@" >"$_raw" 2>"$_err" || _rc=$?
 
+# write_report <json-text> — write the validated PHPStan JSON to $OUTPUT, log the
+# error count, clean up debug artifacts, and exit 0.
 write_report() {
 	printf '%s' "$1" > "$OUTPUT"
 	_n=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0))' "$OUTPUT" 2>/dev/null || echo '?')

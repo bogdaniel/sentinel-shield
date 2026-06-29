@@ -78,6 +78,7 @@ FAILS=0
 # via an env hook (phpstan/pint/php-cs-fixer/pest/phpunit) are pinned with SENTINEL_SHIELD_*_BIN
 # so a stub binary committed under a fixture's vendor/bin cannot shadow them.
 FAKEBIN=""
+# eh_make_fakebin — e2e-harness helper: make fakebin.
 eh_make_fakebin() {
 	FAKEBIN=$(mktemp -d)
 	# actionlint / zizmor: their runners redirect the tool's stdout into the report.

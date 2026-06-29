@@ -46,6 +46,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	printf 'Usage: run-tool-plan.sh --profile <name> --target <dir> --stage pr|main|scheduled [--output-dir reports/raw] [--override <path>]\n'
 }

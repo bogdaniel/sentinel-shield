@@ -37,6 +37,7 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 TARGET=""; APPLY=0; FORCE=0; PROFILE=""; TOOL_MODE="require-existing"
 VERSION="${SENTINEL_SHIELD_VERSION:-1.9.1}"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: migrate-v1.sh --target <dir> [--profile <name>] [--tool-mode <mode>] [--apply] [--force] [--version <v>]

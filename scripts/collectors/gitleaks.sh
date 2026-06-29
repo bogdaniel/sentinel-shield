@@ -9,6 +9,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="gitleaks"
 INPUT="reports/raw/gitleaks.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: gitleaks.sh [--input <path>] [--tool-name <name>]

@@ -28,6 +28,7 @@ CONFIG=""
 LIST_ONLY=0
 HADOLINT_IMAGE="${SENTINEL_SHIELD_HADOLINT_IMAGE:-hadolint/hadolint}"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: run-hadolint.sh [--output <path>] [--config <hadolint.yaml>] [--list]

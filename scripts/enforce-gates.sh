@@ -78,6 +78,7 @@ RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-
 # missing_sbom, and the critical/high vuln gates.
 SUPPRESSIBLE_GATES="unsafe_docker medium_vulnerabilities"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: enforce-gates.sh [options]
@@ -330,6 +331,7 @@ FAILED=""        # space-separated failed gate keys
 ACCEPTED=""      # space-separated gate keys suppressed by an approved accepted-risk
 EVAL_LINES=""    # "key|enabled|value|result" per line
 
+# add_eval — record one gate evaluation row (key|enabled|value|result).
 add_eval() {
 	# add_eval <key> <enabled-bool> <value-json> <result>
 	EVAL_LINES="${EVAL_LINES}$1|$2|$3|$4
@@ -372,6 +374,7 @@ eval_count_gate() {
 # (rule_id + file): the gate is accepted-risk ONLY when every finding is matched; any
 # unaccepted finding fails the gate. The summary count (total) is always preserved.
 UD_TOTAL=0; UD_ACCEPTED=0; UD_UNACCEPTED=0; UD_SCOPE="none"; UD_DETAIL="[]"
+# eval_unsafe_docker — evaluate the unsafe docker gate and record its result.
 eval_unsafe_docker() {
 	_key="unsafe_docker"
 	_flag=$(gate_flag "$_key")
@@ -681,6 +684,7 @@ json_eval() {
 	done
 }
 
+# json_failed — emit the failed JSON fragment to stdout.
 json_failed() {
 	_first=1
 	for g in $FAILED; do
@@ -689,6 +693,7 @@ json_failed() {
 	done
 }
 
+# json_list — emit the list JSON fragment to stdout.
 json_list() {
 	# json_list <space-separated items>
 	_first=1
@@ -698,6 +703,7 @@ json_list() {
 	done
 }
 
+# json_broad_ids — emit the broad ids JSON fragment to stdout.
 json_broad_ids() {
 	# objects from AR_BROAD_DETAIL ("gate|id" lines)
 	_first=1
@@ -708,6 +714,7 @@ json_broad_ids() {
 	done
 }
 
+# json_finding_ids — emit the finding ids JSON fragment to stdout.
 json_finding_ids() {
 	# objects from AR_FINDING_DETAIL ("gate|id|rule|files-csv" lines)
 	_first=1
@@ -719,6 +726,7 @@ json_finding_ids() {
 	done
 }
 
+# write_json — write the json output report.
 write_json() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
 	{
@@ -763,6 +771,7 @@ write_json() {
 	log_info "wrote $_f"
 }
 
+# write_markdown — write the markdown output report.
 write_markdown() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.md"
 	_result_up=$(printf '%s' "$RESULT" | tr '[:lower:]' '[:upper:]')

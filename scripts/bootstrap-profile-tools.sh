@@ -36,6 +36,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 TAB=$(printf '\t')
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: bootstrap-profile-tools.sh --profile <name> [--target <dir>] [--dry-run|--apply]
@@ -394,6 +395,7 @@ HAD_VENDOR=0; [ -d "$TARGET/vendor" ] && HAD_VENDOR=1
 HAD_NODE_MODULES=0; [ -d "$TARGET/node_modules" ] && HAD_NODE_MODULES=1
 TOUCHED_COMPOSER=0; TOUCHED_NPM=0; ROLLBACK_INCOMPLETE=0
 
+# rollback — restore mutated dependency/lock files to their pre-apply state.
 rollback() {
 	log_warn "bootstrap: restoring dependency-declaration + lock files to their prior state."
 	for _f in $SNAP_FILES; do

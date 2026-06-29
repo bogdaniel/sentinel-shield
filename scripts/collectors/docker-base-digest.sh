@@ -12,6 +12,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="docker_base_digest"
 INPUT="reports/raw/docker-base-digest.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: docker-base-digest.sh [--input <path>] [--tool-name <name>]

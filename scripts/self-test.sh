@@ -119,6 +119,7 @@ run_lifecycle() {
 # --- fallback policy ---------------------------------------------------------
 FAILS=0
 
+# assert_select — test assertion helper (assert_select).
 assert_select() {
 	# assert_select <description> <expected-exit> <select args...>
 	_desc=$1
@@ -133,6 +134,7 @@ assert_select() {
 	fi
 }
 
+# run_fallback — self-test group 'fallback' (wired into the dispatch + 'all').
 run_fallback() {
 	log_info "fallback: building a real summary fixture"
 	_work=$(mktemp -d)
@@ -175,6 +177,7 @@ run_fallback() {
 # mutated in place).
 NEG_FAILS=0
 
+# expect_exit_code — test assertion helper (expect_exit_code).
 expect_exit_code() {
 	# expect_exit_code <description> <expected-exit> <command...>
 	_desc=$1
@@ -228,6 +231,7 @@ run_build_case() {
 	rm -rf "$_d"
 }
 
+# run_negative — self-test group 'negative' (wired into the dispatch + 'all').
 run_negative() {
 	log_info "negative: enforcing finding-bearing summaries"
 	# Control: clean summary passes in baseline.
@@ -290,6 +294,7 @@ run_suppression_case() {
 	rm -rf "$_d"
 }
 
+# run_suppression — self-test group 'suppression' (wired into the dispatch + 'all').
 run_suppression() {
 	log_info "suppression: accepted-risk gate suppression (unsafe_docker)"
 	_ad='.summary.unsafe_docker = 1'
@@ -345,6 +350,7 @@ run_fs_case() {
 	rm -rf "$_d"
 }
 
+# run_finding_scope — self-test group 'finding-scope' (wired into the dispatch + 'all').
 run_finding_scope() {
 	log_info "finding-scope: v0.1.8 unsafe_docker per-finding suppression"
 	# Hadolint fixtures
@@ -391,6 +397,7 @@ tp_check() { # tp_check <desc> <actual> <expected>
 	if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; TP_FAILS=$((TP_FAILS + 1)); fi
 }
 
+# run_third_party — self-test group 'third-party' (wired into the dispatch + 'all').
 run_third_party() {
 	log_info "third-party: collector + gates (fixture-driven, no real Semgrep)"
 	_d=$(mktemp -d)
@@ -438,6 +445,7 @@ run_third_party() {
 HL_FAILS=0
 hl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; HL_FAILS=$((HL_FAILS + 1)); fi; }
 
+# run_hadolint — self-test group 'hadolint' (wired into the dispatch + 'all').
 run_hadolint() {
 	log_info "hadolint: multi-Dockerfile discovery + merge (no real Hadolint needed)"
 	_rh="$PWD/scripts/run-hadolint.sh"
@@ -486,6 +494,7 @@ JSON
 AD_FAILS=0
 ad_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; AD_FAILS=$((AD_FAILS + 1)); fi; }
 
+# run_adapters — self-test group 'adapters' (wired into the dispatch + 'all').
 run_adapters() {
 	log_info "consolidation: test adapters, runner, pin audit, base-digest detector, templates"
 	_d=$(mktemp -d)
@@ -565,6 +574,7 @@ run_adapters() {
 PR_FAILS=0
 pr_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; PR_FAILS=$((PR_FAILS + 1)); fi; }
 
+# run_phpstan_runner — self-test group 'phpstan-runner' (wired into the dispatch + 'all').
 run_phpstan_runner() {
 	log_info "phpstan-runner: robustness (fake php/phpstan; no real Laravel app)"
 	_runner="$PWD/scripts/runners/laravel-phpstan.sh"
@@ -634,6 +644,7 @@ ms_case() {
 	rm -rf "$_d"
 }
 
+# run_ud_multisource — self-test group 'ud-multisource' (wired into the dispatch + 'all').
 run_ud_multisource() {
 	log_info "ud-multisource: unsafe_docker matching across hadolint + docker-base-digest"
 	_h='[{"file":"Dockerfile","line":2,"code":"DL3018","level":"warning"}]'
@@ -659,6 +670,7 @@ run_ud_multisource() {
 IS_FAILS=0
 is_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; IS_FAILS=$((IS_FAILS + 1)); fi; }
 
+# run_install_sync — self-test group 'install-sync' (wired into the dispatch + 'all').
 run_install_sync() {
 	log_info "install-sync: profile-driven install/sync + detect-stack (temp dirs, no network)"
 
@@ -723,6 +735,7 @@ run_install_sync() {
 SM_FAILS=0
 sm_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; SM_FAILS=$((SM_FAILS + 1)); fi; }
 
+# run_scanner_matrix — self-test group 'scanner-matrix' (wired into the dispatch + 'all').
 run_scanner_matrix() {
 	log_info "scanner-matrix: collectors, resolver/enforcer gates, DAST safety, AI non-gating"
 	_d=$(mktemp -d); _r="$_d/raw"; mkdir -p "$_r"
@@ -799,6 +812,7 @@ run_scanner_matrix() {
 FX_FAILS=0
 fx_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; FX_FAILS=$((FX_FAILS + 1)); fi; }
 
+# run_fixtures — self-test group 'fixtures' (wired into the dispatch + 'all').
 run_fixtures() {
 	log_info "fixtures: detect-stack + install/sync + profile resolution + enforcement over offline fixtures"
 	FXB="$ROOT/tests/fixtures/projects"
@@ -852,6 +866,7 @@ run_fixtures() {
 WS_FAILS=0
 ws_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; WS_FAILS=$((WS_FAILS + 1)); fi; }
 
+# run_workflow_sanity — self-test group 'workflow-sanity' (wired into the dispatch + 'all').
 run_workflow_sanity() {
 	log_info "workflow-sanity: no pull_request_target trigger, permissions present, DAST allowlist, AI non-gating"
 	WF_GH="$ROOT/github/workflows"; WF_TPL="$ROOT/templates/workflows"
@@ -923,6 +938,7 @@ run_workflow_sanity() {
 FC_FAILS=0
 fc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; FC_FAILS=$((FC_FAILS + 1)); fi; }
 
+# run_feature_completion — self-test group 'feature-completion' (wired into the dispatch + 'all').
 run_feature_completion() {
 	log_info "feature-completion: dependency-policy detector, architecture-tests collector, new runners present"
 	_d=$(mktemp -d); _r="$_d/raw"; mkdir -p "$_r"
@@ -977,6 +993,7 @@ run_feature_completion() {
 MGH_FAILS=0
 mgh_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MGH_FAILS=$((MGH_FAILS + 1)); fi; }
 
+# run_main_gate_harness — self-test group 'main-gate-harness' (wired into the dispatch + 'all').
 run_main_gate_harness() {
 	log_info "main-gate-harness: branch-safe main-gate wrappers; missing->unavailable (no fake), tool selection, JSON contract"
 	H="$ROOT/scripts/run-main-gate-validation.sh"
@@ -1043,6 +1060,7 @@ STUB
 MGE_FAILS=0
 mge_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MGE_FAILS=$((MGE_FAILS + 1)); fi; }
 
+# run_main_gate_evidence — self-test group 'main-gate-evidence' (wired into the dispatch + 'all').
 run_main_gate_evidence() {
 	log_info "main-gate-evidence: Semgrep image strategy, no --config=auto, no DAST/AI in main, evidence registry"
 	PRF="$ROOT/templates/workflows/sentinel-shield-pr-fast.yml"
@@ -1079,6 +1097,7 @@ mx_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 # Build a controlled PATH dir: real jq symlinked in, plus any fake binaries we drop.
 _mx_fakebin() { _b=$(mktemp -d); ln -s "$(command -v jq)" "$_b/jq" 2>/dev/null || cp "$(command -v jq)" "$_b/jq"; echo "$_b"; }
 
+# run_main_gate_exec — self-test group 'main-gate-exec' (wired into the dispatch + 'all').
 run_main_gate_exec() {
 	log_info "main-gate-exec: grype/dep-check/dockle execution modes + semgrep-image verify (fake binaries)"
 	GR="$ROOT/scripts/audits/grype.sh"; DC="$ROOT/scripts/audits/dependency-check.sh"
@@ -1213,6 +1232,7 @@ FAKE
 # --- install-matrix (v0.1.22): round-trip docker-only / php-library / node-react -----------
 IM_FAILS=0
 im_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; IM_FAILS=$((IM_FAILS + 1)); fi; }
+# run_install_matrix — self-test group 'install-matrix' (wired into the dispatch + 'all').
 run_install_matrix() {
 	log_info "install-matrix: install/sync round-trip for docker, php-library, node-react (temp dirs, no network)"
 	for _prof in docker php-library node-react symfony; do
@@ -1241,6 +1261,7 @@ run_install_matrix() {
 # --- mode-readiness (v0.1.22): strict gates fire; report-only/baseline don't inherit them ---
 MR_FAILS=0
 mr_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; MR_FAILS=$((MR_FAILS + 1)); fi; }
+# run_mode_readiness — self-test group 'mode-readiness' (wired into the dispatch + 'all').
 run_mode_readiness() {
 	log_info "mode-readiness: strict fails on strict-only violations; report-only/baseline do not inherit them"
 	_d=$(mktemp -d)
@@ -1282,6 +1303,7 @@ run_mode_readiness() {
 #     findings, grype SBOM fake, dockle image-required, summary builder key coverage ----------
 KV_FAILS=0
 kv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; KV_FAILS=$((KV_FAILS + 1)); fi; }
+# run_v022_fixtures — self-test group 'v022-fixtures' (wired into the dispatch + 'all').
 run_v022_fixtures() {
 	log_info "v022-fixtures: IaC-no-binary, deptrac-absent, dep-policy lockfiles, dep-check findings, summary keys"
 	_d=$(mktemp -d); _b=$(mktemp -d)
@@ -1352,6 +1374,7 @@ FAKE
 # --- v023-coverage: dep-check clean, mode fixtures, IaC fixtures, DAST guard, supply-chain --
 CV_FAILS=0
 cv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; CV_FAILS=$((CV_FAILS + 1)); fi; }
+# run_v023_coverage — self-test group 'v023-coverage' (wired into the dispatch + 'all').
 run_v023_coverage() {
 	log_info "v023-coverage: dep-check clean fixture, strict/regulated mode fixtures, IaC/deptrac/arch, DAST guard, no-latest"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; _d=$(mktemp -d)
@@ -1431,6 +1454,7 @@ run_v023_coverage() {
 # --- v023-regression: cross-cutting invariants ------------------------------------------------
 RG_FAILS=0
 rg_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; RG_FAILS=$((RG_FAILS + 1)); fi; }
+# run_v023_regression — self-test group 'v023-regression' (wired into the dispatch + 'all').
 run_v023_regression() {
 	log_info "v023-regression: fail_on flags, secrets non-suppressible, invalid/missing collectors, manifests, docs, changelog, .claude"
 	C="$ROOT/scripts/collectors"; _d=$(mktemp -d)
@@ -1493,6 +1517,7 @@ run_v023_regression() {
 # --- v024-collectors: iterate the complete collector fixture library -------------------------
 CL_FAILS=0
 cl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; CL_FAILS=$((CL_FAILS + 1)); fi; }
+# run_v024_collectors — self-test group 'v024-collectors' (wired into the dispatch + 'all').
 run_v024_collectors() {
 	log_info "v024-collectors: every collector parses its fixture-library sample + emits a normalized object"
 	LIB="$ROOT/tests/fixtures/collectors-v024"; C="$ROOT/scripts/collectors"
@@ -1519,6 +1544,7 @@ run_v024_collectors() {
 # --- v024-coverage: dep-check hardening, modes-v024, IaC/deptrac/arch v024, DAST, workflow ----
 VC_FAILS=0
 vc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VC_FAILS=$((VC_FAILS + 1)); fi; }
+# run_v024_coverage — self-test group 'v024-coverage' (wired into the dispatch + 'all').
 run_v024_coverage() {
 	log_info "v024-coverage: dep-check fixtures, strict/regulated modes-v024, IaC/deptrac/arch, DAST incl zap-full input gap, workflow uploads"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; _d=$(mktemp -d)
@@ -1593,6 +1619,7 @@ run_v024_coverage() {
 # --- v024-docs: doc-consistency regression (audit-driven) -------------------------------------
 VD_FAILS=0
 vd_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VD_FAILS=$((VD_FAILS + 1)); fi; }
+# run_v024_docs — self-test group 'v024-docs' (wired into the dispatch + 'all').
 run_v024_docs() {
 	log_info "v024-docs: changelog/version, Dependency-Check honesty, v1 not-reached, no stray tags, .claude untracked"
 	D="$ROOT/docs"
@@ -1619,6 +1646,7 @@ run_v024_docs() {
 # --- v025-live: REAL scanner artifacts, zap-full fix, nuclei guard, deptrac/arch/regulated, wf rules
 VL_FAILS=0
 vl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2' exp '$3')"; VL_FAILS=$((VL_FAILS + 1)); fi; }
+# run_v025_live — self-test group 'v025-live' (wired into the dispatch + 'all').
 run_v025_live() {
 	log_info "v025-live: real Checkov/Grype/Deptrac artifacts, zap-full fix, nuclei guard, regulated, workflow rules"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; LE="$F/live-evidence"; _d=$(mktemp -d)
@@ -1680,6 +1708,7 @@ run_v025_live() {
 V26_FAILS=0
 dc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V26_FAILS=$((V26_FAILS + 1)); fi; }
 
+# run_v026_dependency_check — self-test group 'v026-dependency-check' (wired into the dispatch + 'all').
 run_v026_dependency_check() {
 	log_info "v026: Dependency-Check NVD API-key plumbing (leak-safe) + strict consumer evidence"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
@@ -1779,6 +1808,7 @@ STUB
 V27_FAILS=0
 ce_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V27_FAILS=$((V27_FAILS + 1)); fi; }
 
+# run_v027_consumer_evidence — self-test group 'v027-consumer-evidence' (wired into the dispatch + 'all').
 run_v027_consumer_evidence() {
 	log_info "v027: Dependency-Check npm-vocab severity mapping + local consumer strict evidence"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
@@ -1838,6 +1868,7 @@ run_v027_consumer_evidence() {
 V28_FAILS=0
 ci_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V28_FAILS=$((V28_FAILS + 1)); fi; }
 
+# run_v028_strict_ci_and_breadth — self-test group 'v028-strict-ci-and-breadth' (wired into the dispatch + 'all').
 run_v028_strict_ci_and_breadth() {
 	log_info "v028: strict CI evidence doc + install/sync breadth + digest pinning policy"
 	_d=$(mktemp -d)
@@ -1897,6 +1928,7 @@ run_v028_strict_ci_and_breadth() {
 V29_FAILS=0
 cs_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V29_FAILS=$((V29_FAILS + 1)); fi; }
 
+# run_v029_clean_strict_ci — self-test group 'v029-clean-strict-ci' (wired into the dispatch + 'all').
 run_v029_clean_strict_ci() {
 	log_info "v029: clean strict CI — override precedence, evidence isolation, DC propertyfile container-readable"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
@@ -1961,6 +1993,7 @@ YAML
 V30_FAILS=0
 cc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; V30_FAILS=$((V30_FAILS + 1)); fi; }
 
+# run_v030_dc_ci_cache — self-test group 'v030-dc-ci-cache' (wired into the dispatch + 'all').
 run_v030_dc_ci_cache() {
 	log_info "v030: Dependency-Check CI cache reliability — stale-lock cleanup, reset docs, no-fake-clean"
 	A="$ROOT/scripts/audits/dependency-check.sh"
@@ -2034,6 +2067,7 @@ STUB
 RC_FAILS=0
 rc_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; RC_FAILS=$((RC_FAILS + 1)); fi; }
 
+# run_v100rc_soak — self-test group 'v100rc-soak' (wired into the dispatch + 'all').
 run_v100rc_soak() {
 	log_info "rc.1-soak: engine exit-code contract, RC framing, contract links, example-workflow uploads"
 	_d=$(mktemp -d)
@@ -2072,6 +2106,7 @@ run_v100rc_soak() {
 PG_FAILS=0
 pg_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; PG_FAILS=$((PG_FAILS + 1)); fi; }
 
+# run_v110_postga — self-test group 'v110-postga' (wired into the dispatch + 'all').
 run_v110_postga() {
 	log_info "v110-postga: transitive DC knobs (default-off), hardened profile, Deptrac/IaC plan, hygiene/migration docs"
 	_dct="$ROOT/templates/workflows/sentinel-shield-dependency-check.yml"
@@ -2118,6 +2153,7 @@ run_v110_postga() {
 DV_FAILS=0
 dv_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; DV_FAILS=$((DV_FAILS + 1)); fi; }
 
+# run_v120_docs — self-test group 'v120-docs' (wired into the dispatch + 'all').
 run_v120_docs() {
 	log_info "v120-docs: adoption docs exist, hub links resolve, Deptrac/IaC NOT promoted, README navigable"
 	D="$ROOT/docs"
@@ -2162,6 +2198,7 @@ run_v120_docs() {
 EV_FAILS=0
 ev_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "FAIL: $1 (got '$2', expected '$3')"; EV_FAILS=$((EV_FAILS + 1)); fi; }
 
+# run_v130_evidence — self-test group 'v130-evidence' (wired into the dispatch + 'all').
 run_v130_evidence() {
 	log_info "v130-evidence: Deptrac promotion is evidence-backed; IaC NOT promoted; fixtures parse"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; REG="$ROOT/docs/main-gate-live-evidence.md"
@@ -2422,6 +2459,7 @@ tpv2_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error
 # tpv2_atleast <desc> <count> — pass when the count is >= 1 (yes/no shape).
 tpv2_atleast() { tpv2_check "$1" "$([ "${2:-0}" -ge 1 ] && echo yes || echo no)" "yes"; }
 
+# run_v2_toolpolicy — self-test group 'v2-toolpolicy' (wired into the dispatch + 'all').
 run_v2_toolpolicy() {
 	log_info "v2-toolpolicy: tool-policy contract (resolve/compose/override/bootstrap/upgrade/migrate)"
 	# Direct library calls (CLIs do not cover cr_classify_tool / im_*); include guards make this safe.
@@ -2783,6 +2821,7 @@ v2e_tool() { # <emit> <tool> <policy> <status> <gate_enforced-bool>
 	jq -n --arg e "$1" --arg t "$2" --arg p "$3" --arg s "$4" --argjson ge "$5" \
 		'{($e):{tool:$t,policy:$p,status:$s,gate_enforced:$ge}}'
 }
+# v2e_states — v2-enforcement sub-suite: states.
 v2e_states() {
 	_d=$(mktemp -d)
 	# A clean baseline gates env (no finding gate trips; all crafted counts are 0).
@@ -2998,6 +3037,7 @@ v2e_workflow() {
 		"$(grep -cE 'default_branch' "$WF")"
 }
 
+# run_v2_enforcement — self-test group 'v2-enforcement' (wired into the dispatch + 'all').
 run_v2_enforcement() {
 	log_info "v2-enforcement: full policy->gate matrix (composition / states / one-of / pkgmgr / provisioning / workflow / consistency)"
 	v2e_composition
@@ -3295,6 +3335,7 @@ vr_planning() {
 
 # --- (D) enforce-gates: summary-only counter + policy-only failure visibility --
 vr_gate_env() { sh "$ROOT/scripts/resolve-gates.sh" --profile "$ROOT/templates/profile.yaml" --mode baseline --output-dir "$1" --format env >/dev/null 2>&1; }
+# vr_gate — v2-review sub-suite: gate.
 vr_gate() {
 	_d=$(mktemp -d); vr_gate_env "$_d"; _genv="$_d/sentinel-shield-gates.env"
 
@@ -3385,6 +3426,7 @@ vr_findings_not_suppressed() {
 	rm -rf "$_d"
 }
 
+# run_v2_review — self-test group 'v2-review' (wired into the dispatch + 'all').
 run_v2_review() {
 	log_info "v2-review: Part D regression matrix + Part C cross-subsystem consistency (override / waivers / bootstrap / planners / gate)"
 	vr_override
@@ -3521,6 +3563,7 @@ v3_test_split() {
 	rm -rf "$_t"
 }
 
+# run_v2_review_round3 — self-test group 'v2-review-round3' (wired into the dispatch + 'all').
 run_v2_review_round3() {
 	log_info "v2-review-round3: POSIX waivers + version/keys + fail-closed validation + stale runners + quoting/globbing + php/js test split"
 	v3_waivers

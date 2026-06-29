@@ -149,6 +149,7 @@ PROFILE_NAME=""    # when set, overlay effective-profile tool policy onto summar
 TARGET_DIR=""      # consuming project root (applicability + one-of + installation.json)
 OVERRIDE_PATH=""   # project tool-policy override passed through to the resolver
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: build-security-summary.sh [options]

@@ -11,6 +11,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="npm_audit"
 INPUT="reports/raw/npm-audit.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: npm-audit.sh [--input <path>] [--tool-name <name>]

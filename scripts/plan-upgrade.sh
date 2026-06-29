@@ -35,6 +35,7 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 FROM=""; TO=""; PROFILE=""; FORMAT="text"; OUTPUT=""; TARGET=""
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: plan-upgrade.sh --from <ver> --to <ver> --profile <name>
@@ -185,6 +186,7 @@ render_text() { # render_text <markdown:0|1>
 	printf '%s' "$PLAN" | jq -e '.action_items | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
 }
 
+# emit — emit a formatted output fragment to stdout.
 emit() {
 	case "$FORMAT" in
 		json)     printf '%s\n' "$PLAN" | jq . ;;

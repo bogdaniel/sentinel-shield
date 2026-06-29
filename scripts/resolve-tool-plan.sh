@@ -19,6 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 TAB=$(printf '\t')
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	printf 'Usage: resolve-tool-plan.sh --profile <name> [--target <dir>] [--format text|json]\n'
 }

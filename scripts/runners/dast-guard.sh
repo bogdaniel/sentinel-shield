@@ -14,6 +14,7 @@ ss_dast_host_of() {
 	_h=${1#*://}; _h=${_h%%/*}; _h=${_h%%\?*}; _h=${_h%%:*}
 	printf '%s' "$_h"
 }
+# ss_dast_check — guarded DAST preflight check (target/host validation).
 ss_dast_check() {
 	_url="${SENTINEL_SHIELD_DAST_TARGET_URL:-}"
 	_allow="${SENTINEL_SHIELD_DAST_ALLOWED_HOST:-}"

@@ -21,6 +21,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="third_party_semgrep"
 INPUT="reports/raw/third-party-semgrep.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: third-party-semgrep.sh [--input <path>] [--tool-name <name>]
