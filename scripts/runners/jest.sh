@@ -1,20 +1,21 @@
 #!/bin/sh
-# Sentinel Shield runner — Jest test suite -> reports/raw/tests.json.
+# Sentinel Shield runner — Jest test suite -> reports/raw/js-tests.json.
 #
 # Jest emits a JSON report via `--json --outputFile`, which the shared
 # scripts/adapters/jest-to-tests-json.mjs adapter normalizes into the canonical
-# tests shape { failures, errors } at reports/raw/tests.json. Test failures are
-# FINDINGS, not a runner failure — we keep going and EXIT 0; the normalized report
-# is the signal.
+# tests shape { failures, errors } at reports/raw/js-tests.json (the JS `js-tests`
+# one-of group; PHP tests use reports/raw/tests.json). Test failures are FINDINGS,
+# not a runner failure — we keep going and EXIT 0; the normalized report is the signal.
 #
 # Contract (matches pest.sh): detect exe deterministically (node_modules/.bin/jest
-# then jest on PATH); no project mutation; validated normalized report; tool ABSENT
-# or no valid report -> leave report ABSENT + EXIT 0 + log_warn (builder marks
-# 'unavailable'); NEVER write a fake clean report; EXIT 2 only on bad invocation /
-# missing jq/node.
+# then jest on PATH); no project mutation; validated normalized report. The tool
+# being ABSENT (node or jest not found) or producing no valid report -> leave report
+# ABSENT + EXIT 0 + log_warn (the builder marks it 'unavailable'); NEVER write a fake
+# clean report. EXIT 2 only on a configuration error: bad invocation, missing jq, or
+# missing adapter.
 #
 # Env: SENTINEL_SHIELD_JEST_BIN (default: node_modules/.bin/jest, then jest)
-# Usage: jest.sh [--output reports/raw/tests.json]
+# Usage: jest.sh [--output reports/raw/js-tests.json]
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh

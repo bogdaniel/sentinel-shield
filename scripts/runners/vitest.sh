@@ -1,18 +1,21 @@
 #!/bin/sh
-# Sentinel Shield runner — Vitest test suite -> reports/raw/tests.json.
+# Sentinel Shield runner — Vitest test suite -> reports/raw/js-tests.json.
 #
 # Vitest emits a JSON report via `run --reporter=json --outputFile`, normalized by
 # scripts/adapters/vitest-to-tests-json.mjs into the canonical tests shape
-# { failures, errors } at reports/raw/tests.json. Test failures are FINDINGS, not a
-# runner failure — EXIT 0; the normalized report is the signal.
+# { failures, errors } at reports/raw/js-tests.json (the JS `js-tests` one-of group;
+# PHP tests use reports/raw/tests.json). Test failures are FINDINGS, not a runner
+# failure — EXIT 0; the normalized report is the signal.
 #
 # Contract (matches pest.sh/jest.sh): detect exe (node_modules/.bin/vitest then
-# vitest on PATH); no project mutation; validated normalized report; tool ABSENT or
-# no valid report -> report ABSENT + EXIT 0 + log_warn (builder marks 'unavailable');
-# NEVER write a fake clean report; EXIT 2 only on bad invocation / missing jq/node.
+# vitest on PATH); no project mutation; validated normalized report. The tool being
+# ABSENT (node or vitest not found) or producing no valid report -> report ABSENT +
+# EXIT 0 + log_warn (the builder marks it 'unavailable'); NEVER write a fake clean
+# report. EXIT 2 only on a configuration error: bad invocation, missing jq, or
+# missing adapter.
 #
 # Env: SENTINEL_SHIELD_VITEST_BIN (default: node_modules/.bin/vitest, then vitest)
-# Usage: vitest.sh [--output reports/raw/tests.json]
+# Usage: vitest.sh [--output reports/raw/js-tests.json]
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
