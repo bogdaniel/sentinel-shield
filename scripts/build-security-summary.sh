@@ -100,6 +100,7 @@ policy_message() {
 TOOL_TABLE='gitleaks|gitleaks.json|gitleaks.sh|gitleaks
 semgrep|semgrep.json|semgrep.sh|semgrep
 trivy|trivy.json|trivy.sh|trivy
+trivy-fs|trivy-fs.json|trivy.sh|trivy_fs
 composer-audit|composer-audit.json|composer-audit.sh|composer_audit
 npm-audit|npm-audit.json|npm-audit.sh|npm_audit
 typescript|typescript.json|typescript.sh|typescript

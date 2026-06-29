@@ -3558,6 +3558,25 @@ v3_summary_numeric() {
 	rm -rf "$_t"
 }
 
+# Outside-diff finding: jest/vitest runners must validate the normalized report SHAPE
+# ({failures,errors} numbers), not just JSON syntax — a malformed adapter output must
+# NOT be published as a clean report.
+v3_report_shape() {
+	for _r in jest vitest; do
+		_t=$(mktemp -d); mkdir -p "$_t/reports/raw" "$_t/fb"; ( cd "$_t" || exit
+			# fake runner writes its raw report; fake `node` (the adapter host) writes a
+			# WRONG-shape OUTPUT (last arg) — the runner must reject it and leave $OUTPUT absent.
+			printf '#!/bin/sh\nfor a in "$@"; do case "$a" in --outputFile=*) echo "{}">${a#--outputFile=};; *=*) : ;; esac; done\n' > fb/"$_r"; chmod +x fb/"$_r"
+			printf '#!/bin/sh\n_o=""; for a in "$@"; do _o="$a"; done; printf "{\\"wrong\\":1}" > "$_o"; exit 0\n' > fb/node; chmod +x fb/node
+			_env=$(printf 'SENTINEL_SHIELD_%s_BIN' "$(printf '%s' "$_r" | tr a-z A-Z)")
+			PATH="$_t/fb:$PATH" env "$_env=$_t/fb/$_r" sh "$ROOT/scripts/runners/$_r.sh" --output reports/raw/js-tests.json >/dev/null 2>&1
+		)
+		v3_check "(F1) $_r: malformed-shape adapter output is NOT published (report absent)" \
+			"$([ -f "$_t/reports/raw/js-tests.json" ] && echo present || echo absent)" "absent"
+		rm -rf "$_t"
+	done
+}
+
 # Issue 11: php-tests and js-tests are INDEPENDENT one-of groups.
 v3_test_split() {
 	_R="$ROOT/scripts/resolve-effective-profile.sh"
@@ -3590,6 +3609,7 @@ run_v2_review_round3() {
 	v3_target_quoting
 	v3_maturity_glob
 	v3_summary_numeric
+	v3_report_shape
 	v3_test_split
 	if [ "$VR3_FAILS" -ne 0 ]; then log_error "v2-review-round3: $VR3_FAILS case(s) failed"; return 1; fi
 	log_info "v2-review-round3: OK (portable waivers + safe keys + fail-closed + stale-runner + quoting + glob-proof + php/js test split)"

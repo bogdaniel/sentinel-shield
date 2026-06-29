@@ -192,13 +192,13 @@ jobs:
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
-      - name: Trivy filesystem (SHA-pinned action → reports/raw/trivy.json)
+      - name: Trivy filesystem (SHA-pinned action → reports/raw/trivy-fs.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           format: json
-          output: reports/raw/trivy.json
+          output: reports/raw/trivy-fs.json
           severity: CRITICAL,HIGH,MEDIUM
         continue-on-error: true
       - name: SBOM (SHA-pinned action → reports/sbom.spdx.json)
@@ -313,13 +313,13 @@ jobs:
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
-      - name: Trivy filesystem (SHA-pinned action → reports/raw/trivy.json)
+      - name: Trivy filesystem (SHA-pinned action → reports/raw/trivy-fs.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           format: json
-          output: reports/raw/trivy.json
+          output: reports/raw/trivy-fs.json
           severity: CRITICAL,HIGH,MEDIUM
         continue-on-error: true
       - name: SBOM (SHA-pinned action → reports/sbom.spdx.json)

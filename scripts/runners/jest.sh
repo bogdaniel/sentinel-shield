@@ -66,7 +66,7 @@ if [ ! -s "$_json" ]; then
 	exit 0
 fi
 
-if node "$ADAPTER" "$_json" "$OUTPUT" 2>>"$_err" && jq -e . "$OUTPUT" >/dev/null 2>&1; then
+if node "$ADAPTER" "$_json" "$OUTPUT" 2>>"$_err" && jq -e 'type=="object" and has("failures") and has("errors") and (.failures|type=="number") and (.errors|type=="number")' "$OUTPUT" >/dev/null 2>&1; then
 	log_info "jest: wrote $OUTPUT (exit ${_rc:-0})."
 	rm -f "$_json" "$_dir/jest.stdout.raw" "$_err" 2>/dev/null || true
 	exit 0
