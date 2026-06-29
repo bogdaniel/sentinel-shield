@@ -2523,10 +2523,19 @@ run_v2_toolpolicy() {
 	tpv2_atleast "(10) require-existing: empty target has required tool(s) NOT already-installed" \
 		"$(printf '%s' "$PLAN" | jq -r '[.tools|to_entries[]|select(.value.policy=="required" and .value.decision!="already-installed")]|length')"
 
-	# (11) bootstrap dry-run mutates nothing.
+	# (11) bootstrap dry-run mutates nothing — seed REPRESENTATIVE existing dependency
+	# files and assert they are byte-for-byte unchanged (an empty-target check alone
+	# would miss an in-place rewrite of composer.json/lock or package-lock.json).
 	_bd=$(mktemp -d)
+	printf '{"require":{"acme/app":"^1.0"}}\n'  > "$_bd/composer.json"
+	printf '{"packages":[],"content-hash":"seed"}\n' > "$_bd/composer.lock"
+	printf '{"name":"app","lockfileVersion":3}\n'    > "$_bd/package-lock.json"
+	_bd_before=$(cat "$_bd/composer.json" "$_bd/composer.lock" "$_bd/package-lock.json")
 	sh scripts/bootstrap-profile-tools.sh --profile laravel --target "$_bd" --dry-run >/dev/null 2>&1 || true
-	tpv2_check "(11) bootstrap --dry-run mutates nothing" "$(find "$_bd" -type f | wc -l | tr -d ' ')" "0"
+	tpv2_check "(11) bootstrap --dry-run leaves existing dep files byte-for-byte unchanged" \
+		"$(cat "$_bd/composer.json" "$_bd/composer.lock" "$_bd/package-lock.json")" "$_bd_before"
+	tpv2_check "(11) bootstrap --dry-run writes no NEW files" \
+		"$(find "$_bd" -type f ! -name composer.json ! -name composer.lock ! -name package-lock.json | wc -l | tr -d ' ')" "0"
 	rm -rf "$_bd"
 
 	# (12) bootstrap --apply modifies expected deps. [simulated: no live composer/npm here]
@@ -2609,11 +2618,20 @@ run_v2_toolpolicy() {
 	tpv2_check "(24) canonical workflow template: all 'uses:' SHA-pinned (40-hex)" \
 		"$(grep -hE '^[[:space:]]*uses:[[:space:]]' "$WF" | grep -vE 'uses:[[:space:]]*\./' | grep -cvE '@[0-9a-fA-F]{40}')" "0"
 
-	# (25) update planner makes NO changes: plan-upgrade writes nothing to the target (only --output).
+	# (25) update planner makes NO changes: seed representative dependency files and
+	# assert plan-upgrade leaves them byte-for-byte unchanged AND writes no new files
+	# (only its optional --output report, which we do not pass here).
 	_pu=$(mktemp -d)
+	printf '{"require":{"acme/app":"^1.0"}}\n'  > "$_pu/composer.json"
+	printf '{"packages":[],"content-hash":"seed"}\n' > "$_pu/composer.lock"
+	printf '{"name":"app","lockfileVersion":3}\n'    > "$_pu/package-lock.json"
+	_pu_before=$(cat "$_pu/composer.json" "$_pu/composer.lock" "$_pu/package-lock.json")
 	if sh scripts/plan-upgrade.sh --from 1.9.0 --to 2.0.0 --profile laravel --target "$_pu" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
 	tpv2_check "(25) plan-upgrade exit 0"                    "$_rc" "0"
-	tpv2_check "(25) plan-upgrade writes nothing to target" "$(find "$_pu" -type f | wc -l | tr -d ' ')" "0"
+	tpv2_check "(25) plan-upgrade leaves existing dep files byte-for-byte unchanged" \
+		"$(cat "$_pu/composer.json" "$_pu/composer.lock" "$_pu/package-lock.json")" "$_pu_before"
+	tpv2_check "(25) plan-upgrade writes no NEW files to target" \
+		"$(find "$_pu" -type f ! -name composer.json ! -name composer.lock ! -name package-lock.json | wc -l | tr -d ' ')" "0"
 	tpv2_atleast "(25) [structural] plan-upgrade documents READ-ONLY (writes only --output)" \
 		"$(grep -cE 'READ-ONLY|MUTATES NOTHING|Writes nothing except' "$ROOT/scripts/plan-upgrade.sh")"
 	rm -rf "$_pu"
