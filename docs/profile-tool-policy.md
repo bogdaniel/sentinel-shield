@@ -30,7 +30,7 @@ Tool **keys** are the keys of `TOOL_TABLE` in `scripts/build-security-summary.sh
 | `required`    | Must be present, configured, and pass. Absence/error **fails the build**.                         |
 | `recommended` | Should be present. Absence **warns**, does not fail.                                              |
 | `optional`    | Nice to have. Absence is **informational** only.                                                 |
-| `one-of`      | Satisfies a requirement *together with* its `alternatives` (e.g. `pest`|`phpunit`). At least one of the set must be present and pass. |
+| `one-of`      | Satisfies a requirement *together with* its `alternatives` (e.g. `pest` \| `phpunit`). At least one of the set must be present and pass. |
 | `disabled`    | Deliberately turned off for this profile/project. Never run; never gates.                         |
 | `external`    | Provided/run outside Sentinel Shield (results may be imported). Not installed or executed by us.  |
 
