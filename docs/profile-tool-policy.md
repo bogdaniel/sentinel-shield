@@ -130,7 +130,7 @@ package that provides PHPStan's Laravel rules, and `php-tests` is a `one-of` ove
 ```yaml
 # profiles/laravel/profile.manifest.json  (shown as YAML for readability)
 profile: laravel
-tool_policy_version: 1
+tool_policy_version: 2
 extends: [php-base]
 tools:
   phpstan:
