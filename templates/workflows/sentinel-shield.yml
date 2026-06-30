@@ -390,10 +390,12 @@ jobs:
           if-no-files-found: warn
       - name: Gate summary
         if: always()
+        env:
+          REF: ${{ github.ref }}
         run: |
           {
             echo "## Sentinel Shield Release Gate"
-            echo "- Ref: ${{ github.ref }}"
+            echo "- Ref: $REF"
             echo ""
             [ -f reports/sentinel-shield-enforcement.md ] && cat reports/sentinel-shield-enforcement.md
           } >> "$GITHUB_STEP_SUMMARY"

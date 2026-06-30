@@ -189,14 +189,17 @@ jobs:
       - name: Build security-summary.json
         # jq is preinstalled on ubuntu-latest. Missing raw files are tolerated
         # (tools recorded "unavailable") unless --strict-tools/--require-tool is set.
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
         run: |
           sh scripts/build-security-summary.sh \
             --project-name "${{ github.repository }}" \
             --project-type "unknown" \
             --criticality "medium" \
             --commit "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}" \
-            --workflow "${{ github.workflow }}"
+            --branch "$REF_NAME" \
+            --workflow "$WORKFLOW_NAME"
 
       - name: Upload raw scanner artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

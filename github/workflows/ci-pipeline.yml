@@ -409,6 +409,8 @@ jobs:
 
       - name: Assemble release evidence
         if: always()
+        env:
+          REF: ${{ github.ref }}
         run: |
           set -eu
           mkdir -p reports
@@ -416,7 +418,7 @@ jobs:
             echo "# Sentinel Shield Release Evidence"
             echo ""
             echo "- Repository: ${{ github.repository }}"
-            echo "- Ref: ${{ github.ref }}"
+            echo "- Ref: $REF"
             echo "- Commit: ${{ github.sha }}"
             echo "- Run: ${{ github.run_id }}"
             echo ""
@@ -463,10 +465,12 @@ jobs:
 
       - name: Gate summary
         if: always()
+        env:
+          REF: ${{ github.ref }}
         run: |
           {
             echo "## Sentinel Shield Release Gate (ci-pipeline)"
-            echo "- Ref: ${{ github.ref }}"
+            echo "- Ref: $REF"
             echo ""
             if [ -f reports/sentinel-shield-enforcement.md ]; then
               cat reports/sentinel-shield-enforcement.md
