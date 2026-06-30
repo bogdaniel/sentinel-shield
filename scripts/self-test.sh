@@ -2938,8 +2938,12 @@ v2e_pkgmgr() {
 		--profile node --target "$_ts" >/dev/null 2>&1 || true
 	tpe_atleast "pkgmgr: TS required report missing -> required_tool_failures>=1 (gate fails)" \
 		"$(jq -r '.summary.required_tool_failures // 0' "$_ts/ss.json" 2>/dev/null || echo 0)"
-	tpe_check "pkgmgr: the missing required tool is typescript" \
-		"$(jq -r '.tools|to_entries[]|select(.value|type=="object" and .policy=="required" and .status=="unavailable")|.value.tool' "$_ts/ss.json" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')" "typescript"
+	# typescript is the one required tool whose report we omitted, so its gate MUST fail.
+	# The exact failing status is host-dependent (unavailable when no `tsc` on PATH;
+	# execution-error when one IS present, e.g. globally on CI runners) — both are honest
+	# required failures, never a pass. Assert typescript itself failed (hermetic to host tsc).
+	tpe_check "pkgmgr: the missing required tool is typescript (gate failed, report absent)" \
+		"$(jq -r '.tools.typescript | select(type=="object" and .policy=="required" and (.status=="unavailable" or .status=="execution-error")) | .tool' "$_ts/ss.json" 2>/dev/null)" "typescript"
 	rm -rf "$_ts"
 }
 
