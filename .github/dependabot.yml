@@ -7,6 +7,10 @@ updates:
   # --- Composer (Laravel / Symfony) ---
   - package-ecosystem: composer
     directory: "/"
+    # Supply-chain hygiene: wait before adopting brand-new releases (defends against a
+    # compromised just-published version being pulled in immediately).
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -19,6 +23,10 @@ updates:
   # --- npm (Node / React) ---
   - package-ecosystem: npm
     directory: "/"
+    # Supply-chain hygiene: wait before adopting brand-new releases (defends against a
+    # compromised just-published version being pulled in immediately).
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -31,6 +39,10 @@ updates:
   # --- GitHub Actions (keep workflows current and pinned) ---
   - package-ecosystem: github-actions
     directory: "/"
+    # Supply-chain hygiene: wait before adopting brand-new releases (defends against a
+    # compromised just-published version being pulled in immediately).
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     labels: ["dependencies", "ci"]
@@ -38,6 +50,10 @@ updates:
   # --- Docker base images ---
   - package-ecosystem: docker
     directory: "/"
+    # Supply-chain hygiene: wait before adopting brand-new releases (defends against a
+    # compromised just-published version being pulled in immediately).
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     labels: ["dependencies", "docker"]
