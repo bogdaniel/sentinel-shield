@@ -35,7 +35,9 @@ IS_ROOT=0; [ "$(id -u 2>/dev/null || echo 0)" = "0" ] && IS_ROOT=1
 # mk_target — create a fresh, CANONICAL target dir holding an empty .sentinel-shield.
 mk_target() {
 	_d=$(mktemp -d "$WORK/tgt.XXXXXX" 2>/dev/null || mktemp -d -t ssrec)
-	_c=$(CDPATH= cd -- "$_d" && pwd)
+	# Resolve PHYSICALLY (symlinks resolved) so the lock 'target' we write matches the
+	# canonical target the scripts now record (cd -P / pwd -P).
+	_c=$(CDPATH= cd -P -- "$_d" && pwd -P)
 	mkdir -p "$_c/.sentinel-shield"
 	printf '%s' "$_c"
 }
@@ -47,8 +49,10 @@ write_lock() {
 		"$_op" "$1" "$2" "$_st" > "$1/.sentinel-shield/operation-lock.json"
 }
 
-# recover_install <target> — run the installer's standalone recovery mode; capture rc.
+# recover_install/sync/migrate <target> — run a script's standalone recovery mode; capture rc.
 recover_install() { sh "$INSTALL" --target "$1" --recover >/dev/null 2>&1; }
+recover_sync()    { sh "$SYNC"    --target "$1" --recover >/dev/null 2>&1; }
+recover_migrate() { sh "$MIGRATE" --target "$1" --recover >/dev/null 2>&1; }
 
 # ============================================================================
 # (1) malformed lock JSON -> refuse, exit 4, lock retained (left untouched).
@@ -134,6 +138,23 @@ recover_install "$T" && rc=0 || rc=$?
 	&& pass "(6b) live file still intact after retry" || fail "(6b) live file intact after retry"
 [ -f "$L" ] && pass "(6b) lock still retained after retry" || fail "(6b) lock still retained after retry"
 
+# ----- (6c)/(6d) a touched path absent from BOTH 'snap' and 'created' is in NEITHER
+#       manifest: sync AND migrate recovery must FAIL CLOSED exactly like install — refuse
+#       to delete the live file, retain the lock, exit 4 (a corrupt snapshot is not data loss).
+for _pair in "sync:recover_sync:sync" "migrate:recover_migrate:migration"; do
+	_name=${_pair%%:*}; _rest=${_pair#*:}; _fn=${_rest%%:*}; _op=${_rest#*:}
+	T=$(mk_target); L="$T/.sentinel-shield/operation-lock.json"
+	TXN="$T/.sentinel-shield/.txn-neither-$_name"; mkdir -p "$TXN/snap"
+	printf 'mod.txt\n' > "$TXN/touched"   # touched but in NEITHER snap nor created
+	printf 'LIVE6%s' "$_name" > "$T/mod.txt"; _live=$(cat "$T/mod.txt")
+	write_lock "$T" "$TXN" "$_op"
+	"$_fn" "$T" && rc=0 || rc=$?
+	[ "$rc" = 4 ] && pass "(6c) $_name: path in neither manifest -> exit 4" || fail "(6c) $_name: path in neither manifest -> exit 4 (rc=$rc)"
+	{ [ -f "$T/mod.txt" ] && [ "$(cat "$T/mod.txt")" = "$_live" ]; } \
+		&& pass "(6c) $_name: live file NOT deleted (no data loss)" || fail "(6c) $_name: live file NOT deleted"
+	[ -f "$L" ] && pass "(6c) $_name: lock retained" || fail "(6c) $_name: lock retained"
+done
+
 # ============================================================================
 # (7) copy-restore failure (read-only modified file) -> exit 4, live file intact.
 # ============================================================================
@@ -200,7 +221,7 @@ fi
 # (10) interrupted install / sync / migration are DETECTED (stale lock blocks --apply, exit 4,
 #      --recover offered, lock retained). One real installed fixture reused per op.
 # ============================================================================
-TI=$(mktemp -d "$WORK/inst.XXXXXX"); TI=$(CDPATH= cd -- "$TI" && pwd)
+TI=$(mktemp -d "$WORK/inst.XXXXXX"); TI=$(CDPATH= cd -P -- "$TI" && pwd -P)
 sh "$INSTALL" --target "$TI" --apply --mode report-only >/dev/null 2>&1
 LI="$TI/.sentinel-shield/operation-lock.json"
 seed_int_lock() { # <op>

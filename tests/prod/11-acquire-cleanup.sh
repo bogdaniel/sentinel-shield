@@ -138,5 +138,17 @@ else pass "(D) no local path string in ref record"; fi
 if [ -n "${HOME:-}" ] && grep -F "$HOME" "$REC" >/dev/null 2>&1; then fail "(D) home path leaked into ref record"
 else pass "(D) no home path string in ref record"; fi
 
+# --- FINDING 2: http(s) remote with ?query or #fragment is rejected (exit 2) before clone ---
+# A guard URL/dest that must remain untouched proves no clone flow ran.
+GUARD="$WORK/finding2-dest"
+for BADREMOTE in "https://github.com/o/r.git?foo=bar" "https://github.com/o/r.git#frag" \
+	"http://github.com/o/r.git?x=1"; do
+	out=$(sh "$ACQ" --repository "$BADREMOTE" --ref v1.0.0 --destination "$GUARD" 2>&1) && rc=0 || rc=$?
+	if [ "$rc" = 2 ]; then pass "(E) query/fragment remote refused with exit 2: $BADREMOTE"
+	else fail "(E) query/fragment remote refused with exit 2: $BADREMOTE (got rc=$rc; out=$out)"; fi
+	if [ ! -e "$GUARD" ]; then pass "(E) no clone attempted for: $BADREMOTE"
+	else fail "(E) no clone attempted for: $BADREMOTE (dest created)"; fi
+done
+
 [ "$FAILS" -eq 0 ] || exit 1
 exit 0

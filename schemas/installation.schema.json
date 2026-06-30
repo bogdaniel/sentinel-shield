@@ -39,10 +39,11 @@
       "description": "How the source was acquired (CONTRACT(1)): 'github' (owner/repo shorthand), 'url' (explicit credential-free remote URL), or 'local' (a local path — its value is NEVER persisted, so 'repository' is null/absent)."
     },
     "repository": {
-      "type": ["string", "null"],
-      "minLength": 1,
-      "not": { "pattern": "[@?#]" },
-      "description": "Source repository as 'owner/repo' or a credential-free URL. null/absent for a 'local' source (the local path is never persisted). MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected."
+      "description": "Source repository as 'owner/repo' or a credential-free URL. null/absent for a 'local' source (the local path is never persisted). MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected. repository_kind further constrains the allowed shape (see allOf).",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "minLength": 1, "pattern": "^[^@?#]+$" }
+      ]
     },
     "profile": {
       "type": "string",
@@ -99,5 +100,25 @@
       "minLength": 1,
       "description": "Sentinel Shield version this installation was last upgraded from. Optional; absent on a fresh install."
     }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "kind=local: the local path is NEVER persisted, so repository is null (or absent).",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "local" } } },
+      "then": { "properties": { "repository": { "type": "null" } } }
+    },
+    {
+      "$comment": "kind=github: repository is an 'owner/repo' (or 'host/owner/repo') slug, no userinfo/query/fragment.",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "github" } } },
+      "then": {
+        "required": ["repository"],
+        "properties": { "repository": { "type": "string", "minLength": 1, "pattern": "^[0-9A-Za-z._-]+(/[0-9A-Za-z._-]+)+$" } }
+      }
+    },
+    {
+      "$comment": "kind=url: a credential-free remote URL ('scheme://host/...'). May be absent when a credential-bearing form was dropped; if present it MUST NOT carry userinfo/query/fragment.",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "url" } } },
+      "then": { "properties": { "repository": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^@?#]*$" } } }
+    }
+  ]
 }

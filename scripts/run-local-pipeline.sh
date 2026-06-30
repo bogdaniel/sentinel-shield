@@ -235,7 +235,13 @@ release_lock() {
 	[ "$LOCK_HELD" -eq 1 ] || return 0
 	rm -rf -- "$LOCK_DIR" 2>/dev/null || true
 }
-trap release_lock EXIT INT TERM
+# On signal: release the lock AND stop immediately (the bare EXIT trap below only cleans
+# up, it must NOT exit). Without the explicit exit, INT/TERM would clean the lock yet let
+# the pipeline keep running. release_lock is idempotent, so the re-entry via the EXIT trap
+# when we exit here is harmless.
+trap release_lock EXIT
+trap 'release_lock; exit 130' INT
+trap 'release_lock; exit 143' TERM
 if mkdir "$LOCK_DIR" 2>/dev/null; then
 	LOCK_HELD=1
 	printf '{"pid":%s,"started_at":"%s","stage":"%s","target":"%s"}\n' \

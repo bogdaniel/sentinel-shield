@@ -93,7 +93,7 @@ done
 [ -d "$TARGET" ] || { echo "error: target '$TARGET' is not a directory" >&2; exit 2; }
 # Canonicalise the target so the operation-lock 'target'/'snapshot_dir' are canonical
 # (CONTRACT(2)) and recovery can compare them against the current canonical target.
-TARGET=$(CDPATH= cd -- "$TARGET" && pwd) || { echo "error: cannot resolve target '$TARGET'" >&2; exit 2; }
+TARGET=$(CDPATH= cd -P -- "$TARGET" && pwd -P) || { echo "error: cannot resolve target '$TARGET'" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
 
 # --- transaction framework (operation-lock + snapshot/restore) ----------------
@@ -364,6 +364,8 @@ case "$REPOSITORY" in
 	*@*) REPOSITORY="" ;;                            # userinfo/credential (or scp-style) — never persist
 	http://*|https://*|git://*|ssh://*) ;;          # recognised URL forms
 	/*) REPOSITORY="" ;;                             # absolute path is not a repo reference
+	.|..|./*|../*) REPOSITORY="" ;;                  # leading ./ or ../ relative path — never a repo slug
+	*/./*|*/../*|*/.|*/..) REPOSITORY="" ;;          # embedded/trailing './' or '../' traversal segment
 	*/*) ;;                                          # owner/repo (or host/owner/repo) slug
 	*) REPOSITORY="" ;;                              # no recognisable repo shape
 esac

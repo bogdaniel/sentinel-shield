@@ -105,4 +105,46 @@ if [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q 'OVERRIDE IN EFFECT'; then
 	ok "(f) override is inert when no gate is unmet"
 else bad "(f) override on a passing stage misbehaved (rc=$rc)"; fi
 
+# (g) SHA-pin gate (#7) anchors to the actual 'uses:' ref token, NOT arbitrary
+# trailing text: a tag-pinned action whose COMMENT merely contains a 40-hex
+# string must be flagged as NOT SHA-pinned. Exercised against the REAL (fixed)
+# script in a throwaway repo root so the fixture drives gate #7 directly.
+PINROOT="$TMPDIR_T/pinroot"
+mkdir -p "$PINROOT/scripts/lib" "$PINROOT/templates/workflows"
+cp "$SCRIPT" "$PINROOT/scripts/check-release-readiness.sh"
+cp "$ROOT/scripts/lib/sentinel-shield-common.sh" "$PINROOT/scripts/lib/"
+PINSCRIPT="$PINROOT/scripts/check-release-readiness.sh"
+
+# tag-pinned ref with a 40-hex SHA hiding only in the trailing comment -> FAIL.
+cat >"$PINROOT/templates/workflows/wf.yml" <<'YML'
+name: poison
+on: push
+jobs:
+  x:
+    runs-on: ubuntu-latest
+    steps:
+      - name: poison
+        uses: foo/bar@v1 # 0000000000000000000000000000000000000000
+YML
+out=$(SELF_TEST="$BIN/selftest-ok" PATH="$BIN:$PATH" sh "$PINSCRIPT" --version v2.0.0 --stage alpha 2>&1 || true)
+if printf '%s' "$out" | grep -q 'not pinned to a 40-hex SHA'; then
+	ok "(g) pin gate flags a tag-pinned ref with a 40-hex SHA only in the comment"
+else bad "(g) pin gate FALSELY accepted a comment-only 40-hex SHA"; fi
+
+# properly SHA-pinned ref (40-hex on the ref itself) -> the pin gate PASSES.
+cat >"$PINROOT/templates/workflows/wf.yml" <<'YML'
+name: clean
+on: push
+jobs:
+  x:
+    runs-on: ubuntu-latest
+    steps:
+      - name: clean
+        uses: foo/bar@34e114876b0b11c390a56381ad16ebd13914f8d5 # v1
+YML
+out=$(SELF_TEST="$BIN/selftest-ok" PATH="$BIN:$PATH" sh "$PINSCRIPT" --version v2.0.0 --stage alpha 2>&1 || true)
+if printf '%s' "$out" | grep -q 'workflow actions SHA-pinned'; then
+	ok "(g) pin gate passes when the ref itself ends with a 40-hex SHA"
+else bad "(g) pin gate failed a properly SHA-pinned ref"; fi
+
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

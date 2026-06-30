@@ -100,6 +100,17 @@ else
 fi
 rm -rf -- "$LOCK"
 
+# --- (2b) signal traps release the lock AND stop (Finding 6) -----------------
+# On INT/TERM the pipeline must release its lock and exit, not merely clean up and keep
+# running. Verify statically that the INT/TERM traps invoke exit (the bare EXIT trap stays
+# cleanup-only). A live signal race would be flaky, so assert the trap wiring directly.
+if grep -Eq "trap '?release_lock; *exit [0-9]+'? INT" "$PIPELINE" &&
+	grep -Eq "trap '?release_lock; *exit [0-9]+'? TERM" "$PIPELINE"; then
+	pass "INT/TERM traps release the lock and exit (no run-after-interrupt)"
+else
+	fail "INT/TERM traps must release the lock and exit, not just clean up"
+fi
+
 # --- (3) --purpose release: raw RETAINED + hash recorded ---------------------
 RELOUT="$TARGET/reports/release-out"
 mkdir -p "$RELOUT"

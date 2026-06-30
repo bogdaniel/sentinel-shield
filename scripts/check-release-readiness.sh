@@ -208,10 +208,14 @@ else
 fi
 
 # 7) shipped workflow templates pin every third-party action to a 40-hex SHA
-#    (local ./ actions are exempt).
+#    (local ./ actions are exempt). Anchor the check to the actual 'uses:' ref
+#    token (strip any trailing ' # comment' and surrounding quotes) so a 40-hex
+#    string in a COMMENT can never falsely satisfy the pin: the ref itself must
+#    END with '@<40-hex>'.
 _pin_bad=$(grep -hE '^[[:space:]]*uses:[[:space:]]' "$REPO_ROOT"/templates/workflows/*.yml 2>/dev/null \
-	| grep -vE 'uses:[[:space:]]*\./' \
-	| grep -cvE '@[0-9a-fA-F]{40}' || true)
+	| sed -E 's/^[[:space:]]*uses:[[:space:]]*//; s/[[:space:]].*$//; s/^["'\'']//; s/["'\'']$//' \
+	| grep -vE '^\./' \
+	| grep -cvE '@[0-9a-fA-F]{40}$' || true)
 [ -n "$_pin_bad" ] || _pin_bad=0
 if [ "$_pin_bad" -eq 0 ]; then
 	pass "workflow actions SHA-pinned (templates/workflows)"

@@ -75,7 +75,7 @@ fi
 # ============================================================================
 TB="$WORK/b"; mkdir -p "$TB"
 sh "$INSTALL" --target "$TB" --apply --mode report-only >/dev/null 2>&1
-CTB=$(CDPATH= cd -- "$TB" && pwd)   # canonical target (matches what the script records)
+CTB=$(CDPATH= cd -P -- "$TB" && pwd -P)   # canonical (physical) target — matches what the script records
 LOCK="$TB/.sentinel-shield/operation-lock.json"
 # CONTRACT(2)-valid stale lock pointing at a real (empty) snapshot dir: --recover must roll
 # back cleanly (nothing touched) and clear the lock. schema_version/target/state present.

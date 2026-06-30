@@ -117,4 +117,10 @@ check_text 'changed runners'     'changed_runners'
 check_text 'migration'           'migration_steps'
 check_text 'rollback'            'rollback'
 
+# Re-check the fixture against the original baseline: the final --format text run
+# above (and the json/text runs in (b)/(c)) must also leave the target unchanged.
+AFTER3=$(tree_checksum "$FIX")
+if [ "$BEFORE" = "$AFTER3" ]; then ok "(a) (b)/(c) output runs leave the target unchanged"
+else bad "(a) a (b)/(c) output run MUTATED the target tree"; fi
+
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

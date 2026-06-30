@@ -77,7 +77,7 @@ done
 
 [ -n "$TARGET" ] || { log_error "--target is required"; usage; exit 2; }
 [ -d "$TARGET" ] || { log_error "target '$TARGET' is not a directory"; exit 2; }
-TARGET=$(CDPATH= cd -- "$TARGET" && pwd)
+TARGET=$(CDPATH= cd -P -- "$TARGET" && pwd -P)
 command_exists jq || { log_error "jq is required."; exit 2; }
 case "$TOOL_MODE" in config-only|require-existing|bootstrap-tools) ;; *) log_error "invalid --tool-mode '$TOOL_MODE' (config-only|require-existing|bootstrap-tools)"; exit 2 ;; esac
 
@@ -203,27 +203,33 @@ _tx_recover_fail() {
 	exit 4
 }
 # _tx_recover_apply — validated rollback of TX_SNAP with post-rollback verification.
+# DELETE only paths recorded in 'created'; RESTORE modified paths from 'snap' (a missing
+# snapshot for a modified path is a corrupt/incomplete snapshot — FAIL CLOSED, never delete).
 _tx_recover_apply() {
+	_created="$TX_SNAP/created"
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
 		_tx_rel_safe "$_rel" || _tx_recover_fail "$_rel" "validate-touched-path" "touched path is absolute or contains '..' (refusing to restore outside the target)"
 	done < "$TX_SNAP/touched"
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
-		if [ -e "$TX_SNAP/snap/$_rel" ]; then
-			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
-			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
-		else
+		if grep -qxF "$_rel" "$_created" 2>/dev/null; then
 			rm -f "$TARGET/$_rel" 2>/dev/null || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
 			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "remove-created" "newly-created file is still present after removal"
+		else
+			# A modified file's pre-write snapshot MUST exist; a missing one means a
+			# corrupt/incomplete snapshot — refuse rather than delete the live file.
+			[ -e "$TX_SNAP/snap/$_rel" ] || _tx_recover_fail "$_rel" "missing-expected-snapshot" "no snapshot for a modified file (snapshot corrupt/incomplete) — refusing to touch the live file"
+			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
 		fi
 	done < "$TX_SNAP/touched"
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
-		if [ -e "$TX_SNAP/snap/$_rel" ]; then
-			cmp -s "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "post-verify" "restored file does not match its snapshot"
-		else
+		if grep -qxF "$_rel" "$_created" 2>/dev/null; then
 			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "post-verify" "newly-created file is still present after rollback"
+		else
+			cmp -s "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "post-verify" "restored file does not match its snapshot"
 		fi
 	done < "$TX_SNAP/touched"
 	return 0

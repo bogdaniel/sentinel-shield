@@ -209,6 +209,8 @@ USE_GH=0
 case "$REPO" in
 	http://*@* | https://*@*)
 		log_error "acquire: refusing credential-bearing remote URL (userinfo not allowed; authenticate out-of-band)"; exit 2 ;;
+	http://*[?#]* | https://*[?#]*)
+		log_error "acquire: refusing http(s) remote URL with query/fragment (strip ?query/#fragment from the remote)"; exit 2 ;;
 esac
 # REPO_KIND/REPO_NORM are the NORMALIZED provenance recorded in .sentinel-shield-ref:
 #   github -> owner/repo ; url -> sanitized URL ; local -> null (path is NEVER persisted).
