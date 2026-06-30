@@ -3,6 +3,8 @@
 # examples/**/reports/ (with committed .gitkeep) is not ignored.
 /reports/
 *.log
+# ...except committed test-fixture evidence excerpts (self-test depends on them).
+!tests/fixtures/**/*.log
 .DS_Store
 
 # Baseline / scan caches that may appear in consuming projects.
@@ -20,3 +22,9 @@ graphify-out/
 
 # v1.4.0 sprint scratch (ledgers / working artifacts — never commit)
 .sprint-v140/
+
+# Isolated tool installs (scripts/lib/isolated-tools.sh) — commit composer.json + composer.lock, ignore vendor/.
+tools/*/vendor/
+
+# Never commit node_modules anywhere, incl. test fixtures.
+tests/**/node_modules/

@@ -30,6 +30,7 @@ PROFILE=""
 ALL=0
 SELECTED=" "   # space-padded membership string
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<EOF
 Usage: run-main-gate-validation.sh [--target <dir>] [--output-dir <dir>] [--profile <name>] (--all | --tool <name> ...)
@@ -89,6 +90,7 @@ record() { # tool status reason report [duration] [executor] [valid_json]
 now_s() { date +%s 2>/dev/null || echo 0; }
 # Best-effort executor for a tool's primary binary: local if on PATH, else docker if present.
 executor_for() { if command -v "$1" >/dev/null 2>&1; then echo local; elif command -v docker >/dev/null 2>&1; then echo docker; else echo none; fi; }
+# primary_bin — resolve the primary executable to invoke.
 primary_bin() {
 	case "$1" in
 		trivy-fs) echo trivy ;; architecture-tests|codeql-export) echo sh ;;

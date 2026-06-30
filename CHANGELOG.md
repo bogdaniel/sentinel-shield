@@ -6,6 +6,99 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement
+
+**MAJOR (alpha).** Changes the meaning of a profile: a profile now declares a machine-readable
+**tool policy** (required/recommended/optional/one-of/disabled/external) and the toolchain is
+explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live consumer CI evidence
+(Laravel/Symfony run IDs), beta/RC/GA soak are deferred. Not yet a drop-in upgrade — read
+`docs/v2-migration-guide.md` first.
+
+### Added
+- **Tool-policy schema** (`schemas/tool-policy.schema.json`) — per-tool `policy`, `category`,
+  `packages`, `executable`, `runner`, `report`, `missing_behavior`, `requires`, `alternatives`,
+  `execution`, `config`. Profile manifests extended additively with `tools`, `extends`,
+  `tool_policy_version`. Per-tool status enum gains `findings`, `not-configured`, `not-applicable`,
+  `execution-error`, `disabled`. Contract: `docs/profile-tool-policy.md`.
+- **Profile tool policies** for laravel, symfony, php-library, node, react, and composed
+  combinations (laravel-react-docker, node-react, hardened-enterprise) via `extends` with
+  `required>one-of>recommended>optional>external>disabled` precedence, composed by the
+  canonical resolver (`scripts/resolve-effective-profile.sh`, `scripts/lib/effective-profile.sh`).
+- **Compatibility resolver** (`scripts/lib/compat-resolver.sh`, `scripts/resolve-tool-plan.sh`) —
+  inspects PHP/framework/lock state, emits an install plan, never downgrades app/framework deps;
+  conflicts → isolated-tool recommendation.
+- **Provisioning** — `install-baseline.sh`/`sync-baseline.sh` gain `--tool-mode`
+  `config-only|require-existing|bootstrap-tools`, `--emit-plan`, `--non-interactive`;
+  `scripts/bootstrap-profile-tools.sh` (dry-run default, explicit `--apply`, rollback on failure);
+  isolated-tool manager (`scripts/lib/isolated-tools.sh`).
+- **Runners** — new deterministic PHP/Node runners: larastan, pint, php-cs-fixer, rector, pest,
+  phpunit, composer-audit, npm-audit (honest `unavailable`, never fake-clean).
+- **Doctor + maturity** report activation state (installed/configured/executed/gate-enforced);
+  `doctor.sh` exits 3 when required tools are absent under `require-existing`/`bootstrap-tools`.
+- **Upgrade UX** — `scripts/plan-upgrade.sh` (text/markdown/json, mutates nothing),
+  installation metadata (`schemas/installation.schema.json`, `scripts/lib/installation-metadata.sh`),
+  project override (`schemas/tool-policy-override.schema.json`, `scripts/lib/tool-policy-override.sh`),
+  v1 migration (`scripts/migrate-v1.sh`).
+- **Prompts/docs** — `prompts/update-sentinel-shield.md` (17 safety clauses), updated
+  `prompts/install-sentinel-shield.md`; `docs/upgrading.md`, `v2-migration-guide.md`,
+  `tool-provisioning.md`, `workflow-execution-model.md`, `ai-assisted-update.md`.
+- **Self-tests** — `self-test.sh v2-toolpolicy` covers the 30 required v2 cases (policy semantics,
+  one-of, composition precedence, SHA-pin verification, every-required-tool-in-workflow, override
+  validation, migration preservation, no-leak).
+
+### Hardening (review round 3)
+- **Portable waiver validation.** `control-waivers.sh` date checks are POSIX `/bin/sh` safe
+  (no `$((10#..))`; `dash`-correct for `08`/`09`); reject year `0000`.
+- **Waiver schema v1 + safe keys.** `version` must be the string `"1"`; tool keys must match
+  `^[A-Za-z0-9_.-]+$` (a single shell-safe token — can never split into multiple controls);
+  `created_at <= expires_at`; UTC expiry. Schema `control-waiver.schema.json` updated.
+- **Fail-closed everywhere.** `doctor.sh` and `maturity-report.sh` validate the waiver file
+  **unconditionally** (a malformed file is rejected even when `jq` is absent) — same verdict
+  across doctor/maturity/gate/bootstrap/resolver.
+- **Numeric gate count.** `enforce-gates.sh` no longer mis-parses the detailed required-failure
+  count (`grep -c` no-match) — summary-only `required_tool_failures>0` still fails closed.
+- **Honest direct runners.** PHPStan/Jest/Vitest (and the other PR-added runners) clear any stale
+  report up-front, so a direct invocation can't inherit a previous run's valid report.
+- **Quoting/globbing safety.** `resolve-workflow-plan.sh` no longer flattens `--target` into an
+  unquoted scalar (paths with spaces/glob chars work); `maturity-report.sh` parses activation
+  records with tab-aware `read` (no word-splitting/pathname expansion).
+- **Independent test groups.** The shared `tests` one-of is split into `php-tests`
+  (`pest`|`phpunit`) and `js-tests` (`vitest`|`jest`); combined profiles require **both**
+  independently — a JS runner never satisfies a PHP test requirement or vice versa. Both reports
+  feed the `test_failures` gate.
+- Self-test: new `v2-review-round3` group; the validator-hidden case now runs against a temp copy
+  (never renames a repo file).
+
+### Enforcement (remediation)
+- **Required-tool gate is the single decision point.** `enforce-gates.sh` derives required-tool
+  status from report presence/validity and returns only `0/1/2`: a required tool that is
+  `unavailable`/`not-configured` (contract code 3) or produced no valid report / `execution-error`
+  (contract code 4) surfaces **here as a gate failure (exit 1)**, not 3/4 — those belong to the
+  runners/orchestrator upstream. Legacy runners keep the honest-absent pattern (report absent,
+  exit 0); `unavailable` is never converted to a clean `0`.
+- **Control-waiver, not `disabled_tools`, waives a required control.** A required tool recorded as
+  disabled (`installation.json` `disabled_tools`) still fails the gate unless covered by an
+  unexpired, owner-bound, expiring waiver in `.sentinel-shield/control-waivers.json`
+  (`schemas/control-waiver.schema.json`). A waiver only re-words the failure as a prominently-
+  reported, time-boxed waiver; it never suppresses findings (use accepted-risks) and is never
+  auto-applied.
+- **Non-suppressible secrets scanners fail closed.** `tool-policy.yaml` cannot set `gitleaks` or
+  `trufflehog` to `disabled`; the effective-profile resolver rejects it (exit 2). Overrides may not
+  convert an `execution-error` into `pass`.
+- **Node package-manager ambiguity is fatal.** `bootstrap-profile-tools.sh` exits 2 when multiple
+  distinct Node lockfiles are present (resolve via `package.json` `packageManager`); pnpm/yarn/npm
+  are selected by lockfile (`pnpm-lock.yaml`/`yarn.lock`/`package-lock.json`).
+- **Rollback limitations documented honestly.** `bootstrap-profile-tools.sh` rolls back
+  dependency manifests/lockfiles on install/test failure; engine + managed-file rollback is
+  re-pinning `SENTINEL_SHIELD_REF` to the prior tag and re-running `sync-baseline.sh --apply
+  --force`. Doc over-claims from the prior pass (e.g. "accepted-risk record" to disable a control)
+  were removed.
+
+### Deferred
+- Live Laravel/Symfony consumer CI run IDs (beta/RC/GA gate); `--apply` bootstrap exercised against
+  real composer/npm; pre-existing unpinned `@v4` in non-canonical templates
+  (dast/pr-fast/dependency-check/ai-review).
+
 ## [1.9.1] — Pin managed workflow actions
 
 **Additive patch — supply-chain hardening only.** No engine/STABLE change, no flag change, no

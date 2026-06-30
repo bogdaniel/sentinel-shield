@@ -13,6 +13,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="deptrac"
 INPUT="reports/raw/deptrac.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: deptrac.sh [--input <path>] [--tool-name <name>]

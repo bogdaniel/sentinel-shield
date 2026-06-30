@@ -14,6 +14,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="composer_audit"
 INPUT="reports/raw/composer-audit.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: composer-audit.sh [--input <path>] [--tool-name <name>]

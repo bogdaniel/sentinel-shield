@@ -3,6 +3,7 @@
   "profile": "hardened-enterprise",
   "description": "First-class OPT-IN hardened enterprise overlay. Installs the standard managed files plus the digest-pinned/SHA-pinned hardened reference snippet and enterprise hardening guidance. Defaults are unchanged: this profile is selected explicitly with --profile hardened-enterprise. Pin scanner image digests + GitHub Action SHAs (see the shipped snippet) before production; keep permissions minimal, add timeout-minutes/concurrency/retention; NVD key is consumer-provided and never committed.",
   "stacks": ["enterprise"],
+  "extends": ["laravel", "node", "docker"],
   "files": [
     { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
     { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },

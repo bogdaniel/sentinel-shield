@@ -10,6 +10,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="psalm"
 INPUT="reports/raw/psalm.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: psalm.sh [--input <path>] [--tool-name <name>]

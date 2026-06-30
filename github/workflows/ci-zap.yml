@@ -29,12 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: ZAP baseline scan
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@66042c8e7e24680119199a017e5b0e8603bf4dae # v0.12.0
         with:
           target: ${{ github.event.inputs.target_url }}
           # Fail only on confirmed alerts; tune the rules file to your app.
@@ -48,12 +48,12 @@ jobs:
     environment: staging   # protected environment; reviewers/secrets scoped to staging
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: ZAP full scan (staging)
-        uses: zaproxy/action-full-scan@v0.10.0
+        uses: zaproxy/action-full-scan@d2a07475d467566c9a3e3c700f31f47724aa1060 # v0.10.0
         with:
           target: ${{ vars.STAGING_URL }}   # repository/environment variable, staging only
           cmd_options: "-a"

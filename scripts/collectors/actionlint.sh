@@ -12,6 +12,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="actionlint"
 INPUT="reports/raw/actionlint.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: actionlint.sh [--input <path>] [--tool-name <name>]

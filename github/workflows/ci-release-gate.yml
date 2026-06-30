@@ -53,7 +53,7 @@ jobs:
     environment: production   # protected: require reviewers before this gate releases
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
@@ -76,7 +76,7 @@ jobs:
           sh "$RESOLVER" $MODE_ARG --output-dir reports --format all
 
       - name: Upload resolved gate artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-gate-resolution
           path: |
@@ -90,7 +90,7 @@ jobs:
         # Works when a prior job in THIS run produced the summary (needs: topology).
         # Best-effort: a standalone tag run has no such artifact, and the fallback
         # policy below fails baseline/strict/regulated accordingly.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sentinel-shield-security-summary
           path: reports
@@ -101,7 +101,7 @@ jobs:
         # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Provide them
         # so finding-scope accepted-risks match; without them the gate fails closed.
         # Best-effort: a standalone run may have no such artifact.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
@@ -145,7 +145,7 @@ jobs:
 
       - name: Upload enforcement artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-enforcement
           path: |
@@ -179,7 +179,7 @@ jobs:
 
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-release-evidence
           path: reports/release-evidence.md

@@ -3,6 +3,7 @@
   "profile": "node-react",
   "description": "Thin-consumer baseline for a Node + React (Vite) project. npm audit, ESLint, TypeScript, Vitest/Jest test adapters, .semgrepignore (excludes build/dist). tsconfig/eslint config are project-local. Project-local risk decisions (accepted-risks.json) are NEVER created or overwritten.",
   "stacks": ["node", "react"],
+  "extends": ["node", "react"],
   "files": [
     { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
     { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },

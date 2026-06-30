@@ -1,0 +1,33 @@
+{
+  "profile": "oneof-only",
+  "description": "Self-test fixture (v2-review): a profile whose ONLY gating control is a required one-of test group (pest|phpunit). Lets doctor / run-tool-plan be exercised on one-of satisfaction in isolation (no other required tools to muddy the exit code). Member runners point at fixture no-dependency runners so run-tool-plan can reach a deterministic 'ran' without a real pest/phpunit.",
+  "tool_policy_version": 2,
+  "tools": {
+    "tests": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": ["pest", "phpunit"],
+      "report": "reports/raw/tests.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "pest": {
+      "policy": "one-of",
+      "category": "tests",
+      "executable": ["vendor/bin/pest"],
+      "runner": "tests/fixtures/v2/runners/write-tests.sh",
+      "report": "reports/raw/tests.json",
+      "alternatives": ["phpunit"],
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    },
+    "phpunit": {
+      "policy": "one-of",
+      "category": "tests",
+      "executable": ["vendor/bin/phpunit"],
+      "runner": "tests/fixtures/v2/runners/write-tests.sh",
+      "report": "reports/raw/tests.json",
+      "alternatives": ["pest"],
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    }
+  }
+}

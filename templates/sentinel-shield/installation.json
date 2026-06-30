@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "profile": "laravel",
+  "profile_schema": 2,
+  "tool_mode": "require-existing",
+  "installed_at": "2026-06-27T12:00:00Z",
+  "managed_files": [
+    ".github/workflows/sentinel-shield.yml"
+  ],
+  "project_owned_files": [
+    ".sentinel-shield/profile.yaml",
+    ".sentinel-shield/accepted-risks.example.json",
+    ".semgrepignore",
+    "phpstan.neon",
+    "docs/security/security-debt-register.md"
+  ],
+  "enabled_tools": [
+    "php-syntax",
+    "phpstan",
+    "larastan",
+    "pint",
+    "tests",
+    "composer-audit",
+    "gitleaks",
+    "semgrep"
+  ],
+  "disabled_tools": []
+}

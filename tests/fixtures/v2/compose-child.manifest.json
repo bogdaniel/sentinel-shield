@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../profiles/profile.manifest.schema.json",
+  "profile": "v2-compose-child",
+  "description": "Self-test fixture: a child profile that `extends` the real `node` base and overrides ONE inherited tool's policy, to prove composition precedence (child replaces the base policy for the same key; other base tools are inherited).",
+  "extends": ["node"],
+  "tool_policy_version": 2,
+  "tools": {
+    "typescript": {
+      "policy": "optional",
+      "category": "static-analysis",
+      "runner": "scripts/runners/typescript.sh",
+      "report": "reports/raw/typescript.json",
+      "missing_behavior": "info",
+      "execution": { "pr": true, "main": true, "scheduled": false }
+    }
+  }
+}

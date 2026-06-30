@@ -9,6 +9,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="phpstan"
 INPUT="reports/raw/phpstan.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: phpstan.sh [--input <path>] [--tool-name <name>]

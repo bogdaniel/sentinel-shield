@@ -11,6 +11,7 @@ OVERALL=0
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# run_tool — self-test group 'tool' (wired into the dispatch + 'all').
 run_tool() {
 	label="$1"
 	bin="$2"

@@ -13,6 +13,7 @@ fi
 # Space-separated list of detected stacks (avoids non-portable echo -e / literal \n).
 DETECTED=""
 
+# add — accumulate one entry into the running result set.
 add() {
 	DETECTED="${DETECTED} $1"
 	echo "detected: $1"

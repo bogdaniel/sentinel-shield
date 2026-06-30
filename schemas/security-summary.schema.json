@@ -75,7 +75,10 @@
         "dast_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ DAST findings (ZAP / Nuclei). Manual/controlled. Optional." },
         "container_image_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ built-image checks (Dockle), distinct from Dockerfile lint (unsafe_docker). Optional." },
         "repository_health_warnings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ OpenSSF Scorecard low-scoring checks. Optional." },
-        "ai_review_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional." }
+        "ai_review_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional." },
+        "required_tool_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Count of required-tool/control failures: required tools that are unavailable / not-configured / execution-error / disabled, plus unsatisfied one-of groups. Emitted only when build-security-summary.sh ran with --profile. NEVER folded into vulnerability counters." },
+        "tool_configuration_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is not-configured or disabled." },
+        "tool_execution_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is execution-error (executable present but no/invalid report)." }
       }
     },
     "tools": {
@@ -86,7 +89,8 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["pass", "fail", "warn", "skipped", "unavailable"]
+            "enum": ["pass", "fail", "warn", "skipped", "unavailable", "findings", "not-configured", "not-applicable", "execution-error", "disabled"],
+            "description": "Tool execution/result state. Legacy: pass/fail/warn/skipped/unavailable. v1.10+ tool-policy states: findings (ran, found issues), not-configured (no config file), not-applicable (stack absent), execution-error (crashed/invalid output), disabled (turned off by policy). Mapping per docs/profile-tool-policy.md: an unavailable/execution-error tool is NEVER rewritten as a clean 0."
           },
           "findings": { "type": "integer", "minimum": 0 },
           "critical": { "type": "integer", "minimum": 0 },
@@ -96,9 +100,30 @@
           "warnings": { "type": "integer", "minimum": 0 },
           "security_errors": { "type": "integer", "minimum": 0 },
           "violations": { "type": "integer", "minimum": 0 },
-          "failures": { "type": "integer", "minimum": 0 }
+          "failures": { "type": "integer", "minimum": 0 },
+          "tool": { "type": "string", "description": "v1.10+ tool-policy overlay. Effective-profile tool key this entry covers (build-security-summary.sh --profile)." },
+          "policy": { "type": "string", "enum": ["required", "recommended", "optional", "one-of", "disabled", "external"], "description": "v1.10+ effective-profile policy for this tool." },
+          "applicability": { "type": "string", "enum": ["applicable", "not-applicable", "unknown"], "description": "v1.10+ whether the tool's stack applies to the target." },
+          "installed": { "type": "boolean", "description": "v1.10+ a declared executable resolved (best-effort), or the report proves it ran." },
+          "configured": { "type": "boolean", "description": "v1.10+ false when a required config file (e.g. never-touch) is absent." },
+          "executed": { "type": "boolean", "description": "v1.10+ a present+valid report was produced." },
+          "gate_enforced": { "type": "boolean", "description": "v1.10+ true when this tool's status feeds the gate (required + applicable). one-of members / recommended / optional are emitted with false." },
+          "report": { "type": "string", "description": "v1.10+ expected raw report path for this tool." },
+          "message": { "type": "string", "description": "v1.10+ short human explanation of the derived status." }
         },
         "additionalProperties": true
+      }
+    },
+    "one_of_groups": {
+      "type": "object",
+      "description": "v1.10+ tool-policy overlay (additive). Echo of the effective-profile one-of groups (e.g. 'tests'): per-group satisfaction so the enforcer can fail an unsatisfied required group. Emitted only with --profile.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "status": { "type": "string", "enum": ["satisfied", "unsatisfied", "unknown"] },
+          "selected": { "type": ["string", "null"] }
+        }
       }
     },
     "exceptions": {

@@ -16,16 +16,20 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
-TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"
+TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; NONINTERACTIVE=0
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: sync-baseline.sh --target <dir> [--profile <name>] [--apply] [--force]
-  --target <dir>   Consuming project directory (required).
-  --profile <name> Profile manifest (default: laravel-react-docker).
-  --apply          Write changes (default: dry-run drift report).
-  --force          Update MANAGED files (overwrite-if-force / sync-managed-block) only.
-  -h, --help       Show help.
+                        [--emit-plan <path>] [--non-interactive]
+  --target <dir>     Consuming project directory (required).
+  --profile <name>   Profile manifest (default: laravel-react-docker).
+  --apply            Write changes (default: dry-run drift report).
+  --force            Update MANAGED files (overwrite-if-force / sync-managed-block) only.
+  --emit-plan <path> Write the read-only tool resolution plan (JSON) to <path> while syncing.
+  --non-interactive  Never prompt (accepted for CI parity; this sync does not prompt).
+  -h, --help         Show help.
 NEVER overwrites: accepted-risks.json, phpstan-baseline.neon, project-owned (create-if-missing)
 files, or project code. Those are reported as project-local-preserved.
 EOF
@@ -38,6 +42,8 @@ while [ $# -gt 0 ]; do
 		--apply) APPLY=1; shift ;;
 		--force) FORCE=1; shift ;;
 		--dry-run) APPLY=0; shift ;;
+		--emit-plan) EMIT_PLAN="${2:?--emit-plan requires a value}"; shift 2 ;;
+		--non-interactive) NONINTERACTIVE=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "error: unknown argument '$1'" >&2; usage; exit 2 ;;
 	esac
@@ -53,6 +59,17 @@ for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PR
 done
 [ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE'" >&2; exit 2; }
 jq -e . "$MANIFEST" >/dev/null 2>&1 || { echo "error: manifest not valid JSON: $MANIFEST" >&2; exit 2; }
+
+# --emit-plan: write the read-only resolver plan (JSON) via resolve-tool-plan.sh, which now
+# resolves the COMPOSED effective profile (named OR combinations/<name>).
+if [ -n "$EMIT_PLAN" ]; then
+	if sh "$SCRIPT_DIR/resolve-tool-plan.sh" --profile "$PROFILE" --target "$TARGET" --format json > "$EMIT_PLAN" 2>/dev/null; then
+		echo "Tool plan written: $EMIT_PLAN"
+	else
+		echo "warn: could not emit tool plan to '$EMIT_PLAN' (profile '$PROFILE' could not be resolved)." >&2
+		rm -f "$EMIT_PLAN" 2>/dev/null || true
+	fi
+fi
 
 [ "$APPLY" -eq 0 ] && echo "DRY-RUN drift report (no files written)." || echo "APPLY mode (managed files only; --force=$([ "$FORCE" -eq 1 ] && echo yes || echo no))."
 echo "Profile: $PROFILE   Source: $ROOT   Target: $TARGET"

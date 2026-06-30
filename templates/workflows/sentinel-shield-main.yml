@@ -29,10 +29,10 @@ jobs:
   main-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }
       - name: Checkout Sentinel Shield
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -61,6 +61,6 @@ jobs:
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh --profile .sentinel-shield/profile.yaml --output-dir reports --format all
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # preserve raw reports even when the gate fails on real findings
         with: { name: sentinel-shield-main, path: reports/**, retention-days: 30, if-no-files-found: warn }

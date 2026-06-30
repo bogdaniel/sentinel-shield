@@ -19,6 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="eslint"
 INPUT="reports/raw/eslint.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: eslint.sh [--input <path>] [--tool-name <name>]

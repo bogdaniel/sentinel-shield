@@ -1,0 +1,15 @@
+{
+  "profile": "noop-required",
+  "description": "Self-test fixture (v2-review): a single REQUIRED tool whose runner is a genuine no-op (writes no report). Proves run-tool-plan's stale-report deletion (B17): a pre-existing valid report cannot make a no-op runner look like it 'ran' — the tool is classified unavailable.",
+  "tool_policy_version": 2,
+  "tools": {
+    "noop": {
+      "policy": "required",
+      "category": "test-fixture",
+      "runner": "tests/fixtures/v2/runners/noop.sh",
+      "report": "reports/raw/noop.json",
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": true }
+    }
+  }
+}

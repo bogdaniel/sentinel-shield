@@ -2,23 +2,504 @@
   "$schema": "../profile.manifest.schema.json",
   "profile": "laravel",
   "description": "Laravel/PHP stack. Project config (PHPStan/Larastan, Deptrac, Pint) + .semgrepignore. PHPStan runs via the upstream Laravel runner; phpstan.neon/phpstan-baseline.neon are project-local and NEVER overwritten.",
-  "stacks": ["laravel"],
+  "stacks": [
+    "laravel"
+  ],
+  "tool_policy_version": 2,
   "files": [
-    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
-    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
-    { "source": "profiles/laravel/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" },
-    { "source": "profiles/laravel/phpstan.neon", "target": "phpstan.neon", "mode": "manual" }
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/accepted-risks.example.json",
+      "target": ".sentinel-shield/accepted-risks.example.json",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "profiles/laravel/.semgrepignore",
+      "target": ".semgrepignore",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "profiles/laravel/phpstan.neon",
+      "target": "phpstan.neon",
+      "mode": "manual"
+    }
   ],
   "workflows": [
-    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+    {
+      "source": "templates/workflows/sentinel-shield.yml",
+      "target": ".github/workflows/sentinel-shield.yml",
+      "mode": "overwrite-if-force"
+    }
   ],
   "docs": [
-    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" }
+    {
+      "source": "templates/security-debt-register.md",
+      "target": "docs/security/security-debt-register.md",
+      "mode": "create-if-missing"
+    }
   ],
-  "never_touch": [".sentinel-shield/accepted-risks.json", "phpstan-baseline.neon", "phpstan.neon"],
-  "required_scripts": ["scripts/runners/laravel-phpstan.sh", "scripts/adapters/phpunit-to-tests-json.php", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["php-syntax", "phpstan", "composer-audit", "gitleaks", "semgrep", "tests"],
-  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "deptrac", "dependency-check"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
-  "recommended_raw_reports": ["phpstan.json", "tests.json", "composer-audit.json", "gitleaks.json", "semgrep.json", "deptrac.json"]
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json",
+    "phpstan-baseline.neon",
+    "phpstan.neon"
+  ],
+  "required_scripts": [
+    "scripts/runners/laravel-phpstan.sh",
+    "scripts/adapters/phpunit-to-tests-json.php",
+    "scripts/build-security-summary.sh",
+    "scripts/enforce-gates.sh"
+  ],
+  "recommended_pr_fast_tools": [
+    "php-syntax",
+    "phpstan",
+    "composer-audit",
+    "gitleaks",
+    "semgrep",
+    "tests"
+  ],
+  "recommended_main_gate_tools": [
+    "codeql",
+    "osv-scanner",
+    "trivy-fs",
+    "syft",
+    "grype",
+    "deptrac",
+    "dependency-check"
+  ],
+  "recommended_scheduled_tools": [
+    "trufflehog",
+    "scorecard",
+    "dependency-check",
+    "grype-fs"
+  ],
+  "recommended_raw_reports": [
+    "phpstan.json",
+    "tests.json",
+    "composer-audit.json",
+    "gitleaks.json",
+    "semgrep.json",
+    "deptrac.json"
+  ],
+  "tools": {
+    "php-syntax": {
+      "policy": "required",
+      "category": "static-analysis",
+      "executable": [
+        "php"
+      ],
+      "runner": "scripts/runners/php-syntax.sh",
+      "report": "reports/raw/php-syntax.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [
+        {
+          "name": "phpstan/phpstan",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpstan",
+        "phpstan"
+      ],
+      "runner": "scripts/runners/laravel-phpstan.sh",
+      "report": "reports/raw/phpstan.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "phpstan.neon",
+        "classification": "never-touch"
+      }
+    },
+    "larastan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [
+        {
+          "name": "larastan/larastan",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpstan",
+        "phpstan"
+      ],
+      "runner": "scripts/runners/larastan.sh",
+      "report": "reports/raw/larastan.json",
+      "missing_behavior": "fail",
+      "requires": [
+        "phpstan"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "phpstan.neon",
+        "classification": "never-touch"
+      }
+    },
+    "pint": {
+      "policy": "required",
+      "category": "style",
+      "packages": [
+        {
+          "name": "laravel/pint",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/pint",
+        "pint"
+      ],
+      "runner": "scripts/runners/pint.sh",
+      "report": "reports/raw/pint.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "pint.json",
+        "classification": "create-if-missing"
+      }
+    },
+    "pest": {
+      "policy": "one-of",
+      "category": "tests",
+      "packages": [
+        {
+          "name": "pestphp/pest",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/pest"
+      ],
+      "runner": "scripts/runners/pest.sh",
+      "alternatives": [
+        "phpunit"
+      ],
+      "report": "reports/raw/tests.json",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "phpunit": {
+      "policy": "one-of",
+      "category": "tests",
+      "packages": [
+        {
+          "name": "phpunit/phpunit",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpunit"
+      ],
+      "runner": "scripts/runners/phpunit.sh",
+      "alternatives": [
+        "pest"
+      ],
+      "report": "reports/raw/tests.json",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "composer-audit": {
+      "policy": "required",
+      "category": "sca",
+      "executable": [
+        "composer"
+      ],
+      "report": "reports/raw/composer-audit.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "gitleaks": {
+      "policy": "required",
+      "category": "secrets",
+      "report": "reports/raw/gitleaks.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "semgrep": {
+      "policy": "required",
+      "category": "static-analysis",
+      "report": "reports/raw/semgrep.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "actionlint": {
+      "policy": "required",
+      "category": "ci",
+      "runner": "scripts/runners/actionlint.sh",
+      "report": "reports/raw/actionlint.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "zizmor": {
+      "policy": "required",
+      "category": "ci",
+      "runner": "scripts/runners/zizmor.sh",
+      "report": "reports/raw/zizmor.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "codeql": {
+      "policy": "required",
+      "category": "static-analysis",
+      "runner": "scripts/runners/codeql-export.sh",
+      "report": "reports/raw/codeql.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "osv-scanner": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/osv-scanner.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "trivy-fs": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/trivy-fs.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "syft": {
+      "policy": "required",
+      "category": "supply-chain",
+      "report": "reports/raw/syft.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "grype": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/grype.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "dependency-check": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/dependency-check.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      }
+    },
+    "psalm": {
+      "policy": "recommended",
+      "category": "static-analysis",
+      "packages": [
+        {
+          "name": "vimeo/psalm",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/psalm",
+        "psalm"
+      ],
+      "runner": "scripts/runners/psalm.sh",
+      "report": "reports/raw/psalm.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "psalm.xml",
+        "classification": "create-if-missing"
+      }
+    },
+    "deptrac": {
+      "policy": "recommended",
+      "category": "architecture",
+      "packages": [
+        {
+          "name": "qossmic/deptrac-shim",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/deptrac",
+        "deptrac"
+      ],
+      "runner": "scripts/runners/deptrac.sh",
+      "report": "reports/raw/deptrac.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "deptrac.yaml",
+        "classification": "create-if-missing"
+      }
+    },
+    "rector": {
+      "policy": "recommended",
+      "category": "static-analysis",
+      "packages": [
+        {
+          "name": "rector/rector",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/rector",
+        "rector"
+      ],
+      "runner": "scripts/runners/rector.sh",
+      "report": "reports/raw/rector.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "rector.php",
+        "classification": "create-if-missing"
+      }
+    },
+    "trufflehog": {
+      "policy": "optional",
+      "category": "secrets",
+      "report": "reports/raw/trufflehog.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "zap": {
+      "policy": "optional",
+      "category": "dast",
+      "runner": "scripts/runners/zap-baseline.sh",
+      "report": "reports/raw/zap.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "nuclei": {
+      "policy": "optional",
+      "category": "dast",
+      "runner": "scripts/runners/nuclei.sh",
+      "report": "reports/raw/nuclei.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "ai-security-review": {
+      "policy": "optional",
+      "category": "ai",
+      "report": "reports/raw/ai-security-review.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": true,
+        "main": false,
+        "scheduled": false
+      }
+    },
+    "php-tests": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": [
+        "pest",
+        "phpunit"
+      ],
+      "report": "reports/raw/tests.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    }
+  }
 }

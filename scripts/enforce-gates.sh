@@ -17,12 +17,20 @@
 #   1  one or more active gates fail
 #   2  configuration / input / parsing error
 #
+# Shared exit-code contract reconciliation (v2): the gate is the FINAL decision point.
+# A required tool that is unavailable (contract code 3) or that produced no valid report
+# / execution-error (contract code 4) is surfaced HERE as a gate failure (exit 1), not as
+# 3/4 — those codes belong to the runners/orchestrator upstream. enforce-gates only ever
+# returns 0/1/2.
+#
 # See docs/security-summary-schema.md and docs/gate-resolution.md.
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 # die_cfg <message...> — configuration/input/parsing error -> exit 2.
 die_cfg() {
@@ -61,6 +69,7 @@ OUTPUT_DIR="reports"
 FORMAT="all"
 STRICT_SUMMARY=0
 ACCEPTED_RISKS_FILE=".sentinel-shield/accepted-risks.json"
+CONTROL_WAIVERS_FILE=".sentinel-shield/control-waivers.json"  # required-tool waivers (schemas/control-waiver.schema.json)
 RAW_HADOLINT=""        # default derived from --summary dir (reports/raw/hadolint.json)
 RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-base-digest.json)
 
@@ -69,6 +78,7 @@ RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-
 # missing_sbom, and the critical/high vuln gates.
 SUPPRESSIBLE_GATES="unsafe_docker medium_vulnerabilities"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: enforce-gates.sh [options]
@@ -89,6 +99,11 @@ Options:
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
   --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
                        (default: <summary-dir>/raw/hadolint.json).
+  --control-waivers <path>  Required-tool control waivers (default: .sentinel-shield/control-waivers.json,
+                       schemas/control-waiver.schema.json). An UNEXPIRED waiver for a required
+                       tool downgrades its unavailable/not-configured/disabled failure to a
+                       prominently-reported waiver (NOT a normal accepted-risk). Does NOT
+                       suppress findings.
   --docker-base-digest-raw <path>  Raw Docker base-digest report (v0.1.10) — the OTHER
                        unsafe_docker source (rule_id SS_DOCKER_BASE_DIGEST). Default:
                        <summary-dir>/raw/docker-base-digest.json.
@@ -114,6 +129,7 @@ while [ $# -gt 0 ]; do
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
+		--control-waivers) CONTROL_WAIVERS_FILE="${2:?--control-waivers requires a value}"; shift 2 ;;
 		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
 		--docker-base-digest-raw) RAW_DOCKER_BASE="${2:?--docker-base-digest-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
@@ -315,6 +331,7 @@ FAILED=""        # space-separated failed gate keys
 ACCEPTED=""      # space-separated gate keys suppressed by an approved accepted-risk
 EVAL_LINES=""    # "key|enabled|value|result" per line
 
+# add_eval — record one gate evaluation row (key|enabled|value|result).
 add_eval() {
 	# add_eval <key> <enabled-bool> <value-json> <result>
 	EVAL_LINES="${EVAL_LINES}$1|$2|$3|$4
@@ -357,6 +374,7 @@ eval_count_gate() {
 # (rule_id + file): the gate is accepted-risk ONLY when every finding is matched; any
 # unaccepted finding fails the gate. The summary count (total) is always preserved.
 UD_TOTAL=0; UD_ACCEPTED=0; UD_UNACCEPTED=0; UD_SCOPE="none"; UD_DETAIL="[]"
+# eval_unsafe_docker — evaluate the unsafe docker gate and record its result.
 eval_unsafe_docker() {
 	_key="unsafe_docker"
 	_flag=$(gate_flag "$_key")
@@ -496,9 +514,131 @@ for _eck in $ENTERPRISE_COUNT_KEYS; do
 	eval_count_gate "$_eck"
 done
 
+# --- required-tool POLICY enforcement (v1.10) --------------------------------
+# When the summary carries per-tool policy data (build-security-summary.sh --profile),
+# enforce required-tool availability/configuration MECHANICALLY, in a channel SEPARATE
+# from the vulnerability counters (a missing tool is NEVER merged into a finding count):
+#   required + unavailable / execution-error / not-configured / disabled  -> failure
+#   one-of group unsatisfied                                              -> failure
+#   recommended + unavailable/not-configured/execution-error             -> warning
+#   optional + unavailable                                               -> info
+#   not-applicable                                                       -> never fails
+# A valid (unexpired) control-waiver for a required tool downgrades its failure to a
+# prominently-reported waiver. installation.json disabled_tools surface as status
+# "disabled" in the summary: a disabled REQUIRED tool without a valid waiver is a
+# configuration failure (never silently skipped).
+POLICY_FAIL=0
+POLICY_INCONSISTENT=0
+HAS_POLICY=$(jq -r '
+	if ((.tools // {}) | to_entries | any(.value | (type=="object") and has("policy")))
+	   or ((.summary // {}) | has("required_tool_failures"))
+	then "1" else "0" end' "$SUMMARY" 2>/dev/null || printf '0')
+
+REQF_REC=""; CFGF_REC=""; EXEF_REC=""; WAIVED_REC=""; WARN_REC=""; INFO_REC=""; ONEOF_REC=""
+
+if [ "$HAS_POLICY" = "1" ]; then
+	# Load valid (unexpired) control-waiver tool keys via the SHARED validator
+	# (B1/B10/A4): full schema validation, real calendar-date check, self-approval
+	# rejection. A malformed waivers file is a configuration failure (fail closed).
+	cw_validate_file "$CONTROL_WAIVERS_FILE" || die_cfg "control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)"
+	WAIVED_TOOLS=" "
+	for _wt in $(cw_valid_keys "$CONTROL_WAIVERS_FILE" "$TODAY" 2>/dev/null); do
+		WAIVED_TOOLS="${WAIVED_TOOLS}${_wt} "
+	done
+	is_waived() { case "$WAIVED_TOOLS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+	# Per-tool policy records: emit|tool|policy|status|gate_enforced
+	_pl=$(jq -r '
+		(.tools // {}) | to_entries[]
+		| select(.value | (type=="object") and has("policy"))
+		| [ .key, (.value.tool // .key), .value.policy, (.value.status // ""), ((.value.gate_enforced // false) | tostring) ]
+		| join("|")' "$SUMMARY" 2>/dev/null || true)
+
+	while IFS='|' read -r _emit _tkey _pol _st _ge; do
+		[ -n "$_emit" ] || continue
+		case "$_pol" in
+			required)
+				[ "$_ge" = "true" ] || continue
+				case "$_st" in
+					unavailable)
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+"; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
+"; fi ;;
+					execution-error)
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+"; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
+"; EXEF_REC="${EXEF_REC}${_emit}|${_tkey}|${_st}
+"; fi ;;
+					not-configured | disabled)
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+"; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|${_st}
+"; fi ;;
+					*) : ;;  # pass/findings/not-applicable: findings handled by count gates, not here
+				esac ;;
+			recommended)
+				case "$_st" in
+					unavailable | not-configured | execution-error) WARN_REC="${WARN_REC}${_emit}|${_tkey}|${_st}
+" ;;
+				esac ;;
+			optional)
+				case "$_st" in
+					unavailable) INFO_REC="${INFO_REC}${_emit}|${_tkey}|${_st}
+" ;;
+				esac ;;
+			*) : ;;  # one-of members are visibility-only; the GROUP decides (below)
+		esac
+	done <<EOF
+$_pl
+EOF
+
+	# Unsatisfied one-of groups fail the gate.
+	_grp=$(jq -r '(.one_of_groups // {}) | to_entries[] | select((.value.status // "unknown") == "unsatisfied") | "\(.key)|\(.value.status)"' "$SUMMARY" 2>/dev/null || true)
+	while IFS='|' read -r _gk _gs; do
+		[ -n "$_gk" ] || continue
+		ONEOF_REC="${ONEOF_REC}${_gk}|${_gs}
+"
+	done <<EOF
+$_grp
+EOF
+
+	[ -n "$REQF_REC" ] && POLICY_FAIL=1
+	[ -n "$ONEOF_REC" ] && POLICY_FAIL=1
+
+	# (B9) Fail closed on the SUMMARY-level counter even when detailed .tools records
+	# are absent/legacy/incomplete. Reconcile against the detailed count: if both
+	# exist and disagree, that is a configuration inconsistency (fail closed, never
+	# trust the lower value).
+	SUMMARY_REQF=$(jqr '.summary.required_tool_failures')
+	case "$SUMMARY_REQF" in ''|*[!0-9]*) SUMMARY_REQF="" ;; esac
+	# grep -c prints 0 AND exits non-zero on no match, so `|| printf 0` would append a
+	# SECOND 0 ("0\n0") and break the arithmetic below. Capture, default, and validate.
+	DETAIL_REQF=$(printf '%s' "$REQF_REC" | grep -c '|' 2>/dev/null || true)
+	DETAIL_REQF=${DETAIL_REQF:-0}
+	case "$DETAIL_REQF" in ''|*[!0-9]*) DETAIL_REQF=0 ;; esac
+	if [ -n "$SUMMARY_REQF" ]; then
+		if [ "$SUMMARY_REQF" -gt 0 ]; then POLICY_FAIL=1; fi
+		# Only reconcile when detailed records were actually derivable (the .tools
+		# block carried gate_enforced policy entries). An empty REQF_REC with a
+		# summary count >0 still fails (above), but is not flagged "inconsistent"
+		# unless detailed required records exist AND undercount the summary.
+		if [ "$DETAIL_REQF" -gt 0 ] && [ "$DETAIL_REQF" -ne "$SUMMARY_REQF" ]; then
+			log_warn "policy: summary.required_tool_failures=$SUMMARY_REQF disagrees with detailed records=$DETAIL_REQF — failing closed on the inconsistency."
+			POLICY_FAIL=1
+			POLICY_INCONSISTENT=1
+		fi
+	fi
+fi
+
+# (B11) Surface policy failure as a first-class failed gate so JSON, Markdown, the
+# log summary and the exit code ALL agree — never "Failed gates: None" while exiting 1.
+if [ "$POLICY_FAIL" -eq 1 ]; then
+	case " $FAILED " in *" required_tool_policy "*) : ;; *) FAILED="$FAILED required_tool_policy" ;; esac
+fi
+
 RESULT="pass"
 EXIT=0
-if [ -n "$FAILED" ]; then
+if [ -n "$FAILED" ] || [ "$POLICY_FAIL" -eq 1 ]; then
 	RESULT="fail"
 	EXIT=1
 fi
@@ -511,6 +651,28 @@ fi
 if [ -n "$ACCEPTED" ]; then
 	for g in $ACCEPTED; do log_info "ACCEPTED-RISK gate (count preserved, not failing): $g"; done
 fi
+if [ "$HAS_POLICY" = "1" ]; then
+	if [ -n "$REQF_REC" ]; then
+		printf '%s' "$REQF_REC" | while IFS='|' read -r _e _t _s; do [ -n "$_e" ] && log_info "REQUIRED-TOOL FAILURE: $_t ($_e) status=$_s"; done
+	fi
+	if [ -n "$ONEOF_REC" ]; then
+		printf '%s' "$ONEOF_REC" | while IFS='|' read -r _g _s; do [ -n "$_g" ] && log_info "ONE-OF GROUP UNSATISFIED: $_g status=$_s"; done
+	fi
+	if [ -n "$WAIVED_REC" ]; then
+		printf '%s' "$WAIVED_REC" | while IFS='|' read -r _e _t _s; do [ -n "$_e" ] && log_warn "CONTROL-WAIVER applied (required tool NOT failing): $_t ($_e) status=$_s"; done
+	fi
+fi
+
+# recs_to_json — convert newline records "a|b|c" into a JSON array. The field names
+# are supplied as the trailing args (3 for tool records, 2 for one-of records).
+recs_to_json() {
+	# usage: printf '%s' "$REC" | recs_to_json <name1> <name2> [name3]
+	jq -R -s --arg n1 "$1" --arg n2 "$2" --arg n3 "${3:-}" '
+		split("\n") | map(select(length > 0) | split("|"))
+		| map( if ($n3 | length) > 0
+		       then { ($n1): .[0], ($n2): .[1], ($n3): .[2] }
+		       else { ($n1): .[0], ($n2): .[1] } end )'
+}
 
 # --- writers -----------------------------------------------------------------
 json_eval() {
@@ -522,6 +684,7 @@ json_eval() {
 	done
 }
 
+# json_failed — emit the failed JSON fragment to stdout.
 json_failed() {
 	_first=1
 	for g in $FAILED; do
@@ -530,6 +693,7 @@ json_failed() {
 	done
 }
 
+# json_list — emit the list JSON fragment to stdout.
 json_list() {
 	# json_list <space-separated items>
 	_first=1
@@ -539,6 +703,7 @@ json_list() {
 	done
 }
 
+# json_broad_ids — emit the broad ids JSON fragment to stdout.
 json_broad_ids() {
 	# objects from AR_BROAD_DETAIL ("gate|id" lines)
 	_first=1
@@ -549,6 +714,7 @@ json_broad_ids() {
 	done
 }
 
+# json_finding_ids — emit the finding ids JSON fragment to stdout.
 json_finding_ids() {
 	# objects from AR_FINDING_DETAIL ("gate|id|rule|files-csv" lines)
 	_first=1
@@ -560,6 +726,7 @@ json_finding_ids() {
 	done
 }
 
+# write_json — write the json output report.
 write_json() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
 	{
@@ -584,14 +751,27 @@ write_json() {
 		printf '    "unsafe_docker": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "findings": %s }\n' \
 			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED" "$UD_DETAIL"
 		printf '  },\n'
+		printf '  "tool_policy": {\n'
+		printf '    "enforced": %s,\n' "$([ "$HAS_POLICY" = "1" ] && printf true || printf false)"
+		printf '    "control_waivers_file": "%s",\n' "$(json_escape "$CONTROL_WAIVERS_FILE")"
+		printf '    "required_tool_failures": %s,\n' "$(printf '%s' "$REQF_REC" | recs_to_json emit tool status)"
+		printf '    "tool_configuration_failures": %s,\n' "$(printf '%s' "$CFGF_REC" | recs_to_json emit tool status)"
+		printf '    "tool_execution_failures": %s,\n' "$(printf '%s' "$EXEF_REC" | recs_to_json emit tool status)"
+		printf '    "one_of_unsatisfied": %s,\n' "$(printf '%s' "$ONEOF_REC" | recs_to_json group status)"
+		printf '    "waived": %s,\n' "$(printf '%s' "$WAIVED_REC" | recs_to_json emit tool status)"
+		printf '    "recommended_warnings": %s,\n' "$(printf '%s' "$WARN_REC" | recs_to_json emit tool status)"
+		printf '    "optional_info": %s\n' "$(printf '%s' "$INFO_REC" | recs_to_json emit tool status)"
+		printf '  },\n'
 		printf '  "evaluated_gates": [\n'
 		json_eval
 		printf '\n  ]\n'
 		printf '}\n'
 	} > "$_f"
+	jq -e . "$_f" >/dev/null 2>&1 || die_cfg "internal error: produced invalid enforcement JSON ($_f)"
 	log_info "wrote $_f"
 }
 
+# write_markdown — write the markdown output report.
 write_markdown() {
 	_f="$OUTPUT_DIR/sentinel-shield-enforcement.md"
 	_result_up=$(printf '%s' "$RESULT" | tr '[:lower:]' '[:upper:]')
@@ -629,6 +809,27 @@ write_markdown() {
 			printf -- '| %s | %s |\n' "$k" "$_tv"
 		done
 		printf -- '| tool status | %s |\n\n' "$(jqr '.tools.third_party_semgrep.status')"
+
+		if [ "$HAS_POLICY" = "1" ]; then
+			printf '## Required-tool policy (controls)\n\n'
+			printf -- '> Tool availability is a SEPARATE channel from finding counts — a missing\n'
+			printf -- '> required tool is never folded into a vulnerability count. An unavailable /\n'
+			printf -- '> not-configured / execution-error / disabled required tool fails the gate\n'
+			printf -- '> (unless covered by an unexpired control-waiver). Control waivers file: `%s`.\n\n' "$CONTROL_WAIVERS_FILE"
+			printf -- '| Category | Tool | Status |\n| --- | --- | --- |\n'
+			_mdrows() { printf '%s' "$1" | while IFS='|' read -r _e _t _s; do [ -n "$_e" ] || continue; printf -- '| %s | %s | %s |\n' "$2" "$_t" "$_s"; done; }
+			_mdrows "$REQF_REC" "required-tool-failure"
+			_mdrows "$CFGF_REC" "configuration-failure"
+			_mdrows "$EXEF_REC" "execution-failure"
+			printf '%s' "$ONEOF_REC" | while IFS='|' read -r _g _s; do [ -n "$_g" ] || continue; printf -- '| one-of-group-unsatisfied | %s | %s |\n' "$_g" "$_s"; done
+			_mdrows "$WAIVED_REC" "waived (NOT failing)"
+			_mdrows "$WARN_REC" "recommended-warning"
+			_mdrows "$INFO_REC" "optional-info"
+			if [ -z "$REQF_REC$CFGF_REC$EXEF_REC$ONEOF_REC$WAIVED_REC$WARN_REC$INFO_REC" ]; then
+				printf -- '| _(all required controls satisfied)_ | | |\n'
+			fi
+			printf '\n'
+		fi
 
 		printf '## Failed gates\n\n'
 		if [ -n "$FAILED" ]; then

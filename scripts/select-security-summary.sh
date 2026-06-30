@@ -30,6 +30,7 @@ GATES_ENV="reports/sentinel-shield-gates.env"
 MODE=""
 VALID_MODES="report-only baseline strict regulated"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: select-security-summary.sh [options]

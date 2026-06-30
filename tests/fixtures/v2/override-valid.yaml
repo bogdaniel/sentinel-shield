@@ -1,0 +1,7 @@
+# v2 self-test fixture — a VALID project tool-policy override.
+# A project may only adjust the `policy` of a tool the active profile already declares.
+tools:
+  deptrac:
+    policy: optional
+  psalm:
+    policy: required

@@ -1,0 +1,7 @@
+{
+  "profile": "cycle-a",
+  "description": "Self-test fixture: inheritance cycle (a -> b -> a). Resolver MUST fail-closed (exit 2) and report the cycle path.",
+  "extends": ["cycle-b"],
+  "tool_policy_version": 2,
+  "tools": {}
+}

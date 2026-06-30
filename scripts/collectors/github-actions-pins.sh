@@ -12,6 +12,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="github_actions_pins"
 INPUT="reports/raw/github-actions-pins.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: github-actions-pins.sh [--input <path>] [--tool-name <name>]

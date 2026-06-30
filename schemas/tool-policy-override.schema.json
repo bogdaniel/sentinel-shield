@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/tool-policy-override.schema.json",
+  "title": "Sentinel Shield project tool-policy override",
+  "description": "Validates a project's .sentinel-shield/tool-policy.yaml (parsed to JSON). A project may only adjust the 'policy' of a tool the profile already declares; it cannot add packages, runners, or report paths. CONSTRAINTS (enforced by the resolver, documented here): a project CANNOT disable a non-suppressible security control (e.g. secrets detection) without a documented accepted-risk/policy record, and CANNOT convert an execution-error into a pass. Precedence on merge: required > recommended > optional > disabled.",
+  "type": "object",
+  "required": ["tools"],
+  "additionalProperties": false,
+  "properties": {
+    "tools": {
+      "type": "object",
+      "description": "Map of tool key -> policy-only override. Keys must match a tool declared by the active profile.",
+      "propertyNames": { "$ref": "tool-policy.schema.json#/$defs/toolKey" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["policy"],
+        "additionalProperties": false,
+        "properties": {
+          "policy": { "$ref": "tool-policy.schema.json#/$defs/policy" }
+        }
+      }
+    }
+  }
+}
