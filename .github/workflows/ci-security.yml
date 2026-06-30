@@ -19,6 +19,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The engine has no dependency manifests of its own — the only lockfiles/manifests in the
+  # tree are deliberately-vulnerable sample projects under tests/ and examples/. Gate the
+  # DEPENDENCY scanners (osv-scanner, grype/SBOM) on a real root manifest so they skip
+  # (green) on the engine and run normally for consumers that vendor this CI. (semgrep and
+  # gitleaks still run on the engine's own code, with fixtures excluded via .semgrepignore /
+  # .gitleaks.toml.)
+  detect-deps:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Detect root dependency manifest
+        id: check
+        run: |
+          if [ -f composer.json ] || [ -f composer.lock ] || [ -f package.json ] || [ -f package-lock.json ] || [ -f yarn.lock ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
   semgrep:
     runs-on: ubuntu-latest
     container:
@@ -48,6 +72,8 @@ jobs:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   osv-scanner:
+    needs: detect-deps
+    if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -78,6 +104,8 @@ jobs:
           exit-code: "1"
 
   sbom:
+    needs: detect-deps
+    if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -1,0 +1,8 @@
+# Sentinel Shield engine — exclude scanner TEST FIXTURES from its own SAST runs.
+# tests/ and examples/ are deliberately-vulnerable sample projects that exist to exercise
+# the scanners (planted debug flags, hardcoded credentials, etc.); they are test data, not
+# engine code. Excluding them keeps semgrep focused on the engine's real sources.
+tests/
+examples/
+vendor/
+node_modules/

@@ -1,0 +1,15 @@
+# Sentinel Shield engine — gitleaks config.
+# Uses the full default ruleset, but allowlists the scanner TEST FIXTURES: the sample
+# projects under tests/ and examples/ are intentional test data (some carry fake secrets to
+# exercise secret detection). The engine's own code is still fully scanned.
+title = "Sentinel Shield engine"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and example projects are intentional sample data, not engine secrets"
+paths = [
+  '''tests/.*''',
+  '''examples/.*''',
+]
