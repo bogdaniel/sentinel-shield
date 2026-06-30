@@ -75,10 +75,29 @@ case "$all_out" in
 	*) pass "(d) no token in any output" ;;
 esac
 
+# (g) a credential-bearing http(s) remote is refused (exit 2) before anything is cloned.
+out=$(sh "$ACQ" --repository "https://$TOKEN@github.com/o/r.git" --ref v1.0.0 --destination "$WORK/co_cred" 2>&1) && rc=0 || rc=$?
+if [ "$rc" = 2 ]; then pass "(g) credential-bearing remote refused with exit 2"
+else fail "(g) credential-bearing remote refused with exit 2 (got rc=$rc)"; fi
+[ -e "$WORK/co_cred" ] && fail "(g) no destination created on credential rejection" || pass "(g) no destination created on credential rejection"
+case "$out" in *"$TOKEN"*) fail "(g) token leaked in credential-rejection output" ;; *) pass "(g) no token in credential-rejection output" ;; esac
+
+# (h) a one-slash relative local path (looks like owner/repo) is treated as a path.
+REL="$(basename "$WORK")/remote.git"
+out_h=$(cd "$(dirname "$WORK")" && sh "$ACQ" --repository "$REL" --ref v1.0.0 --destination "$WORK/co_rel" 2>/dev/null) && rc=0 || rc=$?
+if [ "$rc" = 0 ] && [ "$out_h" = "$SHA" ]; then pass "(h) relative local path resolved as a path"
+else fail "(h) relative local path resolved as a path (rc=$rc out='$out_h')"; fi
+
 # --reuse-existing: a second call against a matching checkout reuses it (exit 0).
 out_r=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/co_tag" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
 if [ "$rc" = 0 ] && [ "$out_r" = "$SHA" ]; then pass "(e) --reuse-existing reuses a matching checkout"
 else fail "(e) --reuse-existing reuses a matching checkout (rc=$rc out='$out_r')"; fi
+
+# (e') --reuse-existing must NOT reuse a DIRTY matching checkout — it re-acquires instead.
+echo dirt > "$WORK/co_tag/dirty.txt"
+out_d=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/co_tag" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
+if [ "$rc" = 0 ] && [ "$out_d" = "$SHA" ] && [ ! -e "$WORK/co_tag/dirty.txt" ]; then pass "(e') dirty checkout re-acquired, not reused"
+else fail "(e') dirty checkout re-acquired, not reused (rc=$rc out='$out_d' dirty=$( [ -e "$WORK/co_tag/dirty.txt" ] && echo yes || echo no ))"; fi
 
 # --cleanup removes the destination.
 sh "$ACQ" --destination "$WORK/co_tag" --cleanup >/dev/null 2>&1 || true

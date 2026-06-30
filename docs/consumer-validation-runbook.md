@@ -116,7 +116,7 @@ like this once all five real runs exist (fields exactly match
 
 ```json
 {
-  "version": "v2.0.0",
+  "version": "2.0.0",
   "stage": "rc",
   "engine_commit": "<SS_SHA>",
   "required_evidence": {
@@ -156,7 +156,7 @@ non-empty, `result` is `"success"`, and `artifacts_verified` is `true`.
 
 ## Verifying the gate
 
-After all five evidence files exist, check each promotion stage:
+After the single evidence file records all five consumer runs, check each promotion stage:
 
 ```sh
 sh scripts/check-release-readiness.sh --version v2.0.0 --stage alpha   # structural floor

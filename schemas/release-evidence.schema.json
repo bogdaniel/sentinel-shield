@@ -12,6 +12,28 @@
     "required_evidence"
   ],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "$comment": "Once any real evidence exists (a consumer run is recorded or any required_evidence flag is true), engine_commit must be a real SHA, never the 'unknown' draft placeholder.",
+      "if": {
+        "anyOf": [
+          { "properties": { "consumer_runs": { "minItems": 1 } }, "required": ["consumer_runs"] },
+          { "properties": { "required_evidence": { "anyOf": [
+            { "properties": { "laravel": { "const": true } }, "required": ["laravel"] },
+            { "properties": { "symfony": { "const": true } }, "required": ["symfony"] },
+            { "properties": { "php_library": { "const": true } }, "required": ["php_library"] },
+            { "properties": { "node_react": { "const": true } }, "required": ["node_react"] },
+            { "properties": { "combined_profile": { "const": true } }, "required": ["combined_profile"] },
+            { "properties": { "bootstrap_apply": { "const": true } }, "required": ["bootstrap_apply"] },
+            { "properties": { "rollback_npm": { "const": true } }, "required": ["rollback_npm"] },
+            { "properties": { "rollback_pnpm": { "const": true } }, "required": ["rollback_pnpm"] },
+            { "properties": { "rollback_yarn": { "const": true } }, "required": ["rollback_yarn"] }
+          ] } }, "required": ["required_evidence"] }
+        ]
+      },
+      "then": { "properties": { "engine_commit": { "not": { "const": "unknown" } } } }
+    }
+  ],
   "properties": {
     "version": {
       "type": "string",

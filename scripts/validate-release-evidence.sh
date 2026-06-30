@@ -68,6 +68,14 @@ ERRORS=$(jq -r '
 		(if ($doc|has("engine_commit")) and ($doc.engine_commit|nestr) then empty else "engine_commit: missing or not a non-empty string" end),
 		(if ($doc|has("consumer_runs")) and (($doc.consumer_runs|type) == "array") then empty else "consumer_runs: missing or not an array" end),
 		(if ($doc|has("required_evidence")) and (($doc.required_evidence|type) == "object") then empty else "required_evidence: missing or not an object" end),
+		(if ($doc|type) == "object"
+		 then (($doc|keys[]) as $rk | select((["version","stage","engine_commit","consumer_runs","required_evidence"]|index($rk)) | not) | "root.\($rk): unexpected key")
+		 else empty end),
+		(if (($doc.engine_commit // "") == "unknown")
+		    and ( (($doc.consumer_runs // []) | length > 0)
+		          or ( ($doc.required_evidence // {}) | to_entries | any(.value == true) ) )
+		 then "engine_commit: 'unknown' is not allowed once consumer_runs/required_evidence indicate real evidence; record the real commit SHA"
+		 else empty end),
 		( ($doc.required_evidence // {}) as $re
 		  | if ($re|type) == "object"
 		    then ( (stacks[] as $k | select((($re|has($k)) and ($re[$k]|isbool)) | not) | "required_evidence.\($k): missing or not a boolean"),

@@ -181,10 +181,19 @@ evidence_date_of() {
   [ -n "$_d" ] || { _d=$(stat -f '%Sm' -t '%Y-%m-%d' "$1" 2>/dev/null) || _d=""; }
   [ -n "$_d" ] && printf '%s' "$_d" || printf '%s' "—"
 }
+# mr_date_newer <candidate> <current> — 0 if <candidate> is strictly newer than <current>
+# (lexical YYYY-MM-DD == chronological), treating "—" (unknown date) as the oldest.
+mr_date_newer() {
+  [ "$1" = "—" ] && return 1
+  [ "$2" = "—" ] && return 0
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | LC_ALL=C sort | tail -n1)" = "$1" ]
+}
 LIVE_EVIDENCE=0
 EVIDENCE_RUN_ID="—"
 EVIDENCE_DATE="—"
 if command_exists jq && [ -d "$EVIDENCE_DIR" ]; then
+  # Scan ALL eligible files and retain the MOST RECENT qualifying result (latest evidence date
+  # wins) rather than stopping at the first match, which could be an older prerelease.
   for _ef in "$EVIDENCE_DIR"/*.json; do
     [ -f "$_ef" ] || continue
     _rid=$(jq -r '
@@ -194,8 +203,10 @@ if command_exists jq && [ -d "$EVIDENCE_DIR" ]; then
                    and (.artifacts_verified == true)))
       | (.[0].workflow_run_id // "")' "$_ef" 2>/dev/null) || _rid=""
     if [ -n "$_rid" ]; then
-      LIVE_EVIDENCE=1; EVIDENCE_RUN_ID="$_rid"; EVIDENCE_DATE=$(evidence_date_of "$_ef")
-      break
+      _edate=$(evidence_date_of "$_ef")
+      if [ "$LIVE_EVIDENCE" = 0 ] || mr_date_newer "$_edate" "$EVIDENCE_DATE"; then
+        LIVE_EVIDENCE=1; EVIDENCE_RUN_ID="$_rid"; EVIDENCE_DATE="$_edate"
+      fi
     fi
   done
 fi

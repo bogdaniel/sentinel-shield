@@ -66,15 +66,29 @@ for f in "$WF_DIR"/*.yml; do
 		fail "$b: missing permissions: block"
 	fi
 
-	# (d) every actions/checkout step sets persist-credentials: false.
-	co=$(printf '%s\n' "$CODE" | grep -cE 'uses:[[:space:]]*actions/checkout@' || true)
-	pc=$(printf '%s\n' "$CODE" | grep -cE 'persist-credentials:[[:space:]]*false' || true)
+	# (d) every actions/checkout step sets persist-credentials: false — checked
+	# PER STEP. A global count would let one hardened checkout mask an unhardened
+	# one; instead split CODE into list-item ('- ') step blocks and require each
+	# block that checks out the repo to carry persist-credentials: false itself.
+	counts=$(printf '%s\n' "$CODE" | awk '
+		function flush() {
+			if (have && block ~ /uses:[[:space:]]*actions\/checkout@/) {
+				total++
+				if (block ~ /persist-credentials:[[:space:]]*false/) ok++
+			}
+		}
+		/^[[:space:]]*-[[:space:]]/ { flush(); block=""; have=1 }
+		{ block = block "\n" $0 }
+		END { flush(); printf "%d %d", total+0, ok+0 }
+	')
+	co=${counts% *}
+	pc=${counts#* }
 	if [ "$co" -eq 0 ]; then
 		pass "$b: no checkout steps (persist-credentials n/a)"
-	elif [ "$pc" -ge "$co" ]; then
+	elif [ "$pc" -eq "$co" ]; then
 		pass "$b: persist-credentials:false on all $co checkout step(s)"
 	else
-		fail "$b: $co checkout step(s) but only $pc persist-credentials:false"
+		fail "$b: $co checkout step(s) but only $pc with persist-credentials:false"
 	fi
 
 	# (e) no `curl ... | sh` pipe-to-shell install.

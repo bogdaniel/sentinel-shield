@@ -50,7 +50,7 @@ for `${SENTINEL_SHIELD_REF}` into `${SENTINEL_SHIELD_PATH}` and verify it. Nothi
 this succeeds:
 
 ```sh
-sh acquire-sentinel-shield.sh --ref "${SENTINEL_SHIELD_REF}" --path "${SENTINEL_SHIELD_PATH}" --verify
+sh acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield --ref "${SENTINEL_SHIELD_REF}" --destination "${SENTINEL_SHIELD_PATH}" --verify
 ```
 
 `--verify` confirms the ref is immutable and the checkout matches it. Then independently confirm the

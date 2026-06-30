@@ -8,6 +8,7 @@
     "schema_version",
     "version",
     "profile",
+    "profile_schema",
     "tool_mode",
     "installed_at",
     "updated_at",
@@ -35,8 +36,8 @@
     "repository": {
       "type": "string",
       "minLength": 1,
-      "not": { "pattern": "@" },
-      "description": "Source repository as 'owner/repo' or a credential-free URL. MUST NOT contain userinfo ('user:token@host') — credential-bearing URLs are rejected."
+      "not": { "pattern": "[@?#]" },
+      "description": "Source repository as 'owner/repo' or a credential-free URL. MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected."
     },
     "profile": {
       "type": "string",

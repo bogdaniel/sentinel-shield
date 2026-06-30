@@ -22,6 +22,12 @@
 #   2 = invalid invocation / bad argument
 set -eu
 
+# Resolve the engine's bundled rules from THIS script's location (the pinned ENGINE
+# checkout), captured BEFORE any cwd switch so the target project's ./semgrep cannot
+# shadow them.
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ENGINE_SEMGREP="$SCRIPT_DIR/../semgrep/app"
+
 TARGET="."
 STRICT=0
 FORMAT="text"
@@ -83,9 +89,10 @@ run_tool "Gitleaks (secrets)" gitleaks detect --no-banner --redact
 # SAST.
 if have semgrep; then
 	echo ">> Semgrep"
-	# Prefer bundled rules if this repo's semgrep/ dir is reachable; else registry.
-	if [ -d semgrep ]; then
-		semgrep --error --config ./semgrep/app || OVERALL=1
+	# Prefer the engine's bundled rules (resolved from SCRIPT_DIR, NOT the target's
+	# ./semgrep); fall back to the registry only when the bundle is unavailable.
+	if [ -d "$ENGINE_SEMGREP" ]; then
+		semgrep --error --config "$ENGINE_SEMGREP" || OVERALL=1
 	else
 		semgrep --error --config "p/owasp-top-ten" || OVERALL=1
 	fi

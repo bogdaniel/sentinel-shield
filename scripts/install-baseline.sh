@@ -113,11 +113,28 @@ tx_snapshot() {
 	printf '%s\n' "$1" >> "$TX_SNAP/touched"
 }
 
+# _tx_rel_safe <relpath> — accept only a project-relative path (no absolute root,
+# no '..' traversal); rejects a tampered 'touched' entry escaping $TARGET.
+_tx_rel_safe() {
+	case "$1" in
+		"" | /* | .. | ../* | */.. | */../*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+# _tx_snap_safe <dir> — snapshot dir must live in this target's .sentinel-shield
+# .txn-* area with no traversal; rejects a tampered operation-lock snapshot_dir.
+_tx_snap_safe() {
+	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
+	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
+}
+
 # tx_rollback — restore every snapshotted file (or remove files that were newly created).
 tx_rollback() {
 	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
+	_tx_snap_safe "$TX_SNAP" || { log_warn "tx: refusing rollback from an unexpected snapshot dir: $TX_SNAP"; return 0; }
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || { log_warn "tx: skipping unsafe rollback path: $_rel"; continue; }
 		if [ -e "$TX_SNAP/snap/$_rel" ]; then
 			ensure_dir "$TARGET/$(dirname -- "$_rel")"
 			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
@@ -164,7 +181,7 @@ tx_detect_stale() {
 tx_recover() {
 	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
 	_snap=$(jq -r '.snapshot_dir // empty' "$LOCK" 2>/dev/null || true)
-	if [ -n "$_snap" ] && [ -f "$_snap/touched" ]; then
+	if [ -n "$_snap" ] && _tx_snap_safe "$_snap" && [ -f "$_snap/touched" ]; then
 		TX_SNAP="$_snap"; tx_rollback; rm -rf "$_snap" 2>/dev/null || true
 	fi
 	rm -f "$LOCK" 2>/dev/null || true
@@ -215,7 +232,26 @@ if [ -f "$ROOT/.sentinel-shield-ref" ]; then
 	[ -n "$REPOSITORY" ] || REPOSITORY=$(jq -r '.repository // empty' "$ROOT/.sentinel-shield-ref" 2>/dev/null || true)
 	[ -n "$RESOLVED_COMMIT" ] || RESOLVED_COMMIT=$(jq -r '.resolved_commit // empty' "$ROOT/.sentinel-shield-ref" 2>/dev/null || true)
 fi
-case "$REPOSITORY" in *@*) REPOSITORY="" ;; esac
+# Persist repository/resolved_commit ONLY when they match a safe, credential-free shape
+# (do not rely on im_validate, which checks structure, not these values):
+#   - strip any URL query/fragment, then DROP any value carrying userinfo ('@'),
+#     an absolute path, or a shape that is not a URL or owner/repo slug;
+#   - resolved_commit must be a 7–64 char hex object name or it is dropped.
+REPOSITORY=${REPOSITORY%%[#?]*}
+case "$REPOSITORY" in
+	"") ;;
+	*@*) REPOSITORY="" ;;                            # userinfo/credential (or scp-style) — never persist
+	http://*|https://*|git://*|ssh://*) ;;          # recognised URL forms
+	/*) REPOSITORY="" ;;                             # absolute path is not a repo reference
+	*/*) ;;                                          # owner/repo (or host/owner/repo) slug
+	*) REPOSITORY="" ;;                              # no recognisable repo shape
+esac
+case "$RESOLVED_COMMIT" in
+	"") ;;
+	*[!0-9a-fA-F]*) RESOLVED_COMMIT="" ;;            # non-hex content
+	*) _rc_len=${#RESOLVED_COMMIT}
+		{ [ "$_rc_len" -ge 7 ] && [ "$_rc_len" -le 64 ]; } || RESOLVED_COMMIT="" ;;
+esac
 
 # Tool audits consume the COMPOSED effective profile (Blocker 4) — NOT the raw
 # manifest — so combination profiles validate their full php+node tool set and

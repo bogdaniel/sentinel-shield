@@ -66,9 +66,11 @@ im_validate() {
 	[ -s "${1:-}" ] || { log_error "im_validate: missing/empty file '${1:-}'"; return 1; }
 	jq -e . "$1" >/dev/null 2>&1 || { log_error "im_validate: invalid JSON in '$1'"; return 1; }
 	jq -e '
+		(.schema_version == "2") and
 		(.version | type == "string" and (length > 0)) and
 		(.profile | type == "string" and (length > 0)) and
 		(.profile_schema | type == "number") and
+		(.updated_at | type == "string" and (length > 0)) and
 		(.tool_mode as $tm | ["config-only","require-existing","bootstrap-tools"] | index($tm) != null) and
 		(.installed_at | type == "string" and (length > 0)) and
 		(.managed_files | type == "array") and
@@ -98,6 +100,8 @@ im_write() {
 	[ -n "$_im_schema" ] || _im_schema=0
 	_im_at="${6:-}"
 	[ -n "$_im_at" ] || _im_at=$(timestamp_utc)
+	# updated_at always reflects THIS write (the most recent install/sync/migrate).
+	_im_updated=$(timestamp_utc)
 
 	_im_out=$(im_path "$_im_target") || return 2
 	ensure_dir "$(dirname -- "$_im_out")"
@@ -112,17 +116,20 @@ im_write() {
 		--argjson profile_schema "$_im_schema" \
 		--arg tool_mode "$5" \
 		--arg installed_at "$_im_at" \
+		--arg updated_at "$_im_updated" \
 		--arg managed "${7:-}" \
 		--arg owned "${8:-}" \
 		--arg enabled "${9:-}" \
 		--arg disabled "${10:-}" '
 		def lines($s): ($s | split("\n") | map(select(length > 0)));
 		{
+			schema_version: "2",
 			version: $version,
 			profile: $profile,
 			profile_schema: $profile_schema,
 			tool_mode: $tool_mode,
 			installed_at: $installed_at,
+			updated_at: $updated_at,
 			managed_files: lines($managed),
 			project_owned_files: lines($owned),
 			enabled_tools: lines($enabled),

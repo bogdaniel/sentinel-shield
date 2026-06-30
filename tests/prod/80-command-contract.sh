@@ -122,6 +122,10 @@ maturity-report.sh --target
 run-tool-plan.sh --target
 run-local-scanner-sweep.sh --target
 plan-upgrade.sh --target
+acquire-sentinel-shield.sh --repository
+acquire-sentinel-shield.sh --destination
+acquire-sentinel-shield.sh --ref
+acquire-sentinel-shield.sh --verify
 "
 # Stage the pairs in a file and read via redirect so the loop runs in THIS shell
 # (a pipe would fork a subshell and lose FAILED).

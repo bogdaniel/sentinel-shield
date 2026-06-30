@@ -47,33 +47,33 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# (a) Shipped real evidence dir carries NO real runs -> live_validated false/no.
+# (a) SMOKE: the default evidence dir resolves and emits valid JSON (exit 0). That dir MAY carry
+# real committed evidence, so it is NOT used for negative 'no real evidence' assertions — those run
+# against a temporary EMPTY fixture dir below (deterministic regardless of what is committed).
 # ---------------------------------------------------------------------------
 JSON_DEFAULT=$(sh "$SCRIPT" --format json 2>/dev/null) || { bad "(a) default-run produced JSON"; }
 if [ -n "${JSON_DEFAULT:-}" ]; then
 	printf '%s' "$JSON_DEFAULT" | jq -e . >/dev/null 2>&1 \
 		&& ok "(a) default-run JSON is valid" || bad "(a) default-run JSON is valid"
-	_top=$(printf '%s' "$JSON_DEFAULT" | jq -r '.live_validated')
-	[ "$_top" = "false" ] && ok "(a) shipped evidence => top-level live_validated=false" \
-		|| bad "(a) top-level live_validated expected false, got '$_top'"
-	_yescount=$(printf '%s' "$JSON_DEFAULT" | jq '[.tools[]|select(.live_validated=="yes")]|length')
-	[ "$_yescount" = "0" ] && ok "(a) no tool is live_validated=yes without real evidence" \
-		|| bad "(a) $_yescount tool(s) wrongly marked live_validated=yes"
-	# Deptrac's PRODUCT maturity is "live-validated" yet must NOT be live_validated without evidence.
-	_dm=$(printf '%s' "$JSON_DEFAULT" | jq -r '.tools[]|select(.tool=="Deptrac").maturity')
-	_dl=$(printf '%s' "$JSON_DEFAULT" | jq -r '.tools[]|select(.tool=="Deptrac").live_validated')
-	if [ "$_dm" = "live-validated" ] && [ "$_dl" = "no" ]; then
-		ok "(a) product 'live-validated' label is NOT conflated with live_validated (Deptrac)"
-	else bad "(a) Deptrac maturity='$_dm' live_validated='$_dl' (expected live-validated / no)"; fi
 fi
 
-# Empty consumer_runs[] via --evidence-dir behaves identically (no real evidence).
+# Empty consumer_runs[] via --evidence-dir => no real evidence: live_validated false/no for the repo
+# and EVERY tool, and the product 'live-validated' label is NOT conflated with live_validated.
 mkdir -p "$WORK/empty"
 write_evidence "$WORK/empty/e.json" "" "skipped" "false"
 JSON_EMPTY=$(sh "$SCRIPT" --format json --evidence-dir "$WORK/empty" 2>/dev/null)
 _e=$(printf '%s' "$JSON_EMPTY" | jq -r '.live_validated')
 [ "$_e" = "false" ] && ok "(a) empty/unbacked evidence-dir => live_validated=false" \
 	|| bad "(a) empty evidence-dir live_validated expected false, got '$_e'"
+_yescount=$(printf '%s' "$JSON_EMPTY" | jq '[.tools[]|select(.live_validated=="yes")]|length')
+[ "$_yescount" = "0" ] && ok "(a) no tool is live_validated=yes without real evidence" \
+	|| bad "(a) $_yescount tool(s) wrongly marked live_validated=yes"
+# Deptrac's PRODUCT maturity is "live-validated" yet must NOT be live_validated without evidence.
+_dm=$(printf '%s' "$JSON_EMPTY" | jq -r '.tools[]|select(.tool=="Deptrac").maturity')
+_dl=$(printf '%s' "$JSON_EMPTY" | jq -r '.tools[]|select(.tool=="Deptrac").live_validated')
+if [ "$_dm" = "live-validated" ] && [ "$_dl" = "no" ]; then
+	ok "(a) product 'live-validated' label is NOT conflated with live_validated (Deptrac)"
+else bad "(a) Deptrac maturity='$_dm' live_validated='$_dl' (expected live-validated / no)"; fi
 
 # ---------------------------------------------------------------------------
 # (b) The report enumerates the distinct maturity states (JSON keys + MD columns).

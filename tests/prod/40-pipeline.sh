@@ -33,6 +33,31 @@ OUT="$WORK/out"
 mkdir -p "$TARGET" "$OUT"
 cp -R "$FIXTURE/." "$TARGET/"
 
+# --- hermetic PATH: required scanners absent BY CONSTRUCTION ------------------
+# The exit-3 assertions below require gitleaks/semgrep/trivy/osv-scanner to be
+# UNAVAILABLE. Relying on the host PATH makes the outcome depend on whichever
+# scanners happen to be installed (a host with all four would NOT exit 3). Mirror
+# tests/prod/50-sweep.sh's isolated-PATH approach: build a bin dir that links every
+# host utility (jq/yq/date/sed/git/... — all the chained engine scripts need them)
+# EXCEPT those scanners, so the missing-tool condition is controlled by the test.
+ISOBIN="$WORK/isobin"
+mkdir -p "$ISOBIN"
+_oifs=$IFS
+IFS=:
+for _d in $PATH; do
+	[ -d "$_d" ] || continue
+	for _p in "$_d"/*; do
+		[ -f "$_p" ] || continue
+		_n=${_p##*/}
+		case "$_n" in
+			gitleaks | semgrep | trivy | osv-scanner) continue ;;
+		esac
+		[ -e "$ISOBIN/$_n" ] && continue
+		ln -s "$_p" "$ISOBIN/$_n" 2>/dev/null || cp -- "$_p" "$ISOBIN/$_n" 2>/dev/null || true
+	done
+done
+IFS=$_oifs
+
 # --- (b) invalid --stage -> exit 2 -------------------------------------------
 rc=0
 sh "$PIPELINE" --profile php-library --target "$TARGET" --stage bogus >/dev/null 2>&1 || rc=$?
@@ -61,7 +86,7 @@ fi
 # Seed a bogus prior summary at the path the pipeline writes/judges. It must NOT survive.
 printf '{"version":"1.0","STALE_BOGUS_MARKER":true}' > "$OUT/security-summary.json"
 rc=0
-sh "$PIPELINE" --profile php-library --target "$TARGET" --stage pr \
+PATH="$ISOBIN" sh "$PIPELINE" --profile php-library --target "$TARGET" --stage pr \
 	--output-dir "$OUT" --fail-fast --non-interactive >/dev/null 2>&1 || rc=$?
 
 # Honest required-tool-unavailable path (gitleaks/semgrep/etc. absent in a network-free
@@ -100,7 +125,7 @@ OUT2="$WORK/out2"
 mkdir -p "$OUT2"
 printf '{"version":"1.0","STALE_BOGUS_MARKER":true}' > "$OUT2/security-summary.json"
 rc=0
-sh "$PIPELINE" --profile php-library --target "$TARGET" --stage pr \
+PATH="$ISOBIN" sh "$PIPELINE" --profile php-library --target "$TARGET" --stage pr \
 	--output-dir "$OUT2" --mode baseline --non-interactive >/dev/null 2>&1 || rc=$?
 
 if [ "$rc" -eq 3 ]; then

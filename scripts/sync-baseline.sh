@@ -82,10 +82,26 @@ tx_snapshot() { # <relpath>
 	fi
 	printf '%s\n' "$1" >> "$TX_SNAP/touched"
 }
+# _tx_rel_safe <relpath> — accept only a project-relative path (no absolute root,
+# no '..' traversal); rejects a tampered 'touched' entry escaping $TARGET.
+_tx_rel_safe() {
+	case "$1" in
+		"" | /* | .. | ../* | */.. | */../*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+# _tx_snap_safe <dir> — snapshot dir must live in this target's .sentinel-shield
+# .txn-* area with no traversal; rejects a tampered operation-lock snapshot_dir.
+_tx_snap_safe() {
+	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
+	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
+}
 tx_rollback() {
 	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
+	_tx_snap_safe "$TX_SNAP" || { echo "[sentinel-shield][warn] tx: refusing rollback from an unexpected snapshot dir: $TX_SNAP" >&2; return 0; }
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || { echo "[sentinel-shield][warn] tx: skipping unsafe rollback path: $_rel" >&2; continue; }
 		if [ -e "$TX_SNAP/snap/$_rel" ]; then
 			mkdir -p "$TARGET/$(dirname -- "$_rel")"
 			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
@@ -124,7 +140,7 @@ tx_detect_stale() {
 tx_recover() {
 	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
 	_snap=$(jq -r '.snapshot_dir // empty' "$LOCK" 2>/dev/null || true)
-	if [ -n "$_snap" ] && [ -f "$_snap/touched" ]; then
+	if [ -n "$_snap" ] && _tx_snap_safe "$_snap" && [ -f "$_snap/touched" ]; then
 		TX_SNAP="$_snap"; tx_rollback; rm -rf "$_snap" 2>/dev/null || true
 	fi
 	rm -f "$LOCK" 2>/dev/null || true
@@ -225,11 +241,14 @@ if [ "$APPLY" -eq 1 ]; then
 	if [ -f "$_inst" ] && jq -e . "$_inst" >/dev/null 2>&1; then
 		tx_snapshot ".sentinel-shield/installation.json"
 		_now=$(now_utc); _tmp="$_inst.tmp.$$"
-		if jq --arg t "$_now" '.last_successful_sync=$t | .updated_at=$t' "$_inst" > "$_tmp"; then
-			mv -- "$_tmp" "$_inst"
+		# FAIL CLOSED: a failed jq write or mv must trip the transaction-failure path
+		# (rolls back + clears the lock) BEFORE tx_commit — never warn-and-continue.
+		if jq --arg t "$_now" '.last_successful_sync=$t | .updated_at=$t' "$_inst" > "$_tmp" && mv -- "$_tmp" "$_inst"; then
+			:
 		else
 			rm -f "$_tmp" 2>/dev/null || true
-			echo "[sentinel-shield][warn] sync: could not update installation.json metadata." >&2
+			echo "[sentinel-shield][error] sync: could not update installation.json metadata; rolling back." >&2
+			exit 4
 		fi
 	fi
 	tx_commit

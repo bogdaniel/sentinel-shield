@@ -28,7 +28,15 @@ unreleased-GA placeholder) and acquires the engine into `$SENTINEL_SHIELD_PATH` 
 ```sh
 SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
 SENTINEL_SHIELD_PATH=.sentinel-shield-tools
-sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+
+# Bootstrap: run acquire from an EXTERNAL, already-cloned engine copy. A fresh
+# consumer repo does not yet contain scripts/acquire-sentinel-shield.sh — that
+# is precisely what acquire *creates* — so invoke it from a scratch clone (NOT
+# from the consumer repo root) to avoid a missing-file error:
+git clone https://github.com/bogdaniel/sentinel-shield.git /tmp/sentinel-shield-bootstrap
+git -C /tmp/sentinel-shield-bootstrap checkout "$SENTINEL_SHIELD_REF"
+sh /tmp/sentinel-shield-bootstrap/scripts/acquire-sentinel-shield.sh \
+  --repository bogdaniel/sentinel-shield \
   --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
 ```
 

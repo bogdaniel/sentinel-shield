@@ -222,14 +222,16 @@ if [ -f "$REF_FILE" ]; then
         cfgfail "source-ref MISMATCH: pinned ref $_ref != resolved_commit $_rcommit"
       fi
     else
-      case "$_ref" in
-        main|master|HEAD|develop|latest|trunk)
-          cfgfail "source-ref is a MOVING branch ('$_ref') — not an immutable tag/commit" ;;
-        */*)
-          cfgfail "source-ref '$_ref' is not an immutable tag or 40-hex commit SHA" ;;
-        *)
-          ok "immutable ref configured: tag '$_ref' -> commit $_rcommit" ;;
-      esac
+      # Not a 40-hex SHA. Accept ONLY when acquisition recorded an authoritative
+      # ref_kind=tag (acquire-sentinel-shield.sh classifies the ref at clone time).
+      # Name-spelling heuristics can never PROVE a name is a tag rather than a
+      # moving branch (e.g. 'release','stable'), so anything unproven fails closed.
+      _rkind=$(jq -r '.ref_kind // ""' "$REF_FILE")
+      if [ "$_rkind" = "tag" ]; then
+        ok "immutable ref configured: tag '$_ref' -> commit $_rcommit"
+      else
+        cfgfail "source-ref '$_ref' is not provably immutable (acquisition recorded no ref_kind=tag) — refusing as a possible moving branch"
+      fi
     fi
   fi
 else

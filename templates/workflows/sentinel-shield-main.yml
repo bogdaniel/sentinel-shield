@@ -18,9 +18,12 @@ on:
 permissions:
   contents: read
   security-events: write   # CodeQL upload
-# Release-gate runs must complete; serialize per ref but never cancel an in-flight gate.
+# Release-gate runs must complete. Group per COMMIT (not per ref) so a newer push
+# never supersedes/drops a queued gate for an earlier commit — each commit is gated
+# to completion; only redundant re-runs of the SAME sha dedupe, never cancelling
+# an in-flight gate.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set

@@ -49,10 +49,11 @@ Usage: acquire-sentinel-shield.sh --repository <owner/repo|url|path> --ref <tag|
 EOF
 }
 
-# write_ref_record <dest> <repo> <ref> <commit> — record the resolved ref (NO credentials).
+# write_ref_record <dest> <repo> <ref> <commit> <ref_kind> — record the resolved ref (NO credentials).
+# ref_kind is the authoritative classification (tag|sha) doctor.sh relies on to prove immutability.
 write_ref_record() {
-	_rep=$(json_escape "$2"); _rf=$(json_escape "$3")
-	printf '{"repository":"%s","ref":"%s","resolved_commit":"%s"}\n' "$_rep" "$_rf" "$4" \
+	_rep=$(json_escape "$2"); _rf=$(json_escape "$3"); _rk=$(json_escape "$5")
+	printf '{"repository":"%s","ref":"%s","resolved_commit":"%s","ref_kind":"%s"}\n' "$_rep" "$_rf" "$4" "$_rk" \
 		> "$1/.sentinel-shield-ref" || {
 		log_error "acquire: cannot write ref record to $1/.sentinel-shield-ref"; return 1
 	}
@@ -100,15 +101,27 @@ command_exists git || { log_error "acquire: git not found (required)"; exit 3; }
 # An explicit remote (scheme://, git@host:..., or a local/relative path) is used verbatim;
 # an owner/repo shorthand is expanded per --transport.
 USE_GH=0
+# Refuse credential-bearing http(s) remotes (userinfo: token@ or user:token@) BEFORE
+# any branch accepts them — a secret must never be embedded, logged, or persisted.
+case "$REPO" in
+	http://*@* | https://*@*)
+		log_error "acquire: refusing credential-bearing remote URL (userinfo not allowed; authenticate out-of-band)"; exit 2 ;;
+esac
 case "$REPO" in
 	*://* | git@*:* | /* | ./* | ../*)
 		URL="$REPO" ;;
 	*/*)
-		case "$TRANSPORT" in
-			ssh) URL="git@github.com:$REPO.git" ;;
-			gh) URL="https://github.com/$REPO.git"; USE_GH=1 ;;
-			*) URL="https://github.com/$REPO.git" ;;
-		esac ;;
+		# A path-like input that exists on disk is a LOCAL path (e.g. tmp/remote.git),
+		# used verbatim; never rewrite it to a GitHub URL. Otherwise it is owner/repo.
+		if [ -e "$REPO" ]; then
+			URL="$REPO"
+		else
+			case "$TRANSPORT" in
+				ssh) URL="git@github.com:$REPO.git" ;;
+				gh) URL="https://github.com/$REPO.git"; USE_GH=1 ;;
+				*) URL="https://github.com/$REPO.git" ;;
+			esac
+		fi ;;
 	*)
 		log_error "acquire: invalid --repository '$REPO' (expected owner/repo, a URL, or a path)"; exit 2 ;;
 esac
@@ -153,10 +166,11 @@ fi
 if [ -e "$DEST" ]; then
 	if [ "$REUSE" = 1 ] && [ -d "$DEST/.git" ]; then
 		CUR=$(git -C "$DEST" rev-parse HEAD 2>/dev/null || true)
-		# Reuse only when HEAD already matches the resolved immutable commit.
-		if [ -n "$CUR" ] && [ "$CUR" = "$EXPECTED" ]; then
+		# Reuse only when HEAD already matches the resolved immutable commit AND the
+		# worktree is clean — a dirty checkout is not the immutable source, re-acquire.
+		if [ -n "$CUR" ] && [ "$CUR" = "$EXPECTED" ] && [ -z "$(git -C "$DEST" status --porcelain 2>/dev/null)" ]; then
 			log_info "acquire: reusing existing checkout at $DEST (HEAD=$CUR)"
-			write_ref_record "$DEST" "$REPO" "$REF" "$CUR"
+			write_ref_record "$DEST" "$REPO" "$REF" "$CUR" "$KIND"
 			printf '%s\n' "$CUR"
 			exit 0
 		fi
@@ -201,7 +215,7 @@ if [ "$VERIFY" = 1 ] && [ "$RESOLVED" != "$EXPECTED" ]; then
 	exit 4
 fi
 
-write_ref_record "$DEST" "$REPO" "$REF" "$RESOLVED"
+write_ref_record "$DEST" "$REPO" "$REF" "$RESOLVED" "$KIND"
 log_info "acquire: $REPO @ $REF -> $RESOLVED (checkout: $DEST)"
 printf '%s\n' "$RESOLVED"
 exit 0

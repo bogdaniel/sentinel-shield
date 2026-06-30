@@ -115,15 +115,21 @@ elif [ "$_sc_bad" = 0 ]; then
 fi
 
 # 4) no tracked secrets / runtime scanner artifacts (git ls-files greps).
-_tracked=$( (cd "$REPO_ROOT" && git ls-files 2>/dev/null) || true)
-_leak=0
-for _pat in '^\.claude/' '^reports/raw/' '(^|/)security-summary\.json$' 'dependency-check-consumer\.json' '(^|/)\.env$' '\.pem$'; do
-	if printf '%s\n' "$_tracked" | grep -Eq "$_pat"; then
-		fail "tracked secret/runtime artifact matches: $_pat"
-		_leak=1
-	fi
-done
-[ "$_leak" = 0 ] && pass "no tracked secrets/runtime artifacts"
+# FAIL CLOSED if the inventory cannot be enumerated: an enumeration failure is
+# NOT proof of "no tracked secrets". Pass only when the list is obtained AND no
+# pattern matches.
+if _tracked=$( (cd "$REPO_ROOT" && git ls-files) 2>/dev/null); then
+	_leak=0
+	for _pat in '^\.claude/' '^reports/raw/' '(^|/)security-summary\.json$' 'dependency-check-consumer\.json' '(^|/)\.env$' '\.pem$'; do
+		if printf '%s\n' "$_tracked" | grep -Eq "$_pat"; then
+			fail "tracked secret/runtime artifact matches: $_pat"
+			_leak=1
+		fi
+	done
+	[ "$_leak" = 0 ] && pass "no tracked secrets/runtime artifacts"
+else
+	fail "could not enumerate tracked files (git ls-files failed); cannot prove no tracked secrets (fail closed)"
+fi
 
 # 5) local fixtures present (the self-test corpus must be committed).
 if [ -d "$REPO_ROOT/tests/fixtures" ] && [ -d "$REPO_ROOT/tests/fixtures/wf-good" ]; then
@@ -142,10 +148,20 @@ if [ "$STAGE" != alpha ]; then
 	_validator="$REPO_ROOT/scripts/validate-release-evidence.sh"
 	if [ ! -f "$_validator" ]; then
 		fail "evidence validator not found: scripts/validate-release-evidence.sh — cannot prove '$STAGE' evidence (fail closed)"
-	elif sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE"; then
-		pass "release evidence satisfies --require-stage $STAGE"
 	else
-		fail "release evidence does NOT satisfy --require-stage $STAGE (see output above / scripts/validate-release-evidence.sh)"
+		# Distinguish the validator's exit codes:
+		#   0 = stage met; 1 = overridable 'evidence unmet'; 2 = malformed
+		#   evidence/config = NON-overridable, immediate fail-closed error.
+		_vrc=0
+		sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE" || _vrc=$?
+		if [ "$_vrc" -eq 0 ]; then
+			pass "release evidence satisfies --require-stage $STAGE"
+		elif [ "$_vrc" -eq 1 ]; then
+			fail "release evidence does NOT satisfy --require-stage $STAGE (see output above / scripts/validate-release-evidence.sh)"
+		else
+			log_error "release evidence is MALFORMED/invalid (validator exit $_vrc); this is NON-overridable — fail closed"
+			exit 2
+		fi
 	fi
 fi
 

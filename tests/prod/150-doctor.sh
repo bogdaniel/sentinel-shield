@@ -38,19 +38,23 @@ grep -q 'STALE operation-lock' "$DOCTOR" && pass "doctor documents/handles stale
 # --- (a) healthy adoption fixture -> exit 0 or 1 ----------------------------------
 HA="$WORK/healthy"; mkdir -p "$HA/.sentinel-shield"
 cat > "$HA/.sentinel-shield/installation.json" <<'JSON'
-{ "version":"2.0.0","profile":"laravel","profile_schema":2,"tool_mode":"config-only",
-  "installed_at":"2026-06-27T12:00:00Z","managed_files":[],"project_owned_files":[],
+{ "schema_version":"2","version":"2.0.0","profile":"laravel","profile_schema":2,
+  "tool_mode":"config-only","repository":"o/r",
+  "resolved_commit":"3333333333333333333333333333333333333333",
+  "installed_at":"2026-06-27T12:00:00Z","updated_at":"2026-06-27T12:00:00Z",
+  "managed_files":[],"project_owned_files":[],
   "enabled_tools":["phpstan"],"disabled_tools":[] }
 JSON
-# An immutable TAG ref with a well-formed resolved commit is internally consistent.
-printf '{"repository":"o/r","ref":"v2.0.0","resolved_commit":"%s"}\n' \
+# An immutable TAG ref proven by acquisition metadata (ref_kind=tag) with a
+# well-formed resolved commit is internally consistent.
+printf '{"repository":"o/r","ref":"v2.0.0","ref_kind":"tag","resolved_commit":"%s"}\n' \
 	"3333333333333333333333333333333333333333" > "$HA/.sentinel-shield/.sentinel-shield-ref"
 # No --quiet here: doctor suppresses ok-lines under --quiet, and we assert one below.
 run_doctor "$WORK/a.out" --target "$HA"
-if [ "$RC" = 0 ] || [ "$RC" = 1 ]; then
-	pass "(a) healthy fixture exits 0 or 1 (got $RC)"
+if [ "$RC" = 0 ]; then
+	pass "(a) healthy fixture exits exactly 0 (got $RC)"
 else
-	fail "(a) healthy fixture expected exit 0/1, got $RC"
+	fail "(a) healthy fixture expected exit 0, got $RC"
 fi
 if grep -q 'FAIL' "$WORK/a.out"; then
 	fail "(a) healthy fixture printed a FAIL line (should be clean)"

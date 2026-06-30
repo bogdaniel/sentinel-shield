@@ -96,10 +96,26 @@ tx_snapshot() { # <relpath>
 	fi
 	printf '%s\n' "$1" >> "$TX_SNAP/touched"
 }
+# _tx_rel_safe <relpath> — accept only a project-relative path (no absolute root,
+# no '..' traversal); rejects a tampered 'touched' entry escaping $TARGET.
+_tx_rel_safe() {
+	case "$1" in
+		"" | /* | .. | ../* | */.. | */../*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+# _tx_snap_safe <dir> — snapshot dir must live in this target's .sentinel-shield
+# .txn-* area with no traversal; rejects a tampered operation-lock snapshot_dir.
+_tx_snap_safe() {
+	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
+	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
+}
 tx_rollback() {
 	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
+	_tx_snap_safe "$TX_SNAP" || { log_warn "tx: refusing rollback from an unexpected snapshot dir: $TX_SNAP"; return 0; }
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || { log_warn "tx: skipping unsafe rollback path: $_rel"; continue; }
 		if [ -e "$TX_SNAP/snap/$_rel" ]; then
 			ensure_dir "$TARGET/$(dirname -- "$_rel")"
 			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
@@ -136,7 +152,7 @@ tx_detect_stale() {
 tx_recover() {
 	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
 	_snap=$(jq -r '.snapshot_dir // empty' "$LOCK" 2>/dev/null || true)
-	if [ -n "$_snap" ] && [ -f "$_snap/touched" ]; then
+	if [ -n "$_snap" ] && _tx_snap_safe "$_snap" && [ -f "$_snap/touched" ]; then
 		TX_SNAP="$_snap"; tx_rollback; rm -rf "$_snap" 2>/dev/null || true
 	fi
 	rm -f "$LOCK" 2>/dev/null || true
