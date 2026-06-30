@@ -258,7 +258,7 @@ gates:
 ## 75. Release-gates note
 
 The resolved gates (`<output-dir>/sentinel-shield-gates.env`) are what the CI release gate
-consumes — see [`github/workflows/ci-release-gate.yml`](../github/workflows/ci-release-gate.yml)
+consumes — see [`.github/workflows/ci-release-gate.yml`](../.github/workflows/ci-release-gate.yml)
 and [`scripts/enforce-gates.sh`](../scripts/enforce-gates.sh). Under regulated, the three
 gates in this dry run join the strict set as hard blockers in that workflow. The dry run
 deliberately exercises `resolve-gates.sh` + `build-security-summary.sh` in isolation so

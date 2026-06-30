@@ -1,7 +1,7 @@
 # Sentinel Shield — workflow linting (actionlint + zizmor).
 #
 # Meta-CI for the ENGINE repo's own workflows. It lints both the engine CI
-# (github/workflows/*.yml) and the consumer-facing templates (templates/workflows/*.yml)
+# (.github/workflows/*.yml) and the consumer-facing templates (templates/workflows/*.yml)
 # for syntax, shell issues, and CI security smells. This is the authoritative replacement
 # for the local grep/yq structural checks in tests/prod/110-workflows.sh — it does NOT
 # run on the consumer's runner and is NOT part of run-local-pipeline.sh.
@@ -43,9 +43,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # actionlint: syntax + embedded shellcheck. Explicit paths because the engine
-      # stages workflows under github/workflows (promoted to .github/ at release), so
-      # actionlint's default .github/workflows discovery would miss them.
+      # actionlint: syntax + embedded shellcheck. Explicit paths so the consumer TEMPLATES
+      # (templates/workflows/, outside actionlint's default .github/workflows discovery) are
+      # linted alongside the engine CI under .github/workflows.
       # SHELLCHECK_OPTS mirrors the repo's script policy (shellcheck -S error): block on
       # error-severity embedded-shellcheck only, not info-level quoting nits, while
       # actionlint's own rules (pinning, syntax, injection) still apply at all severities.
@@ -55,7 +55,7 @@ jobs:
             -v "${{ github.workspace }}:/repo" -w /repo \
             rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 \
             -color \
-            github/workflows/*.yml templates/workflows/*.yml
+            .github/workflows/*.yml templates/workflows/*.yml
 
       # zizmor: CI security audit (unpinned actions, injection, excessive permissions, …).
       # advanced-security:false + annotations:true surfaces findings as PR annotations
@@ -64,6 +64,6 @@ jobs:
         uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
         with:
           version: "1.26.1"
-          inputs: "github/workflows/ templates/workflows/"
+          inputs: ".github/workflows/ templates/workflows/"
           advanced-security: false
           annotations: true

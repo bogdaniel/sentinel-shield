@@ -2,7 +2,7 @@
 
 All GitHub Actions / images used by Sentinel Shield workflows + templates. SHAs below were
 **resolved from upstream** on 2026-06-09 (not invented). `ci-self-test.yml` (the blocking
-self-gate) is **pinned**. Other internal `github/workflows/*` and all `templates/workflows/*`
+self-gate) is **pinned**. Other internal `.github/workflows/*` and all `templates/workflows/*`
 keep readable tags and are marked **template-only — must pin before production**.
 
 ## GitHub Actions (resolved SHAs)

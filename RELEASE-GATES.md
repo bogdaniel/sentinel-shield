@@ -5,7 +5,7 @@ document defines what is blocking, where, and per adoption mode. It is the
 authoritative source for "is this allowed to ship?".
 
 The aggregating workflow that enforces these gates is
-[`github/workflows/ci-release-gate.yml`](github/workflows/ci-release-gate.yml).
+[`.github/workflows/ci-release-gate.yml`](.github/workflows/ci-release-gate.yml).
 
 ---
 
@@ -186,7 +186,7 @@ The standalone `ci-release-gate.yml` is fail-closed: absent a real summary,
 
 ### Recommended production topology: the combined pipeline
 
-[`github/workflows/ci-pipeline.yml`](github/workflows/ci-pipeline.yml) is the
+[`.github/workflows/ci-pipeline.yml`](.github/workflows/ci-pipeline.yml) is the
 canonical topology. Scanner/quality jobs, the summary build, and the release gate
 run in **one workflow run**, wired with `needs:`; the
 `sentinel-shield-security-summary` artifact is produced and consumed **in-run**:
@@ -206,7 +206,7 @@ strategy.
 ### Self-test before onboarding
 
 Before integrating Sentinel Shield into a real project, the self-test
-([`github/workflows/ci-self-test.yml`](github/workflows/ci-self-test.yml) /
+([`.github/workflows/ci-self-test.yml`](.github/workflows/ci-self-test.yml) /
 [`scripts/self-test.sh`](scripts/self-test.sh)) must be green. It exercises the
 full lifecycle on fixtures and, crucially, **asserts the fallback policy in CI**:
 `report-only + missing → pass`, `baseline/strict/regulated + missing → fail`,

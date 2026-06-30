@@ -253,7 +253,7 @@ cp templates/security-summary.example.json reports/security-summary.json
 sh scripts/enforce-gates.sh --format all   # exit 0 (all zero findings)
 ```
 
-CI: [`github/workflows/ci-release-gate.yml`](github/workflows/ci-release-gate.yml)
+CI: [`.github/workflows/ci-release-gate.yml`](.github/workflows/ci-release-gate.yml)
 runs `resolve-gates.sh`, provides `security-summary.json` (real scanner output, or
 the all-zero example as a clearly-marked fallback), runs `enforce-gates.sh`, uploads
 the resolver + enforcement artifacts, and lets the enforcer's exit code be the
@@ -384,7 +384,7 @@ standalone `ci-release-gate.yml` is fail-closed: with no real summary,
 
 ### Combined reference workflow (recommended)
 
-[`github/workflows/ci-pipeline.yml`](github/workflows/ci-pipeline.yml) is the
+[`.github/workflows/ci-pipeline.yml`](.github/workflows/ci-pipeline.yml) is the
 **canonical** production topology: it runs everything in one workflow run so the
 summary artifact is passed in-run via `needs:` + `upload`/`download-artifact` — no
 cross-run handoff required.
@@ -420,7 +420,7 @@ pin by hand. No pipeline logic changes — only configuration.
 
 ### Self-test workflow
 
-[`github/workflows/ci-self-test.yml`](github/workflows/ci-self-test.yml) makes
+[`.github/workflows/ci-self-test.yml`](.github/workflows/ci-self-test.yml) makes
 Sentinel Shield test **itself** on every push/PR, using the fixtures in
 `templates/raw/`, `templates/profile.yaml`, and the example summary. Jobs:
 
@@ -455,7 +455,7 @@ self-test proves the scripts actually behave — the part YAML linting can't see
 
 ## 7. Example GitHub Actions usage
 
-Copy the workflow templates from [`github/workflows`](github/workflows) into your
+Copy the workflow templates from [`.github/workflows`](.github/workflows) into your
 project's `.github/workflows/` directory and adjust as needed. Every template uses
 minimal token permissions and pins third-party actions.
 

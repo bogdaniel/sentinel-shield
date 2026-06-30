@@ -3,7 +3,7 @@
 #
 # Exercises the core enforcement lifecycle against fixture data so Sentinel Shield
 # continuously tests ITSELF (YAML validity alone does not prove behavior). Used by
-# github/workflows/ci-self-test.yml and runnable locally.
+# .github/workflows/ci-self-test.yml and runnable locally.
 #
 # Subcommands:
 #   syntax     sh -n over all scripts + jq-validate templates/ and schemas/ JSON
@@ -58,7 +58,7 @@ run_syntax() {
 	[ ! -d semgrep/third-party ] || { log_error "stale semgrep/third-party still present (must move under supply-chain/)"; return 1; }
 	[ ! -d semgrep/php ] || { log_error "stale semgrep/php still present (must move under semgrep/app/)"; return 1; }
 	# No app config may reference third-party rules; no broad semgrep/ catch-all.
-	_wf="github/workflows/ci-security.yml github/workflows/ci-pipeline.yml examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+	_wf=".github/workflows/ci-security.yml .github/workflows/ci-pipeline.yml examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
 	for f in $_wf; do
 		# 1) app Semgrep config must point at semgrep/app, never the bare semgrep/ root.
 		if grep -nE -- "--config [^ ]*/semgrep( |\\\\|\"|\$)" "$f" >/dev/null 2>&1; then
@@ -869,7 +869,7 @@ ws_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 # run_workflow_sanity — self-test group 'workflow-sanity' (wired into the dispatch + 'all').
 run_workflow_sanity() {
 	log_info "workflow-sanity: no pull_request_target trigger, permissions present, DAST allowlist, AI non-gating"
-	WF_GH="$ROOT/github/workflows"; WF_TPL="$ROOT/templates/workflows"
+	WF_GH="$ROOT/.github/workflows"; WF_TPL="$ROOT/templates/workflows"
 
 	# 1. No ACTUAL pull_request_target TRIGGER anywhere (comments are fine).
 	_prt=$(grep -rlE '^[[:space:]]+pull_request_target:' "$WF_GH" "$WF_TPL" 2>/dev/null | wc -l | tr -d ' ')

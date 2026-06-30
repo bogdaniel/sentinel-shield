@@ -170,7 +170,7 @@ jobs:
         continue-on-error: true
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest \
-            -color github/workflows/*.yml \
+            -color .github/workflows/*.yml \
             || echo "::warning::actionlint reported findings (advisory; review the log)"
 
       # zizmor is best-effort: it may need setup/network. We do NOT claim zizmor
@@ -179,7 +179,7 @@ jobs:
         continue-on-error: true
         run: |
           if command -v pipx >/dev/null 2>&1; then
-            pipx run zizmor github/workflows \
+            pipx run zizmor .github/workflows \
               || echo "::warning::zizmor reported findings or could not run (advisory)"
           else
             echo "::warning::pipx unavailable; zizmor skipped (not validated)"

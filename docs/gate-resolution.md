@@ -165,7 +165,7 @@ SENTINEL_SHIELD_FAIL_ON_EXPIRED_EXCEPTIONS=true
 
 ## CI integration
 
-[`github/workflows/ci-release-gate.yml`](../github/workflows/ci-release-gate.yml):
+[`.github/workflows/ci-release-gate.yml`](../.github/workflows/ci-release-gate.yml):
 
 1. Runs the resolver and uploads the three artifacts.
 2. Appends `sentinel-shield-gates.env` to `$GITHUB_ENV`.
@@ -212,14 +212,14 @@ So `report-only` can demonstrate the pipeline without scanners, while
 [`security-summary-schema.md`](security-summary-schema.md).
 
 In the recommended combined pipeline
-([`github/workflows/ci-pipeline.yml`](../github/workflows/ci-pipeline.yml)) the
+([`.github/workflows/ci-pipeline.yml`](../.github/workflows/ci-pipeline.yml)) the
 `release-gate` job consumes the **real** `sentinel-shield-security-summary` artifact
 produced by its `build-security-summary` dependency (same run, `needs:`), then runs
 `resolve-gates.sh → select-security-summary.sh → enforce-gates.sh`. Because the
 build job is a dependency, a real summary is always present for `baseline`+.
 
 Gate resolution is exercised on every push/PR by the self-test
-([`github/workflows/ci-self-test.yml`](../github/workflows/ci-self-test.yml)): its
+([`.github/workflows/ci-self-test.yml`](../.github/workflows/ci-self-test.yml)): its
 `lifecycle` job runs `resolve-gates.sh` against `templates/profile.yaml`, and its
 `fallback-policy` job asserts that the resolved mode drives the correct fail-closed
 behavior. So this resolution logic is continuously verified, not just documented.

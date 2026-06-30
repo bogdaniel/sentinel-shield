@@ -1,5 +1,5 @@
 # Sentinel Shield — CodeQL configuration.
-# Referenced by github/workflows/ci-codeql.yml via config-file.
+# Referenced by .github/workflows/ci-codeql.yml via config-file.
 name: "Sentinel Shield CodeQL config"
 
 # Use the security-and-quality query suite for broader coverage. Switch to
