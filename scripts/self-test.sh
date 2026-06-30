@@ -2531,7 +2531,8 @@ run_v2_toolpolicy() {
 	printf '{"packages":[],"content-hash":"seed"}\n' > "$_bd/composer.lock"
 	printf '{"name":"app","lockfileVersion":3}\n'    > "$_bd/package-lock.json"
 	_bd_before=$(cat "$_bd/composer.json" "$_bd/composer.lock" "$_bd/package-lock.json")
-	sh scripts/bootstrap-profile-tools.sh --profile laravel --target "$_bd" --dry-run >/dev/null 2>&1 || true
+	if sh scripts/bootstrap-profile-tools.sh --profile laravel --target "$_bd" --dry-run >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	tpv2_check "(11) bootstrap --dry-run exits 0" "$_rc" "0"
 	tpv2_check "(11) bootstrap --dry-run leaves existing dep files byte-for-byte unchanged" \
 		"$(cat "$_bd/composer.json" "$_bd/composer.lock" "$_bd/package-lock.json")" "$_bd_before"
 	tpv2_check "(11) bootstrap --dry-run writes no NEW files" \
