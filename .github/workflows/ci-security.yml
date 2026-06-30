@@ -70,6 +70,10 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          # gitleaks-action v2 requires a token to enumerate PR commits (read-only;
+          # the default automatic token suffices). Without it the action hard-errors
+          # before scanning. Config + fixture allowlist come from .gitleaks.toml.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   osv-scanner:
     needs: detect-deps
