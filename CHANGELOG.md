@@ -96,8 +96,7 @@ explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live con
 
 ### Deferred
 - Live Laravel/Symfony consumer CI run IDs (beta/RC/GA gate); `--apply` bootstrap exercised against
-  real composer/npm; pre-existing unpinned `@v4` in non-canonical templates
-  (dast/pr-fast/dependency-check/ai-review).
+  real composer/npm.
 
 ## [1.9.1] — Pin managed workflow actions
 

@@ -9,6 +9,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Cancel superseded PR-fast runs when new commits arrive on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
@@ -19,6 +23,7 @@ env:
 jobs:
   pr-fast:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }

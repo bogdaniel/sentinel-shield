@@ -9,14 +9,25 @@
 #   sh scripts/sync-baseline.sh --target <dir>                       # dry-run drift report
 #   sh scripts/sync-baseline.sh --target <dir> --apply --force       # update managed files
 #   sh scripts/sync-baseline.sh --target <dir> --profile laravel --apply --force
+#   sh scripts/sync-baseline.sh --target <dir> --recover             # roll back an interrupted run
 #
 # Categories reported: created | updated | up-to-date | manual-review-needed |
 #                      project-local-preserved
+#
+# TRANSACTIONAL SAFETY (--apply only): a complete plan is emitted before any mutation;
+# every managed file is snapshotted before it is overwritten; a transaction marker is left
+# at .sentinel-shield/operation-lock.json; on failure/interruption the snapshots are
+# restored automatically. A lock from an ungraceful kill is DETECTED on the next --apply and
+# recovered with --recover. installation.json's last_successful_sync/updated_at are bumped
+# ATOMICALLY (temp + mv) and never partially.
+#
+# Exit codes: 0 success; 2 invalid config/input; 4 execution error / interrupted prior
+# operation (stale operation-lock; run --recover).
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
-TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; NONINTERACTIVE=0
+TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; NONINTERACTIVE=0; RECOVER=0
 
 # usage — print CLI usage/help to stdout.
 usage() {
@@ -29,6 +40,7 @@ Usage: sync-baseline.sh --target <dir> [--profile <name>] [--apply] [--force]
   --force            Update MANAGED files (overwrite-if-force / sync-managed-block) only.
   --emit-plan <path> Write the read-only tool resolution plan (JSON) to <path> while syncing.
   --non-interactive  Never prompt (accepted for CI parity; this sync does not prompt).
+  --recover          Roll back an interrupted prior run (restore snapshots, clear the lock) and exit.
   -h, --help         Show help.
 NEVER overwrites: accepted-risks.json, phpstan-baseline.neon, project-owned (create-if-missing)
 files, or project code. Those are reported as project-local-preserved.
@@ -44,6 +56,7 @@ while [ $# -gt 0 ]; do
 		--dry-run) APPLY=0; shift ;;
 		--emit-plan) EMIT_PLAN="${2:?--emit-plan requires a value}"; shift 2 ;;
 		--non-interactive) NONINTERACTIVE=1; shift ;;
+		--recover) RECOVER=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) echo "error: unknown argument '$1'" >&2; usage; exit 2 ;;
 	esac
@@ -52,6 +65,90 @@ done
 [ -n "$TARGET" ] || { echo "error: --target is required" >&2; usage; exit 2; }
 [ -d "$TARGET/.sentinel-shield" ] || { echo "error: '$TARGET/.sentinel-shield' not found — run install-baseline.sh first." >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "error: jq is required" >&2; exit 2; }
+
+# --- transaction framework (operation-lock + snapshot/restore) ----------------
+# Mutation is wrapped in a transaction: a marker is left at operation-lock.json, every
+# overwritten/created file is snapshotted, and on failure the snapshots are restored.
+SS_DIR="$TARGET/.sentinel-shield"
+LOCK="$SS_DIR/operation-lock.json"
+TX_ACTIVE=0; TX_SNAP=""; SUM=""
+now_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+
+tx_snapshot() { # <relpath>
+	[ -n "$TX_SNAP" ] || return 0
+	if [ -e "$TARGET/$1" ]; then
+		mkdir -p "$TX_SNAP/snap/$(dirname -- "$1")"
+		cp -p "$TARGET/$1" "$TX_SNAP/snap/$1"
+	fi
+	printf '%s\n' "$1" >> "$TX_SNAP/touched"
+}
+tx_rollback() {
+	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		if [ -e "$TX_SNAP/snap/$_rel" ]; then
+			mkdir -p "$TARGET/$(dirname -- "$_rel")"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
+		else
+			rm -f "$TARGET/$_rel"
+		fi
+	done < "$TX_SNAP/touched"
+}
+tx_begin() {
+	mkdir -p "$SS_DIR"
+	TX_SNAP="$SS_DIR/.txn-$$"
+	mkdir -p "$TX_SNAP"
+	: > "$TX_SNAP/touched"
+	_lk="$LOCK.tmp.$$"
+	jq -n --arg op "sync" --arg at "$(now_utc)" --argjson pid "$$" --arg snap "$TX_SNAP" \
+		'{operation:$op, started_at:$at, pid:$pid, snapshot_dir:$snap}' > "$_lk" \
+		&& mv -- "$_lk" "$LOCK"
+	TX_ACTIVE=1
+}
+tx_commit() {
+	TX_ACTIVE=0
+	rm -f "$LOCK" 2>/dev/null || true
+	[ -n "$TX_SNAP" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
+	TX_SNAP=""
+}
+tx_detect_stale() {
+	[ -f "$LOCK" ] || return 0
+	_op=$(jq -r '.operation // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
+	_at=$(jq -r '.started_at // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
+	echo "error: an interrupted Sentinel Shield operation was detected." >&2
+	echo "       a previous '$_op' (started $_at) did not finish; $LOCK is present." >&2
+	echo "       recover (roll back the partial run) with:" >&2
+	echo "         sh scripts/sync-baseline.sh --target '$TARGET' --recover" >&2
+	exit 4
+}
+tx_recover() {
+	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
+	_snap=$(jq -r '.snapshot_dir // empty' "$LOCK" 2>/dev/null || true)
+	if [ -n "$_snap" ] && [ -f "$_snap/touched" ]; then
+		TX_SNAP="$_snap"; tx_rollback; rm -rf "$_snap" 2>/dev/null || true
+	fi
+	rm -f "$LOCK" 2>/dev/null || true
+	echo "Recovery complete: rolled back the interrupted operation and cleared $LOCK."
+	exit 0
+}
+ss_cleanup() {
+	_rc=$?
+	trap - EXIT INT TERM
+	if [ "${TX_ACTIVE:-0}" = "1" ]; then
+		echo "[sentinel-shield][warn] sync: operation failed/interrupted — rolling back snapshotted files." >&2
+		tx_rollback
+		rm -f "$LOCK" 2>/dev/null || true
+		[ -n "${TX_SNAP:-}" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
+		TX_ACTIVE=0
+		[ "$_rc" -eq 0 ] && _rc=4
+	fi
+	[ -n "${SUM:-}" ] && rm -f "$SUM" 2>/dev/null || true
+	exit "$_rc"
+}
+trap ss_cleanup EXIT INT TERM
+
+# --recover is a standalone mode: restore + clear the lock, then exit.
+[ "$RECOVER" -eq 1 ] && tx_recover
 
 MANIFEST=""
 for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PROFILE.manifest.json"; do
@@ -79,7 +176,7 @@ PROTECT=" .sentinel-shield/accepted-risks.json phpstan-baseline.neon "
 for p in $(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null); do PROTECT="$PROTECT$p "; done
 is_protected() { case "$PROTECT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-SUM=$(mktemp); : > "$SUM"; trap 'rm -f "$SUM"' EXIT INT TERM
+SUM=$(mktemp); : > "$SUM"
 
 sync_entry() { # <source> <target> <mode>
 	_src="$ROOT/$1"; _tgt="$TARGET/$2"; _mode="$3"
@@ -89,7 +186,7 @@ sync_entry() { # <source> <target> <mode>
 	[ -e "$_src" ] || { echo "skip (missing in Sentinel Shield): $1"; echo skip >> "$SUM"; return; }
 	if [ ! -e "$_tgt" ]; then
 		if [ "$_mode" = "manual" ]; then echo "manual-review-needed (absent; copy if wanted): $2"; echo manual >> "$SUM"; return; fi
-		if [ "$APPLY" -eq 1 ]; then mkdir -p "$(dirname "$_tgt")"; cp "$_src" "$_tgt"; echo "created (was missing): $2"; else echo "would create (missing): $2"; fi
+		if [ "$APPLY" -eq 1 ]; then tx_snapshot "$2"; mkdir -p "$(dirname "$_tgt")"; cp "$_src" "$_tgt"; echo "created (was missing): $2"; else echo "would create (missing): $2"; fi
 		echo created >> "$SUM"; return
 	fi
 	if diff "$_src" "$_tgt" >/dev/null 2>&1; then echo "up-to-date: $2"; echo uptodate >> "$SUM"; return; fi
@@ -99,7 +196,7 @@ sync_entry() { # <source> <target> <mode>
 			echo "project-local-preserved (project owns it; NOT overwritten): $2"; echo preserved >> "$SUM" ;;
 		overwrite-if-force|sync-managed-block)
 			if [ "$APPLY" -eq 1 ] && [ "$FORCE" -eq 1 ]; then
-				cp "$_src" "$_tgt"; echo "updated (managed): $2"; echo updated >> "$SUM"
+				tx_snapshot "$2"; cp "$_src" "$_tgt"; echo "updated (managed): $2"; echo updated >> "$SUM"
 			else
 				echo "manual-review-needed (managed drift; --apply --force to update): $2"; echo manual >> "$SUM"
 			fi ;;
@@ -107,8 +204,36 @@ sync_entry() { # <source> <target> <mode>
 	esac
 }
 
+# Emit the COMPLETE plan BEFORE any mutation, then open the transaction (apply only). A stale
+# lock from a prior ungraceful kill is detected here and blocks until --recover.
+echo "PLAN ($([ "$APPLY" -eq 1 ] && echo APPLY || echo dry-run)) — managed files updated only with --force; protected files never written:"
+jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | "  - [\(.mode)] \(.source) -> \(.target)"' "$MANIFEST"
+echo "  protected (never written):$PROTECT"
+echo "------------------------------------------------------------"
+if [ "$APPLY" -eq 1 ]; then
+	tx_detect_stale
+	tx_begin
+fi
+
 ENTRIES=$(jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | "\(.source)\t\(.target)\t\(.mode)"' "$MANIFEST")
 printf '%s\n' "$ENTRIES" | while IFS="$(printf '\t')" read -r s t m; do [ -n "$s" ] || continue; sync_entry "$s" "$t" "$m"; done
+
+# Record the successful sync in installation.json (ATOMIC temp + mv), then close the txn.
+# Only bump an EXISTING record — sync never creates installation.json (that is install/migrate).
+if [ "$APPLY" -eq 1 ]; then
+	_inst="$SS_DIR/installation.json"
+	if [ -f "$_inst" ] && jq -e . "$_inst" >/dev/null 2>&1; then
+		tx_snapshot ".sentinel-shield/installation.json"
+		_now=$(now_utc); _tmp="$_inst.tmp.$$"
+		if jq --arg t "$_now" '.last_successful_sync=$t | .updated_at=$t' "$_inst" > "$_tmp"; then
+			mv -- "$_tmp" "$_inst"
+		else
+			rm -f "$_tmp" 2>/dev/null || true
+			echo "[sentinel-shield][warn] sync: could not update installation.json metadata." >&2
+		fi
+	fi
+	tx_commit
+fi
 
 echo "------------------------------------------------------------"
 echo "SUMMARY: created=$(grep -c '^created' "$SUM" 2>/dev/null || echo 0)  updated=$(grep -c '^updated' "$SUM" 2>/dev/null || echo 0)  up-to-date=$(grep -c '^uptodate' "$SUM" 2>/dev/null || echo 0)  manual-review-needed=$(grep -c '^manual' "$SUM" 2>/dev/null || echo 0)  project-local-preserved=$(grep -c '^preserved' "$SUM" 2>/dev/null || echo 0)  skipped=$(grep -c '^skip' "$SUM" 2>/dev/null || echo 0)"

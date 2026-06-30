@@ -43,18 +43,20 @@ templates (`templates/workflows/sentinel-shield*.yml`) are installed/synced like
 any other managed file and call the engine scripts via `SENTINEL_SHIELD_PATH`.
 
 ```sh
-# 1. Bump the engine ref.
-SENTINEL_SHIELD_REF=v2.0.0
-git -C "$SENTINEL_SHIELD_PATH" checkout "$SENTINEL_SHIELD_REF"
+# 1. Pin + acquire the engine at an IMMUTABLE ref (tag or full 40-char SHA, never a branch).
+SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
 
-# 2. Sync the managed workflow files (dry-run, then apply).
-sh scripts/sync-baseline.sh --target . --profile laravel
-sh scripts/sync-baseline.sh --target . --profile laravel --apply --force
+# 2. Sync the managed workflow files FROM the acquired checkout (dry-run, then apply).
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile laravel
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile laravel --apply --force
 
-# 3. Bump SENTINEL_SHIELD_REF in the consumer's .github/workflows/*.yml to the same tag.
+# 3. Bump SENTINEL_SHIELD_REF in the consumer's .github/workflows/*.yml to the same ref.
 
 # 4. Confirm the stage plan matches what CI runs.
-sh scripts/resolve-workflow-plan.sh --profile laravel --stage pr
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-workflow-plan.sh" --profile laravel --stage pr
 ```
 
 Workflow files are **managed** (`overwrite-if-force` / `sync-managed-block`), so
@@ -92,7 +94,7 @@ A tool whose **policy** is `external` (provided/run outside Sentinel Shield) is 
 gated regardless of mode — it ranks below `required` in the policy precedence.
 
 ```sh
-sh scripts/doctor.sh --target . --profile laravel --tool-mode require-existing
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target . --profile laravel --tool-mode require-existing
 ```
 
 This is distinct from the provisioning `--tool-mode` on `install-baseline.sh`

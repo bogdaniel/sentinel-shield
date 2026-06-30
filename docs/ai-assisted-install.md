@@ -15,8 +15,22 @@ it's an additional one.
 ## 1. What it is
 
 A structured, copy-paste prompt that drives an AI agent through the **same safe install flow** a
-careful human would follow: audit → git hygiene → language baselines → profile selection →
-`install-baseline` → practical gate wiring → local + CI validation → docs → a final report.
+careful human would follow: audit → git hygiene → **acquire an immutable engine checkout** →
+profile selection → `install-baseline` → practical gate wiring → local + CI validation → docs →
+a final report.
+
+The agent pins an **immutable** ref (a tag or full 40-char SHA — never a moving branch, never an
+unreleased-GA placeholder) and acquires the engine into `$SENTINEL_SHIELD_PATH` with
+`acquire-sentinel-shield.sh --verify`. **Every** engine script then runs from that checkout
+(`"$SENTINEL_SHIELD_PATH/scripts/…"`) — the acquire bootstrap is the only exception, because it
+*creates* the checkout:
+
+```sh
+SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
+```
 
 ## 2. When to use it
 
@@ -52,7 +66,8 @@ Match the stack: `laravel`, `symfony`, `react`, `node`, `docker`, `php-library`,
 (`laravel-react-docker`, `node-react`), or the opt-in `hardened-enterprise`. List them:
 
 ```sh
-ls -d profiles/*/ profiles/combinations/*.manifest.json
+# list profiles FROM THE ACQUIRED CHECKOUT (not the consumer repo root)
+ls -d "$SENTINEL_SHIELD_PATH"/profiles/*/ "$SENTINEL_SHIELD_PATH"/profiles/combinations/*.manifest.json
 ```
 See [`install-sync-ux.md`](install-sync-ux.md) and [`profile-adoption-guide.md`](profile-adoption-guide.md).
 
@@ -83,16 +98,21 @@ Start with the **PR-fast** gate (proven), pinned. Add main-gate scanners as advi
 ## 11. How to validate locally
 
 ```sh
-sh scripts/doctor.sh --target .          # preflight
-sh scripts/self-test.sh all              # engine self-test (if working in the SS repo)
-# confirm a real reports/security-summary.json is produced by your pipeline
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target .          # preflight
+
+# Authoritative local check: reproduces the CI release gate (produces a REAL
+# reports/security-summary.json and runs enforce-gates). The opportunistic
+# run-local-scanner-sweep.sh is NOT authoritative — a clean sweep never proves a pass.
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile <profile> --target . --stage pr
+
+sh "$SENTINEL_SHIELD_PATH/scripts/self-test.sh" all              # engine self-test (run inside the checkout)
 ```
 
 ## 12. How to report failures honestly
 
 If a step fails, the agent records the **exact** error and stops — it does **not** fake a clean
 result or suppress findings. Share diagnostics safely with
-`sh scripts/support-bundle.sh` ([`troubleshooting.md`](troubleshooting.md)).
+`sh "$SENTINEL_SHIELD_PATH/scripts/support-bundle.sh"` ([`troubleshooting.md`](troubleshooting.md)).
 
 ---
 

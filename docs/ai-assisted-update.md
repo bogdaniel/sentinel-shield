@@ -35,18 +35,26 @@ preflight + validate → bump the ref in the workflows → a final report.
 # detect what's installed
 jq '{version, profile, profile_schema, tool_mode}' .sentinel-shield/installation.json
 
+# pin an IMMUTABLE ref (tag or full 40-char SHA, never a branch / unreleased-GA
+# placeholder) and acquire the engine; every command below runs FROM that checkout
+SENTINEL_SHIELD_REF=<immutable tag or full SHA>
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
+
 # preview the new release's tool plan (read-only)
-sh scripts/resolve-tool-plan.sh --profile <profile> --target . --format text
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-tool-plan.sh" --profile <profile> --target . --format text
 
 # sync managed files: DRY-RUN, then apply after review
-sh scripts/sync-baseline.sh --target . --profile <profile>
-sh scripts/sync-baseline.sh --target . --profile <profile> --apply --force
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile <profile>
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile <profile> --apply --force
 
 # provision newly-required tools (pick a mode — see tool-provisioning.md)
-sh scripts/install-baseline.sh --target . --profile <profile> --tool-mode require-existing --apply
+sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile <profile> --tool-mode require-existing --apply
 
-# preflight + confirm a real summary is produced
-sh scripts/doctor.sh --target . --profile <profile>
+# preflight, then reproduce the CI gate locally (authoritative; produces a REAL summary)
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target . --profile <profile>
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile <profile> --target . --stage pr
 ```
 
 It records the new installed tag and profile, and reports drift and any
@@ -74,15 +82,17 @@ so it never clobbers project-local decisions or your config.
 ## 6. How rollback works
 
 Tags are immutable. If anything looks wrong, set `SENTINEL_SHIELD_REF` back to the
-prior tag and re-run `sync-baseline.sh --apply --force`;
-`bootstrap-profile-tools.sh` rolls back dependency files automatically on failure.
+prior immutable ref, re-acquire (`acquire-sentinel-shield.sh … --verify`), and
+re-run `sync-baseline.sh --apply --force` from that checkout;
+`bootstrap-profile-tools.sh` rolls back dependency files automatically on failure
+(npm/pnpm/yarn/composer reinstall steps when it reports **rollback-incomplete**).
 Full options: [`upgrading.md`](upgrading.md#rollback).
 
 ## 7. How to report honestly
 
 If a step fails, the agent records the **exact** error and stops — it does not
 fake a clean result or suppress findings. Share diagnostics safely with
-`sh scripts/support-bundle.sh` ([`troubleshooting.md`](troubleshooting.md)).
+`sh "$SENTINEL_SHIELD_PATH/scripts/support-bundle.sh"` ([`troubleshooting.md`](troubleshooting.md)).
 
 ---
 

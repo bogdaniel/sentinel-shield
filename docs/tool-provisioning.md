@@ -17,22 +17,52 @@ to write.
 | `require-existing` | Installs no packages. Validates the project **before** writing any files. | **Fails preflight** (exit 1). Recommended-but-absent → warning. |
 | `bootstrap-tools` | Inspects runtime versions and prints the exact install plan; with `--apply`, installs the packages, validates lockfiles, runs tests, and **rolls back** on any failure. | Installed if `install-compatible`; a `conflict` is reported, not forced. |
 
+Acquire the engine at an **immutable** ref first (a tag or full 40-char SHA,
+never a moving branch); every command below runs **from that checkout**, not from
+the consumer repo's own `scripts/`. The acquire bootstrap is the one exception —
+it *creates* the checkout (see [`upgrading.md`](upgrading.md)).
+
 ```sh
+# 0. Pin + acquire the engine (the bootstrap is the only script not run from the checkout).
+SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
+
 # config-only (default): SS files only, report missing required tools
-sh scripts/install-baseline.sh --target . --profile laravel --apply
+sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile laravel --apply
 
 # require-existing: fail fast if a required tool's executable is absent
-sh scripts/install-baseline.sh --target . --profile laravel --tool-mode require-existing --apply
+sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile laravel --tool-mode require-existing --apply
 
 # bootstrap-tools: install the profile's required packages, with rollback
-SENTINEL_SHIELD_REF=v2.0.0 \
-sh scripts/install-baseline.sh --target . --profile laravel --tool-mode bootstrap-tools --apply
+sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile laravel --tool-mode bootstrap-tools --apply
 ```
 
 > Detection is deterministic and read-only: a tool is "present" when one of its
 > `executable[]` entries resolves (first match wins, e.g. `vendor/bin/phpstan`
 > then `phpstan`). External/CI-provided scanners with no local executable
 > (gitleaks, semgrep) are not validated locally.
+
+**`config-only` is not a pass.** It installs config/managed files and **never**
+edits dependency manifests, so the installer may complete cleanly even when a
+required tool is absent — but that absence is still a **configuration failure**,
+not a green result. `doctor.sh` reports it (a **warning** under `config-only`,
+exit 3 under `require-existing`/`bootstrap-tools`), and the authoritative local
+pipeline ([`run-local-pipeline.sh`](workflow-execution-model.md)) and the CI
+release gate **fail** — a required tool that is `unavailable`/`not-configured`
+becomes a `required_tool_failures` count that `enforce-gates.sh` folds into a gate
+failure (exit 1). It stays failing until the tool is installed (any mode) or
+covered by an unexpired **control-waiver** (`.sentinel-shield/control-waivers.json`).
+Installing config alone never makes a missing required tool pass.
+
+- **`require-existing`** installs **no** dependencies. It validates the project
+  **before** writing any files: a required-but-absent tool **fails preflight**
+  (exit 1); a recommended-but-absent tool is a **warning** only.
+- **`bootstrap-tools`** is **dry-run by default**; writing requires explicit
+  `--apply`. It checks **version compatibility first** (never downgrades the app /
+  framework / prod deps), installs **transactionally**, and **rolls back** the
+  dependency files on any install/lockfile/test failure (see below).
 
 ## Preview the plan before doing anything (read-only)
 
@@ -41,9 +71,9 @@ project (installed PHP/Composer, Node/npm, framework) and classify every tool
 **without** mutating anything or hitting the network:
 
 ```sh
-sh scripts/resolve-tool-plan.sh --profile laravel --target . --format text
-sh scripts/resolve-tool-plan.sh --profile laravel --target . --format json   # machine-readable
-sh scripts/bootstrap-profile-tools.sh --profile laravel --target .           # dry-run (default)
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-tool-plan.sh" --profile laravel --target . --format text
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-tool-plan.sh" --profile laravel --target . --format json   # machine-readable
+sh "$SENTINEL_SHIELD_PATH/scripts/bootstrap-profile-tools.sh" --profile laravel --target .           # dry-run (default)
 ```
 
 `install-baseline.sh --emit-plan <path>` writes the same JSON plan while it runs.
@@ -78,10 +108,18 @@ resolver choose) or a literal constraint string in the manifest.
 
 Rollback restores the snapshotted manifests/lockfiles (`composer.json/lock`,
 `package.json/lock`, `pnpm-lock.yaml`, `yarn.lock`). Reconstructing the installed
-tree (`node_modules/`) from the restored lockfile needs the package manager
-present; if it is unavailable the manifests are restored but the install tree may
-not be — reported as **rollback-incomplete** (re-run the package manager's install
-to finish).
+tree (`node_modules/`, `vendor/`) from the restored lockfile needs the package
+manager present; if it is unavailable the manifests are restored but the install
+tree may not be — reported as **rollback-incomplete**. Finish it by re-running the
+install **for the lockfile that was restored** (frozen/immutable, so the restored
+lockfile wins — never a re-resolve):
+
+```sh
+npm ci                                             # package-lock.json
+pnpm install --frozen-lockfile                     # pnpm-lock.yaml
+yarn install --immutable                           # yarn.lock
+composer install --no-interaction --prefer-dist    # composer.lock
+```
 
 It never silently mutates dependency files — `--apply` is always explicit, and
 nothing is committed for you. `install-baseline.sh --tool-mode bootstrap-tools

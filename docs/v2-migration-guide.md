@@ -32,23 +32,29 @@ see [`upgrading.md`](upgrading.md).
 ## Migration steps
 
 ```sh
-# 1. Bump the engine ref to v2.0.0.
-SENTINEL_SHIELD_REF=v2.0.0
-git -C "$SENTINEL_SHIELD_PATH" fetch --tags && git -C "$SENTINEL_SHIELD_PATH" checkout "$SENTINEL_SHIELD_REF"
+# 1. Pin the IMMUTABLE v2 engine ref (a published v2 tag or a full 40-char SHA —
+#    never a moving branch, never an unreleased-GA placeholder) and acquire it.
+SENTINEL_SHIELD_REF=<immutable v2 tag or full SHA>      # never main/master/HEAD/latest
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
+
+# Every command below runs FROM the acquired checkout, not the consumer repo's scripts/.
 
 # 2. See the tool plan the v2 profile expects (read-only, no mutation).
-sh scripts/resolve-tool-plan.sh --profile laravel --target /path/to/project --format text
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-tool-plan.sh" --profile laravel --target /path/to/project --format text
 
 # 3. Sync managed files — DRY-RUN, review, then apply.
-sh scripts/sync-baseline.sh --target /path/to/project --profile laravel
-sh scripts/sync-baseline.sh --target /path/to/project --profile laravel --apply --force
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target /path/to/project --profile laravel
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target /path/to/project --profile laravel --apply --force
 
 # 4. Provision any newly-required tools (choose a mode — see tool-provisioning.md).
-sh scripts/install-baseline.sh --target /path/to/project --profile laravel \
+sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target /path/to/project --profile laravel \
     --tool-mode require-existing            # dry-run by default; fails if a required tool is absent
 
-# 5. Preflight and confirm a real security-summary.json is produced.
-sh scripts/doctor.sh --target /path/to/project --profile laravel
+# 5. Preflight, then reproduce the CI gate locally (authoritative; produces a REAL summary).
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target /path/to/project --profile laravel
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile laravel --target /path/to/project --stage pr
 ```
 
 `sync-baseline.sh` is **dry-run by default**; `install-baseline.sh` is too (add
@@ -86,8 +92,24 @@ You do not have to enable everything at once.
 
 ## Rollback
 
-Set `SENTINEL_SHIELD_REF` back to your prior tag and re-run
-`sync-baseline.sh --apply --force`. Because the tool-policy additions are
-default-off where they would change behavior, reverting the ref reverts the
-behavior. Full rollback options: [`upgrading.md`](upgrading.md#rollback).
+Set `SENTINEL_SHIELD_REF` back to your prior immutable ref, re-acquire
+(`acquire-sentinel-shield.sh … --verify`), and re-run
+`sync-baseline.sh --apply --force` from that checkout. Because the tool-policy
+additions are default-off where they would change behavior, reverting the ref
+reverts the behavior.
+
+If `bootstrap-tools --apply` touched dependency files, `bootstrap-profile-tools.sh`
+auto-rolls them back on any install/test failure; when it reports
+**rollback-incomplete** (package manager absent), finish the restore yourself with
+the command for the lockfile that was restored (frozen, so the restored lockfile
+wins):
+
+```sh
+npm ci                                             # package-lock.json
+pnpm install --frozen-lockfile                     # pnpm-lock.yaml
+yarn install --immutable                           # yarn.lock
+composer install --no-interaction --prefer-dist    # composer.lock
+```
+
+Full rollback options: [`upgrading.md`](upgrading.md#rollback).
 </content>

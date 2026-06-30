@@ -114,8 +114,9 @@ sentinel-shield/
 # 1. Detect the stack of a project you want to onboard.
 sh scripts/detect-stack.sh
 
-# 2. Run the local security sweep (skips tools that are not installed).
-sh scripts/run-local-security.sh
+# 2. Quick, NON-AUTHORITATIVE local sweep (skips tools that are not installed; a
+#    SKIP is not a pass, and it produces no gate evidence).
+sh scripts/run-local-scanner-sweep.sh --target /path/to/your/project
 
 # 3. Generate a baseline report.
 sh scripts/generate-report.sh
@@ -125,7 +126,16 @@ sh scripts/install-baseline.sh --target /path/to/your/project
 
 # 5. Apply for real once you have reviewed the dry-run output.
 sh scripts/install-baseline.sh --target /path/to/your/project --apply
+
+# 6. AUTHORITATIVE local check: reproduce the CI release gate locally (produces a
+#    REAL reports/security-summary.json and runs enforce-gates). Only this proves a pass.
+sh scripts/run-local-pipeline.sh --profile laravel --target /path/to/your/project --stage pr
 ```
+
+> The opportunistic sweep (`run-local-scanner-sweep.sh`, formerly
+> `run-local-security.sh`) is a developer convenience — it may skip missing tools
+> and never emits gate evidence. The **authoritative** local equivalent of the CI
+> gate is `run-local-pipeline.sh`; a clean sweep is never proof that a project passes.
 
 ---
 
@@ -404,8 +414,9 @@ scanners just produced.
 **Adapting for Laravel + React + Docker.** Set `.sentinel-shield/profile.yaml`
 (`type`, `criticality`, `mode`); the stack jobs already detect each ecosystem. Add
 your real test step that writes a normalized `reports/raw/tests.json`
-(`{ "failures": N, "errors": N }`), tune scanner flags, and pin the actions to SHAs.
-No pipeline logic changes — only configuration.
+(`{ "failures": N, "errors": N }`) and tune scanner flags. The shipped templates
+already pin every third-party action to a full commit SHA, so there is nothing to
+pin by hand. No pipeline logic changes — only configuration.
 
 ### Self-test workflow
 

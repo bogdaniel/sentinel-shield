@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sentinel-shield/schemas/release-evidence.schema.json",
+  "title": "Sentinel Shield release evidence record",
+  "description": "Records the REAL consumer-project CI runs that back a Sentinel Shield release stage. Lives at evidence/releases/<version>.json. The machinery is fail-closed: an empty consumer_runs[] with all required_evidence flags false is the honest 'no proof yet' state and MUST NOT satisfy any stage gate. Contains NO secrets, tokens, or credentials.",
+  "type": "object",
+  "required": [
+    "version",
+    "stage",
+    "engine_commit",
+    "consumer_runs",
+    "required_evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Release version this evidence file documents, e.g. '2.0.0' or '2.0.0-beta.1'."
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["alpha", "beta", "rc", "ga"],
+      "description": "Release stage this version targets."
+    },
+    "engine_commit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Full Sentinel Shield engine commit SHA the consumer runs exercised. Empty placeholders are not allowed once real evidence exists; use 'unknown' only for honest no-evidence drafts."
+    },
+    "consumer_runs": {
+      "type": "array",
+      "description": "One entry per real consumer-project workflow run. Empty array means no proof has been collected yet.",
+      "items": {
+        "type": "object",
+        "required": [
+          "stack",
+          "repository",
+          "commit",
+          "profile",
+          "tool_mode",
+          "workflow_run_id",
+          "result",
+          "artifacts_verified"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "stack": {
+            "type": "string",
+            "enum": [
+              "laravel",
+              "symfony",
+              "php_library",
+              "node_react",
+              "combined_profile",
+              "bootstrap_apply",
+              "rollback_npm",
+              "rollback_pnpm",
+              "rollback_yarn"
+            ],
+            "description": "The evidence dimension this run proves. Mirrors a required_evidence key."
+          },
+          "repository": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Consumer repository the run executed against, e.g. 'org/laravel-demo'."
+          },
+          "commit": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Consumer-project commit SHA the run exercised."
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Sentinel Shield profile used, e.g. 'laravel' or 'laravel-react-docker'."
+          },
+          "tool_mode": {
+            "type": "string",
+            "enum": ["config-only", "require-existing", "bootstrap-tools"],
+            "description": "Provisioning mode used (matches install-baseline.sh --tool-mode)."
+          },
+          "workflow_run_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Provider run identifier (e.g. GitHub Actions run id / URL). Non-empty proves a real run; never fabricate."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["success", "failure", "cancelled", "skipped"],
+            "description": "Final result of the run. Only 'success' counts toward a stage gate."
+          },
+          "artifacts_verified": {
+            "type": "boolean",
+            "description": "True when the run's published artifacts (reports/SBOM) were fetched and verified, not merely assumed."
+          }
+        }
+      }
+    },
+    "required_evidence": {
+      "type": "object",
+      "description": "Honest per-dimension proof flags. A flag is true ONLY when a successful, artifact-verified consumer run backs it. All-false is the legitimate no-evidence-yet state.",
+      "required": [
+        "laravel",
+        "symfony",
+        "php_library",
+        "node_react",
+        "combined_profile",
+        "bootstrap_apply",
+        "rollback_npm",
+        "rollback_pnpm",
+        "rollback_yarn"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "laravel": { "type": "boolean", "description": "Laravel consumer run verified." },
+        "symfony": { "type": "boolean", "description": "Symfony consumer run verified." },
+        "php_library": { "type": "boolean", "description": "PHP library consumer run verified." },
+        "node_react": { "type": "boolean", "description": "Node/React consumer run verified." },
+        "combined_profile": { "type": "boolean", "description": "Combination profile (php+node) run verified." },
+        "bootstrap_apply": { "type": "boolean", "description": "bootstrap-tools apply run verified." },
+        "rollback_npm": { "type": "boolean", "description": "npm rollback path verified." },
+        "rollback_pnpm": { "type": "boolean", "description": "pnpm rollback path verified." },
+        "rollback_yarn": { "type": "boolean", "description": "yarn rollback path verified." }
+      }
+    }
+  }
+}

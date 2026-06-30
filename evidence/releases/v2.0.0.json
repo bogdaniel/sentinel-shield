@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "stage": "ga",
+  "engine_commit": "unknown",
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false,
+    "symfony": false,
+    "php_library": false,
+    "node_react": false,
+    "combined_profile": false,
+    "bootstrap_apply": false,
+    "rollback_npm": false,
+    "rollback_pnpm": false,
+    "rollback_yarn": false
+  }
+}

@@ -18,6 +18,10 @@ on:
 permissions:
   contents: read
   security-events: write   # CodeQL upload
+# Release-gate runs must complete; serialize per ref but never cancel an in-flight gate.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
@@ -28,6 +32,7 @@ env:
 jobs:
   main-gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }

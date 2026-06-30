@@ -2,10 +2,11 @@
 # Sentinel Shield — upgrade planner. MUTATES NOTHING.
 #
 # Compares an installed Sentinel Shield baseline against a target version/profile
-# and emits a human- or machine-readable upgrade plan: SS version delta, profile
-# tool-policy schema drift, managed files that sync will overwrite, project-owned
-# files/configs sync will preserve, required-tool changes, dependency
-# requirements, workflow changes, and breaking-change / action-item heuristics.
+# and emits a human- or machine-readable upgrade plan: SS version/tag/SHA delta,
+# profile tool-policy schema drift, managed-file drift that sync will overwrite,
+# project-owned files/configs sync will preserve, required-tool changes, changed
+# runners, dependency requirements, workflow changes, breaking-change heuristics,
+# required migration steps, and a rollback strategy.
 #
 # READ-ONLY: the ONLY thing this writes is the optional --output report file.
 # It never touches the project, the source tree, or the install record.
@@ -86,10 +87,25 @@ _to_major=$(printf '%s' "$TO" | cut -d. -f1)
 MAJOR_BUMP=false
 [ "$_from_major" != "$_to_major" ] && MAJOR_BUMP=true
 
+# ref_kind <ref> — classify an installed/target reference as a semver, a vN.N.N
+# tag, a commit SHA, or other. Lets the plan report version/tag/SHA explicitly and
+# warn when a non-immutable reference (a moving branch) would be pinned.
+ref_kind() {
+	case "$1" in
+		v[0-9]*) printf 'tag' ;;
+		[0-9]*.[0-9]*) printf 'semver' ;;
+		*) if printf '%s' "$1" | grep -Eq '^[0-9a-f]{7,40}$'; then printf 'sha'; else printf 'other'; fi ;;
+	esac
+}
+FROM_KIND=$(ref_kind "$FROM")
+TO_KIND=$(ref_kind "$TO")
+
 # --- build the plan JSON from the manifest (pure read) -----------------------
 PLAN=$(jq -n \
 	--arg from "$FROM" \
 	--arg to "$TO" \
+	--arg from_kind "$FROM_KIND" \
+	--arg to_kind "$TO_KIND" \
 	--arg profile "$PROFILE" \
 	--argjson major_bump "$MAJOR_BUMP" \
 	--argjson installed_schema "$INSTALLED_SCHEMA" \
@@ -108,15 +124,23 @@ PLAN=$(jq -n \
 	| ([ $required[] | select(. as $r | ($installed_enabled | index($r)) == null) ]) as $added
 	| ([ $installed_enabled[] | select(. as $e | (($man.tools // {}) | has($e)) | not) ]) as $removed
 	| ($installed_schema != null and $installed_schema != $target_schema) as $schema_drift
+	| ([ ($man.tools // {}) | to_entries[] | .key as $k | select(.value.runner != null) | { tool: $k, runner: .value.runner, newly_required: (($added | index($k)) != null) } ]) as $runners
+	| ([ $runners[] | select(.newly_required) ]) as $changed_runners
 	| {
-		sentinel_shield: { from: $from, to: $to, major_bump: $major_bump },
+		sentinel_shield: {
+			from: $from, to: $to, major_bump: $major_bump,
+			from_ref_kind: $from_kind, to_ref_kind: $to_kind
+		},
 		profile: $profile,
 		profile_schema: { installed: $installed_schema, target: $target_schema, drift: $schema_drift },
 		managed_files: $managed,
+		managed_file_drift: $managed,
 		project_owned_files: ($owned + [ $configs[] | select(.classification == "create-if-missing" or .classification == "never-touch" or .classification == "project-owned") | .path ] | unique),
+		project_owned_conflicts: [],
 		manual_files: $manual,
 		required_tools: $required,
 		tool_changes: { added: $added, removed: $removed },
+		changed_runners: $changed_runners,
 		project_owned_configs: $configs,
 		dependency_requirements: $deps,
 		workflow_changes: [ ($man.workflows // [])[] | { source: .source, target: .target, mode: .mode } ],
@@ -128,8 +152,15 @@ PLAN=$(jq -n \
 			(if ($managed | length) > 0 then ["Run scripts/sync-baseline.sh --target <dir> --profile \($profile) --apply --force to update \($managed | length) managed file(s) after review."] else [] end)
 			+ (if ($added | length) > 0 then ["Bootstrap newly-required tool(s): " + ($added | join(", ")) + " (scripts/bootstrap-profile-tools.sh)."] else [] end)
 			+ (if ($removed | length) > 0 then ["Tool(s) no longer in the profile: " + ($removed | join(", ")) + " — review whether to remove their config/packages."] else [] end)
+		),
+		rollback: (
+			["Re-pin Sentinel Shield to the previous reference \($from) (\($from_kind)); pin a fixed tag or SHA, never a moving branch."]
+			+ (if ($managed | length) > 0 then ["Restore managed file(s) from version control (git checkout) to undo synced changes: " + ($managed | join(", ")) + "."] else [] end)
+			+ (if ($added | length) > 0 then ["Remove or disable newly-bootstrapped tool(s) if reverting: " + ($added | join(", ")) + "."] else [] end)
+			+ ["Project-owned files and accepted-risks.json are never modified by sync, so they need no rollback."]
 		)
-	}')
+	}
+	| .migration_steps = .action_items')
 
 # --- render -------------------------------------------------------------------
 render_text() { # render_text <markdown:0|1>
@@ -140,6 +171,9 @@ render_text() { # render_text <markdown:0|1>
 		"$(printf '%s' "$PLAN" | jq -r '.sentinel_shield.from')" \
 		"$(printf '%s' "$PLAN" | jq -r '.sentinel_shield.to')" \
 		"$(printf '%s' "$PLAN" | jq -r 'if .sentinel_shield.major_bump then "  (MAJOR bump)" else "" end')"
+	printf '%sReference (version/tag/SHA): %s -> %s\n' "$_li" \
+		"$(printf '%s' "$PLAN" | jq -r '.sentinel_shield.from_ref_kind')" \
+		"$(printf '%s' "$PLAN" | jq -r '.sentinel_shield.to_ref_kind')"
 	printf '%sProfile: %s\n' "$_li" "$(printf '%s' "$PLAN" | jq -r '.profile')"
 	printf '%sProfile tool-policy schema: %s -> %s%s\n' "$_li" \
 		"$(printf '%s' "$PLAN" | jq -r '.profile_schema.installed // "unknown"')" \
@@ -147,9 +181,9 @@ render_text() { # render_text <markdown:0|1>
 		"$(printf '%s' "$PLAN" | jq -r 'if .profile_schema.drift then "  (DRIFT)" else "" end')"
 	printf '\n'
 
-	printf '%sManaged files (sync overwrites with --apply --force)\n' "$_h2"
-	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.managed_files[]? | "\($li)\(.)" ) // empty'
-	printf '%s' "$PLAN" | jq -e '.managed_files | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
+	printf '%sManaged-file drift (sync overwrites with --apply --force)\n' "$_h2"
+	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.managed_file_drift[]? | "\($li)\(.)" ) // empty'
+	printf '%s' "$PLAN" | jq -e '.managed_file_drift | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
 	printf '\n'
 
 	printf '%sProject-owned (preserved, never overwritten)\n' "$_h2"
@@ -164,6 +198,11 @@ render_text() { # render_text <markdown:0|1>
 	printf '%sTool changes vs installed\n' "$_h2"
 	printf '%sadded:   %s\n' "$_li" "$(printf '%s' "$PLAN" | jq -r '(.tool_changes.added | join(", ")) | if . == "" then "(none)" else . end')"
 	printf '%sremoved: %s\n' "$_li" "$(printf '%s' "$PLAN" | jq -r '(.tool_changes.removed | join(", ")) | if . == "" then "(none)" else . end')"
+	printf '\n'
+
+	printf '%sChanged runners (newly-required tools)\n' "$_h2"
+	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.changed_runners[]? | "\($li)\(.tool): \(.runner)") // empty'
+	printf '%s' "$PLAN" | jq -e '.changed_runners | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
 	printf '\n'
 
 	printf '%sDependency requirements\n' "$_h2"
@@ -181,9 +220,14 @@ render_text() { # render_text <markdown:0|1>
 	printf '%s' "$PLAN" | jq -e '.breaking_changes | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
 	printf '\n'
 
-	printf '%sAction items\n' "$_h2"
-	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.action_items[]? | "\($li)\(.)") // empty'
-	printf '%s' "$PLAN" | jq -e '.action_items | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
+	printf '%sRequired migration steps\n' "$_h2"
+	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.migration_steps[]? | "\($li)\(.)") // empty'
+	printf '%s' "$PLAN" | jq -e '.migration_steps | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
+	printf '\n'
+
+	printf '%sRollback strategy\n' "$_h2"
+	printf '%s' "$PLAN" | jq -r --arg li "$_li" '(.rollback[]? | "\($li)\(.)") // empty'
+	printf '%s' "$PLAN" | jq -e '.rollback | length > 0' >/dev/null 2>&1 || printf '%s(none)\n' "$_li"
 }
 
 # emit — emit a formatted output fragment to stdout.
