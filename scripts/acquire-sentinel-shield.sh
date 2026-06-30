@@ -49,14 +49,114 @@ Usage: acquire-sentinel-shield.sh --repository <owner/repo|url|path> --ref <tag|
 EOF
 }
 
-# write_ref_record <dest> <repo> <ref> <commit> <ref_kind> — record the resolved ref (NO credentials).
-# ref_kind is the authoritative classification (tag|sha) doctor.sh relies on to prove immutability.
+# write_ref_record <dest> <repo_kind> <repository|""> <ref> <commit> <ref_kind> — record the
+# resolved ref in the NORMALIZED, privacy-preserving shape (SHARED CONTRACT 1). NO credentials
+# and NO local/home paths are ever persisted: a local-path source records repository=null.
+# repository_kind is github|url|local; ref_kind is the authoritative tag|sha classification
+# doctor.sh relies on to prove immutability.
 write_ref_record() {
-	_rep=$(json_escape "$2"); _rf=$(json_escape "$3"); _rk=$(json_escape "$5")
-	printf '{"repository":"%s","ref":"%s","resolved_commit":"%s","ref_kind":"%s"}\n' "$_rep" "$_rf" "$4" "$_rk" \
-		> "$1/.sentinel-shield-ref" || {
+	_rkind=$(json_escape "$2"); _rf=$(json_escape "$4"); _kind=$(json_escape "$6")
+	if [ -n "$3" ]; then
+		_repo="\"$(json_escape "$3")\""
+	else
+		_repo="null"
+	fi
+	printf '{"repository_kind":"%s","repository":%s,"ref":"%s","resolved_commit":"%s","ref_kind":"%s"}\n' \
+		"$_rkind" "$_repo" "$_rf" "$5" "$_kind" > "$1/.sentinel-shield-ref" || {
 		log_error "acquire: cannot write ref record to $1/.sentinel-shield-ref"; return 1
 	}
+}
+
+# acquire_sanitize_url <url> — strip userinfo, query, and fragment from an explicit remote
+# URL so no secret/identity is persisted in the ref record (privacy). Path is preserved.
+acquire_sanitize_url() {
+	_u=$1
+	_u=${_u%%#*}    # drop #fragment
+	_u=${_u%%\?*}   # drop ?query
+	case "$_u" in
+		*://*)
+			_sch=${_u%%://*}
+			_rest=${_u#*://}
+			_host=${_rest%%/*}
+			_path=${_rest#"$_host"}
+			case "$_host" in *@*) _host=${_host#*@} ;; esac   # drop userinfo@
+			_u="$_sch://$_host$_path"
+			;;
+		*@*:*)
+			_u=${_u#*@}   # scp-form git@host:path -> host:path
+			;;
+	esac
+	printf '%s' "$_u"
+}
+
+# acquire_canonical <path> — canonical absolute path WITHOUT requiring <path> to exist:
+# resolve the (existing) parent dir, then append the basename. Echoes nothing and returns
+# 1 when the parent cannot be resolved, so the caller can fail closed.
+acquire_canonical() {
+	_ap=$1
+	_par=$(dirname -- "$_ap")
+	_bas=$(basename -- "$_ap")
+	_cpar=$(CDPATH= cd -- "$_par" 2>/dev/null && pwd -P) || return 1
+	case "$_cpar" in
+		/) printf '/%s' "$_bas" ;;
+		*) printf '%s/%s' "$_cpar" "$_bas" ;;
+	esac
+}
+
+# acquire_validate_destination <path> — the SINGLE destructive-destination guard called
+# before EVERY `rm -rf "$DEST"`. It deletes NOTHING; on any unsafe path it logs and
+# exit 2. Refuses: empty; '/'; '.'/'..'; a path with a '..' component; a symlink (never
+# followed — at most the symlink itself, which we still refuse here); the CWD; $HOME; the
+# Sentinel Shield SOURCE repo root (SCRIPT_DIR/..); a known consumer TARGET root
+# (SENTINEL_SHIELD_TARGET_ROOT); and any ancestor of the CWD. PERMITS only a dedicated
+# tools dir, proven by CANONICAL CONTAINMENT (never basename matching alone): a canonical
+# path whose basename is '.sentinel-shield-tools' or that sits under a 'tools/' dir.
+acquire_validate_destination() {
+	_d=$1
+	[ -n "$_d" ] || { log_error "acquire: refusing to remove an empty destination"; exit 2; }
+	case "/$_d/" in
+		*/../*) log_error "acquire: refusing destination with unresolved '..' traversal: $_d"; exit 2 ;;
+	esac
+	case "$_d" in
+		/ | . | ..) log_error "acquire: refusing unsafe destination: $_d"; exit 2 ;;
+	esac
+	if [ -L "$_d" ]; then
+		log_error "acquire: refusing to delete a symlink destination (will not follow): $_d"; exit 2
+	fi
+	_canon=$(acquire_canonical "$_d") || {
+		log_error "acquire: cannot resolve destination parent — refusing: $_d"; exit 2; }
+	[ "$_canon" != "/" ] || { log_error "acquire: refusing to remove '/'"; exit 2; }
+
+	_cwd=$(pwd -P)
+	_home=""
+	if [ -n "${HOME:-}" ]; then
+		_home=$(CDPATH= cd -- "$HOME" 2>/dev/null && pwd -P || printf '%s' "$HOME")
+	fi
+	_src=$(CDPATH= cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P || printf '')
+	_tgt=""
+	if [ -n "${SENTINEL_SHIELD_TARGET_ROOT:-}" ]; then
+		_tgt=$(CDPATH= cd -- "$SENTINEL_SHIELD_TARGET_ROOT" 2>/dev/null && pwd -P \
+			|| printf '%s' "$SENTINEL_SHIELD_TARGET_ROOT")
+	fi
+	for _bad in "$_cwd" "$_home" "$_src" "$_tgt"; do
+		[ -n "$_bad" ] || continue
+		if [ "$_canon" = "$_bad" ]; then
+			log_error "acquire: refusing to remove a protected path: $_d"; exit 2
+		fi
+	done
+	# An ancestor of the CWD (DEST physically contains the current directory).
+	case "$_cwd/" in
+		"$_canon"/*) log_error "acquire: refusing to remove an ancestor of the current directory: $_d"; exit 2 ;;
+	esac
+
+	# PERMIT only a dedicated tools dir (canonical containment).
+	_base=$(basename -- "$_canon")
+	[ "$_base" = ".sentinel-shield-tools" ] && return 0
+	case "$_canon" in
+		*/tools/*) return 0 ;;
+	esac
+	log_error "acquire: refusing to delete a non-tools destination (only '.sentinel-shield-tools' or a path under a 'tools/' dir may be removed): $_d"
+	exit 2
 }
 
 REPO=""
@@ -70,7 +170,9 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--repository) REPO="${2:?--repository requires a value}"; shift 2 ;;
 		--ref) REF="${2:?--ref requires a value}"; shift 2 ;;
-		--destination) DEST="${2:?--destination requires a value}"; shift 2 ;;
+		--destination)
+			[ $# -ge 2 ] || { log_error "acquire: --destination requires a value"; exit 2; }
+			DEST="$2"; shift 2 ;;
 		--transport) TRANSPORT="${2:?--transport requires a value}"; shift 2 ;;
 		--verify) VERIFY=1; shift ;;
 		--reuse-existing) REUSE=1; shift ;;
@@ -88,6 +190,7 @@ esac
 
 # --cleanup may be used ALONE (no repo/ref) to just remove the destination and exit.
 if [ "$CLEANUP" = 1 ] && [ -z "$REPO" ] && [ -z "$REF" ]; then
+	acquire_validate_destination "$DEST"
 	rm -rf -- "$DEST"
 	log_info "acquire: removed destination: $DEST"
 	exit 0
@@ -107,20 +210,27 @@ case "$REPO" in
 	http://*@* | https://*@*)
 		log_error "acquire: refusing credential-bearing remote URL (userinfo not allowed; authenticate out-of-band)"; exit 2 ;;
 esac
+# REPO_KIND/REPO_NORM are the NORMALIZED provenance recorded in .sentinel-shield-ref:
+#   github -> owner/repo ; url -> sanitized URL ; local -> null (path is NEVER persisted).
+REPO_KIND=""
+REPO_NORM=""
 case "$REPO" in
-	*://* | git@*:* | /* | ./* | ../*)
-		URL="$REPO" ;;
+	*://* | git@*:*)
+		URL="$REPO"; REPO_KIND="url"; REPO_NORM=$(acquire_sanitize_url "$REPO") ;;
+	/* | ./* | ../*)
+		URL="$REPO"; REPO_KIND="local"; REPO_NORM="" ;;
 	*/*)
 		# A path-like input that exists on disk is a LOCAL path (e.g. tmp/remote.git),
 		# used verbatim; never rewrite it to a GitHub URL. Otherwise it is owner/repo.
 		if [ -e "$REPO" ]; then
-			URL="$REPO"
+			URL="$REPO"; REPO_KIND="local"; REPO_NORM=""
 		else
 			case "$TRANSPORT" in
 				ssh) URL="git@github.com:$REPO.git" ;;
 				gh) URL="https://github.com/$REPO.git"; USE_GH=1 ;;
 				*) URL="https://github.com/$REPO.git" ;;
 			esac
+			REPO_KIND="github"; REPO_NORM="$REPO"
 		fi ;;
 	*)
 		log_error "acquire: invalid --repository '$REPO' (expected owner/repo, a URL, or a path)"; exit 2 ;;
@@ -161,6 +271,7 @@ fi
 
 # --- reuse / cleanup of an existing destination -------------------------------
 if [ "$CLEANUP" = 1 ]; then
+	acquire_validate_destination "$DEST"
 	rm -rf -- "$DEST"
 fi
 if [ -e "$DEST" ]; then
@@ -170,11 +281,12 @@ if [ -e "$DEST" ]; then
 		# worktree is clean — a dirty checkout is not the immutable source, re-acquire.
 		if [ -n "$CUR" ] && [ "$CUR" = "$EXPECTED" ] && [ -z "$(git -C "$DEST" status --porcelain 2>/dev/null)" ]; then
 			log_info "acquire: reusing existing checkout at $DEST (HEAD=$CUR)"
-			write_ref_record "$DEST" "$REPO" "$REF" "$CUR" "$KIND"
+			write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$CUR" "$KIND"
 			printf '%s\n' "$CUR"
 			exit 0
 		fi
 		log_warn "acquire: existing checkout HEAD does not match resolved commit; re-acquiring"
+		acquire_validate_destination "$DEST"
 		rm -rf -- "$DEST"
 	else
 		log_error "acquire: destination exists: $DEST (pass --reuse-existing or --cleanup)"
@@ -215,7 +327,7 @@ if [ "$VERIFY" = 1 ] && [ "$RESOLVED" != "$EXPECTED" ]; then
 	exit 4
 fi
 
-write_ref_record "$DEST" "$REPO" "$REF" "$RESOLVED" "$KIND"
+write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$RESOLVED" "$KIND"
 log_info "acquire: $REPO @ $REF -> $RESOLVED (checkout: $DEST)"
 printf '%s\n' "$RESOLVED"
 exit 0

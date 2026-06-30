@@ -6,6 +6,38 @@ pre-1.0; the first tag is `v0.1.0`.
 
 ## [Unreleased]
 
+### Hardening (production readiness)
+- **Safe acquisition (destructive-cleanup guard).** `acquire-sentinel-shield.sh` validates
+  `--destination` before any destructive step; `--cleanup` / re-acquire **refuse** (exit 2,
+  nothing deleted) an unsafe path (`.`, `..`, `/`, `$HOME`, repo root, an ancestor, or a
+  symlink that escapes the tools dir). Only a dedicated tools directory is permitted.
+- **No path leak in the acquisition record.** `.sentinel-shield-ref` is normalized and never
+  stores a local/home path: GitHub shorthand → `repository_kind:"github"`; explicit URL →
+  `repository_kind:"url"` (credentials/query/fragment stripped); local path →
+  `repository_kind:"local"`, `repository:null`.
+- **Recovery fails closed.** A transactional install/sync/migration whose rollback cannot
+  complete now **exits 4**, retains its operation lock + snapshots
+  (`state:"rollback-incomplete"`), and prints a manual recovery procedure — never claims
+  success, never deletes recovery data.
+- **Full-suite release readiness.** `check-release-readiness.sh` runs the self-test *syntax*,
+  *production-readiness*, *e2e*, and *all* suites plus schema/workflow/pinning/hygiene/evidence
+  gates; fixture existence is no longer treated as proof.
+- **Structural vs GitHub-verified evidence.** `validate-release-evidence.sh` adds `--offline`
+  (structural only) and `--verify-github` (confirms run IDs/commit/conclusion); `beta`+
+  promotion requires GitHub-verified evidence (or a documented equivalent).
+- **Stage-differentiated overrides.** Override policy now differs by stage — alpha CLI
+  `--override-reason` (loud, recorded); beta a version-controlled, unexpired
+  `.sentinel-shield/release-override.json` waiver with no self-approval; rc/ga prohibited or
+  strict signed waiver. Secrets, malformed evidence, failed rollback, and path-safety can
+  never be waived.
+- **Pipeline evidence layout + retention.** `run-local-pipeline.sh` keeps a run's evidence
+  under a single root (or the explicit `--output-dir-partial` mode behind a concurrency lock),
+  and `--purpose developer|release` controls raw-evidence retention — `release` hashes each raw
+  report into the stage execution manifest.
+- **Docs/prompts aligned.** Install/update prompts and the install, update, tool-provisioning,
+  upgrading, v2-migration, workflow-execution-model, and consumer-validation docs document the
+  above and use the real post-remediation flags.
+
 ## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement
 
 **MAJOR (alpha).** Changes the meaning of a profile: a profile now declares a machine-readable

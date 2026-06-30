@@ -35,7 +35,8 @@
 # Usage:
 #   run-local-pipeline.sh --profile <name> --target <path> --stage pr|main|scheduled
 #       [--mode report-only|baseline|strict|regulated] [--output-dir <path>]
-#       [--format markdown|json|all] [--keep-raw] [--fail-fast] [--non-interactive]
+#       [--purpose developer|release] [--format markdown|json|all] [--keep-raw]
+#       [--fail-fast] [--non-interactive]
 #
 #   --profile <name>      Profile to resolve (profiles/<name>/ or combinations/). Required.
 #   --target <path>       Consuming project root. Required-tool reports land under
@@ -44,14 +45,45 @@
 #   --mode <mode>         Force the adoption mode for gate resolution. When omitted the
 #                         target's .sentinel-shield/profile.yaml mode (or report-only) is used.
 #   --output-dir <path>   Where the summary + gate + pipeline reports are written
-#                         (default: <target>/reports). The raw scanner dir is always
-#                         <target>/reports/raw because the runners declare those paths.
-#   --keep-raw            Keep the raw scanner artifacts after the run (default: remove them).
+#                         (default: <target>/reports). *** PARTIAL (Finding 7): the engine
+#                         runners hard-code reports/raw/<tool>.json and the stage execution
+#                         manifest at reports/<stage>-execution.json — run-tool-plan invokes
+#                         each runner with NO positional path and the profile .report fields
+#                         are fixed — so raw evidence CANNOT be relocated this release. To
+#                         avoid a SILENT split of the evidence root, --output-dir is REQUIRED
+#                         to be <target>/reports or a subdirectory of it; anything else is
+#                         rejected (exit 2). FOLLOW-UP MIGRATION: thread an absolute
+#                         report-root through run-tool-plan.sh -> each runner (positional
+#                         $1) and through the profile .report paths, then drive ALL evidence
+#                         (raw/, *-execution.json, summary, gates, enforcement, pipeline) under
+#                         a single arbitrary --output-dir.
+#   --purpose <p>         developer | release (default: developer).
+#                           developer : raw scanner artifacts MAY be removed after the run
+#                                       (default cleanup) — the raw-evidence manifest and its
+#                                       per-report SHA-256 hashes are STILL written and survive.
+#                           release   : raw scanner artifacts are RETAINED and made immutable
+#                                       (read-only) for the run; hashes are recorded. The
+#                                       security summary never outlives the hashes + execution
+#                                       metadata needed to verify how it was produced.
+#   --keep-raw            Keep the raw scanner artifacts after the run (default: remove them;
+#                         implied by --purpose release).
 #   --format <fmt>        Pipeline + enforcement report format: markdown | json | all (default: all).
 #   --fail-fast           Stop immediately when the tool stage reports a required tool
 #                         unavailable (3) or an execution error (4), instead of continuing
 #                         to build a complete (honest) summary + enforcement report.
 #   --non-interactive     Assume no prompts (the pipeline never prompts; accepted for CI parity).
+#
+# CONCURRENCY (Finding 7): because raw evidence shares a fixed root (<target>/reports/raw)
+# that this run clears BEFORE execution, two concurrent runs against the same target would
+# delete/replace each other's raw reports. A run lock (<target>/reports/.pipeline-lock,
+# created with an atomic mkdir) prevents this: if another run holds it the pipeline REFUSES
+# and exits 4 (execution failure) rather than racing. The lock is released on exit.
+#
+# RAW-EVIDENCE MANIFEST (Finding 8): regardless of --purpose, a durable per-tool manifest is
+# written to <output-dir>/raw-evidence-manifest.json recording, for every executed tool/group:
+# tool, runner, runner_exit, status, report_path, report_sha256, produced_at,
+# preserved_or_deleted and duration — so the summary can always be traced back to how it was
+# produced even after raw reports are cleaned up.
 #
 # Exit codes (shared v2 contract — docs/workflow-execution-model.md#exit-codes):
 #   0  the gate PASSED for this execution
@@ -87,6 +119,9 @@ Options:
   --stage <stage>       pr | main | scheduled (required).
   --mode <mode>         report-only | baseline | strict | regulated (force the gate mode).
   --output-dir <path>   Summary + gate + pipeline report dir (default: <target>/reports).
+                        PARTIAL: must be <target>/reports or a subdir (raw evidence root is
+                        fixed); anything else is rejected (exit 2).
+  --purpose <p>         developer | release (default: developer). release retains + freezes raw.
   --keep-raw            Keep raw scanner artifacts after the run (default: remove them).
   --format <fmt>        markdown | json | all (default: all).
   --fail-fast           Stop immediately on required-tool-unavailable (3) / execution-error (4).
@@ -104,6 +139,7 @@ TARGET="."
 STAGE=""
 MODE=""
 OUTPUT_DIR=""
+PURPOSE="developer"
 KEEP_RAW=0
 FORMAT="all"
 FAIL_FAST=0
@@ -116,6 +152,7 @@ while [ $# -gt 0 ]; do
 		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
 		--mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
 		--output-dir) OUTPUT_DIR="${2:?--output-dir requires a value}"; shift 2 ;;
+		--purpose) PURPOSE="${2:?--purpose requires a value}"; shift 2 ;;
 		--keep-raw) KEEP_RAW=1; shift ;;
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--fail-fast) FAIL_FAST=1; shift ;;
@@ -141,6 +178,12 @@ case "$FORMAT" in
 	markdown | json | all) ;;
 	*) die_cfg "--format must be one of: markdown | json | all" ;;
 esac
+case "$PURPOSE" in
+	developer | release) ;;
+	*) die_cfg "--purpose must be one of: developer | release" ;;
+esac
+# release retains raw evidence (and freezes it immutable below); developer may clean it up.
+[ "$PURPOSE" = release ] && KEEP_RAW=1
 command_exists jq || die_cfg "jq is required but was not found. Install jq."
 
 [ -d "$TARGET" ] || die_cfg "target directory not found: $TARGET"
@@ -149,6 +192,19 @@ TARGET=$(CDPATH= cd -- "$TARGET" && pwd)
 [ -n "$OUTPUT_DIR" ] || OUTPUT_DIR="$TARGET/reports"
 mkdir -p "$OUTPUT_DIR" || die_cfg "cannot create output dir: $OUTPUT_DIR"
 OUTPUT_DIR=$(CDPATH= cd -- "$OUTPUT_DIR" && pwd)
+
+# FINDING 7 (PARTIAL): the engine runners hard-code reports/raw/<tool>.json and the stage
+# execution manifest at reports/<stage>-execution.json (run-tool-plan invokes runners with no
+# positional path; the profile .report fields are fixed), so raw evidence cannot be relocated
+# this release. Refuse any --output-dir that is not <target>/reports or a subdirectory of it,
+# so we never SILENTLY split final artifacts away from the raw evidence root. Canonicalize
+# first so '..'/symlink tricks cannot escape the reports root.
+mkdir -p "$TARGET/reports" || die_cfg "cannot create reports dir: $TARGET/reports"
+REPORTS_ROOT=$(CDPATH= cd -- "$TARGET/reports" && pwd)
+case "$OUTPUT_DIR" in
+	"$REPORTS_ROOT" | "$REPORTS_ROOT"/*) ;;
+	*) die_cfg "--output-dir must be <target>/reports or a subdirectory of it ($REPORTS_ROOT); refusing to split the evidence root: $OUTPUT_DIR" ;;
+esac
 
 # Raw reports + the stage execution manifest are dictated by the runner-declared paths,
 # which are relative to the target cwd (reports/raw/<tool>.json). They therefore ALWAYS
@@ -161,11 +217,33 @@ EFFECTIVE_JSON="$OUTPUT_DIR/effective-profile.json"
 WORKFLOW_PLAN="$OUTPUT_DIR/workflow-plan.json"
 PIPELINE_JSON="$OUTPUT_DIR/pipeline-report.json"
 PIPELINE_MD="$OUTPUT_DIR/pipeline-report.md"
+RAW_MANIFEST="$OUTPUT_DIR/raw-evidence-manifest.json"
 PROFILE_YAML="$TARGET/.sentinel-shield/profile.yaml"
 ACCEPTED_RISKS="$TARGET/.sentinel-shield/accepted-risks.json"
 CONTROL_WAIVERS="$TARGET/.sentinel-shield/control-waivers.json"
 
 TS=$(timestamp_utc)
+
+# --- concurrency lock (Finding 7) --------------------------------------------
+# Two concurrent runs against the same target share the fixed raw root and would clear
+# each other's reports. Acquire an exclusive lock with an atomic mkdir; fail closed (exit 4)
+# if another run holds it. The lock is released on exit ONLY if we acquired it (so a held
+# lock owned by another run is never removed by us).
+LOCK_DIR="$REPORTS_ROOT/.pipeline-lock"
+LOCK_HELD=0
+release_lock() {
+	[ "$LOCK_HELD" -eq 1 ] || return 0
+	rm -rf -- "$LOCK_DIR" 2>/dev/null || true
+}
+trap release_lock EXIT INT TERM
+if mkdir "$LOCK_DIR" 2>/dev/null; then
+	LOCK_HELD=1
+	printf '{"pid":%s,"started_at":"%s","stage":"%s","target":"%s"}\n' \
+		"$$" "$TS" "$STAGE" "$TARGET" > "$LOCK_DIR/lock.json" 2>/dev/null || true
+else
+	log_error "another local pipeline run holds the lock ($LOCK_DIR); refusing to race (concurrent run)"
+	exit 4
+fi
 
 # --- stage bookkeeping -------------------------------------------------------
 STAGES_ACC=""   # newline-delimited "name|status|exit"
@@ -243,12 +321,135 @@ emit_reports() {
 	fi
 }
 
-# finish <exit> <result> [message] — emit reports, clean up raw (unless --keep-raw), exit.
+# file_sha256 <path> — print the hex SHA-256 of a file, or nothing if it cannot be hashed.
+file_sha256() {
+	[ -f "$1" ] || return 0
+	if command_exists sha256sum; then sha256sum -- "$1" 2>/dev/null | cut -d' ' -f1
+	elif command_exists shasum; then shasum -a 256 -- "$1" 2>/dev/null | cut -d' ' -f1
+	elif command_exists openssl; then openssl dgst -sha256 "$1" 2>/dev/null | awk '{print $NF}'
+	fi
+}
+
+# iso_to_epoch <iso8601-zulu> — print epoch seconds (GNU or BSD date), or nothing.
+iso_to_epoch() {
+	[ -n "$1" ] || return 0
+	date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || true
+}
+
+# write_raw_evidence_manifest — Finding 8. Produce a durable per-tool manifest from the
+# stage execution manifest (written by run-tool-plan) joined with the resolved effective
+# profile (for runner paths) and freshly-computed report SHA-256 hashes. Written BEFORE any
+# raw cleanup so the hashes describe the reports as produced this run. Best-effort: never
+# aborts the pipeline (the exit-code contract is owned by the stage logic).
+write_raw_evidence_manifest() {
+	[ -f "$EXEC_MANIFEST" ] || return 0
+	command_exists jq || return 0
+	_preserved="deleted"
+	[ "$KEEP_RAW" -eq 1 ] && _preserved="preserved"
+
+	# SHA-256 per produced report (key<TAB>relative-report-path; both non-empty).
+	_sha_map='{}'
+	_sha_lines=$(jq -r '
+		[ (.tools // {} | to_entries[]), (.one_of_groups // {} | to_entries[]) ]
+		| .[] | select(.value.report != null and .value.report != "")
+		| "\(.key)\t\(.value.report)"' "$EXEC_MANIFEST" 2>/dev/null || true)
+	_oifs=$IFS
+	IFS='
+'
+	for _l in $_sha_lines; do
+		IFS=$_oifs
+		_k=${_l%%	*}
+		_rep=${_l#*	}
+		_h=$(file_sha256 "$TARGET/$_rep" || true)
+		[ -n "$_h" ] && _sha_map=$(printf '%s' "$_sha_map" | jq --arg k "$_k" --arg v "$_h" '. + {($k): $v}')
+		IFS='
+'
+	done
+	IFS=$_oifs
+
+	# Duration per entry that actually ran (key<TAB>started<TAB>finished).
+	_dur_map='{}'
+	_dur_lines=$(jq -r '
+		[ (.tools // {} | to_entries[]), (.one_of_groups // {} | to_entries[]) ]
+		| .[] | select(.value.started_at != null and .value.started_at != "")
+		| "\(.key)\t\(.value.started_at)\t\(.value.finished_at // "")"' "$EXEC_MANIFEST" 2>/dev/null || true)
+	IFS='
+'
+	for _l in $_dur_lines; do
+		IFS=$_oifs
+		_k=${_l%%	*}
+		_rest=${_l#*	}
+		_st=${_rest%%	*}
+		_fi=${_rest#*	}
+		[ "$_fi" != "$_rest" ] || _fi=""
+		_se=$(iso_to_epoch "$_st" || true)
+		_fe=$(iso_to_epoch "$_fi" || true)
+		if [ -n "$_se" ] && [ -n "$_fe" ]; then
+			_dur_map=$(printf '%s' "$_dur_map" | jq --arg k "$_k" --argjson v "$((_fe - _se))" '. + {($k): $v}')
+		fi
+		IFS='
+'
+	done
+	IFS=$_oifs
+
+	jq -n \
+		--slurpfile exec "$EXEC_MANIFEST" \
+		--argjson eff "$(cat "$EFFECTIVE_JSON" 2>/dev/null || printf '{}')" \
+		--argjson sha "$_sha_map" \
+		--argjson dur "$_dur_map" \
+		--arg preserved "$_preserved" \
+		--arg generated_at "$TS" \
+		--arg purpose "$PURPOSE" \
+		--arg target "$TARGET" \
+		'
+		($exec[0] // {}) as $m
+		| ($eff.tools // {}) as $efftools
+		| def entry($key; $v; $runner):
+			{
+				tool: $key,
+				runner: ($runner // null),
+				runner_exit: ($v.runner_exit // null),
+				status: ($v.status // null),
+				report_path: ($v.report // null),
+				report_sha256: ($sha[$key] // null),
+				produced_at: ($v.finished_at // null),
+				preserved_or_deleted: (if ($v.report_present // false) then $preserved else "absent" end),
+				duration: ($dur[$key] // null)
+			};
+		{
+			version: "1.0",
+			generated_at: $generated_at,
+			purpose: $purpose,
+			profile: ($m.profile // null),
+			stage: ($m.stage // null),
+			target: $target,
+			tools: [
+				($m.tools // {} | to_entries[]
+					| entry(.key; .value; ($efftools[.key].runner // null))),
+				($m.one_of_groups // {} | to_entries[]
+					| entry(.key; .value; (if .value.selected then ($efftools[.value.selected].runner // null) else null end))
+					  + {selected: (.value.selected // null)})
+			]
+		}' > "$RAW_MANIFEST" 2>/dev/null || {
+		log_warn "could not write raw-evidence manifest: $RAW_MANIFEST"
+		return 0
+	}
+	log_info "wrote $RAW_MANIFEST"
+}
+
+# finish <exit> <result> [message] — emit reports, write the durable raw-evidence manifest
+# (Finding 8), then clean up or freeze raw per --purpose/--keep-raw, exit.
 finish() {
 	_fec="$1"; _fres="$2"; _fmsg="${3:-}"
 	emit_reports "$_fres" "$_fec" "$_fmsg"
+	# Manifest + hashes are written BEFORE any raw removal so they outlive the reports.
+	write_raw_evidence_manifest
 	if [ "$KEEP_RAW" -eq 0 ]; then
+		# developer default: raw may be removed (manifest + hashes already persisted).
 		rm -rf -- "$RAW_DIR" 2>/dev/null || true
+	elif [ "$PURPOSE" = release ]; then
+		# release: raw reports are RETAINED and made immutable (read-only) for the run.
+		find "$RAW_DIR" -type f -exec chmod a-w {} + 2>/dev/null || true
 	fi
 	log_info "local-pipeline complete: stage=$STAGE result=$_fres exit=$_fec"
 	exit "$_fec"

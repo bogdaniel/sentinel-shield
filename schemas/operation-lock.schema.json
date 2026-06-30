@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/operation-lock.schema.json",
+  "title": "Sentinel Shield operation lock",
+  "description": "Transaction marker written to <target>/.sentinel-shield/operation-lock.json while a mutating operation (install/sync/migration/bootstrap) is in flight. Removed on successful commit; a lock left behind by an ungraceful kill is DETECTED on the next mutating run and recovered with --recover. Path values (target, snapshot_dir) are UNTRUSTED on read and MUST be re-validated for canonical containment before any use.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "operation",
+    "target",
+    "started_at",
+    "pid",
+    "snapshot_dir",
+    "state"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Operation-lock schema version. Fixed at '1' for this contract."
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["install", "sync", "migration", "bootstrap"],
+      "description": "Mutating operation that owns the lock."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical absolute path of the consuming project the operation is mutating. Re-validated against the current canonical target before any recovery."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp when the operation acquired the lock."
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "PID of the process that acquired the lock."
+    },
+    "snapshot_dir": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "/\\.sentinel-shield/\\.txn-",
+      "description": "Canonical path to the per-operation snapshot directory, which MUST live under <target>/.sentinel-shield/.txn-*. Re-validated for containment (no '..') before any restore."
+    },
+    "state": {
+      "type": "string",
+      "enum": ["active", "rollback-incomplete"],
+      "description": "Lifecycle state: 'active' while the operation runs; 'rollback-incomplete' when a recovery attempt could not fully roll back and retained the lock for manual recovery."
+    }
+  }
+}

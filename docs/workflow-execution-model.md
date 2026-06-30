@@ -102,6 +102,48 @@ This is distinct from the provisioning `--tool-mode` on `install-baseline.sh`
 tools get installed*; this one decides *how strictly their absence gates*. See
 [`tool-provisioning.md`](tool-provisioning.md).
 
+## Reproducing the gate locally (`run-local-pipeline.sh`)
+
+`run-local-pipeline.sh` is the authoritative local equivalent of the CI release
+gate: it chains the engine scripts to produce a real `reports/security-summary.json`
+and run `enforce-gates.sh`.
+
+```sh
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" \
+  --profile laravel --target . --stage pr --mode baseline
+```
+
+**Output layout (single evidence root, by default).** All of a run's evidence —
+the raw scanner reports, the **stage execution manifest**, the security summary, and
+the gate reports — lands under **one** evidence root so a reviewer reads a single,
+self-consistent tree. The default root is `<target>/reports`; `--output-dir <path>`
+relocates the **whole** root (never just part of it). The runner-declared raw-report
+paths and the execution manifest stay co-located with the summary they describe — a
+run never scatters half its evidence into `reports/` and half into `--output-dir`. If
+you deliberately want the summary/gate reports in a separate location from the raw
+reports, that is the explicitly-documented `--output-dir-partial` mode, and it takes
+a **concurrency lock** so two pipelines cannot interleave writes into a shared tree
+and corrupt each other's evidence.
+
+**Raw-evidence retention (`--purpose`).** Raw scanner output is retained according to
+`--purpose`:
+
+| `--purpose` | Raw reports | Use |
+| --- | --- | --- |
+| `developer` *(default)* | Kept locally for inspection; not for promotion | Day-to-day local runs |
+| `release` | Retained as release evidence, with a **content hash recorded per raw report in the stage execution manifest** | Producing promotion evidence |
+
+```sh
+# Release-evidence run: raw reports retained + hashed in the execution manifest.
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" \
+  --profile laravel --target . --stage main --purpose release --output-dir reports
+```
+
+The hashes in the manifest let a reviewer (and `validate-release-evidence.sh`) confirm
+the summary was built from exactly those raw reports — evidence cannot be swapped after
+the fact. See [`consumer-validation-runbook.md`](consumer-validation-runbook.md) for how
+that evidence is validated and gated for promotion.
+
 ## Exit-code contract (v2)
 
 The orchestrator/gate scripts share one exit-code vocabulary:
@@ -130,4 +172,3 @@ status from report presence/validity. The gate is the final decision point:
 `reports/security-summary.json` (what *did* run) must agree: a tool in the stage
 plan that produced no report is exactly the `unavailable` / `execution-error`
 case the gate must catch — not a silent pass.
-</content>

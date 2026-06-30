@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/release-override.schema.json",
+  "title": "Sentinel Shield release-promotion override record",
+  "description": "A version-controlled, two-person-approved, time-boxed record that authorises promoting a release STAGE despite one or more UNMET readiness gates. Consumed by scripts/check-release-readiness.sh as the ONLY accepted override mechanism at beta/rc/ga (alpha additionally accepts a loudly-reported free-text --override-reason). An override can NEVER waive tracked secrets, malformed evidence (validator exit 2), failed rollback integrity, or destructive path-safety — those fail closed regardless. The record must match the promotion's version AND stage, be unexpired, and be approved by a DIFFERENT person than the requester (self-approval is forbidden).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "stage",
+    "controls",
+    "reason",
+    "requested_by",
+    "approved_by",
+    "created_at",
+    "expires_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Only \"1\" is supported; consumers fail closed on anything else."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Release version label this override applies to. Must equal the --version being promoted; a mismatch is rejected."
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["alpha", "beta", "rc", "ga"],
+      "description": "Release stage this override authorises. Must equal the --stage being promoted; a mismatch is rejected. rc/ga overrides are exceptional and must be signed off accordingly."
+    },
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Non-empty list of the specific unmet controls/gates this override consciously bypasses. Never includes tracked-secret, malformed-evidence, rollback-integrity, or path-safety failures — those are non-waivable."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Documented justification for bypassing the listed controls."
+    },
+    "requested_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GitHub login of the person requesting the override."
+    },
+    "approved_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GitHub login of the approver. MUST differ from requested_by (self-approval is forbidden); this is enforced by check-release-readiness.sh, not expressible in plain JSON Schema."
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) the record was created."
+    },
+    "expires_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC timestamp (YYYY-MM-DDTHH:MM:SSZ). The override only applies while expires_at is in the future; an expired record is rejected (fail closed)."
+    }
+  },
+  "$comment": "Cross-field rules enforced by scripts/check-release-readiness.sh and not expressible in plain JSON Schema: version/stage must equal the promotion target; requested_by != approved_by; expires_at must be in the future."
+}

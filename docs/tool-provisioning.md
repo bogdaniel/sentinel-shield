@@ -39,6 +39,33 @@ sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile lara
 sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" --target . --profile laravel --tool-mode bootstrap-tools --apply
 ```
 
+### Acquisition safety (destructive-cleanup guard + no path leak)
+
+`acquire-sentinel-shield.sh` only ever mutates the `--destination` you give it, and
+it **validates that destination before doing anything destructive**. `--cleanup`
+(and re-acquiring over an existing checkout) refuses an **unsafe** destination and
+exits `2` *without deleting anything*: the current directory (`.`), a parent
+(`..`), the filesystem root (`/`), `$HOME`, the repo root, any ancestor of the repo
+root, or a path that a symlink would let the delete **escape** outside the intended
+tools directory. Only a **dedicated tools directory** (e.g. `.sentinel-shield-tools/`)
+is accepted as a destination — so a copy-pasted `--cleanup` can never `rm -rf` your
+working tree or home directory.
+
+```sh
+# Safe: removes only the dedicated tools checkout.
+sh scripts/acquire-sentinel-shield.sh --destination .sentinel-shield-tools --cleanup
+# Refused (exit 2, nothing deleted): unsafe destinations.
+sh scripts/acquire-sentinel-shield.sh --destination . --cleanup        # repo root → refused
+sh scripts/acquire-sentinel-shield.sh --destination "$HOME" --cleanup  # $HOME    → refused
+```
+
+The acquisition record written to `<destination>/.sentinel-shield-ref` is
+**normalized and never stores a local or home path**: a GitHub shorthand records
+`repository_kind:"github"` + `repository:"owner/repo"`; an explicit remote URL
+records `repository_kind:"url"` with any credentials/query/fragment stripped; a
+**local** source path records `repository_kind:"local"` and `repository:null` — the
+on-disk path is deliberately **not persisted**.
+
 > Detection is deterministic and read-only: a tool is "present" when one of its
 > `executable[]` entries resolves (first match wins, e.g. `vendor/bin/phpstan`
 > then `phpstan`). External/CI-provided scanners with no local executable
@@ -156,4 +183,3 @@ sync. Put project choices in `.sentinel-shield/profile.yaml`, project-local conf
 [`workflow-execution-model.md`](workflow-execution-model.md) for how provisioned
 tools become CI execution steps, and [`upgrading.md`](upgrading.md) for the full
 upgrade flow.
-</content>

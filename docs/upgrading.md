@@ -106,6 +106,30 @@ Tags are immutable, so the prior behavior is always retrievable:
 - **Scanner image digests:** keep the prior `@sha256:` pin
   ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
 
+### When automatic recovery itself fails (exit 4)
+
+A transactional install/sync/migration takes an **operation lock**
+(`.sentinel-shield/operation-lock.json`) and snapshots the files it is about to
+change. If a step breaks, it auto-rolls back. **If that rollback cannot complete**
+(e.g. a file can no longer be restored), the engine does **not** pretend it
+succeeded: it **exits `4`**, **retains the operation lock and the snapshot
+directory**, marks the lock `state:"rollback-incomplete"`, and prints the manual
+recovery steps. Nothing is cleaned up, because the snapshots are the only way back.
+
+Recover manually, then clear the lock — never delete the snapshots until the tree is
+restored:
+
+```sh
+# 1. Inspect what was in flight (operation, target, snapshot_dir).
+jq . .sentinel-shield/operation-lock.json
+# 2. Restore project files from the retained snapshot_dir it names.
+# 3. Verify the working tree, then remove the lock + snapshot dir to release it.
+```
+
+Treat a stale lock as untrusted: re-validate that `target` and `snapshot_dir` are
+inside your project before acting on them. A `rollback-incomplete` exit is a real
+failure to report — it is never a success.
+
 ## Update paths
 
 - **Manually** — the flow above (bump ref → sync dry-run → `--apply --force`).
@@ -115,5 +139,3 @@ Tags are immutable, so the prior behavior is always retrievable:
 
 Whichever path you take: **never** edit managed files in place (changes are lost
 on the next sync) and **never** suppress a finding to keep the gate green.
-</content>
-</invoke>

@@ -55,7 +55,7 @@ if [ "$rc" = 2 ]; then pass "(b') short/non-immutable ref rejected with exit 2"
 else fail "(b') short/non-immutable ref rejected with exit 2 (got rc=$rc)"; fi
 
 # A valid tag is accepted (exit 0) — confirms tags are not over-rejected.
-out_t=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/co_tag" 2>/dev/null) && rc=0 || rc=$?
+out_t=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/.sentinel-shield-tools" 2>/dev/null) && rc=0 || rc=$?
 if [ "$rc" = 0 ] && [ "$out_t" = "$SHA" ]; then pass "(b'') immutable tag accepted -> resolved commit"
 else fail "(b'') immutable tag accepted -> resolved commit (rc=$rc out='$out_t')"; fi
 
@@ -89,19 +89,19 @@ if [ "$rc" = 0 ] && [ "$out_h" = "$SHA" ]; then pass "(h) relative local path re
 else fail "(h) relative local path resolved as a path (rc=$rc out='$out_h')"; fi
 
 # --reuse-existing: a second call against a matching checkout reuses it (exit 0).
-out_r=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/co_tag" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
+out_r=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/.sentinel-shield-tools" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
 if [ "$rc" = 0 ] && [ "$out_r" = "$SHA" ]; then pass "(e) --reuse-existing reuses a matching checkout"
 else fail "(e) --reuse-existing reuses a matching checkout (rc=$rc out='$out_r')"; fi
 
 # (e') --reuse-existing must NOT reuse a DIRTY matching checkout — it re-acquires instead.
-echo dirt > "$WORK/co_tag/dirty.txt"
-out_d=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/co_tag" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
-if [ "$rc" = 0 ] && [ "$out_d" = "$SHA" ] && [ ! -e "$WORK/co_tag/dirty.txt" ]; then pass "(e') dirty checkout re-acquired, not reused"
-else fail "(e') dirty checkout re-acquired, not reused (rc=$rc out='$out_d' dirty=$( [ -e "$WORK/co_tag/dirty.txt" ] && echo yes || echo no ))"; fi
+echo dirt > "$WORK/.sentinel-shield-tools/dirty.txt"
+out_d=$(sh "$ACQ" --repository "$REMOTE" --ref v1.0.0 --destination "$WORK/.sentinel-shield-tools" --reuse-existing 2>/dev/null) && rc=0 || rc=$?
+if [ "$rc" = 0 ] && [ "$out_d" = "$SHA" ] && [ ! -e "$WORK/.sentinel-shield-tools/dirty.txt" ]; then pass "(e') dirty checkout re-acquired, not reused"
+else fail "(e') dirty checkout re-acquired, not reused (rc=$rc out='$out_d' dirty=$( [ -e "$WORK/.sentinel-shield-tools/dirty.txt" ] && echo yes || echo no ))"; fi
 
 # --cleanup removes the destination.
-sh "$ACQ" --destination "$WORK/co_tag" --cleanup >/dev/null 2>&1 || true
-[ -e "$WORK/co_tag" ] && fail "(f) --cleanup removes the destination" || pass "(f) --cleanup removes the destination"
+sh "$ACQ" --destination "$WORK/.sentinel-shield-tools" --cleanup >/dev/null 2>&1 || true
+[ -e "$WORK/.sentinel-shield-tools" ] && fail "(f) --cleanup removes the destination" || pass "(f) --cleanup removes the destination"
 
 [ "$FAILS" -eq 0 ] || exit 1
 exit 0

@@ -30,6 +30,9 @@ report on any failure.**
 
 - Do **not** run any engine script from the consumer repo's `scripts/`; run them only from the
   acquired, verified `${SENTINEL_SHIELD_PATH}`.
+- Do **not** point `acquire-sentinel-shield.sh --destination` (or `--cleanup`) at anything but the
+  dedicated tools dir. It validates the destination and **refuses** (exit 2, nothing deleted) `.`,
+  `..`, `/`, `$HOME`, the repo root, an ancestor, or a symlink that escapes the tools dir.
 - Do **not** set `SENTINEL_SHIELD_REF` to a moving branch (`main`, `master`, `HEAD`, `latest`) or to
   an unreleased / placeholder GA tag. Only an immutable tag or full SHA that already exists upstream.
 - Do **not** rewrite git history, mutate/move tags, or force-push.
@@ -227,6 +230,14 @@ failed resolution instead of forcing it through:
 (+ `pnpm-lock.yaml` / `yarn.lock`) automatically on any install/test failure; this manual step is the
 fallback if you need to restore by hand. If the engine itself needs reverting, set
 `SENTINEL_SHIELD_REF` back to the prior tag, re-acquire (step 1), and re-run sync `--apply --force`.
+
+If a transactional sync/install/migration **cannot complete its own rollback**, it exits **4**,
+**retains** its operation lock (`.sentinel-shield/operation-lock.json`, marked
+`state:"rollback-incomplete"`) and snapshot directory, and prints the manual recovery steps — it
+**never claims success and never deletes the recovery data**. When you see exit 4: report it
+verbatim, restore project files from the named `snapshot_dir` (re-validate it is inside the project
+first), verify the tree, and only then remove the lock + snapshot dir. Do not re-run the operation
+blindly over a held lock.
 
 ## Final report (required)
 

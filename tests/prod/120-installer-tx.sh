@@ -75,9 +75,14 @@ fi
 # ============================================================================
 TB="$WORK/b"; mkdir -p "$TB"
 sh "$INSTALL" --target "$TB" --apply --mode report-only >/dev/null 2>&1
+CTB=$(CDPATH= cd -- "$TB" && pwd)   # canonical target (matches what the script records)
 LOCK="$TB/.sentinel-shield/operation-lock.json"
-printf '{"operation":"install","started_at":"2026-01-01T00:00:00Z","pid":1,"snapshot_dir":"%s"}' \
-	"$TB/.sentinel-shield/.txn-stale" > "$LOCK"
+# CONTRACT(2)-valid stale lock pointing at a real (empty) snapshot dir: --recover must roll
+# back cleanly (nothing touched) and clear the lock. schema_version/target/state present.
+STALE_TXN="$CTB/.sentinel-shield/.txn-stale"
+mkdir -p "$STALE_TXN/snap"; : > "$STALE_TXN/touched"
+printf '{"schema_version":"1","operation":"install","target":"%s","started_at":"2026-01-01T00:00:00Z","pid":1,"snapshot_dir":"%s","state":"active"}' \
+	"$CTB" "$STALE_TXN" > "$LOCK"
 
 out=$(sh "$INSTALL" --target "$TB" --apply --force 2>&1) && rc=0 || rc=$?
 [ "$rc" != 0 ] && pass "(b) stale lock blocks a new --apply (non-zero exit)" \

@@ -89,10 +89,16 @@ LOCK="$SS_DIR/operation-lock.json"
 TX_ACTIVE=0; TX_SNAP=""; TOOLS_MANIFEST=""; PREVIEW_DIR=""
 
 tx_snapshot() { # <relpath>
+	# Dedup (snapshot a path at most once, pre-write) + record newly-created paths in
+	# 'created' so recovery distinguishes a MODIFIED file (snap MUST exist) from a
+	# NEWLY-CREATED file (must be removed) and fails closed on a missing snapshot.
 	[ -n "$TX_SNAP" ] || return 0
+	grep -qxF "$1" "$TX_SNAP/touched" 2>/dev/null && return 0
 	if [ -e "$TARGET/$1" ]; then
 		ensure_dir "$TX_SNAP/snap/$(dirname -- "$1")"
 		cp -p "$TARGET/$1" "$TX_SNAP/snap/$1"
+	else
+		printf '%s\n' "$1" >> "$TX_SNAP/created"
 	fi
 	printf '%s\n' "$1" >> "$TX_SNAP/touched"
 }
@@ -109,6 +115,21 @@ _tx_rel_safe() {
 _tx_snap_safe() {
 	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
 	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
+}
+# _tx_lock_valid <lockfile> — jq-structural validation against
+# schemas/operation-lock.schema.json (CONTRACT(2)); ajv may be absent so this is the
+# authoritative check. Fails closed on any missing/ill-typed field.
+_tx_lock_valid() {
+	[ -s "$1" ] || return 1
+	jq -e '
+		(.schema_version == "1") and
+		(.operation as $o | ["install","sync","migration","bootstrap"] | index($o) != null) and
+		(.target | type == "string" and (length > 0)) and
+		(.started_at | type == "string" and (length > 0)) and
+		(.pid | type == "number") and
+		(.snapshot_dir | type == "string" and (length > 0)) and
+		(.state as $s | ["active","rollback-incomplete"] | index($s) != null)
+	' "$1" >/dev/null 2>&1
 }
 tx_rollback() {
 	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
@@ -130,8 +151,8 @@ tx_begin() {
 	ensure_dir "$TX_SNAP"
 	: > "$TX_SNAP/touched"
 	_lk="$LOCK.tmp.$$"
-	jq -n --arg op "migrate" --arg at "$(timestamp_utc)" --argjson pid "$$" --arg snap "$TX_SNAP" \
-		'{operation:$op, started_at:$at, pid:$pid, snapshot_dir:$snap}' > "$_lk" \
+	jq -n --arg op "migration" --arg tgt "$TARGET" --arg at "$(timestamp_utc)" --argjson pid "$$" --arg snap "$TX_SNAP" \
+		'{schema_version:"1", operation:$op, target:$tgt, started_at:$at, pid:$pid, snapshot_dir:$snap, state:"active"}' > "$_lk" \
 		&& mv -- "$_lk" "$LOCK"
 	TX_ACTIVE=1
 }
@@ -149,12 +170,78 @@ tx_detect_stale() {
 	log_error "recover (roll back the partial run) with: sh scripts/migrate-v1.sh --target '$TARGET' --recover"
 	exit 4
 }
+# _tx_mark_incomplete — best-effort stamp state="rollback-incomplete" onto a parseable
+# lock; never removes the lock, leaves the retained lock as-is on any error.
+_tx_mark_incomplete() {
+	[ -f "$LOCK" ] && jq -e . "$LOCK" >/dev/null 2>&1 || return 0
+	_mi="$LOCK.tmp.$$"
+	if jq '.state = "rollback-incomplete"' "$LOCK" > "$_mi" 2>/dev/null && mv -- "$_mi" "$LOCK"; then :; else
+		rm -f "$_mi" 2>/dev/null || true
+	fi
+}
+# _tx_recover_fail <path> <operation> <detail> — FAIL CLOSED: retain the lock AND every
+# snapshot, print the exact failing path+operation and a manual recovery procedure, exit 4.
+_tx_recover_fail() {
+	_tx_mark_incomplete
+	{
+		echo "error: recovery FAILED — the interrupted operation was NOT rolled back (state retained)."
+		echo "       failing path:      $1"
+		echo "       failing operation: $2"
+		echo "       detail:            $3"
+		echo "       RETAINED for manual recovery (nothing was deleted):"
+		echo "         lock:     $LOCK"
+		[ -n "${_snap:-}" ] && echo "         snapshot: $_snap"
+		echo "       MANUAL RECOVERY PROCEDURE:"
+		echo "         1. Confirm no Sentinel Shield operation is running (see the lock's pid)."
+		echo "         2. Resolve the blocking condition above (e.g. a read-only file/dir, a"
+		echo "            missing snapshot file, or a tampered lock/manifest)."
+		echo "         3. For each path in <snapshot_dir>/touched, restore"
+		echo "            <snapshot_dir>/snap/<path> over <target>/<path> (or delete <target>/<path>"
+		echo "            when no snapshot exists), then verify the target matches the snapshot."
+		echo "         4. Re-run --recover; only once it reports success is $LOCK removed."
+	} >&2
+	exit 4
+}
+# _tx_recover_apply — validated rollback of TX_SNAP with post-rollback verification.
+_tx_recover_apply() {
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || _tx_recover_fail "$_rel" "validate-touched-path" "touched path is absolute or contains '..' (refusing to restore outside the target)"
+	done < "$TX_SNAP/touched"
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		if [ -e "$TX_SNAP/snap/$_rel" ]; then
+			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
+		else
+			rm -f "$TARGET/$_rel" 2>/dev/null || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
+			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "remove-created" "newly-created file is still present after removal"
+		fi
+	done < "$TX_SNAP/touched"
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		if [ -e "$TX_SNAP/snap/$_rel" ]; then
+			cmp -s "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "post-verify" "restored file does not match its snapshot"
+		else
+			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "post-verify" "newly-created file is still present after rollback"
+		fi
+	done < "$TX_SNAP/touched"
+	return 0
+}
+# tx_recover — FAIL-CLOSED rollback: clears snapshot+lock and exits 0 ONLY when EVERY
+# recovery-contract step holds; otherwise retains lock + snapshots and exits 4.
 tx_recover() {
 	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
-	_snap=$(jq -r '.snapshot_dir // empty' "$LOCK" 2>/dev/null || true)
-	if [ -n "$_snap" ] && _tx_snap_safe "$_snap" && [ -f "$_snap/touched" ]; then
-		TX_SNAP="$_snap"; tx_rollback; rm -rf "$_snap" 2>/dev/null || true
-	fi
+	_tx_lock_valid "$LOCK" || _tx_recover_fail "$LOCK" "lock-schema-validation" "operation-lock is missing fields, mistyped, or not schema-conformant"
+	_snap=$(jq -r '.snapshot_dir' "$LOCK" 2>/dev/null || true)
+	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
+	[ "$_ltarget" = "$TARGET" ] || _tx_recover_fail "$LOCK" "target-mismatch" "lock target '$_ltarget' != current canonical target '$TARGET'"
+	_tx_snap_safe "$_snap" || _tx_recover_fail "$_snap" "snapshot-dir-unsafe" "snapshot_dir is not canonically contained in $SS_DIR/.txn-*"
+	[ -d "$_snap" ] || _tx_recover_fail "$_snap" "snapshot-dir-missing" "snapshot_dir does not exist"
+	[ -f "$_snap/touched" ] && [ -r "$_snap/touched" ] || _tx_recover_fail "$_snap/touched" "touched-manifest-missing" "the touched manifest is absent or unreadable"
+	TX_SNAP="$_snap"
+	_tx_recover_apply || _tx_recover_fail "$_snap" "rollback" "rollback did not complete"
+	rm -rf "$_snap" 2>/dev/null || true
 	rm -f "$LOCK" 2>/dev/null || true
 	echo "Recovery complete: rolled back the interrupted operation and cleared $LOCK."
 	exit 0

@@ -33,11 +33,16 @@
       "pattern": "^[0-9a-fA-F]{7,40}$",
       "description": "Immutable commit the installer was sourced from (full or abbreviated hex SHA). Optional; recorded when known so upgrades are reproducible."
     },
-    "repository": {
+    "repository_kind": {
       "type": "string",
+      "enum": ["github", "url", "local"],
+      "description": "How the source was acquired (CONTRACT(1)): 'github' (owner/repo shorthand), 'url' (explicit credential-free remote URL), or 'local' (a local path — its value is NEVER persisted, so 'repository' is null/absent)."
+    },
+    "repository": {
+      "type": ["string", "null"],
       "minLength": 1,
       "not": { "pattern": "[@?#]" },
-      "description": "Source repository as 'owner/repo' or a credential-free URL. MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected."
+      "description": "Source repository as 'owner/repo' or a credential-free URL. null/absent for a 'local' source (the local path is never persisted). MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected."
     },
     "profile": {
       "type": "string",

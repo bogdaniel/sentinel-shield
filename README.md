@@ -565,6 +565,37 @@ product docs:
 - **Product readiness checklist** — [`docs/product-readiness-checklist.md`](docs/product-readiness-checklist.md).
 - **Profile-driven adoption** (install/sync) — [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).
 
+## Release readiness & safety (v2)
+
+v2 hardens the install/upgrade and release-promotion paths to **fail closed**:
+
+- **Safe acquisition.** `acquire-sentinel-shield.sh` only mutates `--destination` and
+  validates it before any destructive step — `--cleanup` / re-acquire **refuse**
+  (exit 2, nothing deleted) `.`, `..`, `/`, `$HOME`, the repo root, an ancestor, or a
+  symlink that would escape the tools dir; only a dedicated tools directory is allowed.
+  Its `.sentinel-shield-ref` record is normalized and **never stores a local/home path**
+  (local sources record `repository_kind:"local"`, `repository:null`).
+- **Recovery never lies.** If a transactional install/sync/migration cannot complete its
+  own rollback, it **exits 4**, retains the operation lock + snapshots
+  (`state:"rollback-incomplete"`), and prints manual recovery steps — it never claims
+  success or deletes recovery data ([`docs/upgrading.md`](docs/upgrading.md#when-automatic-recovery-itself-fails-exit-4)).
+- **Authoritative local pipeline.** `run-local-pipeline.sh` writes all evidence under a
+  single root (`--output-dir`), with `--purpose developer|release` (release runs hash each
+  raw report into the execution manifest) — [`docs/workflow-execution-model.md`](docs/workflow-execution-model.md#reproducing-the-gate-locally-run-local-pipelinesh).
+
+  ```sh
+  sh scripts/run-local-pipeline.sh --profile laravel --target /path/to/project \
+     --stage main --mode baseline --purpose release --output-dir reports
+  ```
+
+- **Release readiness runs the full suite.** `check-release-readiness.sh --version <v> --stage
+  <alpha|beta|rc|ga>` runs the self-test *syntax*, *production-readiness*, *e2e*, and *all*
+  suites plus schema/workflow/pinning/hygiene/evidence gates — fixture existence is not proof.
+  Evidence is validated structurally (`validate-release-evidence.sh --offline`) vs
+  GitHub-verified (`--verify-github`); `beta`+ needs GitHub-verified proof. Overrides differ by
+  stage and can never waive secrets, malformed evidence, a failed rollback, or path-safety. See
+  [`docs/consumer-validation-runbook.md`](docs/consumer-validation-runbook.md).
+
 ## Contributing, changelog, make targets
 
 - Contributions: [`CONTRIBUTING.md`](CONTRIBUTING.md) (shell standards, commit

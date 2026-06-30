@@ -63,6 +63,10 @@ run_validator 1 "fail-closed: shipped v2.0.0.json fails --require-stage beta" --
 run_validator 1 "fail-closed: shipped v2.0.0-beta.1.json fails --require-stage beta" --file "$BETA" --require-stage beta
 
 # (c) hand-built fixture WITH real-looking laravel+symfony runs passes beta.
+# Each run carries the FULL hardened proof shape: 40-hex commits, a 40-hex
+# sentinel_shield_commit equal to engine_commit, a positive-integer run id,
+# a canonical run URL whose owner/repo+run-id match, verified artifacts, an
+# ISO-8601 UTC timestamp, and a verification_method.
 GOOD="$WORK/good-beta.json"
 cat > "$GOOD" <<'EOF'
 {
@@ -70,8 +74,8 @@ cat > "$GOOD" <<'EOF'
   "stage": "beta",
   "engine_commit": "0123456789abcdef0123456789abcdef01234567",
   "consumer_runs": [
-    {"stack":"laravel","repository":"org/laravel-demo","commit":"a1b2c3d4","profile":"laravel","tool_mode":"bootstrap-tools","workflow_run_id":"gh-actions-run-1001","result":"success","artifacts_verified":true},
-    {"stack":"symfony","repository":"org/symfony-demo","commit":"e5f6a7b8","profile":"symfony","tool_mode":"require-existing","workflow_run_id":"gh-actions-run-1002","result":"success","artifacts_verified":true}
+    {"stack":"laravel","repository":"org/laravel-demo","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sentinel_shield_commit":"0123456789abcdef0123456789abcdef01234567","profile":"laravel","tool_mode":"bootstrap-tools","workflow_run_id":1001,"workflow_url":"https://github.com/org/laravel-demo/actions/runs/1001","result":"success","artifacts":[{"id":11,"name":"sbom","verified":true}],"artifacts_verified":true,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"},
+    {"stack":"symfony","repository":"org/symfony-demo","commit":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sentinel_shield_commit":"0123456789abcdef0123456789abcdef01234567","profile":"symfony","tool_mode":"require-existing","workflow_run_id":1002,"workflow_url":"https://github.com/org/symfony-demo/actions/runs/1002","result":"success","artifacts":[{"id":12,"name":"sbom","verified":true}],"artifacts_verified":true,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
   ],
   "required_evidence": {
     "laravel": true, "symfony": true, "php_library": false, "node_react": false,
@@ -85,6 +89,8 @@ run_validator 0 "real laravel+symfony runs pass --require-stage beta" --file "$G
 run_validator 1 "beta-only fixture does not satisfy --require-stage rc" --file "$GOOD" --require-stage rc
 
 # A flag set true but with NO backing successful run must NOT pass beta.
+# The run is well-formed (passes schema + semantics) but FAILED, so it cannot
+# back any flag: artifacts_verified=false with an empty artifacts[] is honest.
 UNBACKED="$WORK/unbacked.json"
 cat > "$UNBACKED" <<'EOF'
 {
@@ -92,7 +98,7 @@ cat > "$UNBACKED" <<'EOF'
   "stage": "beta",
   "engine_commit": "0123456789abcdef0123456789abcdef01234567",
   "consumer_runs": [
-    {"stack":"laravel","repository":"org/laravel-demo","commit":"a1b2c3d4","profile":"laravel","tool_mode":"bootstrap-tools","workflow_run_id":"gh-actions-run-1001","result":"failure","artifacts_verified":false}
+    {"stack":"laravel","repository":"org/laravel-demo","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sentinel_shield_commit":"0123456789abcdef0123456789abcdef01234567","profile":"laravel","tool_mode":"bootstrap-tools","workflow_run_id":1001,"workflow_url":"https://github.com/org/laravel-demo/actions/runs/1001","result":"failure","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
   ],
   "required_evidence": {
     "laravel": true, "symfony": true, "php_library": false, "node_react": false,

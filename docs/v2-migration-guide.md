@@ -111,5 +111,11 @@ yarn install --immutable                           # yarn.lock
 composer install --no-interaction --prefer-dist    # composer.lock
 ```
 
+If automatic recovery itself **fails**, the migration exits `4`, **retains** its
+operation lock (`.sentinel-shield/operation-lock.json`, marked
+`state:"rollback-incomplete"`) and snapshot directory, and prints the manual
+recovery steps — it never reports success and never deletes the recovery data.
+Follow the procedure in
+[`upgrading.md`](upgrading.md#when-automatic-recovery-itself-fails-exit-4).
+
 Full rollback options: [`upgrading.md`](upgrading.md#rollback).
-</content>

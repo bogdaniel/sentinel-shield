@@ -29,9 +29,12 @@ cleanup() { rm -rf -- "$WORK"; }
 trap cleanup EXIT INT TERM
 
 TARGET="$WORK/target"
-OUT="$WORK/out"
-mkdir -p "$TARGET" "$OUT"
+mkdir -p "$TARGET"
 cp -R "$FIXTURE/." "$TARGET/"
+# Finding 7 (PARTIAL): --output-dir must live under <target>/reports (raw evidence root is
+# fixed; an out-of-tree --output-dir is rejected with exit 2). Use a subdir of it.
+OUT="$TARGET/reports/out"
+mkdir -p "$OUT"
 
 # --- hermetic PATH: required scanners absent BY CONSTRUCTION ------------------
 # The exit-3 assertions below require gitleaks/semgrep/trivy/osv-scanner to be
@@ -121,7 +124,7 @@ fi
 # build-security-summary + enforce-gates. The summary judged by the gate must be freshly
 # generated (no stale marker, carries policy counters), and the execution-honest exit 3
 # must NOT be downgraded to a findings/gate code (1).
-OUT2="$WORK/out2"
+OUT2="$TARGET/reports/out2"
 mkdir -p "$OUT2"
 printf '{"version":"1.0","STALE_BOGUS_MARKER":true}' > "$OUT2/security-summary.json"
 rc=0

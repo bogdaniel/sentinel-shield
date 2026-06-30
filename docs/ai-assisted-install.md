@@ -40,6 +40,15 @@ sh /tmp/sentinel-shield-bootstrap/scripts/acquire-sentinel-shield.sh \
   --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
 ```
 
+`acquire-sentinel-shield.sh` only mutates `--destination`, and it **validates that
+path before any destructive step** — `--cleanup` / re-acquire **refuse** (exit 2,
+nothing deleted) an unsafe destination (`.`, `..`, `/`, `$HOME`, the repo root, an
+ancestor, or a symlink that would escape the tools dir); only a dedicated tools
+directory such as `.sentinel-shield-tools/` is allowed. The acquisition record it
+writes (`<dest>/.sentinel-shield-ref`) is normalized and **never persists a local or
+home path**: a local source is recorded as `repository_kind:"local"` with
+`repository:null`. See [`tool-provisioning.md`](tool-provisioning.md#acquisition-safety-destructive-cleanup-guard--no-path-leak).
+
 ## 2. When to use it
 
 - Onboarding a new repo and you want a guided, repeatable install.

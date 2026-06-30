@@ -1,28 +1,44 @@
 #!/bin/sh
-# tests/prod/170-readiness.sh — WS17 release-promotion readiness gate.
+# tests/prod/170-readiness.sh — BLOCKER 3: release-readiness runs the full
+# structural contract (it EXECUTES the self-tests, it does not merely check that
+# fixtures exist).
 #
-# Asserts the contract of scripts/check-release-readiness.sh:
-#   (a) --stage alpha PASSES structurally today (exit 0).
-#   (b) --stage beta FAILS today (no real consumer evidence) — fail closed (exit 1).
-#   (c) bad args -> exit 2.
-#   (d) --override-reason is honored (exit 0) but prints a LOUD warning.
-# Self-contained, no network. Run via: sh tests/prod/170-readiness.sh
+# Asserts scripts/check-release-readiness.sh:
+#   (a) --stage alpha PASSES (exit 0) only when the stubbed self-test gates pass.
+#   (b) --stage alpha FAILS CLOSED (exit 1) when ANY self-test gate fails — so
+#       fixture-existence alone can never make it green.
+#   (c) --stage beta FAILS (exit 1) today even structurally (no real evidence).
+#   (d) bad args -> exit 2.
+#   (e) the alpha free-text --override-reason is honored but printed LOUDLY.
+#   (f) the alpha override is inert when nothing is unmet.
+#
+# Hermetic: $SELF_TEST is stubbed (fast) and the static validators are shadowed
+# by passing fakes on PATH so the result is host-independent. NETWORK-FREE.
+# Run via: sh tests/prod/170-readiness.sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SCRIPT="$ROOT/scripts/check-release-readiness.sh"
 
 FAILED=0
-ok()   { printf 'PASS: %s\n' "$1"; }
-bad()  { printf 'FAIL: %s\n' "$1"; FAILED=1; }
+ok()  { printf 'PASS: %s\n' "$1"; }
+bad() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
 [ -f "$SCRIPT" ] || { bad "check-release-readiness.sh exists"; exit 1; }
 
-# Use an explicit, honest no-evidence fixture (empty consumer_runs, all flags
-# false) for the evidence-gated cases so the fail-closed beta path and override
-# behaviour stay testable regardless of whatever real evidence later lands in
-# evidence/releases/. The fixture is schema-VALID but satisfies no stage gate.
 TMPDIR_T=$(mktemp -d "${TMPDIR:-/tmp}/170-readiness.XXXXXX")
 trap 'rm -rf "$TMPDIR_T"' EXIT INT TERM
+
+# Fake-bin: passing self-test + passing static validators. Real jq/yq/git remain.
+BIN="$TMPDIR_T/bin"
+mkdir -p "$BIN"
+printf '#!/bin/sh\nexit 0\n' > "$BIN/selftest-ok"
+# Fail self-test only for the 'all' group (the authoritative check).
+printf '#!/bin/sh\ncase "$1" in all) exit 1 ;; *) exit 0 ;; esac\n' > "$BIN/selftest-failall"
+for v in shellcheck actionlint zizmor; do printf '#!/bin/sh\nexit 0\n' > "$BIN/$v"; done
+chmod +x "$BIN"/*
+
+# Honest no-evidence fixture: schema-VALID but satisfies no stage gate, so the
+# beta fail-closed path is testable regardless of real evidence/releases/ state.
 EMPTY_EVIDENCE="$TMPDIR_T/empty-evidence.json"
 cat >"$EMPTY_EVIDENCE" <<'JSON'
 {
@@ -31,68 +47,62 @@ cat >"$EMPTY_EVIDENCE" <<'JSON'
   "engine_commit": "unknown",
   "consumer_runs": [],
   "required_evidence": {
-    "laravel": false,
-    "symfony": false,
-    "php_library": false,
-    "node_react": false,
-    "combined_profile": false,
-    "bootstrap_apply": false,
-    "rollback_npm": false,
-    "rollback_pnpm": false,
-    "rollback_yarn": false
+    "laravel": false, "symfony": false, "php_library": false,
+    "node_react": false, "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
   }
 }
 JSON
 
-# (a) alpha passes structurally.
-rc=0
-out=$(sh "$SCRIPT" --version v2.0.0 --stage alpha 2>&1) || rc=$?
-if [ "$rc" -eq 0 ]; then ok "(a) --stage alpha exits 0 (structurally ready)"
-else bad "(a) --stage alpha expected exit 0, got $rc; output: $out"; fi
+run() { # run <selftest-stub> <args...>
+	_st="$BIN/$1"; shift
+	SELF_TEST="$_st" PATH="$BIN:$PATH" sh "$SCRIPT" "$@" 2>&1
+}
 
-# (b) beta fails against the empty-evidence fixture (real consumer evidence is
-# UNMET) — fail closed, independent of real evidence/releases/ state.
-rc=0
-out=$(sh "$SCRIPT" --version v2.0.0 --stage beta --evidence "$EMPTY_EVIDENCE" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ]; then ok "(b) --stage beta exits 1 (no real consumer evidence; fail closed)"
-else bad "(b) --stage beta expected exit 1, got $rc"; fi
-if printf '%s' "$out" | grep -q 'NOT READY'; then ok "(b) beta prints NOT READY"
-else bad "(b) beta output missing 'NOT READY'"; fi
+# (a) alpha passes when the stubbed self-tests pass.
+rc=0; out=$(run selftest-ok --version v2.0.0 --stage alpha) || rc=$?
+if [ "$rc" -eq 0 ]; then ok "(a) alpha exits 0 when self-test stub passes"
+else bad "(a) alpha expected exit 0, got $rc; out: $out"; fi
 
-# (c) bad args -> exit 2 (missing --version).
-rc=0
-sh "$SCRIPT" --stage alpha >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 2 ]; then ok "(c) missing --version exits 2"
-else bad "(c) missing --version expected exit 2, got $rc"; fi
+# (b) alpha FAILS CLOSED when a self-test gate fails — fixtures exist, but the
+# tests did not pass, so it must NOT be ready.
+rc=0; out=$(run selftest-failall --version v2.0.0 --stage alpha) || rc=$?
+if [ "$rc" -eq 1 ]; then ok "(b) alpha exits 1 when a self-test gate fails (fail closed)"
+else bad "(b) alpha expected exit 1, got $rc"; fi
+if printf '%s' "$out" | grep -q "self-test 'all' failed"; then ok "(b) alpha reports the failing self-test gate by name"
+else bad "(b) alpha missing the named self-test failure"; fi
+if printf '%s' "$out" | grep -q 'NOT READY'; then ok "(b) alpha prints NOT READY"
+else bad "(b) alpha output missing 'NOT READY'"; fi
 
-# (c) bad args -> exit 2 (invalid --stage value).
-rc=0
-sh "$SCRIPT" --version v2.0.0 --stage bogus >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 2 ]; then ok "(c) invalid --stage exits 2"
-else bad "(c) invalid --stage expected exit 2, got $rc"; fi
+# (c) beta fails structurally today (no real consumer evidence), even with the
+# self-tests stubbed green — fail closed.
+rc=0; out=$(run selftest-ok --version v2.0.0 --stage beta --evidence "$EMPTY_EVIDENCE") || rc=$?
+if [ "$rc" -eq 1 ]; then ok "(c) beta exits 1 (no real consumer evidence; fail closed)"
+else bad "(c) beta expected exit 1, got $rc"; fi
+if printf '%s' "$out" | grep -q 'NOT READY'; then ok "(c) beta prints NOT READY"
+else bad "(c) beta output missing 'NOT READY'"; fi
 
-# (c) bad args -> exit 2 (unknown flag).
-rc=0
-sh "$SCRIPT" --version v2.0.0 --stage alpha --nope >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 2 ]; then ok "(c) unknown flag exits 2"
-else bad "(c) unknown flag expected exit 2, got $rc"; fi
+# (d) bad args -> exit 2 (missing --version / invalid --stage / unknown flag).
+rc=0; run selftest-ok --stage alpha >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] && ok "(d) missing --version exits 2" || bad "(d) missing --version expected 2, got $rc"
+rc=0; run selftest-ok --version v2.0.0 --stage bogus >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] && ok "(d) invalid --stage exits 2" || bad "(d) invalid --stage expected 2, got $rc"
+rc=0; run selftest-ok --version v2.0.0 --stage alpha --nope >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] && ok "(d) unknown flag exits 2" || bad "(d) unknown flag expected 2, got $rc"
 
-# (d) override honored (exit 0) on a failing stage, but prints a loud warning.
-rc=0
-out=$(sh "$SCRIPT" --version v2.0.0 --stage beta --evidence "$EMPTY_EVIDENCE" --override-reason "exec sign-off ticket SEC-123" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ]; then ok "(d) override makes a failing stage exit 0"
-else bad "(d) override expected exit 0, got $rc"; fi
-if printf '%s' "$out" | grep -q 'OVERRIDE IN EFFECT'; then ok "(d) override prints loud 'OVERRIDE IN EFFECT' banner"
-else bad "(d) override output missing loud banner"; fi
-if printf '%s' "$out" | grep -q 'exec sign-off ticket SEC-123'; then ok "(d) override echoes the documented reason"
-else bad "(d) override output missing reason text"; fi
+# (e) alpha free-text override is honored (exit 0) on a failing stage, LOUDLY.
+rc=0; out=$(run selftest-failall --version v2.0.0 --stage alpha --override-reason "exec sign-off SEC-123") || rc=$?
+if [ "$rc" -eq 0 ]; then ok "(e) alpha override makes a failing stage exit 0"
+else bad "(e) alpha override expected exit 0, got $rc"; fi
+if printf '%s' "$out" | grep -q 'OVERRIDE IN EFFECT'; then ok "(e) alpha override prints the loud banner"
+else bad "(e) alpha override missing loud banner"; fi
+if printf '%s' "$out" | grep -q 'exec sign-off SEC-123'; then ok "(e) alpha override echoes the documented reason"
+else bad "(e) alpha override missing reason text"; fi
 
-# Sanity: override WITHOUT a failing gate (alpha) still exits 0 and does NOT
-# print the override banner (nothing to bypass).
-rc=0
-out=$(sh "$SCRIPT" --version v2.0.0 --stage alpha --override-reason "unused" 2>&1) || rc=$?
+# (f) override is inert when nothing is unmet (alpha all-green).
+rc=0; out=$(run selftest-ok --version v2.0.0 --stage alpha --override-reason "unused") || rc=$?
 if [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q 'OVERRIDE IN EFFECT'; then
-	ok "(d) override is inert when no gate is unmet"
-else bad "(d) override on a passing stage misbehaved (rc=$rc)"; fi
+	ok "(f) override is inert when no gate is unmet"
+else bad "(f) override on a passing stage misbehaved (rc=$rc)"; fi
 
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

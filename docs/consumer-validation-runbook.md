@@ -154,6 +154,30 @@ non-empty, `result` is `"success"`, and `artifacts_verified` is `true`.
 > `workflow_run_id`, or point at a run that did not actually exercise the profile. The evidence is
 > only worth the real CI run behind it; the validator fails closed on an honest empty file.
 
+## Structural vs GitHub-verified evidence
+
+`validate-release-evidence.sh` proves evidence at two different strengths, and the
+stage gate cares which one you used:
+
+```sh
+# STRUCTURAL only — schema shape + stage ladder, NO network. Proves the file is
+# well-formed; it does NOT prove the referenced CI runs actually exist or passed.
+sh scripts/validate-release-evidence.sh --file evidence/releases/v2.0.0.json \
+   --require-stage beta --offline
+
+# GitHub-VERIFIED — additionally confirms each workflow_run_id really exists, ran
+# on the recorded commit, and concluded success (against the GitHub API).
+sh scripts/validate-release-evidence.sh --file evidence/releases/v2.0.0.json \
+   --require-stage beta --verify-github
+```
+
+`--offline` is structural proof only; **`beta` and every stage above it require
+GitHub-verified evidence** (`--verify-github`, or a documented equivalent
+out-of-band verification recorded in the evidence) before promotion. A structural
+(`--offline`) pass is necessary but **not sufficient** for `beta`+ — the existence
+of an evidence file or a local fixture is never proof that a real consumer CI run
+happened.
+
 ## Verifying the gate
 
 After the single evidence file records all five consumer runs, check each promotion stage:
@@ -167,15 +191,39 @@ sh scripts/check-release-readiness.sh --version v2.0.0 --stage ga      # + clean
 
 Exit `0` = ready, `1` = not ready (unmet gate, fail closed), `2` = bad args/environment.
 
-## Override (break-glass only)
+`check-release-readiness.sh` does **not** trust fixtures or a green-looking
+checkout. Its structural floor runs the **full** test surface — the self-test
+*syntax* pass, the *production-readiness* suite, the *e2e* suite, and the *all*
+suite — plus the schema-validity, workflow-template, pinning, hygiene
+(no tracked secrets / runtime artifacts), and evidence gates. The mere **existence**
+of a fixture or evidence file is not proof; every gate must actually pass. For
+`beta`+ it delegates evidence proof to `validate-release-evidence.sh` with
+GitHub verification (above) and **fails closed** if that proof is missing or the
+evidence is malformed.
 
-If — and only if — a documented business decision forces promotion with unmet evidence, pass an
-explicit reason. The script prints a LOUD banner and records the bypass; it never silently passes:
+## Override (break-glass) — policy DIFFERS by stage
+
+Overrides are an audit event, not a shortcut, and what is permitted **depends on the
+stage** you are promoting to:
+
+| Stage | How an unmet gate may be overridden |
+| --- | --- |
+| `alpha` | CLI `--override-reason "<text>"` is accepted; the script prints a **LOUD** banner and records the bypass. Never a silent pass. |
+| `beta` | CLI reason alone is **not** enough — a **version-controlled waiver record** (`.sentinel-shield/release-override.json`) is required: `requested_by` and `approved_by` must be **different** GitHub logins (no self-approval) and the waiver must be **unexpired**. |
+| `rc` / `ga` | Overrides are **prohibited** (or require a strict, signed waiver per release policy). Promote only on genuinely met, GitHub-verified evidence. |
 
 ```sh
-sh scripts/check-release-readiness.sh --version v2.0.0 --stage beta \
+# alpha break-glass (loud, recorded):
+sh scripts/check-release-readiness.sh --version v2.0.0 --stage alpha \
    --override-reason "SEC-123: exec sign-off, Symfony run rescheduled to <date>"
 ```
 
-An override is an audit event, not a shortcut. It does not make the missing consumer runs exist —
-those remain MANDATORY and UNMET until captured as above.
+The version-controlled waiver record is the schema in SHARED CONTRACT #3
+(`.sentinel-shield/release-override.json`): `version`, `stage`, `controls[]`,
+`reason`, `requested_by`, `approved_by` (a **different** login), `created_at`,
+`expires_at`.
+
+**Some things can NEVER be overridden or waived, at any stage:** a tracked **secret**
+finding, **malformed evidence**, a **failed rollback**, and any **path-safety** refusal.
+An override never makes the missing consumer runs exist — those remain MANDATORY and
+UNMET until captured as above.

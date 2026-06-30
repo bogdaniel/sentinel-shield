@@ -75,6 +75,17 @@ sh scripts/acquire-sentinel-shield.sh \
   --verify
 ```
 
+`acquire-sentinel-shield.sh` only ever mutates `--destination`. It **validates that
+destination before any destructive action**: `--cleanup` (and re-acquiring over an
+existing checkout) **refuses** an unsafe destination — `.`, `..`, `/`, `$HOME`, the
+repo root, an ancestor, or a symlink that would escape the tools dir — and exits `2`
+**without deleting anything**; only a dedicated tools directory like
+`$SENTINEL_SHIELD_PATH` is accepted. Always point `--destination` at the dedicated
+tools dir, never at your repo root. The acquisition record
+(`$SENTINEL_SHIELD_PATH/.sentinel-shield-ref`) is normalized and **never stores a
+local or home path** (a local source records `repository_kind:"local"`,
+`repository:null`).
+
 **5. Verify the resolved commit SHA.** Record the exact commit the checkout resolved to and confirm
 it matches your intended immutable ref (the acquire `--verify` output, or
 `git -C "$SENTINEL_SHIELD_PATH" rev-parse HEAD`). This resolved SHA goes in the final report.

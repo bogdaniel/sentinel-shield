@@ -86,7 +86,12 @@ prior immutable ref, re-acquire (`acquire-sentinel-shield.sh … --verify`), and
 re-run `sync-baseline.sh --apply --force` from that checkout;
 `bootstrap-profile-tools.sh` rolls back dependency files automatically on failure
 (npm/pnpm/yarn/composer reinstall steps when it reports **rollback-incomplete**).
-Full options: [`upgrading.md`](upgrading.md#rollback).
+If a transactional install/sync/migration cannot complete its own rollback, it
+**exits 4**, keeps its operation lock + snapshots, and prints manual recovery steps
+— it never claims success. The agent must surface that verbatim, not retry blindly.
+Full options:
+[`upgrading.md`](upgrading.md#rollback) and
+[recovery-failure](upgrading.md#when-automatic-recovery-itself-fails-exit-4).
 
 ## 7. How to report honestly
 
@@ -101,4 +106,3 @@ The manual update path remains fully supported; AI-assisted update is an
 [`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md) for
 updates, [`prompts/install-sentinel-shield.md`](../prompts/install-sentinel-shield.md)
 for first installs (print it with `sh scripts/print-ai-install-prompt.sh`).
-</content>
