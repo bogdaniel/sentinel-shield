@@ -62,11 +62,12 @@ SELF_TEST="${SELF_TEST:-sh $REPO_ROOT/scripts/self-test.sh}"
 
 # usage — print CLI usage to stdout.
 usage() {
-	printf 'Usage: check-release-readiness.sh --version <vX> --stage <alpha|beta|rc|ga> [--evidence <file>] [--override-reason "<text>"] [--override-file <record>]\n'
+	printf 'Usage: check-release-readiness.sh --version <vX> --stage <alpha|beta|rc|ga> [--scope <engine-only|framework-validated|full-platform>] [--evidence <file>] [--override-reason "<text>"] [--override-file <record>]\n'
 }
 
 VERSION=""
 STAGE=""
+SCOPE=""
 OVERRIDE_REASON=""
 OVERRIDE_FILE=""
 EVIDENCE_FILE=""
@@ -74,6 +75,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--version) VERSION="${2:?--version requires a value}"; shift 2 ;;
 		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
+		--scope) SCOPE="${2:?--scope requires a value}"; shift 2 ;;
 		--evidence) EVIDENCE_FILE="${2:?--evidence requires a value}"; shift 2 ;;
 		--override-reason) OVERRIDE_REASON="${2:?--override-reason requires a value}"; shift 2 ;;
 		--override-file) OVERRIDE_FILE="${2:?--override-file requires a value}"; shift 2 ;;
@@ -87,6 +89,13 @@ done
 case "$STAGE" in
 	alpha | beta | rc | ga) ;;
 	*) log_error "--stage must be one of: alpha|beta|rc|ga"; usage >&2; exit 2 ;;
+esac
+# --scope selects the evidence requirement matrix (validate-release-evidence.sh
+# owns the matrix). Empty => let the evidence file's release_scope decide (which
+# itself defaults to framework-validated). engine-only NEVER claims framework proof.
+case "$SCOPE" in
+	"" | engine-only | framework-validated | full-platform) ;;
+	*) log_error "--scope must be one of: engine-only|framework-validated|full-platform"; usage >&2; exit 2 ;;
 esac
 command_exists jq || { log_error "jq is required but was not found. Install jq."; exit 2; }
 command_exists yq || { log_error "yq is required (workflow structural parse) but was not found. Install yq."; exit 2; }
@@ -120,6 +129,7 @@ run_selftest_gate() {
 printf 'Sentinel Shield — release-readiness check\n'
 printf 'Version:  %s\n' "$VERSION"
 printf 'Stage:    %s (gates compose: alpha < beta < rc < ga)\n' "$STAGE"
+printf 'Scope:    %s\n' "${SCOPE:-<from evidence file (default framework-validated)>}"
 printf 'Evidence: %s\n' "$EVIDENCE_FILE"
 printf '\n'
 
@@ -270,7 +280,11 @@ if [ "$STAGE" != alpha ]; then
 		fail "evidence validator not found: scripts/validate-release-evidence.sh — cannot prove '$STAGE' evidence (fail closed)"
 	else
 		_vrc=0
-		sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE" || _vrc=$?
+		if [ -n "$SCOPE" ]; then
+			sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE" --scope "$SCOPE" || _vrc=$?
+		else
+			sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE" || _vrc=$?
+		fi
 		if [ "$_vrc" -eq 0 ]; then
 			pass "release evidence satisfies --require-stage $STAGE"
 		elif [ "$_vrc" -eq 1 ]; then
