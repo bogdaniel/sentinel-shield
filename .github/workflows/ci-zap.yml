@@ -22,11 +22,20 @@ on:
 permissions:
   contents: read
 
+# Serialize DAST: never run two scans against the same target/ref at once, and
+# never CANCEL an in-flight scan (an active scan is mid-conversation with the
+# target; cancelling mid-run can leave the target in a bad state). One active
+# run per target keeps nightly and manual dispatches from overlapping.
+concurrency:
+  group: ci-zap-${{ github.repository }}-${{ github.event.inputs.target_url || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   zap-baseline:
     # Passive baseline scan — safe, non-intrusive. Runs on manual dispatch.
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -45,6 +54,7 @@ jobs:
     # environment. Never enable for production.
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     environment: staging   # protected environment; reviewers/secrets scoped to staging
     steps:
       - name: Checkout

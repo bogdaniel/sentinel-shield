@@ -28,6 +28,7 @@ jobs:
   # seen" fatal. Consumers with a JS/TS app run it normally.
   detect:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -43,6 +44,7 @@ jobs:
     needs: detect
     if: ${{ needs.detect.outputs.present == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       security-events: write   # required to upload CodeQL results

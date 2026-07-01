@@ -27,6 +27,7 @@ jobs:
   # skips correctly, which a hardcoded repo-name guard could not do.
   detect:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -42,6 +43,7 @@ jobs:
     needs: detect
     if: ${{ needs.detect.outputs.present == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
