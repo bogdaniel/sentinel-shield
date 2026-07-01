@@ -1,5 +1,27 @@
 # Sentinel Shield Release Process (v0.1.16)
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. Canonical status:
+> [`product-status.md`](product-status.md).
+
+## Release scope model (v2) — SELECTED: scoped release track
+
+The v2 line uses the **scoped release-track** governance model (the preferred model). A release
+declares a `release_scope` in its evidence file (`evidence/releases/<version>.json`) and the
+readiness/evidence tooling gates against a scope-specific requirement matrix:
+
+| `release_scope` | What beta/rc/ga require |
+| --- | --- |
+| `engine-only` (default when absent → but files set it explicitly) | The engine's OWN green default-branch CI, recorded in `engine_ci[]` and GitHub-verified (successful `ci-self-test` + `ci-pipeline` at `engine_commit`). **No** Laravel/Symfony/consumer runs required; their `required_evidence` flags stay `false`; the release **cannot** claim framework-validated status and the validator prints `FRAMEWORK LIVE-VALIDATION NOT INCLUDED`. |
+| `framework-validated` | Real Laravel + Symfony consumer evidence at beta; + `php_library`/`node_react`/`combined_profile` at rc; + `bootstrap_apply`/rollback dimensions at ga. |
+| `full-platform` | Every supported-stack consumer run at beta and above. |
+
+**This cycle ships under `engine-only`** (see [`v2-release-scope.md`](v2-release-scope.md)). Missing
+evidence is never reinterpreted as success; an engine-only beta is still fail-closed on empty/failed
+`engine_ci`. Enforced by `scripts/check-release-readiness.sh --scope <...>` and
+`scripts/validate-release-evidence.sh`. Beta/GA framework promotion remains gated and deferred, not
+removed — see [`consumer-validation-runbook.md`](consumer-validation-runbook.md).
+
 ## What must pass before a tag (BLOCKING)
 1. **Shell syntax:** `for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh scripts/runners/*.sh scripts/audits/*.sh; do sh -n "$f"; done`
 2. **Self-test all:** `sh scripts/self-test.sh all` — **all suites green**. This already includes:

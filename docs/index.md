@@ -1,5 +1,15 @@
 # Sentinel Shield — Documentation Hub
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published). Current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published** (no `v2.*` tag). The v2 line is
+> scoped **engine-only** ([`v2-release-scope.md`](v2-release-scope.md)) — a reusable-engine/baseline
+> release, **not** a claim of framework-specific production proof. **Laravel and Symfony are supported
+> by profiles, fixtures and engine tests but are not independently live-validated in real consumer
+> repositories.** Single source of truth for maturity: [`product-status.md`](product-status.md).
+> v2 release notes: [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) · branch protection:
+> [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
+> [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md).
+
 > The canonical map of Sentinel Shield's docs. If a new team can't adopt from here without asking the
 > author, that's a bug — open an issue. Maturity labels defer to the single source of truth,
 > [`product-status.md`](product-status.md). Stability/compatibility is in [`product-contract.md`](product-contract.md).

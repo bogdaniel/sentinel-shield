@@ -1,7 +1,17 @@
 # Consumer Validation Runbook (v2.0.0 — release-promotion evidence)
 
-**Status: MANDATORY and currently UNMET.** Sentinel Shield v2.0.0 may NOT be promoted past
-`alpha` until the five real consumer CI runs below have been produced and their run IDs
+> **Scope note (read first).** This runbook defines the evidence required to promote under the
+> **`framework-validated`** and **`full-platform`** release tracks. The v2 line currently ships
+> under the **`engine-only`** track ([`v2-release-scope.md`](v2-release-scope.md)), which does **not**
+> require these consumer runs — an engine-only beta is backed by the engine's own CI instead, and
+> **cannot** claim framework-validated status. The five runs below remain **required for
+> framework-validated / full-platform** promotion and are **deferred, not removed** (tracked in
+> [`v2-tracking-issues.md`](v2-tracking-issues.md), items 9–10). Laravel and Symfony are **supported by
+> profiles, fixtures and engine tests but not independently live-validated** until these runs exist.
+
+**Status: MANDATORY for framework-validated / full-platform, currently UNMET (deferred for the
+engine-only track).** Under `framework-validated`/`full-platform`, Sentinel Shield v2.0.0 may NOT be
+promoted past `alpha` until the five real consumer CI runs below have been produced and their run IDs
 captured under `evidence/releases/*.json`. This is a hard, fail-closed requirement enforced by
 [`scripts/check-release-readiness.sh`](../scripts/check-release-readiness.sh) (which delegates
 the evidence checks to `scripts/validate-release-evidence.sh`). No structural pass, no override,

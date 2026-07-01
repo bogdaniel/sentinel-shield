@@ -1,8 +1,12 @@
 # Changelog
 
 All notable changes to Sentinel Shield are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project is
-pre-1.0; the first tag is `v0.1.0`.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). History began at `v0.1.0`
+and reached the **stable v1.x line** (latest published tag `v1.9.2`). The **v2.0.0
+line is in alpha**: `v2.0.0-alpha.1` below is a **candidate that has not been
+published** — no `v2.*` tag exists yet. See [`docs/product-status.md`](docs/product-status.md)
+for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
+engine-only v2 scope.
 
 ## [Unreleased]
 
@@ -38,13 +42,17 @@ pre-1.0; the first tag is `v0.1.0`.
   upgrading, v2-migration, workflow-execution-model, and consumer-validation docs document the
   above and use the real post-remediation flags.
 
-## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement
+## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement (candidate — NOT yet published)
 
-**MAJOR (alpha).** Changes the meaning of a profile: a profile now declares a machine-readable
+**MAJOR (alpha candidate).** This entry documents the `v2.0.0-alpha.1` candidate; **no `v2.*` tag
+has been published**. Changes the meaning of a profile: a profile now declares a machine-readable
 **tool policy** (required/recommended/optional/one-of/disabled/external) and the toolchain is
-explicit, verifiable and upgradeable. **Alpha = build artifacts only**; live consumer CI evidence
-(Laravel/Symfony run IDs), beta/RC/GA soak are deferred. Not yet a drop-in upgrade — read
-`docs/v2-migration-guide.md` first.
+explicit, verifiable and upgradeable. The v2 line is scoped **engine-only**: it is backed by the
+engine's own green default-branch CI, **not** by real Laravel/Symfony consumer runs. **Laravel and
+Symfony are supported by profiles, fixtures and engine tests but are not independently
+live-validated in real consumer repositories**; that validation is deferred (see
+`docs/consumer-validation-runbook.md` and `docs/v2-tracking-issues.md`). Not yet a drop-in upgrade —
+read `docs/v2-migration-guide.md` first.
 
 ### Added
 - **Tool-policy schema** (`schemas/tool-policy.schema.json`) — per-tool `policy`, `category`,

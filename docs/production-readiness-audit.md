@@ -1,5 +1,12 @@
 # Production Readiness Audit (v0.1.13, maturity note v0.1.16)
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. The v2 line is scoped
+> **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests but are
+> not independently live-validated in real consumer repositories.** Canonical status:
+> [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
+> This audit's version headings reflect its authoring era and are retained as historical context.
+
 > **v0.1.16:** the canonical maturity label per tool is in [`product-status.md`](product-status.md).
 > The A–F grades below map to those labels: **A→`proven`, B→`supported`, C→`experimental`,
 > D→`template-only`, F→`manual`/`non-gating`/`not-ready`.** Each tool has exactly one label there.
