@@ -258,7 +258,9 @@ else
 	fail "actionlint is REQUIRED at stage '$STAGE' but is not installed (fail closed)"
 fi
 if command_exists zizmor; then
-	if zizmor "$REPO_ROOT"/templates/workflows >/dev/null 2>&1; then
+	# Pass explicit files, not the bare dir: zizmor only auto-collects workflows from a
+	# .github/workflows path, so `zizmor templates/workflows` yields "no inputs" (exit 3).
+	if zizmor "$REPO_ROOT"/templates/workflows/*.yml >/dev/null 2>&1; then
 		pass "zizmor clean (templates/workflows)"
 	else
 		fail "zizmor reported problems (templates/workflows)"
