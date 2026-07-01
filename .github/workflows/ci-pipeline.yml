@@ -230,7 +230,7 @@ jobs:
         # -w /src so a project-local .semgrepignore (vendored/generated assets) is
         # honored — SAST only; the dependency scanners are unaffected.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep/app || true
         continue-on-error: true
@@ -252,7 +252,8 @@ jobs:
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} -c \
+          # shellcheck disable=SC2086 # $MOUNTS/$SCANT intentionally word-split into multiple -v/path args
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true

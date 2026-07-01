@@ -88,6 +88,7 @@ jobs:
       - name: Validate all YAML (Ruby, best-effort)
         run: |
           if command -v ruby >/dev/null 2>&1; then
+            # shellcheck disable=SC2046 # intentional: split find output into per-file ruby args
             ruby -ryaml -e 'ARGV.each { |f| YAML.load_stream(File.read(f)); puts "valid yaml: #{f}" }' \
               $(find . -name "*.yml" -o -name "*.yaml")
           else

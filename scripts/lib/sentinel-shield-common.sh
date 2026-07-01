@@ -1,3 +1,4 @@
+#!/bin/sh
 # Sentinel Shield — shared POSIX shell library.
 #
 # Source this file; do not execute it. It defines helper functions only and does

@@ -1,3 +1,4 @@
+#!/bin/sh
 # Sentinel Shield — isolated tool manager (POSIX sh library).
 #
 # Source this file; do not execute it. It defines helper functions only and does
