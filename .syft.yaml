@@ -1,0 +1,10 @@
+# Syft SBOM config for the Sentinel Shield ENGINE repo.
+#
+# The engine is shell-based and has NO runtime dependency manifests of its own. The only
+# package manifests/lockfiles in the tree are deliberately-vulnerable SAMPLE PROJECTS under
+# tests/ and examples/ used to exercise the scanners — they are test data, not the engine's
+# dependencies. Excluding them keeps the engine SBOM (and the downstream Grype gate in
+# ci-security) honest: it reflects the engine's real supply chain, not fixture vulns.
+exclude:
+  - "./tests/**"
+  - "./examples/**"

@@ -14,6 +14,10 @@ on:
   workflow_dispatch:   # on-demand: warm the NVD cache or re-scan after a dependency bump
 permissions:
   contents: read
+# Serialize nightly/dispatch runs; never cancel an in-flight deep scan (it must finish its evidence).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
@@ -25,6 +29,7 @@ env:
 jobs:
   nightly:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }
@@ -56,6 +61,7 @@ jobs:
   # PR-fast: disabled · Main: optional · Scheduled: RECOMMENDED (here). Runs FOREGROUND only.
   dependency-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 60   # cold NVD download is slow; the scan step has its own 45m timeout
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }

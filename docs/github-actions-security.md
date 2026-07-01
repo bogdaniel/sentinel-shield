@@ -112,7 +112,7 @@ Split responsibilities so a compromised test job cannot deploy:
 | No secrets to untrusted PRs | zizmor, review |
 | Separated deploy permissions | review, OPA |
 
-See [`../github/workflows`](../github/workflows) for templates that already follow
+See [`../.github/workflows`](../.github/workflows) for templates that already follow
 these rules.
 
 ## Pin audit (v0.1.9)

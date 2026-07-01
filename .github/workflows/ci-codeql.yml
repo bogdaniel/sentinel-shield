@@ -22,7 +22,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # CodeQL javascript-typescript needs an analyzable JS/TS app (marked by a root
+  # package.json). The engine ships only shell + a couple of eslint config files (no
+  # analyzable source), so analyze skips (green) instead of the CodeQL "no source code
+  # seen" fatal. Consumers with a JS/TS app run it normally.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Detect package.json
+        id: check
+        run: |
+          if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   analyze:
+    needs: detect
+    if: ${{ needs.detect.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

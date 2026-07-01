@@ -3,7 +3,7 @@
 #
 # Exercises the core enforcement lifecycle against fixture data so Sentinel Shield
 # continuously tests ITSELF (YAML validity alone does not prove behavior). Used by
-# github/workflows/ci-self-test.yml and runnable locally.
+# .github/workflows/ci-self-test.yml and runnable locally.
 #
 # Subcommands:
 #   syntax     sh -n over all scripts + jq-validate templates/ and schemas/ JSON
@@ -58,7 +58,7 @@ run_syntax() {
 	[ ! -d semgrep/third-party ] || { log_error "stale semgrep/third-party still present (must move under supply-chain/)"; return 1; }
 	[ ! -d semgrep/php ] || { log_error "stale semgrep/php still present (must move under semgrep/app/)"; return 1; }
 	# No app config may reference third-party rules; no broad semgrep/ catch-all.
-	_wf="github/workflows/ci-security.yml github/workflows/ci-pipeline.yml examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+	_wf=".github/workflows/ci-security.yml .github/workflows/ci-pipeline.yml examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
 	for f in $_wf; do
 		# 1) app Semgrep config must point at semgrep/app, never the bare semgrep/ root.
 		if grep -nE -- "--config [^ ]*/semgrep( |\\\\|\"|\$)" "$f" >/dev/null 2>&1; then
@@ -869,7 +869,7 @@ ws_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 # run_workflow_sanity — self-test group 'workflow-sanity' (wired into the dispatch + 'all').
 run_workflow_sanity() {
 	log_info "workflow-sanity: no pull_request_target trigger, permissions present, DAST allowlist, AI non-gating"
-	WF_GH="$ROOT/github/workflows"; WF_TPL="$ROOT/templates/workflows"
+	WF_GH="$ROOT/.github/workflows"; WF_TPL="$ROOT/templates/workflows"
 
 	# 1. No ACTUAL pull_request_target TRIGGER anywhere (comments are fine).
 	_prt=$(grep -rlE '^[[:space:]]+pull_request_target:' "$WF_GH" "$WF_TPL" 2>/dev/null | wc -l | tr -d ' ')
@@ -2938,8 +2938,12 @@ v2e_pkgmgr() {
 		--profile node --target "$_ts" >/dev/null 2>&1 || true
 	tpe_atleast "pkgmgr: TS required report missing -> required_tool_failures>=1 (gate fails)" \
 		"$(jq -r '.summary.required_tool_failures // 0' "$_ts/ss.json" 2>/dev/null || echo 0)"
-	tpe_check "pkgmgr: the missing required tool is typescript" \
-		"$(jq -r '.tools|to_entries[]|select(.value|type=="object" and .policy=="required" and .status=="unavailable")|.value.tool' "$_ts/ss.json" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')" "typescript"
+	# typescript is the one required tool whose report we omitted, so its gate MUST fail.
+	# The exact failing status is host-dependent (unavailable when no `tsc` on PATH;
+	# execution-error when one IS present, e.g. globally on CI runners) — both are honest
+	# required failures, never a pass. Assert typescript itself failed (hermetic to host tsc).
+	tpe_check "pkgmgr: the missing required tool is typescript (gate failed, report absent)" \
+		"$(jq -r '.tools.typescript | select(type=="object" and .policy=="required" and (.status=="unavailable" or .status=="execution-error")) | .tool' "$_ts/ss.json" 2>/dev/null)" "typescript"
 	rm -rf "$_ts"
 }
 
@@ -2951,7 +2955,8 @@ v2e_provisioning() {
 
 	# dry-run mutates nothing. Real.
 	_dd=$(mktemp -d); printf '{"require":{}}' > "$_dd/composer.json"
-	sh "$BPT" --profile laravel --target "$_dd" --dry-run >/dev/null 2>&1 || true
+	if sh "$BPT" --profile laravel --target "$_dd" --dry-run >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	tpe_check "provisioning: --dry-run exits 0" "$_rc" "0"
 	tpe_check "provisioning: --dry-run writes no new files" \
 		"$(find "$_dd" -type f ! -name composer.json | wc -l | tr -d ' ')" "0"
 	rm -rf "$_dd"
@@ -3663,6 +3668,32 @@ run_e2e() {
 	log_info "e2e: OK (local-harness; not a real CI run)"
 }
 
+# --- production-readiness: run every standalone tests/prod/*.sh suite --------
+run_production_readiness() {
+	log_info "production-readiness: running standalone tests/prod/*.sh suites"
+	_prr_total=0
+	_prr_fail=0
+	for f in "$ROOT"/tests/prod/*.sh; do
+		[ -e "$f" ] || continue
+		_prr_total=$((_prr_total + 1))
+		if sh "$f"; then
+			log_info "production-readiness: PASS ${f#"$ROOT"/}"
+		else
+			_prr_fail=$((_prr_fail + 1))
+			log_error "production-readiness: FAIL ${f#"$ROOT"/}"
+		fi
+	done
+	if [ "$_prr_total" -eq 0 ]; then
+		log_error "production-readiness: no tests/prod/*.sh suites found"
+		return 1
+	fi
+	if [ "$_prr_fail" -ne 0 ]; then
+		log_error "production-readiness: $_prr_fail of $_prr_total suite(s) failed"
+		return 1
+	fi
+	log_info "production-readiness: OK ($_prr_total/$_prr_total suites passed)"
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -3712,6 +3743,7 @@ case "$SUB" in
 	v2-review) run_v2_review ;;
 	v2-review-round3) run_v2_review_round3 ;;
 	e2e) run_e2e ;;
+	production-readiness) run_production_readiness ;;
 	all)
 		run_syntax
 		run_lifecycle
@@ -3761,13 +3793,14 @@ case "$SUB" in
 		run_v2_review
 		run_v2_review_round3
 		run_e2e
+		run_production_readiness
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|all)"
 		exit 2
 		;;
 esac

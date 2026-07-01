@@ -6,11 +6,19 @@
 # scanners, does NOT change gate behavior, and NEVER prints secret values (the NVD key is checked
 # by presence of its VARIABLE only).
 #
-# Output contract:
-#   exit 0  -> informational success (ran; recommended/optional warnings may be printed)
-#   exit 1  -> generic error (reserved)
-#   exit 2  -> invalid invocation / unreadable config (incl. a MALFORMED control-waivers file)
-#   exit 3  -> profile-REQUIRED tool(s) absent (not installed / not configured) — distinct gate
+# Output contract (canonical exit codes):
+#   exit 0  -> healthy: ran clean; only informational/environment notes printed.
+#   exit 1  -> warnings only: a non-blocking DEGRADED production condition (an in-progress
+#              operation-lock, or a managed/project-owned file missing). Adoption is usable
+#              but should be reviewed. Plain environment WARNs alone do NOT raise this
+#              (backward-compatible with the v1.8 informational-success contract).
+#   exit 2  -> invalid configuration: bad invocation, unreadable / MALFORMED control-waivers,
+#              an INVALID installation.json, a non-immutable (moving-branch) source ref, or a
+#              pinned-ref/resolved-commit MISMATCH.
+#   exit 3  -> profile-REQUIRED tool(s) / one-of group(s) absent under an enforced tool-mode.
+#   exit 4  -> execution/evidence problem: a STALE operation-lock, or present-but-invalid
+#              local-pipeline / CI evidence.
+# Precedence when several apply: 3 > 2 > 4 > 1 > 0.
 #
 # Usage: sh scripts/doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode <mode>]
 #                             [--control-waivers <path>] [--quiet]
@@ -35,6 +43,8 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
 # shellcheck source=scripts/lib/control-waivers.sh
 . "$SCRIPT_DIR/lib/control-waivers.sh"
+# shellcheck source=scripts/lib/installation-metadata.sh
+. "$SCRIPT_DIR/lib/installation-metadata.sh"
 
 TARGET="."
 QUIET=0
@@ -81,10 +91,19 @@ $1
 
 WARN=0
 WAIVED_COUNT=0
+DEGRADED=0        # non-blocking production warnings -> exit 1
+CONFIG_INVALID=0  # invalid configuration -> exit 2
+EXEC_PROBLEM=0    # execution/evidence problem -> exit 4
 ok()   { [ "$QUIET" = 1 ] || printf '  ok    %s\n' "$*"; }
 warn() { WARN=$((WARN+1)); printf '  WARN  %s\n' "$*"; }
+# degraded: a production WARN that is non-blocking but should gate exit 1.
+degraded() { DEGRADED=$((DEGRADED+1)); WARN=$((WARN+1)); printf '  WARN  %s\n' "$*"; }
+cfgfail()  { CONFIG_INVALID=1; printf '  FAIL  %s\n' "$*"; }
+execfail() { EXEC_PROBLEM=1; printf '  FAIL  %s\n' "$*"; }
 waived() { WAIVED_COUNT=$((WAIVED_COUNT+1)); printf '  WAIVED  %s\n' "$*"; }
 have() { command_exists "$1" && ok "$1 present ($(command -v "$1"))" || warn "$2"; }
+# is_hex40 <str> — true if <str> is a full 40-char lowercase hex commit SHA.
+is_hex40() { _h=$1; case "$_h" in ""|*[!0-9a-f]*) return 1 ;; esac; [ "${#_h}" -eq 40 ]; }
 
 # --- profile tool-policy resolution (jq-dependent) ---------------------------
 # Composition / inheritance / override / applicability / one-of are ALL delegated
@@ -160,6 +179,133 @@ fi
 
 echo "[permissions]"
 [ -w "$TARGET" ] && ok "target writable" || warn "target not writable — install/sync will fail"
+
+echo "[installation integrity] (v2 production checks, relative to $TARGET)"
+SS_DIR="$TARGET/.sentinel-shield"
+IM_FILE="$SS_DIR/installation.json"
+REF_FILE="$SS_DIR/.sentinel-shield-ref"
+LOCK_FILE="$SS_DIR/operation-lock.json"
+
+# (1) installation metadata valid (schema-shape via the shared lib).
+if [ -f "$IM_FILE" ]; then
+  if ! command_exists jq; then
+    warn "installation.json present but jq absent — cannot validate metadata"
+  elif im_validate "$IM_FILE" >/dev/null 2>&1; then
+    ok "installation.json valid (version=$(im_get_version "$TARGET"), profile=$(im_get_profile "$TARGET"), tool_mode=$(im_get_tool_mode "$TARGET"))"
+  else
+    cfgfail "installation.json present but INVALID (does not conform to schemas/installation.schema.json)"
+  fi
+else
+  warn "no .sentinel-shield/installation.json — project not yet adopted (run install-baseline)"
+fi
+
+# (2) immutable source-ref configured; resolved commit matches the pinned ref. The ref
+#     record (written by acquire-sentinel-shield.sh) holds {repository, ref, resolved_commit}.
+#     A moving branch is never immutable; when the pinned ref IS a full 40-hex SHA it MUST
+#     equal resolved_commit (integrity), else the recorded install is inconsistent.
+if [ -f "$REF_FILE" ]; then
+  if ! command_exists jq; then
+    warn "source-ref record present but jq absent — cannot verify immutability"
+  elif ! jq -e . "$REF_FILE" >/dev/null 2>&1; then
+    cfgfail "source-ref record present but not valid JSON: $REF_FILE"
+  else
+    _ref=$(jq -r '.ref // ""' "$REF_FILE")
+    _rcommit=$(jq -r '.resolved_commit // ""' "$REF_FILE")
+    if [ -z "$_ref" ] || [ -z "$_rcommit" ]; then
+      cfgfail "source-ref record incomplete (ref and/or resolved_commit missing): $REF_FILE"
+    elif ! is_hex40 "$_rcommit"; then
+      cfgfail "source-ref resolved_commit is not a full 40-hex commit SHA: $_rcommit"
+    elif is_hex40 "$_ref"; then
+      if [ "$_ref" = "$_rcommit" ]; then
+        ok "immutable ref configured: pinned to commit $_rcommit"
+      else
+        cfgfail "source-ref MISMATCH: pinned ref $_ref != resolved_commit $_rcommit"
+      fi
+    else
+      # Not a 40-hex SHA. Accept ONLY when acquisition recorded an authoritative
+      # ref_kind=tag (acquire-sentinel-shield.sh classifies the ref at clone time).
+      # Name-spelling heuristics can never PROVE a name is a tag rather than a
+      # moving branch (e.g. 'release','stable'), so anything unproven fails closed.
+      _rkind=$(jq -r '.ref_kind // ""' "$REF_FILE")
+      if [ "$_rkind" = "tag" ]; then
+        ok "immutable ref configured: tag '$_ref' -> commit $_rcommit"
+      else
+        cfgfail "source-ref '$_ref' is not provably immutable (acquisition recorded no ref_kind=tag) — refusing as a possible moving branch"
+      fi
+    fi
+  fi
+else
+  warn "no immutable source-ref record (.sentinel-shield/.sentinel-shield-ref) — install provenance unverified"
+fi
+
+# (3) stale operation-lock: install/sync/bootstrap record a lock here and remove it on
+#     completion. A lock OLDER than the stale threshold means a prior mutating op was
+#     interrupted (execution problem -> exit 4); a FRESH lock means an op may be running
+#     (degraded -> exit 1).
+STALE_LOCK_MIN=${SENTINEL_SHIELD_LOCK_STALE_MINUTES:-120}
+case "$STALE_LOCK_MIN" in ''|*[!0-9]*) STALE_LOCK_MIN=120 ;; esac
+if [ -f "$LOCK_FILE" ]; then
+  if [ -n "$(find "$LOCK_FILE" -mmin +"$STALE_LOCK_MIN" 2>/dev/null)" ]; then
+    execfail "STALE operation-lock (> ${STALE_LOCK_MIN} min old): $LOCK_FILE — a prior operation did not finish; remove it once you confirm none is running"
+  else
+    degraded "operation-lock present (an install/sync/bootstrap may be in progress): $LOCK_FILE"
+  fi
+else
+  ok "no stale operation-lock"
+fi
+
+# (4) project-owned files preserved + managed-files present (missing-file drift signal).
+#     Content drift is out of scope here (needs the engine source); sync-baseline owns it.
+if [ -f "$IM_FILE" ] && command_exists jq; then
+  _owned_missing=0
+  for _f in $(im_list_project_owned_files "$TARGET" 2>/dev/null); do
+    [ -e "$TARGET/$_f" ] || { degraded "project-owned file missing (expected preserved): $_f"; _owned_missing=1; }
+  done
+  [ "$_owned_missing" -eq 0 ] && ok "project-owned files preserved"
+  _managed_missing=0
+  for _f in $(im_list_managed_files "$TARGET" 2>/dev/null); do
+    [ -e "$TARGET/$_f" ] || { degraded "managed file missing (drift — run sync-baseline): $_f"; _managed_missing=1; }
+  done
+  [ "$_managed_missing" -eq 0 ] && ok "managed files present (run sync-baseline to compare content)"
+fi
+
+# (5) GitHub Actions pin hygiene (informational): every `uses:` SHOULD pin a 40-hex commit
+#     SHA. Non-SHA refs are flagged; audit-github-actions-pins.sh is the authoritative gate.
+if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
+  _unpinned=$(grep -hoE "uses:[[:space:]]*[^[:space:]\"']+" "$TARGET"/.github/workflows/*.y*ml 2>/dev/null \
+    | sed -E 's/^uses:[[:space:]]*//' | grep '@' | grep -v '^\./' | grep -Ev '@[0-9a-f]{40}$' | sort -u || true)
+  if [ -n "$_unpinned" ]; then
+    warn "GitHub Action(s) not pinned to a commit SHA (use audit-github-actions-pins.sh):"
+    [ "$QUIET" = 1 ] || printf '%s\n' "$_unpinned" | sed 's/^/        - /'
+  else
+    ok "GitHub Actions pinned to commit SHAs"
+  fi
+fi
+
+# (6) package manager unambiguous: multiple competing JS lockfiles is ambiguous.
+_pm=""
+_pmn=0
+for _lf in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lockb; do
+  [ -f "$TARGET/$_lf" ] && { _pmn=$((_pmn+1)); _pm="$_pm $_lf"; }
+done
+if [ "$_pmn" -gt 1 ]; then
+  warn "ambiguous JS package manager — multiple lockfiles present:$_pm (keep exactly one)"
+elif [ "$_pmn" -eq 1 ]; then
+  ok "package manager unambiguous:$_pm"
+fi
+
+# (7) last local-pipeline / CI evidence (only if present): validate JSON shape; an
+#     unreadable/invalid evidence file is an execution/evidence problem (exit 4).
+for _ev in "$SS_DIR/last-local-pipeline.json" "$SS_DIR/last-ci.json"; do
+  [ -f "$_ev" ] || continue
+  if ! command_exists jq; then
+    warn "evidence present but jq absent — cannot validate: $_ev"
+  elif jq -e . "$_ev" >/dev/null 2>&1; then
+    ok "evidence valid JSON: $_ev"
+  else
+    execfail "evidence present but INVALID JSON: $_ev"
+  fi
+done
 
 echo "[profile tool-policy] (Policy | Installed | Configured | Executed; enforces required tools)"
 REQ_FAIL=0
@@ -280,8 +426,22 @@ echo "----"
 [ "$WAIVED_COUNT" -gt 0 ] && echo "doctor: $WAIVED_COUNT active control-waiver(s) — see WAIVED lines above (file: $WAIVERS_FILE)"
 if [ "$WARN" -eq 0 ]; then echo "doctor: no warnings"; else echo "doctor: $WARN warning(s) — see WARN lines above"; fi
 echo "Next: docs/troubleshooting.md ; share diagnostics safely with scripts/support-bundle.sh"
+# Exit precedence: 3 > 2 > 4 > 1 > 0 (see header). Required-tool gating is checked FIRST so
+# the established exit-3 behavior is never masked by a new config/exec/degraded condition.
 if [ "$REQ_FAIL" -eq 1 ]; then
   echo "doctor: profile-REQUIRED tool(s) missing — see FAIL line above (exit 3)"
   exit 3
+fi
+if [ "$CONFIG_INVALID" -eq 1 ]; then
+  echo "doctor: invalid configuration — see FAIL line(s) above (exit 2)"
+  exit 2
+fi
+if [ "$EXEC_PROBLEM" -eq 1 ]; then
+  echo "doctor: execution/evidence problem — see FAIL line(s) above (exit 4)"
+  exit 4
+fi
+if [ "$DEGRADED" -gt 0 ]; then
+  echo "doctor: $DEGRADED degraded condition(s) — warnings only (exit 1)"
+  exit 1
 fi
 exit 0

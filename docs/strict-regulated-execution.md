@@ -257,7 +257,7 @@ adds 5 → 23. `ai_review_findings` is the only gate never on by default.)
 ## 100 — Note for release-gates docs
 
 For the release-gate workflow documentation
-([`github/workflows/ci-release-gate.yml`](../github/workflows/ci-release-gate.yml) and the
+([`.github/workflows/ci-release-gate.yml`](../.github/workflows/ci-release-gate.yml) and the
 adoption guide), add the following cross-reference:
 
 > The pass/fail behaviour of each adoption mode is specified and self-tested in

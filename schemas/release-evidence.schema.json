@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sentinel-shield/schemas/release-evidence.schema.json",
+  "title": "Sentinel Shield release evidence record",
+  "description": "Records the REAL consumer-project CI runs that back a Sentinel Shield release stage. Lives at evidence/releases/<version>.json. The machinery is fail-closed: an empty consumer_runs[] with all required_evidence flags false is the honest 'no proof yet' state and MUST NOT satisfy any stage gate. Every consumer_run must carry verifiable, well-formed proof handles (real 40-hex commits, a positive-integer workflow run id, a canonical GitHub Actions run URL, and per-artifact records) so that a free-form string can never masquerade as evidence. Contains NO secrets, tokens, or credentials.",
+  "type": "object",
+  "required": [
+    "version",
+    "stage",
+    "engine_commit",
+    "consumer_runs",
+    "required_evidence"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "$comment": "Once any real evidence exists (a consumer run is recorded or any required_evidence flag is true), engine_commit must be a real 40-hex SHA, never the 'unknown' draft placeholder.",
+      "if": {
+        "anyOf": [
+          { "properties": { "consumer_runs": { "minItems": 1 } }, "required": ["consumer_runs"] },
+          { "properties": { "required_evidence": { "anyOf": [
+            { "properties": { "laravel": { "const": true } }, "required": ["laravel"] },
+            { "properties": { "symfony": { "const": true } }, "required": ["symfony"] },
+            { "properties": { "php_library": { "const": true } }, "required": ["php_library"] },
+            { "properties": { "node_react": { "const": true } }, "required": ["node_react"] },
+            { "properties": { "combined_profile": { "const": true } }, "required": ["combined_profile"] },
+            { "properties": { "bootstrap_apply": { "const": true } }, "required": ["bootstrap_apply"] },
+            { "properties": { "rollback_npm": { "const": true } }, "required": ["rollback_npm"] },
+            { "properties": { "rollback_pnpm": { "const": true } }, "required": ["rollback_pnpm"] },
+            { "properties": { "rollback_yarn": { "const": true } }, "required": ["rollback_yarn"] }
+          ] } }, "required": ["required_evidence"] }
+        ]
+      },
+      "then": { "properties": { "engine_commit": { "pattern": "^[0-9a-f]{40}$" } } }
+    }
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Release version this evidence file documents, e.g. '2.0.0' or '2.0.0-beta.1'."
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["alpha", "beta", "rc", "ga"],
+      "description": "Release stage this version targets."
+    },
+    "engine_commit": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|unknown)$",
+      "description": "Full (40 lowercase hex) Sentinel Shield engine commit SHA the consumer runs exercised. The literal 'unknown' is permitted ONLY for an honest no-evidence draft (empty consumer_runs[] and all required_evidence false)."
+    },
+    "consumer_runs": {
+      "type": "array",
+      "description": "One entry per real consumer-project workflow run. Empty array means no proof has been collected yet.",
+      "items": {
+        "type": "object",
+        "required": [
+          "stack",
+          "repository",
+          "commit",
+          "sentinel_shield_commit",
+          "profile",
+          "tool_mode",
+          "workflow_run_id",
+          "workflow_url",
+          "result",
+          "artifacts",
+          "artifacts_verified",
+          "verified_at",
+          "verification_method"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "stack": {
+            "type": "string",
+            "enum": [
+              "laravel",
+              "symfony",
+              "php_library",
+              "node_react",
+              "combined_profile",
+              "bootstrap_apply",
+              "rollback_npm",
+              "rollback_pnpm",
+              "rollback_yarn"
+            ],
+            "description": "The evidence dimension this run proves. Mirrors a required_evidence key."
+          },
+          "repository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+            "description": "Consumer repository the run executed against, in owner/repo form, e.g. 'org/laravel-demo'."
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "Consumer-project commit SHA the run exercised (40 lowercase hex)."
+          },
+          "sentinel_shield_commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "Sentinel Shield engine commit the run consumed (40 lowercase hex). Must equal the top-level engine_commit."
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Sentinel Shield profile used, e.g. 'laravel' or 'laravel-react-docker'. Must be compatible with stack."
+          },
+          "tool_mode": {
+            "type": "string",
+            "enum": ["config-only", "require-existing", "bootstrap-tools"],
+            "description": "Provisioning mode used (matches install-baseline.sh --tool-mode)."
+          },
+          "workflow_run_id": {
+            "description": "GitHub Actions run identifier: a positive integer (or its decimal string form). Must equal the run id embedded in workflow_url. Never fabricate.",
+            "oneOf": [
+              { "type": "integer", "minimum": 1 },
+              { "type": "string", "pattern": "^[1-9][0-9]*$" }
+            ]
+          },
+          "workflow_url": {
+            "type": "string",
+            "pattern": "^https://github\\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/actions/runs/[1-9][0-9]*$",
+            "description": "Canonical GitHub Actions run URL: https://github.com/<owner>/<repo>/actions/runs/<run_id>. Its owner/repo must equal repository and its run id must equal workflow_run_id."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["success", "failure", "cancelled", "skipped"],
+            "description": "Final result of the run. Only 'success' counts toward a stage gate."
+          },
+          "artifacts": {
+            "type": "array",
+            "description": "Per-artifact records (reports / SBOM) published by the run. Each must reference a real artifact id+name; an artifact-verified run must list at least one and every listed artifact must be verified.",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "verified"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "GitHub Actions artifact id (positive integer)."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Artifact name as published by the run."
+                },
+                "verified": {
+                  "type": "boolean",
+                  "description": "True when this artifact was fetched and verified, not merely assumed."
+                }
+              }
+            }
+          },
+          "artifacts_verified": {
+            "type": "boolean",
+            "description": "Summary flag: true when the run's published artifacts were fetched and verified. When true, artifacts[] must be non-empty and result must be 'success'."
+          },
+          "verified_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$",
+            "description": "ISO-8601 UTC timestamp (…Z) when this evidence was verified."
+          },
+          "verification_method": {
+            "type": "string",
+            "minLength": 1,
+            "description": "How the run was verified, e.g. 'github-api' or 'github-api+rollback-replay'. Rollback dimensions must describe an actual rollback test."
+          }
+        }
+      }
+    },
+    "required_evidence": {
+      "type": "object",
+      "description": "Honest per-dimension proof flags. A flag is true ONLY when a successful, artifact-verified consumer run backs it. All-false is the legitimate no-evidence-yet state.",
+      "required": [
+        "laravel",
+        "symfony",
+        "php_library",
+        "node_react",
+        "combined_profile",
+        "bootstrap_apply",
+        "rollback_npm",
+        "rollback_pnpm",
+        "rollback_yarn"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "laravel": { "type": "boolean", "description": "Laravel consumer run verified." },
+        "symfony": { "type": "boolean", "description": "Symfony consumer run verified." },
+        "php_library": { "type": "boolean", "description": "PHP library consumer run verified." },
+        "node_react": { "type": "boolean", "description": "Node/React consumer run verified." },
+        "combined_profile": { "type": "boolean", "description": "Combination profile (php+node) run verified." },
+        "bootstrap_apply": { "type": "boolean", "description": "bootstrap-tools apply run verified." },
+        "rollback_npm": { "type": "boolean", "description": "npm rollback path verified." },
+        "rollback_pnpm": { "type": "boolean", "description": "pnpm rollback path verified." },
+        "rollback_yarn": { "type": "boolean", "description": "yarn rollback path verified." }
+      }
+    }
+  }
+}

@@ -19,7 +19,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The engine repo ships only FIXTURE Dockerfiles (incl. an intentionally-bad one for
+  # scanner tests), not a buildable app, so the gate below skips (green) instead of
+  # failing on a missing root Dockerfile / unbuildable image. Consumers with a root
+  # Dockerfile run it normally.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Detect root Dockerfile
+        id: check
+        run: |
+          if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   docker:
+    needs: detect
+    if: ${{ needs.detect.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

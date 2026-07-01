@@ -1,6 +1,6 @@
 # Workflow Template Validation (v0.1.13)
 
-Validation of every workflow in `github/workflows/`, `templates/workflows/`, and
+Validation of every workflow in `.github/workflows/`, `templates/workflows/`, and
 `examples/**`. Automated checks live in `scripts/self-test.sh workflow-sanity` (BLOCKING in
 ci-self-test.yml).
 

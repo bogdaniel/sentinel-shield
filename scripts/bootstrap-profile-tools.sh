@@ -6,11 +6,15 @@
 # whether its package is already-installed, install-compatible, a conflict, or has no
 # package. SAFE BY DEFAULT: prints the exact install plan and DOES NOTHING unless --apply.
 #
-# With --apply it runs `composer require` / `npm install` for the install-compatible
-# required tools, then validates the lockfile and (if a test script exists) runs the
-# project's tests. If ANY install/validate/test step fails it ROLLS BACK
-# composer.json/composer.lock and package.json/package-lock.json to their prior state.
-# NEVER silently mutates dependency files — apply must be explicit.
+# With --apply it runs `composer require` / the authoritative Node manager's add for the
+# install-compatible required tools, then validates the lockfile and (if a test script
+# exists) runs the project's tests. If ANY install/validate/test step fails it ROLLS BACK
+# composer.json/composer.lock and package.json + the AUTHORITATIVE Node lockfile
+# (package-lock.json | pnpm-lock.yaml | yarn.lock) to their prior byte-for-byte state, then
+# reconstructs the installed tree with the MATCHING immutable command (composer install
+# --no-interaction --prefer-dist / npm ci / pnpm install --frozen-lockfile / yarn install
+# --immutable). It NEVER switches package managers. NEVER silently mutates dependency
+# files — apply must be explicit.
 #
 # Usage: bootstrap-profile-tools.sh --profile <name> [--target <dir>] [--dry-run|--apply]
 #   --profile <name>  Profile manifest (required). Also accepts a combinations/<name>.
@@ -47,7 +51,8 @@ Usage: bootstrap-profile-tools.sh --profile <name> [--target <dir>] [--dry-run|-
   -h, --help        Show help.
 Apply runs require/install for required+enabled install-compatible tools, validates the
 lockfile, runs the project's tests if a test script exists, and ROLLS BACK
-composer.json/composer.lock + package.json/package-lock.json on any failure.
+composer.json/composer.lock + package.json and the authoritative Node lockfile
+(package-lock.json | pnpm-lock.yaml | yarn.lock) on any failure — never switching managers.
 EOF
 }
 

@@ -19,19 +19,24 @@ so sync can reason about managed vs project-owned paths.
 ## Standard upgrade (drop-in minor)
 
 ```sh
-# 1. Bump the engine to the new tag (in your engine checkout / the path the
-#    workflow uses via SENTINEL_SHIELD_PATH).
-SENTINEL_SHIELD_REF=v2.0.0
-git -C "$SENTINEL_SHIELD_PATH" fetch --tags
-git -C "$SENTINEL_SHIELD_PATH" checkout "$SENTINEL_SHIELD_REF"
+# 1. Pin the IMMUTABLE engine ref you are upgrading to (a tag or full 40-char SHA,
+#    never a moving branch). There is no GA default — supply the exact approved ref.
+SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
+SENTINEL_SHIELD_PATH=.sentinel-shield-tools
 
-# 2. Preview drift — DRY-RUN first, always.
-sh scripts/sync-baseline.sh --target /path/to/project --profile laravel
+# 2. Acquire the engine at that ref. The acquire bootstrap is the ONE script run
+#    directly (it CREATES the checkout); --verify checks the resolved commit.
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
 
-# 3. Apply managed-file updates after reviewing the drift report.
-sh scripts/sync-baseline.sh --target /path/to/project --profile laravel --apply --force
+# 3. Every other engine command runs FROM the acquired checkout. Preview drift —
+#    DRY-RUN first, always.
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target /path/to/project --profile laravel
 
-# 4. Bump SENTINEL_SHIELD_REF in the consumer's workflows to the same tag.
+# 4. Apply managed-file updates after reviewing the drift report.
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target /path/to/project --profile laravel --apply --force
+
+# 5. Bump SENTINEL_SHIELD_REF in the consumer's workflows to the same ref.
 ```
 
 `sync-baseline.sh` categorizes every file as `created` / `updated` /
@@ -49,8 +54,8 @@ Both installer and sync can emit the read-only resolver plan (no mutation, no
 network) so you can see exactly which tools the new release expects:
 
 ```sh
-sh scripts/sync-baseline.sh --target . --profile laravel --emit-plan upgrade-plan.json
-sh scripts/resolve-tool-plan.sh --profile laravel --target . --format text
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile laravel --emit-plan upgrade-plan.json
+sh "$SENTINEL_SHIELD_PATH/scripts/resolve-tool-plan.sh" --profile laravel --target . --format text
 ```
 
 Each tool resolves to `already-installed`, `install-compatible`, `conflict`, or
@@ -60,30 +65,70 @@ Each tool resolves to `already-installed`, `install-compatible`, `conflict`, or
 ## Verify after upgrading
 
 ```sh
-sh scripts/doctor.sh --target . --profile laravel    # preflight (tools, config, gates)
-# confirm your pipeline still produces a real reports/security-summary.json
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target . --profile laravel    # preflight (tools, config, gates)
+
+# Authoritative local check: the local pipeline reproduces the CI release gate
+# (produces a REAL reports/security-summary.json and runs enforce-gates).
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile laravel --target . --stage pr
 ```
 
 `doctor.sh --tool-mode config-only|require-existing|bootstrap-tools` checks required-tool
 enforcement (see [`workflow-execution-model.md`](workflow-execution-model.md#required-tool-enforcement)).
+`run-local-pipeline.sh` is the **authoritative** local equivalent of the CI gate; the
+opportunistic `run-local-scanner-sweep.sh` is **not** — a clean sweep never proves a pass.
 
 ## Rollback
 
 Tags are immutable, so the prior behavior is always retrievable:
 
-- **Engine version:** set `SENTINEL_SHIELD_REF` back to the prior tag and re-run
-  `sync-baseline.sh --apply --force` to restore the prior managed files.
+- **Engine version:** set `SENTINEL_SHIELD_REF` back to the prior immutable ref,
+  re-acquire (`acquire-sentinel-shield.sh … --verify`), and re-run
+  `sync-baseline.sh --apply --force` from that checkout to restore the prior
+  managed files.
 - **Dependency files:** `bootstrap-profile-tools.sh` rolls back
   `composer.json/lock` + `package.json/lock` (+ `pnpm-lock.yaml`/`yarn.lock`)
   automatically on any install/test failure. Limitation: it restores the
-  manifests/lockfiles but can only rebuild `node_modules/` if the package manager
-  is present — otherwise it reports **rollback-incomplete** and you re-run the
-  install yourself. If you committed an upgrade you regret, `git revert` the
-  dependency commit.
+  manifests/lockfiles but can only rebuild `node_modules/`/`vendor/` if the package
+  manager is present — otherwise it reports **rollback-incomplete** and you re-run
+  the install yourself, using the command for the restored lockfile (frozen, so the
+  restored lockfile wins — never a re-resolve):
+
+  ```sh
+  npm ci                                             # package-lock.json
+  pnpm install --frozen-lockfile                     # pnpm-lock.yaml
+  yarn install --immutable                           # yarn.lock
+  composer install --no-interaction --prefer-dist    # composer.lock
+  ```
+
+  If you committed an upgrade you regret, `git revert` the dependency commit.
 - **Adoption mode:** lower `gates.mode` in `.sentinel-shield/profile.yaml`
   (e.g. `strict → baseline`) — no engine change needed.
 - **Scanner image digests:** keep the prior `@sha256:` pin
   ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
+
+### When automatic recovery itself fails (exit 4)
+
+A transactional install/sync/migration takes an **operation lock**
+(`.sentinel-shield/operation-lock.json`) and snapshots the files it is about to
+change. If a step breaks, it auto-rolls back. **If that rollback cannot complete**
+(e.g. a file can no longer be restored), the engine does **not** pretend it
+succeeded: it **exits `4`**, **retains the operation lock and the snapshot
+directory**, marks the lock `state:"rollback-incomplete"`, and prints the manual
+recovery steps. Nothing is cleaned up, because the snapshots are the only way back.
+
+Recover manually, then clear the lock — never delete the snapshots until the tree is
+restored:
+
+```sh
+# 1. Inspect what was in flight (operation, target, snapshot_dir).
+jq . .sentinel-shield/operation-lock.json
+# 2. Restore project files from the retained snapshot_dir it names.
+# 3. Verify the working tree, then remove the lock + snapshot dir to release it.
+```
+
+Treat a stale lock as untrusted: re-validate that `target` and `snapshot_dir` are
+inside your project before acting on them. A `rollback-incomplete` exit is a real
+failure to report — it is never a success.
 
 ## Update paths
 
@@ -94,5 +139,3 @@ Tags are immutable, so the prior behavior is always retrievable:
 
 Whichever path you take: **never** edit managed files in place (changes are lost
 on the next sync) and **never** suppress a finding to keep the gate green.
-</content>
-</invoke>

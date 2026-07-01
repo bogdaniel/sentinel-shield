@@ -26,6 +26,10 @@ on:
   #   - cron: "23 4 * * 1"   # Mondays 04:23 UTC (off-peak)
 permissions:
   contents: read   # minimal — no pull_request_target, no write scopes
+# Serialize evidence runs; never cancel an in-flight NVD-backed scan (it must produce the artifact).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v1.1.0                             # pin to a full SHA before production
@@ -42,6 +46,7 @@ env:
 jobs:
   dependency-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 60   # cold NVD download is slow; the scan step has its own 45m timeout
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }

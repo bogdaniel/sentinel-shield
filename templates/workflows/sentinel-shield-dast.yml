@@ -17,6 +17,10 @@ on:
         default: zap-baseline
 permissions:
   contents: read
+# Serialize controlled scans against the same ref; never cancel an in-flight approved scan.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
@@ -24,9 +28,12 @@ env:
 jobs:
   dast:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       SENTINEL_SHIELD_DAST_TARGET_URL: ${{ inputs.target_url }}
       SENTINEL_SHIELD_DAST_ALLOWED_HOST: ${{ inputs.allowed_host }}
+      # Pass user input via env (NOT inline ${{ }}) so it cannot be injected into the run shell.
+      SENTINEL_SHIELD_DAST_SCAN: ${{ inputs.scan }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }
@@ -40,7 +47,7 @@ jobs:
       - name: Run controlled DAST (guard fails closed on host mismatch)
         run: |
           mkdir -p reports/raw
-          case "${{ inputs.scan }}" in
+          case "${SENTINEL_SHIELD_DAST_SCAN}" in
             zap-baseline) sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/zap-baseline.sh reports/raw/zap.json ;;
             zap-full)     sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/zap-full.sh reports/raw/zap-full.json ;;
             nuclei)       sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/nuclei.sh reports/raw/nuclei.json ;;

@@ -196,7 +196,7 @@ In CI the layers communicate via artifacts (see README "CI artifact handoff"):
 
 ### How `ci-pipeline.yml` gathers and merges raw artifacts
 
-The combined pipeline ([`github/workflows/ci-pipeline.yml`](../github/workflows/ci-pipeline.yml))
+The combined pipeline ([`.github/workflows/ci-pipeline.yml`](../.github/workflows/ci-pipeline.yml))
 is the reference for this in one run:
 
 1. Stack jobs (`php-quality`, `node-quality`, `docker-security`, `security-scan`)

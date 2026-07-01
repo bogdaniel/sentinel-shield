@@ -9,12 +9,22 @@
 # ("this project enforces X"). The product columns (maturity/gating/...) are always present.
 # When a profile + target can be resolved (via --profile, or the target's
 # .sentinel-shield/profile.yaml), each tool also carries activation fields:
-#   product_support, profile_policy, installed, configured, executed, gate_enforced,
-#   last_result, report.
+#   product_support, profile_policy, installed, configured, executed (local), executed_ci,
+#   gate_enforced, last_result, report.
 # Without a resolvable profile these activation fields report "unknown"/"not-declared" — they are
 # NEVER conflated with product support.
 #
+# The report surfaces TEN distinct states per tool so none is conflated with another:
+#   product support | profile policy | installed | configured | executed locally |
+#   executed in CI | gate enforced | live validated | last evidence date | evidence run ID.
+# CRITICAL HONESTY: `live_validated` is driven ONLY by REAL evidence — a populated
+# evidence/releases/*.json consumer_run with a non-empty workflow_run_id, result=success and
+# artifacts_verified=true. The static product `maturity` column (which may read "live-validated"
+# as a PRODUCT claim) NEVER flips `live_validated` on; fixture/empty evidence reports
+# live_validated=no. The verified evidence run ID + date come from that real run, else "—".
+#
 # Usage: sh scripts/maturity-report.sh [--format md|json] [--target <dir>] [--profile <name>]...
+#          [--control-waivers <path>] [--evidence-dir <dir>]
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -30,12 +40,14 @@ FORMAT="md"
 TARGET="."
 PROFILES_CLI=""
 WAIVERS_CLI=""
+EVIDENCE_DIR="$REPO_ROOT/evidence/releases"
 while [ $# -gt 0 ]; do case "$1" in
   --format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
   --target) TARGET="${2:?--target requires a value}"; shift 2 ;;
   --profile) PROFILES_CLI="$PROFILES_CLI ${2:?--profile requires a value}"; shift 2 ;;
   --control-waivers) WAIVERS_CLI="${2:?--control-waivers requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: maturity-report.sh [--format md|json] [--target <dir>] [--profile <name>]... [--control-waivers <path>]"; exit 0 ;;
+  --evidence-dir) EVIDENCE_DIR="${2:?--evidence-dir requires a value}"; shift 2 ;;
+  -h|--help) echo "Usage: maturity-report.sh [--format md|json] [--target <dir>] [--profile <name>]... [--control-waivers <path>] [--evidence-dir <dir>]"; exit 0 ;;
   *) log_error "maturity-report: unknown argument: $1"; exit 2 ;;
 esac; done
 case "$FORMAT" in md|json) ;; *) log_error "maturity-report: --format must be md or json"; exit 2 ;; esac
@@ -157,9 +169,64 @@ resolve_activation() {
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$_pol" "$_inst" "$_cfg" "$_exe" "$_ge" "$_lr" "$_rep" "$_wv"
 }
 
+# --- LIVE-VALIDATION evidence (fail-closed, REAL evidence only) -------------------------------
+# Scan evidence/releases/*.json for a consumer_run that genuinely proves a live CI validation:
+# non-empty workflow_run_id AND result=="success" AND artifacts_verified==true (the SAME bar the
+# release-evidence validator enforces). Empty consumer_runs[], unbacked flags, or fixture-only
+# runs (no real workflow_run_id / not success / artifacts unverified) DO NOT count — so the
+# shipped honest-but-empty evidence reports live_validated=no for every tool.
+# evidence_date_of <file> — YYYY-MM-DD of the file's mtime (portable GNU/BSD), else "—".
+evidence_date_of() {
+  _d=$(date -r "$1" +%Y-%m-%d 2>/dev/null) || _d=""
+  [ -n "$_d" ] || { _d=$(stat -f '%Sm' -t '%Y-%m-%d' "$1" 2>/dev/null) || _d=""; }
+  [ -n "$_d" ] && printf '%s' "$_d" || printf '%s' "—"
+}
+# mr_date_newer <candidate> <current> — 0 if <candidate> is strictly newer than <current>
+# (lexical YYYY-MM-DD == chronological), treating "—" (unknown date) as the oldest.
+mr_date_newer() {
+  [ "$1" = "—" ] && return 1
+  [ "$2" = "—" ] && return 0
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | LC_ALL=C sort | tail -n1)" = "$1" ]
+}
+LIVE_EVIDENCE=0
+EVIDENCE_RUN_ID="—"
+EVIDENCE_DATE="—"
+if command_exists jq && [ -d "$EVIDENCE_DIR" ]; then
+  # Scan ALL eligible files and retain the MOST RECENT qualifying result (latest evidence date
+  # wins) rather than stopping at the first match, which could be an older prerelease.
+  for _ef in "$EVIDENCE_DIR"/*.json; do
+    [ -f "$_ef" ] || continue
+    _rid=$(jq -r '
+      (.consumer_runs // [])
+      | map(select(((.workflow_run_id // "") | length > 0)
+                   and (.result == "success")
+                   and (.artifacts_verified == true)))
+      | (.[0].workflow_run_id // "")' "$_ef" 2>/dev/null) || _rid=""
+    if [ -n "$_rid" ]; then
+      _edate=$(evidence_date_of "$_ef")
+      if [ "$LIVE_EVIDENCE" = 0 ] || mr_date_newer "$_edate" "$EVIDENCE_DATE"; then
+        LIVE_EVIDENCE=1; EVIDENCE_RUN_ID="$_rid"; EVIDENCE_DATE="$_edate"
+      fi
+    fi
+  done
+fi
+# live_validated_of <product_maturity> — "yes" ONLY when the product claims live-validated AND
+# real evidence backs it; "no" otherwise (incl. fixture/experimental/manual tiers).
+live_validated_of() {
+  if [ "$1" = "live-validated" ] && [ "$LIVE_EVIDENCE" = 1 ]; then printf 'yes'; else printf 'no'; fi
+}
+# executed_ci_of <gating> <default> — real CI execution signal: "yes"/"no" from REAL evidence for
+# CI-capable tools; "-" for manual/off tools that never run in the gating CI lanes.
+executed_ci_of() {
+  case "$1" in manual) printf '-'; return ;; esac
+  case "$2" in off) printf '-'; return ;; esac
+  [ "$LIVE_EVIDENCE" = 1 ] && printf 'yes' || printf 'no'
+}
+
 if [ "$FORMAT" = "json" ]; then
-  printf '{"generated_by":"scripts/maturity-report.sh","release":"v1.8.0","resolved_activation":%s,"tools":[' \
-    "$([ "$RESOLVE" = 1 ] && echo true || echo false)"
+  printf '{"generated_by":"scripts/maturity-report.sh","release":"v1.8.0","resolved_activation":%s,"live_validated":%s,"evidence_run_id":"%s","last_evidence_date":"%s","tools":[' \
+    "$([ "$RESOLVE" = 1 ] && echo true || echo false)" \
+    "$([ "$LIVE_EVIDENCE" = 1 ] && echo true || echo false)" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE"
   first=1
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
@@ -168,9 +235,10 @@ if [ "$FORMAT" = "json" ]; then
     IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
 $act
 EOF
+    lv=$(live_validated_of "$m"); eci=$(executed_ci_of "$g" "$d")
     [ "$first" = 1 ] || printf ','; first=0
-    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","gate_enforced":"%s","last_result":"%s","report":"%s","waived":"%s"}' \
-      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$rep" "$wv"
+    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","executed_local":"%s","executed_ci":"%s","gate_enforced":"%s","live_validated":"%s","evidence_run_id":"%s","last_evidence_date":"%s","last_result":"%s","report":"%s","waived":"%s"}' \
+      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$exe" "$eci" "$ge" "$lv" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE" "$lr" "$rep" "$wv"
   done
   printf ']}\n'
 else
@@ -182,16 +250,20 @@ else
   echo "PRODUCT support (\`maturity\`) is NOT this project's activation. Activation columns report"
   echo "\`unknown\`/\`not-declared\` unless a profile + target is resolvable (\`resolved_activation=$([ "$RESOLVE" = 1 ] && echo true || echo false)\`)."
   echo
-  echo "| Tool | Category | Maturity (product) | Evidence run | Caveat | Default | Gating | Policy | Installed | Configured | Executed | Gate enforced | Last result | Waived |"
-  echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+  echo "**Live validated** is driven ONLY by REAL evidence (a backed \`evidence/releases/*.json\` consumer_run);"
+  echo "the product \`maturity\` column NEVER flips it on. Repo live-evidence: \`live_validated=$([ "$LIVE_EVIDENCE" = 1 ] && echo true || echo false)\` (run \`$EVIDENCE_RUN_ID\`, date \`$EVIDENCE_DATE\`)."
+  echo
+  echo "| Tool | Category | Maturity (product) | Evidence run (claimed) | Caveat | Default | Gating | Policy | Installed | Configured | Executed (local) | Executed (CI) | Gate enforced | Live validated | Evidence run ID | Last evidence date | Last result | Waived |"
+  echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
     # (Issue 9) Tab-aware unpack; no word-splitting/glob expansion.
     IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
 $act
 EOF
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$ge" "$lr" "$wv"
+    lv=$(live_validated_of "$m"); eci=$(executed_ci_of "$g" "$d")
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$eci" "$ge" "$lv" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE" "$lr" "$wv"
   done
 fi
 [ -n "$TMPM" ] && rm -f "$TMPM"

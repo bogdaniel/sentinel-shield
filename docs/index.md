@@ -30,12 +30,17 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 
 ### Getting started & adoption
 - [`ai-assisted-install.md`](ai-assisted-install.md) — optional AI-agent install (+ `prompts/install-sentinel-shield.md`) **[reference]**
+- [`ai-assisted-update.md`](ai-assisted-update.md) — optional AI-agent upgrade (+ `prompts/update-sentinel-shield.md`) **[reference]**
 - [`quickstart.md`](quickstart.md) — install & first run **[stable]**
 - [`consumer-onboarding.md`](consumer-onboarding.md) — onboarding a consuming project **[stable]**
 - [`production-rollout.md`](production-rollout.md) — pilot → staged → default, ownership model **[stable]**
 - [`multi-project-rollout.md`](multi-project-rollout.md) — many consumers, one pinned ref **[stable]**
 - [`v1.1-onboarding-and-migration.md`](v1.1-onboarding-and-migration.md) — drop-in upgrade + "what v1.x does NOT mean" **[stable]**
 - [`install-sync-guide.md`](install-sync-guide.md) / [`install-sync-quickstart.md`](install-sync-quickstart.md) — install/sync model **[stable]**
+- [`upgrading.md`](upgrading.md) — bump ref → sync → rollback (the routine upgrade) **[stable]**
+- [`v2-migration-guide.md`](v2-migration-guide.md) — v1 → v2 profile tool-policy migration **[stable]**
+- [`tool-provisioning.md`](tool-provisioning.md) — `--tool-mode` config-only/require-existing/bootstrap-tools, rollback-safe install **[stable]**
+- [`workflow-execution-model.md`](workflow-execution-model.md) — policy → CI plan, required-tool enforcement **[reference]**
 
 ### Modes, gates & governance
 - [`gate-resolution.md`](gate-resolution.md) — mode → gate flags → enforce **[stable]**

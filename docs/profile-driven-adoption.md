@@ -66,7 +66,7 @@ Sentinel Shield (called via `SENTINEL_SHIELD_PATH`), not copied into the project
 
 **Before v0.1.11 (audit):** `install-baseline.sh` bulk-copied `scripts/`, `docs/`, `profiles/`,
 `policies/`, `semgrep/`, `templates/` into `.sentinel-shield/` and told you to "copy
-`github/workflows/*` … as needed" — the **workflow was manual**, `.semgrepignore` and the
+`.github/workflows/*` … as needed" — the **workflow was manual**, `.semgrepignore` and the
 security doc set were example-only, there was no profile selection, no mode selection, and
 `sync` was a non-applying drift report. Drift between Sentinel Shield and consumers was
 likely (no managed/project-local distinction).

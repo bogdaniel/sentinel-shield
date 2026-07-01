@@ -114,8 +114,9 @@ sentinel-shield/
 # 1. Detect the stack of a project you want to onboard.
 sh scripts/detect-stack.sh
 
-# 2. Run the local security sweep (skips tools that are not installed).
-sh scripts/run-local-security.sh
+# 2. Quick, NON-AUTHORITATIVE local sweep (skips tools that are not installed; a
+#    SKIP is not a pass, and it produces no gate evidence).
+sh scripts/run-local-scanner-sweep.sh --target /path/to/your/project
 
 # 3. Generate a baseline report.
 sh scripts/generate-report.sh
@@ -125,7 +126,16 @@ sh scripts/install-baseline.sh --target /path/to/your/project
 
 # 5. Apply for real once you have reviewed the dry-run output.
 sh scripts/install-baseline.sh --target /path/to/your/project --apply
+
+# 6. AUTHORITATIVE local check: reproduce the CI release gate locally (produces a
+#    REAL reports/security-summary.json and runs enforce-gates). Only this proves a pass.
+sh scripts/run-local-pipeline.sh --profile laravel --target /path/to/your/project --stage pr
 ```
+
+> The opportunistic sweep (`run-local-scanner-sweep.sh`, formerly
+> `run-local-security.sh`) is a developer convenience — it may skip missing tools
+> and never emits gate evidence. The **authoritative** local equivalent of the CI
+> gate is `run-local-pipeline.sh`; a clean sweep is never proof that a project passes.
 
 ---
 
@@ -243,7 +253,7 @@ cp templates/security-summary.example.json reports/security-summary.json
 sh scripts/enforce-gates.sh --format all   # exit 0 (all zero findings)
 ```
 
-CI: [`github/workflows/ci-release-gate.yml`](github/workflows/ci-release-gate.yml)
+CI: [`.github/workflows/ci-release-gate.yml`](.github/workflows/ci-release-gate.yml)
 runs `resolve-gates.sh`, provides `security-summary.json` (real scanner output, or
 the all-zero example as a clearly-marked fallback), runs `enforce-gates.sh`, uploads
 the resolver + enforcement artifacts, and lets the enforcer's exit code be the
@@ -374,7 +384,7 @@ standalone `ci-release-gate.yml` is fail-closed: with no real summary,
 
 ### Combined reference workflow (recommended)
 
-[`github/workflows/ci-pipeline.yml`](github/workflows/ci-pipeline.yml) is the
+[`.github/workflows/ci-pipeline.yml`](.github/workflows/ci-pipeline.yml) is the
 **canonical** production topology: it runs everything in one workflow run so the
 summary artifact is passed in-run via `needs:` + `upload`/`download-artifact` — no
 cross-run handoff required.
@@ -404,12 +414,13 @@ scanners just produced.
 **Adapting for Laravel + React + Docker.** Set `.sentinel-shield/profile.yaml`
 (`type`, `criticality`, `mode`); the stack jobs already detect each ecosystem. Add
 your real test step that writes a normalized `reports/raw/tests.json`
-(`{ "failures": N, "errors": N }`), tune scanner flags, and pin the actions to SHAs.
-No pipeline logic changes — only configuration.
+(`{ "failures": N, "errors": N }`) and tune scanner flags. The shipped templates
+already pin every third-party action to a full commit SHA, so there is nothing to
+pin by hand. No pipeline logic changes — only configuration.
 
 ### Self-test workflow
 
-[`github/workflows/ci-self-test.yml`](github/workflows/ci-self-test.yml) makes
+[`.github/workflows/ci-self-test.yml`](.github/workflows/ci-self-test.yml) makes
 Sentinel Shield test **itself** on every push/PR, using the fixtures in
 `templates/raw/`, `templates/profile.yaml`, and the example summary. Jobs:
 
@@ -444,7 +455,7 @@ self-test proves the scripts actually behave — the part YAML linting can't see
 
 ## 7. Example GitHub Actions usage
 
-Copy the workflow templates from [`github/workflows`](github/workflows) into your
+Copy the workflow templates from [`.github/workflows`](.github/workflows) into your
 project's `.github/workflows/` directory and adjust as needed. Every template uses
 minimal token permissions and pins third-party actions.
 
@@ -553,6 +564,37 @@ product docs:
 - **Roadmap** (maturity-ordered plan) — [`docs/roadmap.md`](docs/roadmap.md).
 - **Product readiness checklist** — [`docs/product-readiness-checklist.md`](docs/product-readiness-checklist.md).
 - **Profile-driven adoption** (install/sync) — [`docs/profile-driven-adoption.md`](docs/profile-driven-adoption.md).
+
+## Release readiness & safety (v2)
+
+v2 hardens the install/upgrade and release-promotion paths to **fail closed**:
+
+- **Safe acquisition.** `acquire-sentinel-shield.sh` only mutates `--destination` and
+  validates it before any destructive step — `--cleanup` / re-acquire **refuse**
+  (exit 2, nothing deleted) `.`, `..`, `/`, `$HOME`, the repo root, an ancestor, or a
+  symlink that would escape the tools dir; only a dedicated tools directory is allowed.
+  Its `.sentinel-shield-ref` record is normalized and **never stores a local/home path**
+  (local sources record `repository_kind:"local"`, `repository:null`).
+- **Recovery never lies.** If a transactional install/sync/migration cannot complete its
+  own rollback, it **exits 4**, retains the operation lock + snapshots
+  (`state:"rollback-incomplete"`), and prints manual recovery steps — it never claims
+  success or deletes recovery data ([`docs/upgrading.md`](docs/upgrading.md#when-automatic-recovery-itself-fails-exit-4)).
+- **Authoritative local pipeline.** `run-local-pipeline.sh` writes all evidence under a
+  single root (`--output-dir`), with `--purpose developer|release` (release runs hash each
+  raw report into the execution manifest) — [`docs/workflow-execution-model.md`](docs/workflow-execution-model.md#reproducing-the-gate-locally-run-local-pipelinesh).
+
+  ```sh
+  sh scripts/run-local-pipeline.sh --profile laravel --target /path/to/project \
+     --stage main --mode baseline --purpose release --output-dir reports
+  ```
+
+- **Release readiness runs the full suite.** `check-release-readiness.sh --version <v> --stage
+  <alpha|beta|rc|ga>` runs the self-test *syntax*, *production-readiness*, *e2e*, and *all*
+  suites plus schema/workflow/pinning/hygiene/evidence gates — fixture existence is not proof.
+  Evidence is validated structurally (`validate-release-evidence.sh --offline`) vs
+  GitHub-verified (`--verify-github`); `beta`+ needs GitHub-verified proof. Overrides differ by
+  stage and can never waive secrets, malformed evidence, a failed rollback, or path-safety. See
+  [`docs/consumer-validation-runbook.md`](docs/consumer-validation-runbook.md).
 
 ## Contributing, changelog, make targets
 

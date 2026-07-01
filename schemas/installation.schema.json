@@ -2,14 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/installation.schema.json",
   "title": "Sentinel Shield installation record",
-  "description": "Records what the installer placed into a consuming project, written to .sentinel-shield/installation.json. Lets sync/upgrade reason about managed vs project-owned files and which tools are enabled. Contains NO secrets, tokens, or credentials.",
+  "description": "Records what the installer placed into a consuming project, written to .sentinel-shield/installation.json. Lets sync/upgrade reason about managed vs project-owned files and which tools are enabled. Contains NO secrets, tokens, or credentials (repository MUST NOT carry credential userinfo).",
   "type": "object",
   "required": [
+    "schema_version",
     "version",
     "profile",
     "profile_schema",
     "tool_mode",
     "installed_at",
+    "updated_at",
     "managed_files",
     "project_owned_files",
     "enabled_tools",
@@ -17,10 +19,31 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "schema_version": {
+      "const": "2",
+      "description": "Installation-record schema version. Fixed at '2' for this contract; lets readers detect older/newer record shapes."
+    },
     "version": {
       "type": "string",
       "minLength": 1,
-      "description": "Sentinel Shield version that performed the install/sync, e.g. '1.9.0'."
+      "description": "Sentinel Shield version that performed the install/sync, e.g. '2.0.0'."
+    },
+    "resolved_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{7,40}$",
+      "description": "Immutable commit the installer was sourced from (full or abbreviated hex SHA). Optional; recorded when known so upgrades are reproducible."
+    },
+    "repository_kind": {
+      "type": "string",
+      "enum": ["github", "url", "local"],
+      "description": "How the source was acquired (CONTRACT(1)): 'github' (owner/repo shorthand), 'url' (explicit credential-free remote URL), or 'local' (a local path — its value is NEVER persisted, so 'repository' is null/absent)."
+    },
+    "repository": {
+      "description": "Source repository as 'owner/repo' or a credential-free URL. null/absent for a 'local' source (the local path is never persisted). MUST NOT contain userinfo ('user:token@host'), query ('?'), or fragment ('#') — credential/token carriers are rejected. repository_kind further constrains the allowed shape (see allOf).",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "minLength": 1, "pattern": "^[^@?#]+$" }
+      ]
     },
     "profile": {
       "type": "string",
@@ -40,7 +63,12 @@
     "installed_at": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO-8601 timestamp of the install/sync, e.g. '2026-06-27T12:00:00Z'."
+      "description": "ISO-8601 timestamp of the FIRST install, e.g. '2026-06-27T12:00:00Z'. Preserved across re-installs/syncs."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the most recent install/sync/migrate that wrote this record."
     },
     "managed_files": {
       "type": "array",
@@ -61,6 +89,36 @@
       "type": "array",
       "items": { "$ref": "tool-policy.schema.json#/$defs/toolKey" },
       "description": "Tool keys explicitly disabled in this installation."
+    },
+    "last_successful_sync": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the most recent successful sync-baseline run. Optional; absent until the first sync."
+    },
+    "last_upgrade_from": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Sentinel Shield version this installation was last upgraded from. Optional; absent on a fresh install."
     }
-  }
+  },
+  "allOf": [
+    {
+      "$comment": "kind=local: the local path is NEVER persisted, so repository is null (or absent).",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "local" } } },
+      "then": { "properties": { "repository": { "type": "null" } } }
+    },
+    {
+      "$comment": "kind=github: repository is an 'owner/repo' (or 'host/owner/repo') slug, no userinfo/query/fragment.",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "github" } } },
+      "then": {
+        "required": ["repository"],
+        "properties": { "repository": { "type": "string", "minLength": 1, "pattern": "^[0-9A-Za-z._-]+(/[0-9A-Za-z._-]+)+$" } }
+      }
+    },
+    {
+      "$comment": "kind=url: a credential-free remote URL ('scheme://host/...'). May be absent when a credential-bearing form was dropped; if present it MUST NOT carry userinfo/query/fragment.",
+      "if": { "required": ["repository_kind"], "properties": { "repository_kind": { "const": "url" } } },
+      "then": { "properties": { "repository": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9+.-]*://[^@?#]*$" } } }
+    }
+  ]
 }

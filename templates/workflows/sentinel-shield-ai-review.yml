@@ -8,6 +8,10 @@ on:
     types: [labeled]
 permissions:
   contents: read
+# Supersede an in-flight advisory review when the PR is re-labelled/updated.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
@@ -17,6 +21,7 @@ jobs:
     # Only on explicit opt-in (label) to avoid running on every PR.
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'ai-review'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with: { persist-credentials: false }

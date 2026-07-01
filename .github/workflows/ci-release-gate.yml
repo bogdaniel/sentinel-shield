@@ -34,11 +34,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "Force adoption mode (overrides profile gates.mode)"
+        description: "Force adoption mode (overrides profile gates.mode); 'inherit' = no override"
         required: false
-        default: ""
+        default: inherit
         type: choice
-        options: ["", report-only, baseline, strict, regulated]
+        options: [inherit, report-only, baseline, strict, regulated]
 
 permissions:
   contents: read
@@ -58,6 +58,8 @@ jobs:
           persist-credentials: false
 
       - name: Resolve gates from profile
+        env:
+          MODE_INPUT: ${{ github.event.inputs.mode }}
         run: |
           set -eu
           # Locate the resolver whether Sentinel Shield is vendored at repo root
@@ -69,8 +71,8 @@ jobs:
             exit 1
           fi
           MODE_ARG=""
-          if [ -n "${{ github.event.inputs.mode }}" ]; then
-            MODE_ARG="--mode ${{ github.event.inputs.mode }}"
+          if [ -n "$MODE_INPUT" ] && [ "$MODE_INPUT" != "inherit" ]; then
+            MODE_ARG="--mode $MODE_INPUT"
           fi
           # No --require-profile: a project without a profile resolves to report-only.
           sh "$RESOLVER" $MODE_ARG --output-dir reports --format all
@@ -157,6 +159,8 @@ jobs:
 
       - name: Assemble release evidence
         if: always()
+        env:
+          REF: ${{ github.ref }}
         run: |
           set -eu
           mkdir -p reports
@@ -164,7 +168,7 @@ jobs:
             echo "# Sentinel Shield Release Evidence"
             echo ""
             echo "- Repository: ${{ github.repository }}"
-            echo "- Ref: ${{ github.ref }}"
+            echo "- Ref: $REF"
             echo "- Commit: ${{ github.sha }}"
             echo "- Run: ${{ github.run_id }}"
             echo ""
@@ -188,10 +192,12 @@ jobs:
 
       - name: Gate summary
         if: always()
+        env:
+          REF: ${{ github.ref }}
         run: |
           {
             echo "## Sentinel Shield Release Gate"
-            echo "- Ref: ${{ github.ref }}"
+            echo "- Ref: $REF"
             echo ""
             if [ -f reports/sentinel-shield-enforcement.md ]; then
               cat reports/sentinel-shield-enforcement.md

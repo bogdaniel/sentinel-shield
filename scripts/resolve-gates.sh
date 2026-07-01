@@ -412,7 +412,7 @@ write_markdown() {
 
 		printf '## Next steps\n\n'
 		printf -- '1. CI loads `%s/sentinel-shield-gates.env` and enforces each `true` gate.\n' "$OUTPUT_DIR"
-		printf -- '2. Map scanner results to these gates (see github/workflows/ci-release-gate.yml).\n'
+		printf -- '2. Map scanner results to these gates (see .github/workflows/ci-release-gate.yml).\n'
 		printf -- '3. Tighten the mode in `%s` as the project matures (docs/adoption-guide.md).\n' "$PROFILE"
 	} > "$_f"
 	log_info "wrote $_f"

@@ -19,6 +19,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The engine has no dependency manifests of its own — the only lockfiles/manifests in the
+  # tree are deliberately-vulnerable sample projects under tests/ and examples/. Gate the
+  # DEPENDENCY scanners (osv-scanner, grype/SBOM) on a real root manifest so they skip
+  # (green) on the engine and run normally for consumers that vendor this CI. (semgrep and
+  # gitleaks still run on the engine's own code, with fixtures excluded via .semgrepignore /
+  # .gitleaks.toml.)
+  detect-deps:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Detect root dependency manifest
+        id: check
+        run: |
+          if [ -f composer.json ] || [ -f composer.lock ] || [ -f package.json ] || [ -f package-lock.json ] || [ -f yarn.lock ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
   semgrep:
     runs-on: ubuntu-latest
     container:
@@ -46,8 +70,14 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          # gitleaks-action v2 requires a token to enumerate PR commits (read-only;
+          # the default automatic token suffices). Without it the action hard-errors
+          # before scanning. Config + fixture allowlist come from .gitleaks.toml.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   osv-scanner:
+    needs: detect-deps
+    if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -78,6 +108,8 @@ jobs:
           exit-code: "1"
 
   sbom:
+    needs: detect-deps
+    if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -189,14 +221,17 @@ jobs:
       - name: Build security-summary.json
         # jq is preinstalled on ubuntu-latest. Missing raw files are tolerated
         # (tools recorded "unavailable") unless --strict-tools/--require-tool is set.
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
         run: |
           sh scripts/build-security-summary.sh \
             --project-name "${{ github.repository }}" \
             --project-type "unknown" \
             --criticality "medium" \
             --commit "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}" \
-            --workflow "${{ github.workflow }}"
+            --branch "$REF_NAME" \
+            --workflow "$WORKFLOW_NAME"
 
       - name: Upload raw scanner artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

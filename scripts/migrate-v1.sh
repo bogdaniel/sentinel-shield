@@ -21,7 +21,14 @@
 #   sh scripts/migrate-v1.sh --target <dir> --profile laravel --apply
 #   sh scripts/migrate-v1.sh --target <dir> --tool-mode require-existing --apply
 #
-# Exit: 0 ok (report or write); 2 invalid invocation / missing jq / not a v1 consumer.
+# TRANSACTIONAL SAFETY (--apply only): installation.json is snapshotted before the write and a
+# transaction marker is left at .sentinel-shield/operation-lock.json; the record is written
+# ATOMICALLY (temp + mv) and stamped to schema_version "2"; on failure the prior record is
+# restored. A lock from an ungraceful kill is DETECTED on the next --apply and recovered with
+# --recover.
+#
+# Exit: 0 ok (report, write, or recovery); 1 write failure; 2 invalid invocation / missing jq /
+#       not a v1 consumer; 4 execution error / interrupted prior operation (stale lock; --recover).
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -34,7 +41,7 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
 
-TARGET=""; APPLY=0; FORCE=0; PROFILE=""; TOOL_MODE="require-existing"
+TARGET=""; APPLY=0; FORCE=0; PROFILE=""; TOOL_MODE="require-existing"; RECOVER=0
 VERSION="${SENTINEL_SHIELD_VERSION:-1.9.1}"
 
 # usage — print CLI usage/help to stdout.
@@ -47,6 +54,7 @@ Usage: migrate-v1.sh --target <dir> [--profile <name>] [--tool-mode <mode>] [--a
   --apply            Write .sentinel-shield/installation.json. Default: dry-run (report only).
   --force            Overwrite an EXISTING installation.json (default: leave it untouched).
   --version <v>      Sentinel Shield version to record (default: $SENTINEL_SHIELD_VERSION or 1.9.1).
+  --recover          Roll back an interrupted prior run (restore the snapshot, clear the lock) and exit.
   -h, --help         Show help.
 NEVER overwrites accepted-risks.json, phpstan-baseline.neon, project-owned configs, or managed files.
 EOF
@@ -61,6 +69,7 @@ while [ $# -gt 0 ]; do
 		--apply) APPLY=1; shift ;;
 		--force) FORCE=1; shift ;;
 		--dry-run) APPLY=0; shift ;;
+		--recover) RECOVER=1; shift ;;
 		-h|--help) usage; exit 0 ;;
 		*) log_error "unknown argument '$1'"; usage; exit 2 ;;
 	esac
@@ -68,9 +77,200 @@ done
 
 [ -n "$TARGET" ] || { log_error "--target is required"; usage; exit 2; }
 [ -d "$TARGET" ] || { log_error "target '$TARGET' is not a directory"; exit 2; }
-TARGET=$(CDPATH= cd -- "$TARGET" && pwd)
+TARGET=$(CDPATH= cd -P -- "$TARGET" && pwd -P)
 command_exists jq || { log_error "jq is required."; exit 2; }
 case "$TOOL_MODE" in config-only|require-existing|bootstrap-tools) ;; *) log_error "invalid --tool-mode '$TOOL_MODE' (config-only|require-existing|bootstrap-tools)"; exit 2 ;; esac
+
+# --- transaction framework (operation-lock + snapshot/restore) ----------------
+# migrate only writes installation.json, but it does so under the same transaction contract:
+# snapshot the prior record, leave a lock, write+stamp atomically, restore on failure.
+SS_DIR="$TARGET/.sentinel-shield"
+LOCK="$SS_DIR/operation-lock.json"
+TX_ACTIVE=0; TX_SNAP=""; TOOLS_MANIFEST=""; PREVIEW_DIR=""
+
+tx_snapshot() { # <relpath>
+	# Dedup (snapshot a path at most once, pre-write) + record newly-created paths in
+	# 'created' so recovery distinguishes a MODIFIED file (snap MUST exist) from a
+	# NEWLY-CREATED file (must be removed) and fails closed on a missing snapshot.
+	[ -n "$TX_SNAP" ] || return 0
+	grep -qxF "$1" "$TX_SNAP/touched" 2>/dev/null && return 0
+	if [ -e "$TARGET/$1" ]; then
+		ensure_dir "$TX_SNAP/snap/$(dirname -- "$1")"
+		cp -p "$TARGET/$1" "$TX_SNAP/snap/$1"
+	else
+		printf '%s\n' "$1" >> "$TX_SNAP/created"
+	fi
+	printf '%s\n' "$1" >> "$TX_SNAP/touched"
+}
+# _tx_rel_safe <relpath> — accept only a project-relative path (no absolute root,
+# no '..' traversal); rejects a tampered 'touched' entry escaping $TARGET.
+_tx_rel_safe() {
+	case "$1" in
+		"" | /* | .. | ../* | */.. | */../*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+# _tx_snap_safe <dir> — snapshot dir must live in this target's .sentinel-shield
+# .txn-* area with no traversal; rejects a tampered operation-lock snapshot_dir.
+_tx_snap_safe() {
+	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
+	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
+}
+# _tx_lock_valid <lockfile> — jq-structural validation against
+# schemas/operation-lock.schema.json (CONTRACT(2)); ajv may be absent so this is the
+# authoritative check. Fails closed on any missing/ill-typed field.
+_tx_lock_valid() {
+	[ -s "$1" ] || return 1
+	jq -e '
+		(.schema_version == "1") and
+		(.operation as $o | ["install","sync","migration","bootstrap"] | index($o) != null) and
+		(.target | type == "string" and (length > 0)) and
+		(.started_at | type == "string" and (length > 0)) and
+		(.pid | type == "number") and
+		(.snapshot_dir | type == "string" and (length > 0)) and
+		(.state as $s | ["active","rollback-incomplete"] | index($s) != null)
+	' "$1" >/dev/null 2>&1
+}
+tx_rollback() {
+	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
+	_tx_snap_safe "$TX_SNAP" || { log_warn "tx: refusing rollback from an unexpected snapshot dir: $TX_SNAP"; return 0; }
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || { log_warn "tx: skipping unsafe rollback path: $_rel"; continue; }
+		if [ -e "$TX_SNAP/snap/$_rel" ]; then
+			ensure_dir "$TARGET/$(dirname -- "$_rel")"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
+		else
+			rm -f "$TARGET/$_rel"
+		fi
+	done < "$TX_SNAP/touched"
+}
+tx_begin() {
+	ensure_dir "$SS_DIR"
+	TX_SNAP="$SS_DIR/.txn-$$"
+	ensure_dir "$TX_SNAP"
+	: > "$TX_SNAP/touched"
+	_lk="$LOCK.tmp.$$"
+	jq -n --arg op "migration" --arg tgt "$TARGET" --arg at "$(timestamp_utc)" --argjson pid "$$" --arg snap "$TX_SNAP" \
+		'{schema_version:"1", operation:$op, target:$tgt, started_at:$at, pid:$pid, snapshot_dir:$snap, state:"active"}' > "$_lk" \
+		&& mv -- "$_lk" "$LOCK"
+	TX_ACTIVE=1
+}
+tx_commit() {
+	TX_ACTIVE=0
+	rm -f "$LOCK" 2>/dev/null || true
+	[ -n "$TX_SNAP" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
+	TX_SNAP=""
+}
+tx_detect_stale() {
+	[ -f "$LOCK" ] || return 0
+	_op=$(jq -r '.operation // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
+	_at=$(jq -r '.started_at // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
+	log_error "an interrupted Sentinel Shield operation was detected: a previous '$_op' (started $_at) did not finish; $LOCK is present."
+	log_error "recover (roll back the partial run) with: sh scripts/migrate-v1.sh --target '$TARGET' --recover"
+	exit 4
+}
+# _tx_mark_incomplete — best-effort stamp state="rollback-incomplete" onto a parseable
+# lock; never removes the lock, leaves the retained lock as-is on any error.
+_tx_mark_incomplete() {
+	[ -f "$LOCK" ] && jq -e . "$LOCK" >/dev/null 2>&1 || return 0
+	_mi="$LOCK.tmp.$$"
+	if jq '.state = "rollback-incomplete"' "$LOCK" > "$_mi" 2>/dev/null && mv -- "$_mi" "$LOCK"; then :; else
+		rm -f "$_mi" 2>/dev/null || true
+	fi
+}
+# _tx_recover_fail <path> <operation> <detail> — FAIL CLOSED: retain the lock AND every
+# snapshot, print the exact failing path+operation and a manual recovery procedure, exit 4.
+_tx_recover_fail() {
+	_tx_mark_incomplete
+	{
+		echo "error: recovery FAILED — the interrupted operation was NOT rolled back (state retained)."
+		echo "       failing path:      $1"
+		echo "       failing operation: $2"
+		echo "       detail:            $3"
+		echo "       RETAINED for manual recovery (nothing was deleted):"
+		echo "         lock:     $LOCK"
+		[ -n "${_snap:-}" ] && echo "         snapshot: $_snap"
+		echo "       MANUAL RECOVERY PROCEDURE:"
+		echo "         1. Confirm no Sentinel Shield operation is running (see the lock's pid)."
+		echo "         2. Resolve the blocking condition above (e.g. a read-only file/dir, a"
+		echo "            missing snapshot file, or a tampered lock/manifest)."
+		echo "         3. For each path in <snapshot_dir>/touched, restore"
+		echo "            <snapshot_dir>/snap/<path> over <target>/<path> (or delete <target>/<path>"
+		echo "            when no snapshot exists), then verify the target matches the snapshot."
+		echo "         4. Re-run --recover; only once it reports success is $LOCK removed."
+	} >&2
+	exit 4
+}
+# _tx_recover_apply — validated rollback of TX_SNAP with post-rollback verification.
+# DELETE only paths recorded in 'created'; RESTORE modified paths from 'snap' (a missing
+# snapshot for a modified path is a corrupt/incomplete snapshot — FAIL CLOSED, never delete).
+_tx_recover_apply() {
+	_created="$TX_SNAP/created"
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		_tx_rel_safe "$_rel" || _tx_recover_fail "$_rel" "validate-touched-path" "touched path is absolute or contains '..' (refusing to restore outside the target)"
+	done < "$TX_SNAP/touched"
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		if grep -qxF "$_rel" "$_created" 2>/dev/null; then
+			rm -f "$TARGET/$_rel" 2>/dev/null || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
+			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "remove-created" "newly-created file is still present after removal"
+		else
+			# A modified file's pre-write snapshot MUST exist; a missing one means a
+			# corrupt/incomplete snapshot — refuse rather than delete the live file.
+			[ -e "$TX_SNAP/snap/$_rel" ] || _tx_recover_fail "$_rel" "missing-expected-snapshot" "no snapshot for a modified file (snapshot corrupt/incomplete) — refusing to touch the live file"
+			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
+		fi
+	done < "$TX_SNAP/touched"
+	while IFS= read -r _rel; do
+		[ -n "$_rel" ] || continue
+		if grep -qxF "$_rel" "$_created" 2>/dev/null; then
+			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "post-verify" "newly-created file is still present after rollback"
+		else
+			cmp -s "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "post-verify" "restored file does not match its snapshot"
+		fi
+	done < "$TX_SNAP/touched"
+	return 0
+}
+# tx_recover — FAIL-CLOSED rollback: clears snapshot+lock and exits 0 ONLY when EVERY
+# recovery-contract step holds; otherwise retains lock + snapshots and exits 4.
+tx_recover() {
+	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
+	_tx_lock_valid "$LOCK" || _tx_recover_fail "$LOCK" "lock-schema-validation" "operation-lock is missing fields, mistyped, or not schema-conformant"
+	_snap=$(jq -r '.snapshot_dir' "$LOCK" 2>/dev/null || true)
+	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
+	[ "$_ltarget" = "$TARGET" ] || _tx_recover_fail "$LOCK" "target-mismatch" "lock target '$_ltarget' != current canonical target '$TARGET'"
+	_tx_snap_safe "$_snap" || _tx_recover_fail "$_snap" "snapshot-dir-unsafe" "snapshot_dir is not canonically contained in $SS_DIR/.txn-*"
+	[ -d "$_snap" ] || _tx_recover_fail "$_snap" "snapshot-dir-missing" "snapshot_dir does not exist"
+	[ -f "$_snap/touched" ] && [ -r "$_snap/touched" ] || _tx_recover_fail "$_snap/touched" "touched-manifest-missing" "the touched manifest is absent or unreadable"
+	TX_SNAP="$_snap"
+	_tx_recover_apply || _tx_recover_fail "$_snap" "rollback" "rollback did not complete"
+	rm -rf "$_snap" 2>/dev/null || true
+	rm -f "$LOCK" 2>/dev/null || true
+	echo "Recovery complete: rolled back the interrupted operation and cleared $LOCK."
+	exit 0
+}
+ss_cleanup() {
+	_rc=$?
+	trap - EXIT INT TERM
+	if [ "${TX_ACTIVE:-0}" = "1" ]; then
+		log_warn "migrate: operation failed/interrupted — rolling back the installation record."
+		tx_rollback
+		rm -f "$LOCK" 2>/dev/null || true
+		[ -n "${TX_SNAP:-}" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
+		TX_ACTIVE=0
+		[ "$_rc" -eq 0 ] && _rc=4
+	fi
+	[ -n "${TOOLS_MANIFEST:-}" ] && rm -f "$TOOLS_MANIFEST" 2>/dev/null || true
+	[ -n "${PREVIEW_DIR:-}" ] && rm -rf "$PREVIEW_DIR" 2>/dev/null || true
+	exit "$_rc"
+}
+trap ss_cleanup EXIT INT TERM
+
+# --recover is a standalone mode: restore + clear the lock, then exit.
+[ "$RECOVER" -eq 1 ] && tx_recover
 
 PROFILE_YAML="$TARGET/.sentinel-shield/profile.yaml"
 [ -f "$PROFILE_YAML" ] || { log_error "not a v1 consumer: '$PROFILE_YAML' not found. Use install-baseline.sh for a fresh install."; exit 2; }
@@ -100,7 +300,7 @@ PROFILE_SCHEMA=$(jq -r '.tool_policy_version // 0' "$MANIFEST" 2>/dev/null || ec
 # Write it to a temp manifest-shaped file so the compat-resolver readers can use it.
 COMPOSED_TOOLS=$(PC_REPO_ROOT="$ROOT" pc_compose_tools "$PROFILE") \
 	|| { log_error "could not compose tools for profile '$PROFILE'."; exit 2; }
-TOOLS_MANIFEST=$(mktemp); trap 'rm -f "$TOOLS_MANIFEST"' EXIT INT TERM
+TOOLS_MANIFEST=$(mktemp)
 printf '%s' "$COMPOSED_TOOLS" | jq '{tools: .}' > "$TOOLS_MANIFEST"
 
 echo "------------------------------------------------------------"
@@ -214,6 +414,14 @@ else
 fi
 echo "------------------------------------------------------------"
 
+# ss_stamp_v2 <installation.json> — ATOMICALLY stamp schema_version "2" + updated_at onto the
+# record im_write produced, so the migrated record matches schemas/installation.schema.json.
+ss_stamp_v2() {
+	_f="$1"; _now=$(timestamp_utc); _tmp="$_f.tmp.$$"
+	jq --arg up "$_now" '. + {schema_version: "2", updated_at: $up}' "$_f" > "$_tmp" \
+		&& mv -- "$_tmp" "$_f" || { rm -f "$_tmp" 2>/dev/null || true; return 1; }
+}
+
 # --- write (or preview) the installation record ------------------------------
 if [ -f "$INSTALL_JSON" ] && [ "$FORCE" -eq 0 ]; then
 	log_warn "installation.json already exists: $INSTALL_JSON (left untouched; pass --force to overwrite)."
@@ -226,21 +434,28 @@ if [ "$APPLY" -eq 0 ]; then
 	# so the preview is byte-identical to what --apply would write.
 	PREVIEW_DIR=$(mktemp -d)
 	if im_write "$PREVIEW_DIR" "$VERSION" "$PROFILE" "$PROFILE_SCHEMA" "$TOOL_MODE" "" \
-		"$MANAGED_NL" "$PROJECT_NL" "$ENABLED_NL" "$DISABLED_NL" >/dev/null 2>&1; then
+		"$MANAGED_NL" "$PROJECT_NL" "$ENABLED_NL" "$DISABLED_NL" >/dev/null 2>&1 \
+		&& ss_stamp_v2 "$PREVIEW_DIR/.sentinel-shield/installation.json"; then
 		echo "DRY-RUN: would write $INSTALL_JSON:"
 		cat "$PREVIEW_DIR/.sentinel-shield/installation.json"
 	else
 		log_error "internal: could not build a conforming installation record."
-		rm -rf "$PREVIEW_DIR"; exit 2
+		rm -rf "$PREVIEW_DIR"; PREVIEW_DIR=""; exit 2
 	fi
-	rm -rf "$PREVIEW_DIR"
+	rm -rf "$PREVIEW_DIR"; PREVIEW_DIR=""
 	echo "------------------------------------------------------------"
 	echo "Re-run with --apply to write it. accepted-risks.json / profile.yaml / project configs are never touched."
 	exit 0
 fi
 
+# APPLY: transactional write — detect a stale lock, snapshot the prior record, write+stamp.
+tx_detect_stale
+tx_begin
+tx_snapshot ".sentinel-shield/installation.json"
 im_write "$TARGET" "$VERSION" "$PROFILE" "$PROFILE_SCHEMA" "$TOOL_MODE" "" \
 	"$MANAGED_NL" "$PROJECT_NL" "$ENABLED_NL" "$DISABLED_NL" \
 	|| { log_error "failed to write installation record."; exit 1; }
-echo "Migration complete. Wrote installation record; preserved all project-local files."
+ss_stamp_v2 "$INSTALL_JSON" || { log_error "failed to stamp installation record to schema_version 2."; exit 1; }
+tx_commit
+echo "Migration complete. Wrote installation record (schema_version 2); preserved all project-local files."
 echo "Next: review managed-file conflicts (if any) and run 'sync-baseline.sh --target $TARGET' for drift."
