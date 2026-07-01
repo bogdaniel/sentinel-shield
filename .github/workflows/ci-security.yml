@@ -131,7 +131,7 @@ jobs:
           output-file: reports/sbom.spdx.json
 
       - name: Scan SBOM (Grype)
-        uses: anchore/scan-action@64a33b277ea7a1215a3c142735a1091341939ff5 # v4
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           sbom: reports/sbom.spdx.json
           severity-cutoff: high
