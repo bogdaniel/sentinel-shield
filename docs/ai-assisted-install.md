@@ -6,6 +6,11 @@ and let it install Sentinel Shield into your project **safely**. This does **not
 path ([`quickstart.md`](quickstart.md), [`install-sync-quickstart.md`](install-sync-quickstart.md)) —
 it's an additional one.
 
+Already installed? Use the **update / upgrade** prompt
+([`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md)) to move an existing
+install to a new pinned ref safely — it acquires and verifies the target engine, detects managed-file
+drift and newly required tools, preserves project-owned config, and ends with an honest report.
+
 > **AI-assisted install does NOT mean blind auto-install.**
 > - The agent **must inspect the project first** (audit before installing).
 > - The agent **must not suppress findings** to make the gate green.
@@ -133,6 +138,8 @@ result or suppress findings. Share diagnostics safely with
 
 ---
 
-The manual path remains fully supported; AI-assisted install is an **additional** path. Prompt:
+The manual path remains fully supported; AI-assisted install is an **additional** path. Prompts:
 [`prompts/install-sentinel-shield.md`](../prompts/install-sentinel-shield.md) (or print it with
-`sh scripts/print-ai-install-prompt.sh`).
+`sh scripts/print-ai-install-prompt.sh`) for a fresh install, and
+[`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md) for upgrading an existing
+install to a new pinned ref.
