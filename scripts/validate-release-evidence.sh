@@ -373,6 +373,7 @@ if [ "$MODE" = "verify-github" ]; then
 		_erid=$(jq -r ".engine_ci[$_ei].workflow_run_id | tostring" "$FILE")
 		_ewurl=$(jq -r ".engine_ci[$_ei].workflow_url" "$FILE")
 		_eresult=$(jq -r ".engine_ci[$_ei].result" "$FILE")
+		_eevent=$(jq -r ".engine_ci[$_ei].event" "$FILE")
 		_erunj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid" 2>/dev/null) || {
 			log_error "GitHub verification: engine run not found: $_erepo run $_erid"; exit 1; }
 		printf '%s' "$_erunj" | jq -e . >/dev/null 2>&1 || {
@@ -381,8 +382,10 @@ if [ "$MODE" = "verify-github" ]; then
 		_econcl=$(printf '%s' "$_erunj" | jq -r '.conclusion // ""')
 		_eurl=$(printf '%s' "$_erunj" | jq -r '.html_url // ""')
 		_eidr=$(printf '%s' "$_erunj" | jq -r '.id // "" | tostring')
+		_eapievent=$(printf '%s' "$_erunj" | jq -r '.event // ""')
 		[ "$_ehs" = "$_ecommit" ] || { log_error "GitHub verification: engine run $_erid head SHA ($_ehs) != commit ($_ecommit)"; exit 1; }
 		[ "$_econcl" = "$_eresult" ] || { log_error "GitHub verification: engine run $_erid conclusion ($_econcl) != result ($_eresult)"; exit 1; }
+		[ "$_eapievent" = "$_eevent" ] || { log_error "GitHub verification: engine run $_erid event ($_eapievent) != declared event ($_eevent)"; exit 1; }
 		[ "$_eurl" = "$_ewurl" ] || { log_error "GitHub verification: engine run $_erid html_url ($_eurl) != workflow_url ($_ewurl)"; exit 1; }
 		[ "$_eidr" = "$_erid" ] || { log_error "GitHub verification: engine run id ($_eidr) != workflow_run_id ($_erid)"; exit 1; }
 		_ewant=$(jq -c ".engine_ci[$_ei].artifacts" "$FILE")

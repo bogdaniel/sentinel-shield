@@ -2,9 +2,12 @@
 
 This document contains prepared GitHub issue bodies for 12 v2 tracking items.
 
-> **Status:** These are prepared bodies only. As of this writing, the repository
-> has **no GitHub issues filed** for these items. Paste each block into a new
-> issue when filing.
+> **Status:** These bodies have now been **filed** as GitHub issues #12–#23 (see mapping
+> below). This document is retained as the source-of-truth for the prepared bodies and the
+> completion criteria. Item→issue: §1→#23, §2→#12, §3→#13, §4→#14, §5→#15, §6→#16, §7→#17,
+> §8→#18, §9→#19 (deferred Laravel), §10→#20 (deferred Symfony), §11→#21, §12→#22.
+> Issues #19/#20 remain **deferred** — not required for the engine-only release, required for a
+> framework-validated release; they are not won't-fix.
 
 Several items are already substantially addressed by the current v2 work; where
 that is the case, current status is noted honestly along with any residual

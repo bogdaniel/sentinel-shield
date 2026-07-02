@@ -49,7 +49,7 @@
     "release_scope": {
       "type": "string",
       "enum": ["engine-only", "framework-validated", "full-platform"],
-      "description": "Governance track that determines WHICH evidence a stage requires. 'engine-only' (default when absent) proves the reusable engine/baseline via the engine's own CI (engine_ci[]) and does NOT require real Laravel/Symfony/consumer runs — it can NEVER claim framework-validated status. 'framework-validated' additionally requires the per-stack consumer_runs[] (laravel+symfony at beta, +php_library/node_react/combined_profile at rc, +bootstrap/rollbacks at ga). 'full-platform' requires every supported-stack consumer run at beta and above. Absent is treated as 'framework-validated' so pre-existing evidence files keep their stricter meaning."
+      "description": "Governance track that determines WHICH evidence a stage requires. When ABSENT this field defaults to 'framework-validated' (the stricter track) so a pre-existing or hand-authored file is never silently downgraded to a weaker gate. 'engine-only' proves the reusable engine/baseline via the engine's own CI (engine_ci[]) and does NOT require real Laravel/Symfony/consumer runs — it can NEVER claim framework-validated status. 'framework-validated' additionally requires the per-stack consumer_runs[] (laravel+symfony at beta, +php_library/node_react/combined_profile at rc, +bootstrap/rollbacks at ga). 'full-platform' requires every supported-stack consumer run at beta and above."
     },
     "engine_ci": {
       "type": "array",

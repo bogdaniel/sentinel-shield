@@ -131,6 +131,9 @@ printf 'Version:  %s\n' "$VERSION"
 printf 'Stage:    %s (gates compose: alpha < beta < rc < ga)\n' "$STAGE"
 printf 'Scope:    %s\n' "${SCOPE:-<from evidence file (default framework-validated)>}"
 printf 'Evidence: %s\n' "$EVIDENCE_FILE"
+if [ "$SCOPE" = "engine-only" ]; then
+	printf 'FRAMEWORK LIVE-VALIDATION NOT INCLUDED — engine-only scope proves the engine, not Laravel/Symfony/consumer live-validation.\n'
+fi
 printf '\n'
 
 # --- alpha gate (always evaluated; the floor for every stage) ----------------

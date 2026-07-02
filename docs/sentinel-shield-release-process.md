@@ -12,9 +12,13 @@ readiness/evidence tooling gates against a scope-specific requirement matrix:
 
 | `release_scope` | What beta/rc/ga require |
 | --- | --- |
-| `engine-only` (default when absent → but files set it explicitly) | The engine's OWN green default-branch CI, recorded in `engine_ci[]` and GitHub-verified (successful `ci-self-test` + `ci-pipeline` at `engine_commit`). **No** Laravel/Symfony/consumer runs required; their `required_evidence` flags stay `false`; the release **cannot** claim framework-validated status and the validator prints `FRAMEWORK LIVE-VALIDATION NOT INCLUDED`. |
+| `engine-only` (this cycle; set explicitly in the evidence files) | The engine's OWN green default-branch CI, recorded in `engine_ci[]` and GitHub-verified (successful `ci-self-test` + `ci-pipeline` at `engine_commit`). **No** Laravel/Symfony/consumer runs required; their `required_evidence` flags stay `false`; the release **cannot** claim framework-validated status and the validator prints `FRAMEWORK LIVE-VALIDATION NOT INCLUDED`. |
 | `framework-validated` | Real Laravel + Symfony consumer evidence at beta; + `php_library`/`node_react`/`combined_profile` at rc; + `bootstrap_apply`/rollback dimensions at ga. |
 | `full-platform` | Every supported-stack consumer run at beta and above. |
+
+When `release_scope` is **absent** it defaults to **`framework-validated`** (the stricter track), so
+a file that forgets to declare a scope is never silently downgraded to the weaker `engine-only` gate.
+The shipped v2 evidence files set `release_scope` explicitly.
 
 **This cycle ships under `engine-only`** (see [`v2-release-scope.md`](v2-release-scope.md)). Missing
 evidence is never reinterpreted as success; an engine-only beta is still fail-closed on empty/failed
