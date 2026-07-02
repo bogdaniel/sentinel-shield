@@ -6,6 +6,11 @@ and let it install Sentinel Shield into your project **safely**. This does **not
 path ([`quickstart.md`](quickstart.md), [`install-sync-quickstart.md`](install-sync-quickstart.md)) —
 it's an additional one.
 
+Already installed? Use the **update / upgrade** prompt
+([`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md)) to move an existing
+install to a new pinned ref safely — it acquires and verifies the target engine, detects managed-file
+drift and newly required tools, preserves project-owned config, and ends with an honest report.
+
 > **AI-assisted install does NOT mean blind auto-install.**
 > - The agent **must inspect the project first** (audit before installing).
 > - The agent **must not suppress findings** to make the gate green.
@@ -93,8 +98,12 @@ See [`install-sync-ux.md`](install-sync-ux.md) and [`profile-adoption-guide.md`]
 - Record the **installed tag** (e.g. `v1.9.0`) and the **selected profile** in the repo.
 - Keep **managed files separate from overrides** — never hand-edit managed files; override via
   `.sentinel-shield/profile.yaml`.
-- Upgrade with **`sync-baseline.sh` dry-run first**, then `--apply --force` after reviewing drift
-  ([`install-sync-ux.md`](install-sync-ux.md)).
+- To **upgrade an existing install** to a new pinned ref, use the guided update prompt
+  ([`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md)) — it acquires and
+  verifies the target engine, reviews managed-file drift, and preserves project-owned config before
+  applying. The raw `sync-baseline.sh` dry-run → `--apply --force` flow
+  ([`install-sync-ux.md`](install-sync-ux.md)) is for **initial setup / non-migration** baseline
+  syncs, not version upgrades.
 
 ## 8. How to avoid editing managed files
 
@@ -133,6 +142,8 @@ result or suppress findings. Share diagnostics safely with
 
 ---
 
-The manual path remains fully supported; AI-assisted install is an **additional** path. Prompt:
+The manual path remains fully supported; AI-assisted install is an **additional** path. Prompts:
 [`prompts/install-sentinel-shield.md`](../prompts/install-sentinel-shield.md) (or print it with
-`sh scripts/print-ai-install-prompt.sh`).
+`sh scripts/print-ai-install-prompt.sh`) for a fresh install, and
+[`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md) for upgrading an existing
+install to a new pinned ref.
