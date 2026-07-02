@@ -97,3 +97,48 @@ Enforcement is implemented by three scripts and the recorded evidence:
 For this cycle the engine's green default-branch CI is recorded in
 `evidence/releases/v2.0.0-beta.1.json` under `engine_ci[]` and is GitHub-verified via
 `validate-release-evidence.sh --verify-github`.
+
+## Release-commit binding model (avoiding circular self-reference)
+
+A release cannot record its own CI evidence *inside the very commit that CI validated* —
+the evidence would have to exist before the runs it references. Sentinel Shield resolves
+this with an explicit two-commit model:
+
+| Field | Meaning |
+| --- | --- |
+| `engine_commit` | The **release-source commit**: the immutable, executable engine commit that CI actually ran against (every `engine_ci[]` / `consumer_runs[]` run has `commit == engine_commit`). This is the code that is proven. |
+| `release_commit` | The commit the **tag** points at (the "evidence commit"). Optional; when absent it equals `engine_commit`. When present and different, it must be a descendant of `engine_commit` whose diff changes **only approved release metadata**. |
+
+**Tag policy (selected):** the tag points at `release_commit`; the evidence records
+`engine_commit` as the CI-proven source. When the two differ, the validator proves the
+`engine_commit → release_commit` diff is **metadata-only**.
+
+**Approved metadata allowlist** (nothing else may change between the two commits):
+
+```
+evidence/releases/**
+CHANGELOG.md
+docs/*release-evidence*
+docs/*release-notes*
+docs/v2-merge-commit-ci-evidence*
+```
+
+Any change to a script, workflow, schema, or other executable/source file between
+`engine_commit` and `release_commit` is a **binding violation** and is rejected
+(non-overridable). This is verified against the GitHub compare API:
+
+```sh
+# Prove the tag target only adds approved metadata over the validated source:
+sh scripts/validate-release-evidence.sh --file evidence/releases/v2.0.0-beta.1.json --verify-binding
+# (also runs automatically as part of --verify-github)
+```
+
+The shipped alpha/beta files currently set `release_commit == engine_commit`
+(`8bd33a9`), i.e. no separate evidence commit yet. **After PR #11 merges**, both must be
+refreshed to the merge commit `M2` (whose own push CI is then recorded), and — if the
+tag is cut from a later metadata-only commit — `release_commit` is set to that commit and
+`--verify-binding` proves the diff is evidence-only. A future or unmerged SHA is never
+written into evidence.
+
+Alternative policy (not selected): tag `engine_commit` directly and publish evidence as a
+signed release asset instead of an in-tree evidence commit.

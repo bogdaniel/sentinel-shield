@@ -3,6 +3,7 @@
   "stage": "beta",
   "release_scope": "engine-only",
   "engine_commit": "8bd33a91343603434026408aded2de0142989159",
+  "release_commit": "8bd33a91343603434026408aded2de0142989159",
   "engine_ci": [
     {
       "workflow_name": "ci-self-test",

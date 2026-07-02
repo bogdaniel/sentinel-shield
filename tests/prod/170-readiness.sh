@@ -82,6 +82,56 @@ else bad "(c) beta expected exit 1, got $rc"; fi
 if printf '%s' "$out" | grep -q 'NOT READY'; then ok "(c) beta prints NOT READY"
 else bad "(c) beta output missing 'NOT READY'"; fi
 
+# --- Finding 2: verification-mode policy ------------------------------------
+# A good engine-only evidence file + a stubbed `gh` so --verify-github succeeds
+# hermetically. Two engine_ci core runs at CM on the default branch.
+CM=cccccccccccccccccccccccccccccccccccccccc
+GOOD_ENGINE="$TMPDIR_T/good-engine.json"
+cat >"$GOOD_ENGINE" <<JSON
+{ "version":"2.0.0-beta.1","stage":"beta","release_scope":"engine-only","engine_commit":"$CM",
+  "engine_ci":[
+    {"workflow_name":"ci-self-test","repository":"org/engine","commit":"$CM","event":"push","workflow_run_id":9001,"workflow_url":"https://github.com/org/engine/actions/runs/9001","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"},
+    {"workflow_name":"ci-pipeline","repository":"org/engine","commit":"$CM","event":"push","workflow_run_id":9002,"workflow_url":"https://github.com/org/engine/actions/runs/9002","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
+  ],
+  "consumer_runs":[],
+  "required_evidence":{"laravel":false,"symfony":false,"php_library":false,"node_react":false,"combined_profile":false,"bootstrap_apply":false,"rollback_npm":false,"rollback_pnpm":false,"rollback_yarn":false} }
+JSON
+cat >"$BIN/gh" <<JSON
+#!/bin/sh
+case "\$2" in
+  */actions/runs/9001/artifacts|*/actions/runs/9002/artifacts) echo '{"artifacts":[]}' ;;
+  */actions/runs/9001) echo '{"id":9001,"name":"ci-self-test","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9001","repository":{"full_name":"org/engine"}}' ;;
+  */actions/runs/9002) echo '{"id":9002,"name":"ci-pipeline","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9002","repository":{"full_name":"org/engine"}}' ;;
+  repos/org/engine) echo '{"default_branch":"master"}' ;;
+  *) echo '{}' ;;
+esac
+JSON
+chmod +x "$BIN/gh"
+
+# (e) beta WITHOUT --verify-github fails closed (structural-only is insufficient).
+rc=0; out=$(run selftest-ok --version v2.0.0-beta.1 --stage beta --scope engine-only --evidence "$GOOD_ENGINE") || rc=$?
+[ "$rc" -eq 1 ] && ok "(e) beta offline fails closed (exit 1)" || bad "(e) beta offline expected 1, got $rc"
+printf '%s' "$out" | grep -q 'requires GitHub-verified' && ok "(e) beta offline states GitHub verification is required" || bad "(e) beta offline missing the requirement message"
+printf '%s' "$out" | grep -q 'Evidence verification: structural-only (INSUFFICIENT for beta)' && ok "(e) beta offline labels evidence structural-only INSUFFICIENT" || bad "(e) beta offline missing the structural-only label"
+
+# (f) alpha offline is allowed but labeled structural-only / development-only.
+rc=0; out=$(run selftest-ok --version v2.0.0-alpha.1 --stage alpha --scope engine-only --evidence "$GOOD_ENGINE") || rc=$?
+[ "$rc" -eq 0 ] && ok "(f) alpha offline exits 0 (development)" || bad "(f) alpha offline expected 0, got $rc"
+printf '%s' "$out" | grep -q 'Evidence verification: structural-only' && ok "(f) alpha offline labels evidence structural-only" || bad "(f) alpha offline missing structural-only label"
+printf '%s' "$out" | grep -q 'valid for DEVELOPMENT only' && ok "(f) alpha offline is marked development-only (not tag-authorization)" || bad "(f) alpha offline missing development-only note"
+
+# (g) alpha WITH --verify-github (stubbed gh) is GitHub-verified and authorization-eligible.
+rc=0; out=$(run selftest-ok --version v2.0.0-alpha.1 --stage alpha --scope engine-only --verify-github --evidence "$GOOD_ENGINE") || rc=$?
+[ "$rc" -eq 0 ] && ok "(g) alpha --verify-github exits 0" || bad "(g) alpha --verify-github expected 0, got $rc; out: $out"
+printf '%s' "$out" | grep -q 'Evidence verification: GitHub-verified' && ok "(g) alpha --verify-github labels evidence GitHub-verified" || bad "(g) alpha --verify-github missing GitHub-verified label"
+printf '%s' "$out" | grep -q 'eligible for alpha tag authorization' && ok "(g) alpha --verify-github is authorization-eligible" || bad "(g) alpha --verify-github missing authorization note"
+
+# (h) beta WITH --verify-github (stubbed gh) passes on valid engine-only evidence.
+rc=0; out=$(run selftest-ok --version v2.0.0-beta.1 --stage beta --scope engine-only --verify-github --evidence "$GOOD_ENGINE") || rc=$?
+[ "$rc" -eq 0 ] && ok "(h) beta --verify-github exits 0 on valid engine evidence" || bad "(h) beta --verify-github expected 0, got $rc; out: $out"
+printf '%s' "$out" | grep -q 'Evidence verification: GitHub-verified' && ok "(h) beta --verify-github labels evidence GitHub-verified" || bad "(h) beta --verify-github missing GitHub-verified label"
+printf '%s' "$out" | grep -q 'READY (all required gates met)' && ok "(h) beta --verify-github prints READY" || bad "(h) beta --verify-github missing READY"
+
 # (d) bad args -> exit 2 (missing --version / invalid --stage / unknown flag).
 rc=0; run selftest-ok --stage alpha >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && ok "(d) missing --version exits 2" || bad "(d) missing --version expected 2, got $rc"

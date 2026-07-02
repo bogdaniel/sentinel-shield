@@ -138,6 +138,33 @@ cat > "$BADSCOPE" <<'EOF'
 EOF
 run_validator 2 "invalid release_scope enum rejected with exit 2" --file "$BADSCOPE"
 
+# (b6) ABSENT release_scope must default to framework-validated (the stricter
+# track), NOT engine-only. An engine-only-SHAPED file (engine_ci present, no
+# consumer runs, all flags false) that forgets to declare release_scope must
+# therefore FAIL --require-stage beta (needs laravel+symfony) — never be silently
+# treated as an engine-only pass. Regression guard for Finding 4.
+NOSCOPE="$WORK/no-scope-engine-shaped.json"
+cat > "$NOSCOPE" <<'EOF'
+{
+  "version": "2.0.0-beta.1",
+  "stage": "beta",
+  "engine_commit": "8bd33a91343603434026408aded2de0142989159",
+  "engine_ci": [
+    {"workflow_name":"ci-self-test","repository":"org/engine","commit":"8bd33a91343603434026408aded2de0142989159","event":"push","workflow_run_id":9001,"workflow_url":"https://github.com/org/engine/actions/runs/9001","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"},
+    {"workflow_name":"ci-pipeline","repository":"org/engine","commit":"8bd33a91343603434026408aded2de0142989159","event":"push","workflow_run_id":9002,"workflow_url":"https://github.com/org/engine/actions/runs/9002","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
+  ],
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false, "symfony": false, "php_library": false, "node_react": false,
+    "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
+  }
+}
+EOF
+run_validator 1 "absent release_scope defaults to framework-validated => beta fails (not engine-only)" --file "$NOSCOPE" --require-stage beta
+# Explicitly forcing engine-only DOES pass the same file (proves the difference is the default, not the shape).
+run_validator 0 "same file under --scope engine-only passes beta" --file "$NOSCOPE" --require-stage beta --scope engine-only
+
 # (c) hand-built fixture WITH real-looking laravel+symfony runs passes beta.
 # Each run carries the FULL hardened proof shape: 40-hex commits, a 40-hex
 # sentinel_shield_commit equal to engine_commit, a positive-integer run id,

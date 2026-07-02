@@ -42,20 +42,23 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 # usage — print CLI usage/help to stdout.
 usage() {
-	printf 'Usage: validate-release-evidence.sh [--file <path>] [--require-stage <alpha|beta|rc|ga>] [--scope <engine-only|framework-validated|full-platform>] [--offline|--verify-github]\n'
+	printf 'Usage: validate-release-evidence.sh [--file <path>] [--require-stage <alpha|beta|rc|ga>] [--scope <engine-only|framework-validated|full-platform>] [--repo <owner/name>] [--offline|--verify-github|--verify-binding]\n'
 }
 
 FILE="$REPO_ROOT/evidence/releases/v2.0.0.json"
 REQUIRE_STAGE=""
 MODE="offline"
 SCOPE_OVERRIDE=""
+REPO_OVERRIDE=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--file) FILE="${2:?--file requires a value}"; shift 2 ;;
 		--require-stage) REQUIRE_STAGE="${2:?--require-stage requires a value}"; shift 2 ;;
 		--scope) SCOPE_OVERRIDE="${2:?--scope requires a value}"; shift 2 ;;
+		--repo) REPO_OVERRIDE="${2:?--repo requires a value}"; shift 2 ;;
 		--offline) MODE="offline"; shift ;;
 		--verify-github) MODE="verify-github"; shift ;;
+		--verify-binding) MODE="verify-binding"; shift ;;
 		-h | --help) usage; exit 0 ;;
 		*) log_error "unknown argument: $1"; usage >&2; exit 2 ;;
 	esac
@@ -110,12 +113,14 @@ ERRORS=$(jq -r '
 		(if ($doc|has("version")) and ($doc.version|nestr) then empty else "version: missing or not a non-empty string" end),
 		(if ($doc|has("stage")) and (["alpha","beta","rc","ga"]|index($doc.stage // null)) then empty else "stage: missing or not in enum" end),
 		(if ($doc|has("engine_commit")) and (($doc.engine_commit|hex40) or ($doc.engine_commit == "unknown")) then empty else "engine_commit: must be 40 lowercase hex or the literal unknown" end),
+		(if ($doc|has("release_commit")) and (($doc.release_commit|hex40) | not) then "release_commit: must be 40 lowercase hex" else empty end),
+		(if ($doc|has("release_commit")) and (($doc.release_commit) != ($doc.engine_commit)) and (($doc.engine_commit // "") == "unknown") then "release_commit: cannot differ from engine_commit when engine_commit is 'unknown'" else empty end),
 		(if ($doc|has("consumer_runs")) and (($doc.consumer_runs|type) == "array") then empty else "consumer_runs: missing or not an array" end),
 		(if ($doc|has("required_evidence")) and (($doc.required_evidence|type) == "object") then empty else "required_evidence: missing or not an object" end),
 		(if ($doc|has("release_scope")) and ((scopes|index($doc.release_scope // null)) | not) then "release_scope: must be one of engine-only|framework-validated|full-platform" else empty end),
 		(if ($doc|has("engine_ci")) and (($doc.engine_ci|type) != "array") then "engine_ci: not an array" else empty end),
 		(if ($doc|type) == "object"
-		 then (($doc|keys[]) as $rk | select((["version","stage","release_scope","engine_commit","engine_ci","consumer_runs","required_evidence"]|index($rk)) | not) | "root.\($rk): unexpected key")
+		 then (($doc|keys[]) as $rk | select((["version","stage","release_scope","engine_commit","release_commit","engine_ci","consumer_runs","required_evidence"]|index($rk)) | not) | "root.\($rk): unexpected key")
 		 else empty end),
 		(if (($doc.engine_commit // "") == "unknown")
 		    and ( (($doc.consumer_runs // []) | length > 0)
@@ -309,6 +314,55 @@ stage_rank() {
 	esac
 }
 
+# verify_commit_binding — prove the tag target (release_commit) only adds approved
+# release METADATA over the CI-validated release-source (engine_commit). This breaks
+# the circular self-reference of recording a commit's CI evidence inside that same
+# commit: the executable code lives in engine_commit (validated by engine_ci), and a
+# later metadata-only release_commit carries the evidence and is what the tag points at.
+#   0 = bound OK (equal commits, or metadata-only diff, or offline-unverifiable no-op)
+#   1 = could not verify (unknown commit / compare fetch failed) — fail closed
+#   2 = VIOLATION: the diff changes non-metadata (script/workflow/schema/executable)
+#   3 = required tool unavailable
+# Metadata allowlist: evidence/releases/**, CHANGELOG.md, docs/*release-evidence*,
+# docs/*release-notes*, docs/v2-merge-commit-ci-evidence*.
+verify_commit_binding() {
+	_rcx=$(jq -r '.release_commit // ""' "$FILE")
+	_enx=$(jq -r '.engine_commit // ""' "$FILE")
+	[ -n "$_rcx" ] || { log_info "commit-binding: no release_commit — the tag targets engine_commit itself (source == release)"; return 0; }
+	if [ "$_rcx" = "$_enx" ]; then
+		log_info "commit-binding: release_commit == engine_commit — the tag targets the CI-validated source commit"; return 0
+	fi
+	[ "$_enx" != "unknown" ] || { log_error "commit-binding: release_commit differs from engine_commit but engine_commit is 'unknown'"; return 2; }
+	_brepo="$REPO_OVERRIDE"
+	[ -n "$_brepo" ] || _brepo=$(jq -r '(.engine_ci[0].repository) // (.consumer_runs[0].repository) // ""' "$FILE")
+	[ -n "$_brepo" ] || { log_error "commit-binding: cannot determine the engine repository (no --repo and no engine_ci[]/consumer_runs[] repository)"; return 2; }
+	: "${GH_BIN:=gh}"
+	command_exists "$GH_BIN" || { log_error "commit-binding: GitHub compare requested but '$GH_BIN' is not available"; return 3; }
+	_cmpj=$("$GH_BIN" api "repos/$_brepo/compare/$_enx...$_rcx" 2>/dev/null) || {
+		log_error "commit-binding: compare $_enx...$_rcx not found on $_brepo (unknown/unreachable commit) — fail closed"; return 1; }
+	printf '%s' "$_cmpj" | jq -e . >/dev/null 2>&1 || { log_error "commit-binding: malformed compare response for $_brepo"; return 1; }
+	# The release_commit must be at/ahead of engine_commit (a descendant), never behind/diverged.
+	_status=$(printf '%s' "$_cmpj" | jq -r '.status // ""')
+	case "$_status" in
+		identical | ahead) ;;
+		*) log_error "commit-binding: release_commit is '$_status' relative to engine_commit (must be 'ahead' or 'identical') — fail closed"; return 2 ;;
+	esac
+	_files=$(printf '%s' "$_cmpj" | jq -r '.files[]?.filename // empty')
+	_bad=$(printf '%s\n' "$_files" | grep -vE '^$|^evidence/releases/|^CHANGELOG\.md$|^docs/[^/]*release-evidence|^docs/[^/]*release-notes|^docs/v2-merge-commit-ci-evidence' || true)
+	if [ -n "$_bad" ]; then
+		log_error "commit-binding VIOLATION: the diff engine_commit..release_commit changes NON-metadata files (executable/script/workflow/schema are forbidden in an evidence commit):"
+		printf '%s\n' "$_bad" | sed 's/^/  /' >&2
+		return 2
+	fi
+	log_info "commit-binding OK: release_commit adds only approved release metadata over engine_commit ($_brepo compare status=$_status)"
+	return 0
+}
+
+if [ "$MODE" = "verify-binding" ]; then
+	_brc=0; verify_commit_binding || _brc=$?
+	exit "$_brc"
+fi
+
 if [ -n "$REQUIRE_STAGE" ]; then
 	DOC_STAGE=$(jq -r '.stage // ""' "$FILE")
 	REQ_RANK=$(stage_rank "$REQUIRE_STAGE")
@@ -374,6 +428,24 @@ if [ "$MODE" = "verify-github" ]; then
 		_ewurl=$(jq -r ".engine_ci[$_ei].workflow_url" "$FILE")
 		_eresult=$(jq -r ".engine_ci[$_ei].result" "$FILE")
 		_eevent=$(jq -r ".engine_ci[$_ei].event" "$FILE")
+		_ewfname=$(jq -r ".engine_ci[$_ei].workflow_name" "$FILE")
+		# Release evidence must be default-branch proof: only a push (or an explicitly
+		# approved workflow_dispatch) on the repo's DEFAULT branch counts. A PR run,
+		# a feature-branch run, or a scheduled run can never be release push evidence.
+		case "$_eevent" in
+			push | workflow_dispatch) ;;
+			*) log_error "GitHub verification: engine_ci run $_erid declares event '$_eevent'; release evidence requires 'push' or an approved 'workflow_dispatch'"; exit 1 ;;
+		esac
+		# Default branch for this repo (cache per repo across the loop).
+		if [ "$_erepo" != "${_db_repo:-}" ]; then
+			_db_json=$("$GH_BIN" api "repos/$_erepo" 2>/dev/null) || {
+				log_error "GitHub verification: could not fetch repository metadata for $_erepo (needed for default-branch check)"; exit 1; }
+			printf '%s' "$_db_json" | jq -e . >/dev/null 2>&1 || {
+				log_error "GitHub verification: malformed repository metadata for $_erepo"; exit 1; }
+			_default_branch=$(printf '%s' "$_db_json" | jq -r '.default_branch // ""')
+			[ -n "$_default_branch" ] || { log_error "GitHub verification: repository $_erepo reports no default_branch"; exit 1; }
+			_db_repo="$_erepo"
+		fi
 		_erunj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid" 2>/dev/null) || {
 			log_error "GitHub verification: engine run not found: $_erepo run $_erid"; exit 1; }
 		printf '%s' "$_erunj" | jq -e . >/dev/null 2>&1 || {
@@ -383,9 +455,15 @@ if [ "$MODE" = "verify-github" ]; then
 		_eurl=$(printf '%s' "$_erunj" | jq -r '.html_url // ""')
 		_eidr=$(printf '%s' "$_erunj" | jq -r '.id // "" | tostring')
 		_eapievent=$(printf '%s' "$_erunj" | jq -r '.event // ""')
+		_ename=$(printf '%s' "$_erunj" | jq -r '.name // ""')
+		_ebranch=$(printf '%s' "$_erunj" | jq -r '.head_branch // ""')
+		_eapirepo=$(printf '%s' "$_erunj" | jq -r '.repository.full_name // ""')
 		[ "$_ehs" = "$_ecommit" ] || { log_error "GitHub verification: engine run $_erid head SHA ($_ehs) != commit ($_ecommit)"; exit 1; }
 		[ "$_econcl" = "$_eresult" ] || { log_error "GitHub verification: engine run $_erid conclusion ($_econcl) != result ($_eresult)"; exit 1; }
 		[ "$_eapievent" = "$_eevent" ] || { log_error "GitHub verification: engine run $_erid event ($_eapievent) != declared event ($_eevent)"; exit 1; }
+		[ "$_ename" = "$_ewfname" ] || { log_error "GitHub verification: engine run $_erid workflow name ($_ename) != declared workflow_name ($_ewfname) — a different workflow cannot stand in for '$_ewfname'"; exit 1; }
+		[ "$_ebranch" = "$_default_branch" ] || { log_error "GitHub verification: engine run $_erid head_branch ($_ebranch) != repository default branch ($_default_branch) — release evidence must be default-branch proof"; exit 1; }
+		{ [ "$_eapirepo" = "" ] || [ "$_eapirepo" = "$_erepo" ]; } || { log_error "GitHub verification: engine run $_erid repository.full_name ($_eapirepo) != declared repository ($_erepo)"; exit 1; }
 		[ "$_eurl" = "$_ewurl" ] || { log_error "GitHub verification: engine run $_erid html_url ($_eurl) != workflow_url ($_ewurl)"; exit 1; }
 		[ "$_eidr" = "$_erid" ] || { log_error "GitHub verification: engine run id ($_eidr) != workflow_run_id ($_erid)"; exit 1; }
 		_ewant=$(jq -c ".engine_ci[$_ei].artifacts" "$FILE")
@@ -406,6 +484,15 @@ if [ "$MODE" = "verify-github" ]; then
 		_ei=$((_ei + 1))
 	done
 	[ "$_en" -gt 0 ] && log_info "GitHub verification passed for all $_en engine_ci run(s) in $FILE"
+
+	# Prove the tag target only adds approved metadata over the validated source.
+	_brc=0; verify_commit_binding || _brc=$?
+	case "$_brc" in
+		0) ;;
+		2) exit 2 ;;
+		3) exit 3 ;;
+		*) exit 1 ;;
+	esac
 fi
 
 # --- stage gate (fail-closed) ------------------------------------------------

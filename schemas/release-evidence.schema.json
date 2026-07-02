@@ -142,7 +142,12 @@
     "engine_commit": {
       "type": "string",
       "pattern": "^([0-9a-f]{40}|unknown)$",
-      "description": "Full (40 lowercase hex) Sentinel Shield engine commit SHA the consumer runs exercised. The literal 'unknown' is permitted ONLY for an honest no-evidence draft (empty consumer_runs[] and all required_evidence false)."
+      "description": "The RELEASE-SOURCE commit: the full (40 lowercase hex) executable engine commit that CI actually validated (the engine_ci[]/consumer_runs[] runs ran against THIS commit). This is the commit whose code is proven, not necessarily the commit the tag points at (see release_commit). The literal 'unknown' is permitted ONLY for an honest no-evidence draft (empty consumer_runs[]/engine_ci[] and all required_evidence false)."
+    },
+    "release_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The commit the release TAG is intended to point at (the 'evidence commit'). When absent, the tag targets engine_commit itself. When present and DIFFERENT from engine_commit, it must be a descendant that changes ONLY approved release metadata (evidence/releases/**, CHANGELOG.md, release-evidence / release-notes docs) — never scripts, workflows, schemas, or any executable code. `validate-release-evidence.sh --verify-binding` (or --verify-github) proves the metadata-only diff via the GitHub compare API. This avoids the circular self-reference of trying to record a commit's own CI evidence inside that same commit."
     },
     "consumer_runs": {
       "type": "array",
