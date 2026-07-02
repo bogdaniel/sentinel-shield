@@ -89,7 +89,7 @@ jobs:
         with:
           persist-credentials: false
       - name: OSV-Scanner
-        uses: google/osv-scanner-action/osv-scanner-action@19ec1116569a47416e11a45848722b1af31a857b # v1.9.0
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
         with:
           scan-args: |-
             --recursive
@@ -137,7 +137,7 @@ jobs:
           output-file: reports/sbom.spdx.json
 
       - name: Scan SBOM (Grype)
-        uses: anchore/scan-action@64a33b277ea7a1215a3c142735a1091341939ff5 # v4
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           sbom: reports/sbom.spdx.json
           severity-cutoff: high

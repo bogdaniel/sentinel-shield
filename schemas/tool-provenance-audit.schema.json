@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/tool-provenance-audit.schema.json",
+  "title": "Sentinel Shield tool-provenance audit report",
+  "description": "Machine report emitted by scripts/audits/tool-provenance-audit.sh. Records how each scanner tool is acquired (local binary, Docker image, or verified download) with resolved version / digest / platform, and verifies a checksum when one is declared. A non-empty 'violations' array (e.g. a checksum mismatch or a download declared without a checksum) means the gate failed closed.",
+  "type": "object",
+  "required": ["version", "generated_at", "tool", "platform", "status", "checked", "violation_count", "violations", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string", "description": "Report schema version, e.g. \"1.0\"." },
+    "generated_at": { "type": "string", "description": "ISO-8601 UTC timestamp of the audit run." },
+    "tool": { "const": "tool-provenance-audit", "description": "Producing tool identifier." },
+    "platform": { "type": "string", "description": "Host platform the audit ran on, \"<os>/<arch>\"." },
+    "status": { "type": "string", "enum": ["pass", "fail"], "description": "pass = zero violations; fail = one or more." },
+    "checked": { "type": "integer", "minimum": 0, "description": "Number of tool acquisition specs inspected." },
+    "violation_count": { "type": "integer", "minimum": 0, "description": "Length of the violations array." },
+    "violations": {
+      "type": "array",
+      "description": "One object per detected provenance failure. Empty when status=pass.",
+      "items": {
+        "type": "object",
+        "required": ["tool", "check", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "tool": { "type": "string", "description": "Tool key the violation concerns." },
+          "check": {
+            "type": "string",
+            "enum": ["checksum-mismatch", "missing-checksum"],
+            "description": "checksum-mismatch = resolved binary's SHA-256 != declared expected; missing-checksum = a download URL was declared with no expected SHA-256 (unverifiable acquisition)."
+          },
+          "message": { "type": "string", "description": "Human-readable explanation." }
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "description": "One provenance record per inspected tool (see isolated_tool_provenance_record).",
+      "items": { "$ref": "#/$defs/provenanceRecord" }
+    }
+  },
+  "$defs": {
+    "provenanceRecord": {
+      "type": "object",
+      "required": ["tool", "source", "resolved", "version", "recorded_at", "binary", "image", "vulnerability_db"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string", "description": "Tool key." },
+        "source": {
+          "type": "string",
+          "enum": ["local-binary", "docker-image", "download", "unresolved"],
+          "description": "How the tool was resolved. unresolved = neither a binary nor an image was found."
+        },
+        "resolved": { "type": "boolean", "description": "True unless source is unresolved." },
+        "version": { "type": "string", "description": "Resolved tool version, or \"unknown\"." },
+        "platform": { "type": ["string", "null"], "description": "Host platform \"<os>/<arch>\"." },
+        "recorded_at": { "type": "string", "description": "ISO-8601 UTC capture timestamp." },
+        "binary": {
+          "type": ["object", "null"],
+          "description": "Present when a local binary (or download) was resolved.",
+          "additionalProperties": false,
+          "properties": {
+            "path": { "type": ["string", "null"], "description": "Resolved binary path." },
+            "sha256": { "type": ["string", "null"], "description": "Computed SHA-256 of the binary." },
+            "expected_sha256": { "type": ["string", "null"], "description": "Declared expected SHA-256, if any." },
+            "checksum_verified": { "type": ["boolean", "null"], "description": "true=verified match, false=mismatch, null=no expected checksum declared." }
+          }
+        },
+        "image": {
+          "type": ["object", "null"],
+          "description": "Present when a Docker image was resolved.",
+          "additionalProperties": false,
+          "properties": {
+            "ref": { "type": ["string", "null"], "description": "Image reference (repo:tag or repo@sha256:...)." },
+            "digest": { "type": ["string", "null"], "description": "Resolved image digest (sha256:...), if inspectable." }
+          }
+        },
+        "vulnerability_db": {
+          "type": "object",
+          "description": "Vulnerability database provenance for DB-backed scanners.",
+          "additionalProperties": false,
+          "properties": {
+            "timestamp": { "type": ["string", "null"], "description": "Vulnerability DB build/update timestamp, if known." }
+          }
+        }
+      }
+    }
+  }
+}

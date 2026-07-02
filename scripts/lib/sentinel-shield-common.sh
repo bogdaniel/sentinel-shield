@@ -128,6 +128,37 @@ ss_emit_collector() {
 		}'
 }
 
+# ss_provenance_object <sidecar-path> <fallback-version> <fallback-db-timestamp>
+# Echo a normalized provenance object for a scanner collector's tool_report. Prefers
+# fields from the sidecar written by isolated_tool_provenance_record (scripts/lib/
+# isolated-tools.sh) when it is present and valid JSON; otherwise falls back to values
+# parsed from the scanner's own native report (e.g. Grype's .descriptor). A populated
+# scanner_version / vulnerability_db.timestamp is what distinguishes an EMPTY report
+# (scanner ran, found nothing) from a scanner that DID NOT RUN (no provenance at all).
+# Requires jq. Fields that resolve to nothing become "unknown" (version) or null.
+ss_provenance_object() {
+	_pv_side='{}'
+	if [ -n "${1:-}" ] && [ -f "$1" ] && [ -s "$1" ] && jq -e . "$1" >/dev/null 2>&1; then
+		_pv_side=$(cat "$1")
+	fi
+	jq -n --argjson side "$_pv_side" --arg fv "${2:-}" --arg fdb "${3:-}" '
+		def nn(s): if s == "" or s == null then null else s end;
+		(($side.version // "") | if type == "string" then . else "" end) as $sv
+		| (($side.vulnerability_db.timestamp // "") | if type == "string" then . else "" end) as $sdb
+		| {
+			scanner_version: (
+				if $sv != "" and $sv != "unknown" then $sv
+				elif $fv != "" then $fv
+				elif $sv != "" then $sv
+				else "unknown" end ),
+			vulnerability_db: { timestamp: ( if $sdb != "" then $sdb elif $fdb != "" then $fdb else null end ) },
+			source: nn($side.source),
+			image: ($side.image // null),
+			captured_at: nn($side.recorded_at)
+		}'
+	unset _pv_side
+}
+
 # ss_collector_guard <tool> <input-path>
 # Preflight for a collector: requires jq; emits an "unavailable" object and exits 0
 # when the input is missing/empty; exits 2 on invalid JSON. Returns 0 when the input
