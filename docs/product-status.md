@@ -8,9 +8,9 @@ It is deliberately conservative: a capability is only `proven` if there is cited
 
 | Field | Value |
 | --- | --- |
-| Stable product line | **v1.x** (latest tag `v1.9.2`) |
-| Current development line | **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published** (no v2 tag exists) |
-| Current default branch (`master`) | post-v2-alpha production-readiness work |
+| Stable product line | **v1.x** (latest tag `v1.9.2`) — still the latest stable, supported release |
+| Current development line | **v2.0.0 beta** — `v2.0.0-beta.1` **published as a GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; a pre-release, **not** stable, **not** the latest release, **not** framework-validated |
+| Current default branch (`master`) | post-v2-beta production-readiness work |
 | Release scope under evaluation | **engine-only** (see [`v2-release-scope.md`](v2-release-scope.md)) |
 | Laravel & Symfony | **supported by profiles, fixtures and engine tests; NOT independently live-validated in real consumer repositories** |
 | Beta/GA scope | engine and reusable-baseline release; **not** a claim of framework-specific production proof |

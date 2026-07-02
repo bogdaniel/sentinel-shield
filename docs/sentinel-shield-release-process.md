@@ -1,7 +1,9 @@
 # Sentinel Shield Release Process (v0.1.16)
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
-> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. Canonical status:
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest
+> stable, supported release; current development line **v2.0.0 beta** — `v2.0.0-beta.1`
+> **published as a GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1`
+> candidate; a pre-release, not stable and not the latest release. Canonical status:
 > [`product-status.md`](product-status.md).
 
 ## Release scope model (v2) — SELECTED: scoped release track

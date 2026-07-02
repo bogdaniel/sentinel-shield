@@ -1,7 +1,9 @@
 # Production Readiness Audit (v0.1.13, maturity note v0.1.16)
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
-> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. The v2 line is scoped
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest stable,
+> supported release; current development line **v2.0.0 beta** — `v2.0.0-beta.1` **published as a
+> GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; a pre-release,
+> **not** stable, **not** the latest release. The v2 line is scoped
 > **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests but are
 > not independently live-validated in real consumer repositories.** Canonical status:
 > [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
