@@ -1,0 +1,5 @@
+# Composer-managed, regenerated in CI — never committed from a dev machine.
+/vendor/
+/.phpunit.cache/
+/.phpstan-cache/
+.phpunit.result.cache
