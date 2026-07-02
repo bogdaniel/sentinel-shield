@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/installation-plan.schema.json",
+  "title": "Sentinel Shield installation plan",
+  "description": "Deterministic, read-only description of the operations an install-baseline.sh / sync-baseline.sh dry-run WOULD perform, emitted with --emit-install-plan. It is a plan, not a result: no files are written when it is produced. Key order is deterministic (fixed object key order; the operations array is sorted by target) so two dry-runs of the same profile against the same target produce byte-identical output. It carries NO secrets and NO file contents — only the profile, mode flags, and per-file (mode, action, source, target) tuples.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generator",
+    "profile",
+    "mode",
+    "apply",
+    "force",
+    "protected",
+    "operations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Installation-plan schema version. Fixed at '1' for this contract."
+    },
+    "generator": {
+      "type": "string",
+      "enum": ["install-baseline", "sync-baseline"],
+      "description": "Which tool produced the plan."
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Profile whose manifest drives the plan."
+    },
+    "mode": {
+      "type": "string",
+      "description": "Reported profile mode for install-baseline (report-only|baseline|strict|regulated); \"\" (empty) for sync-baseline, which does not set a mode."
+    },
+    "apply": {
+      "type": "boolean",
+      "description": "Whether the plan describes an --apply run. A plan is emitted for dry-runs; this reflects the flag the plan was computed under."
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Whether --force was set (managed files would be overwritten)."
+    },
+    "protected": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Project-local paths that are NEVER written (accepted-risks.json, phpstan-baseline.neon, manifest never_touch), sorted."
+    },
+    "operations": {
+      "type": "array",
+      "description": "Per-file planned operations, sorted deterministically by target.",
+      "items": {
+        "type": "object",
+        "required": ["mode", "action", "source", "target"],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "create-if-missing",
+              "overwrite-if-force",
+              "sync-managed-block",
+              "manual"
+            ],
+            "description": "Manifest file mode governing how the file is managed."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "overwrite-managed",
+              "skip-existing",
+              "skip-managed-no-force",
+              "manual",
+              "protected"
+            ],
+            "description": "What the dry-run determined it would do for this file given the current target state and flags."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Source path within the Sentinel Shield repo."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Destination path within the consuming project (relative)."
+          }
+        }
+      }
+    }
+  }
+}

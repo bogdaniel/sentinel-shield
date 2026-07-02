@@ -32,6 +32,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/source-verification.sh
+. "$SCRIPT_DIR/lib/source-verification.sh"
 
 # usage — print CLI usage/help to stdout (lists every flag).
 usage() {
@@ -43,28 +45,54 @@ Usage: acquire-sentinel-shield.sh --repository <owner/repo|url|path> --ref <tag|
   --destination <dir>                 Checkout directory (the only path mutated).
   --transport https|ssh|gh            Remote scheme for owner/repo shorthand (default: https).
   --verify                            Assert checkout HEAD == resolved commit; fail closed on mismatch.
+  --verify-source <mode>              OPTIONAL extra verification of the acquired tree (default none):
+                                        checksum            record + verify the deterministic HEAD tree id.
+                                        signature           verify a signed annotated tag (GnuPG); fail closed.
+                                        checksum+signature  both. Records the method in .sentinel-shield-ref.
   --reuse-existing                    Reuse a present matching checkout instead of re-cloning.
   --cleanup                           Remove the destination first (or alone, just clean up).
   -h, --help                          Print this help and exit 0.
 EOF
 }
 
-# write_ref_record <dest> <repo_kind> <repository|""> <ref> <commit> <ref_kind> — record the
-# resolved ref in the NORMALIZED, privacy-preserving shape (SHARED CONTRACT 1). NO credentials
-# and NO local/home paths are ever persisted: a local-path source records repository=null.
-# repository_kind is github|url|local; ref_kind is the authoritative tag|sha classification
-# doctor.sh relies on to prove immutability.
+# write_ref_record <dest> <repo_kind> <repository|""> <ref> <commit> <ref_kind>
+#                  [verification_method] [tree_checksum] — record the resolved ref in the
+# NORMALIZED, privacy-preserving shape (SHARED CONTRACT 1). NO credentials and NO local/home
+# paths are ever persisted: a local-path source records repository=null. repository_kind is
+# github|url|local; ref_kind is the authoritative tag|sha classification doctor.sh relies on to
+# prove immutability. verification_method records which OPTIONAL source verification passed
+# (none|checksum|signature|checksum+signature); tree_checksum, when present, is the deterministic
+# HEAD tree id that was verified. Both are additive; readers that ignore them are unaffected.
 write_ref_record() {
 	_rkind=$(json_escape "$2"); _rf=$(json_escape "$4"); _kind=$(json_escape "$6")
+	_vm=$(json_escape "${7:-none}")
 	if [ -n "$3" ]; then
 		_repo="\"$(json_escape "$3")\""
 	else
 		_repo="null"
 	fi
-	printf '{"repository_kind":"%s","repository":%s,"ref":"%s","resolved_commit":"%s","ref_kind":"%s"}\n' \
-		"$_rkind" "$_repo" "$_rf" "$5" "$_kind" > "$1/.sentinel-shield-ref" || {
+	_extra=""
+	if [ -n "${8:-}" ]; then
+		_extra=",\"tree_checksum\":\"$(json_escape "$8")\""
+	fi
+	printf '{"repository_kind":"%s","repository":%s,"ref":"%s","resolved_commit":"%s","ref_kind":"%s","verification_method":"%s"%s}\n' \
+		"$_rkind" "$_repo" "$_rf" "$5" "$_kind" "$_vm" "$_extra" > "$1/.sentinel-shield-ref" || {
 		log_error "acquire: cannot write ref record to $1/.sentinel-shield-ref"; return 1
 	}
+}
+
+# acquire_run_source_verify <dir> <ref> <expected> — run OPTIONAL source verification per the
+# global VERIFY_SOURCE. Sets VMETHOD (recorded method; "none" when disabled) and TREECK (the
+# verified tree id, when checksum was requested). FAILS CLOSED (exit 4) on any verification
+# failure. A no-op when VERIFY_SOURCE=none, so existing --ref/--verify behaviour is unchanged.
+acquire_run_source_verify() {
+	VMETHOD="none"; TREECK=""
+	[ "$VERIFY_SOURCE" = "none" ] && return 0
+	VMETHOD=$(sv_verify "$1" "$2" "$3" "$VERIFY_SOURCE") || {
+		log_error "acquire: source verification (--verify-source $VERIFY_SOURCE) FAILED — fail closed"; exit 4; }
+	case "$VERIFY_SOURCE" in
+		*checksum*) TREECK=$(sv_tree_checksum "$1" 2>/dev/null || true) ;;
+	esac
 }
 
 # acquire_sanitize_url <url> — strip userinfo, query, and fragment from an explicit remote
@@ -164,6 +192,9 @@ REF=""
 DEST=""
 TRANSPORT="https"
 VERIFY=0
+VERIFY_SOURCE="none"
+VMETHOD="none"
+TREECK=""
 REUSE=0
 CLEANUP=0
 while [ $# -gt 0 ]; do
@@ -175,6 +206,7 @@ while [ $# -gt 0 ]; do
 			DEST="$2"; shift 2 ;;
 		--transport) TRANSPORT="${2:?--transport requires a value}"; shift 2 ;;
 		--verify) VERIFY=1; shift ;;
+		--verify-source) VERIFY_SOURCE="${2:?--verify-source requires a value}"; shift 2 ;;
 		--reuse-existing) REUSE=1; shift ;;
 		--cleanup) CLEANUP=1; shift ;;
 		-h | --help) usage; exit 0 ;;
@@ -185,6 +217,10 @@ done
 case "$TRANSPORT" in
 	https | ssh | gh) ;;
 	*) log_error "acquire: invalid --transport '$TRANSPORT' (https|ssh|gh)"; exit 2 ;;
+esac
+case "$VERIFY_SOURCE" in
+	none | checksum | signature | checksum+signature) ;;
+	*) log_error "acquire: invalid --verify-source '$VERIFY_SOURCE' (none|checksum|signature|checksum+signature)"; exit 2 ;;
 esac
 [ -n "$DEST" ] || { log_error "acquire: --destination is required"; usage >&2; exit 2; }
 
@@ -283,7 +319,8 @@ if [ -e "$DEST" ]; then
 		# worktree is clean — a dirty checkout is not the immutable source, re-acquire.
 		if [ -n "$CUR" ] && [ "$CUR" = "$EXPECTED" ] && [ -z "$(git -C "$DEST" status --porcelain 2>/dev/null)" ]; then
 			log_info "acquire: reusing existing checkout at $DEST (HEAD=$CUR)"
-			write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$CUR" "$KIND"
+			acquire_run_source_verify "$DEST" "$REF" "$EXPECTED"
+			write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$CUR" "$KIND" "$VMETHOD" "$TREECK"
 			printf '%s\n' "$CUR"
 			exit 0
 		fi
@@ -329,7 +366,8 @@ if [ "$VERIFY" = 1 ] && [ "$RESOLVED" != "$EXPECTED" ]; then
 	exit 4
 fi
 
-write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$RESOLVED" "$KIND"
+acquire_run_source_verify "$DEST" "$REF" "$EXPECTED"
+write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$RESOLVED" "$KIND" "$VMETHOD" "$TREECK"
 log_info "acquire: $REPO @ $REF -> $RESOLVED (checkout: $DEST)"
 printf '%s\n' "$RESOLVED"
 exit 0

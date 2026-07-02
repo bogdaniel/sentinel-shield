@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/transaction-journal.schema.json",
+  "title": "Sentinel Shield transaction journal entry",
+  "description": "ONE line of the append-only transaction journal at <target>/.sentinel-shield/transaction-journal.jsonl. The journal is JSON Lines (JSONL): each line is an independent object conforming to this schema. Entries are appended (never rewritten) across every phase of a mutating install/sync/migrate/recover operation. Each entry chains to the previous one via 'prev' (the previous entry's 'hash'); 'hash' is a digest of the entry with its 'hash' field removed. Truncation and in-place tampering of any prefix break the chain and are rejected by scripts/recover-operation.sh --inspect. A keyless hash chain detects corruption and casual tampering; it is NOT tamper-PROOF against a full re-chaining rewrite. Entries carry NO secrets and NO file contents — only relative paths and short phase details.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "seq",
+    "ts",
+    "operation",
+    "pid",
+    "phase",
+    "path",
+    "detail",
+    "prev",
+    "hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Journal-entry schema version. Fixed at '1' for this contract."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based monotonic sequence number, equal to this entry's line position in the journal."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp when the entry was appended."
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["install", "sync", "migration", "bootstrap", "unknown"],
+      "description": "The mutating operation that emitted the entry."
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "PID of the process that emitted the entry."
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "start",
+        "precondition",
+        "snapshot",
+        "mutation",
+        "validation",
+        "rollback-step",
+        "completion"
+      ],
+      "description": "Lifecycle phase this entry records."
+    },
+    "path": {
+      "type": "string",
+      "description": "Project-relative path the entry concerns, or \"\" when the phase is not file-scoped. MUST be relative (no leading '/', no '..' segment): a tampered absolute/traversal path is rejected on inspect."
+    },
+    "detail": {
+      "type": "string",
+      "description": "Short human-readable phase detail. MUST NOT contain secrets or file contents."
+    },
+    "prev": {
+      "type": "string",
+      "description": "The 'hash' of the previous journal entry, or \"\" for the first entry. Links the chain."
+    },
+    "hash": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Digest of this entry with the 'hash' field removed (sha256 hex, or a 'cksum:<crc>' fallback when no sha256 tool is present). Recomputed on inspect to detect tampering."
+    }
+  }
+}
