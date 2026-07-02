@@ -67,3 +67,20 @@ jobs:
           inputs: ".github/workflows/ templates/workflows/"
           advanced-security: false
           annotations: true
+
+  # Runtime-hardening gate: asserts SHA-pinned uses:, explicit per-job
+  # permissions + timeout-minutes, a workflow-level concurrency group, and
+  # if-no-files-found on every upload-artifact — across BOTH the engine CI and
+  # the consumer templates. Complements actionlint/zizmor with the invariants
+  # those linters do not enforce. Fail-closed; no continue-on-error.
+  workflow-runtime-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: workflow-runtime audit (uses/permissions/timeout/concurrency/artifacts)
+        run: sh scripts/audits/workflow-runtime-audit.sh
