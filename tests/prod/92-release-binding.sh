@@ -83,6 +83,12 @@ MOCK_COMPARE='{"status":"ahead","files":[{"filename":".github/workflows/ci-zap.y
   expect 2 "F1 workflow change rejected" --file "$EV" --verify-binding
 MOCK_COMPARE='{"status":"ahead","files":[{"filename":"schemas/release-evidence.schema.json"}]}' \
   expect 2 "F1 schema change rejected" --file "$EV" --verify-binding
+# Allowlist must be extension-anchored: a non-JSON file under evidence/releases/ and a
+# non-Markdown file under a docs release path must NOT slip through as "metadata".
+MOCK_COMPARE='{"status":"ahead","files":[{"filename":"evidence/releases/evil.sh"}]}' \
+  expect 2 "F1 non-JSON file under evidence/releases/ rejected" --file "$EV" --verify-binding
+MOCK_COMPARE='{"status":"ahead","files":[{"filename":"docs/x-release-evidence.sh"}]}' \
+  expect 2 "F1 non-Markdown docs release-evidence file rejected" --file "$EV" --verify-binding
 MOCK_COMPARE='{"status":"behind","files":[]}' \
   expect 2 "F1 diverged/behind release commit rejected" --file "$EV" --verify-binding
 # unknown release commit: compare endpoint 404s (a separate stub that fails compare)

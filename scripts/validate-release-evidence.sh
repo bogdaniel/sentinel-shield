@@ -323,8 +323,10 @@ stage_rank() {
 #   1 = could not verify (unknown commit / compare fetch failed) — fail closed
 #   2 = VIOLATION: the diff changes non-metadata (script/workflow/schema/executable)
 #   3 = required tool unavailable
-# Metadata allowlist: evidence/releases/**, CHANGELOG.md, docs/*release-evidence*,
-# docs/*release-notes*, docs/v2-merge-commit-ci-evidence*.
+# Metadata allowlist (extension-anchored so a non-metadata artifact — e.g. a script
+# dropped under evidence/releases/ or docs/ — can never pass): evidence/releases/*.json,
+# CHANGELOG.md, docs/*release-evidence*.md, docs/*release-notes*.md,
+# docs/v2-merge-commit-ci-evidence*.md.
 verify_commit_binding() {
 	_rcx=$(jq -r '.release_commit // ""' "$FILE")
 	_enx=$(jq -r '.engine_commit // ""' "$FILE")
@@ -348,7 +350,7 @@ verify_commit_binding() {
 		*) log_error "commit-binding: release_commit is '$_status' relative to engine_commit (must be 'ahead' or 'identical') — fail closed"; return 2 ;;
 	esac
 	_files=$(printf '%s' "$_cmpj" | jq -r '.files[]?.filename // empty')
-	_bad=$(printf '%s\n' "$_files" | grep -vE '^$|^evidence/releases/|^CHANGELOG\.md$|^docs/[^/]*release-evidence|^docs/[^/]*release-notes|^docs/v2-merge-commit-ci-evidence' || true)
+	_bad=$(printf '%s\n' "$_files" | grep -vE '^$|^evidence/releases/[^/]+\.json$|^CHANGELOG\.md$|^docs/[^/]*release-evidence[^/]*\.md$|^docs/[^/]*release-notes[^/]*\.md$|^docs/v2-merge-commit-ci-evidence[^/]*\.md$' || true)
 	if [ -n "$_bad" ]; then
 		log_error "commit-binding VIOLATION: the diff engine_commit..release_commit changes NON-metadata files (executable/script/workflow/schema are forbidden in an evidence commit):"
 		printf '%s\n' "$_bad" | sed 's/^/  /' >&2

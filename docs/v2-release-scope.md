@@ -116,11 +116,11 @@ this with an explicit two-commit model:
 **Approved metadata allowlist** (nothing else may change between the two commits):
 
 ```
-evidence/releases/**
+evidence/releases/*.json
 CHANGELOG.md
-docs/*release-evidence*
-docs/*release-notes*
-docs/v2-merge-commit-ci-evidence*
+docs/*release-evidence*.md
+docs/*release-notes*.md
+docs/v2-merge-commit-ci-evidence*.md
 ```
 
 Any change to a script, workflow, schema, or other executable/source file between
