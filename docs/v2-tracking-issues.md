@@ -22,13 +22,15 @@ framework-validated release can be claimed. They are not won't-fix.
 **Labels:** `documentation`, `v2`, `release`
 
 **Context:**
-v2 documentation and version references must be reconciled with reality. No `v2`
-tag is published (highest published tag is `v1.9.2`); `v2.0.0-alpha.1` is a
-candidate, not a published release. Docs must not imply a shipped v2.
+v2 documentation and version references must be reconciled with reality.
+`v2.0.0-beta.1` is published as a GitHub pre-release (engine-only scope), superseding
+the `v2.0.0-alpha.1` candidate; it is a pre-release, not stable and not the latest
+release. The latest stable, supported tag remains `v1.9.2`. Docs must not imply a
+stable, framework-validated v2.
 
 **Acceptance criteria:**
-- [ ] All docs distinguish "candidate" from "published" for v2 artifacts.
-- [ ] Version references agree with the actual tag state (`v1.9.2` highest published).
+- [ ] All docs distinguish "pre-release" from "stable" for v2 artifacts.
+- [ ] Version references agree with the actual tag state (`v2.0.0-beta.1` pre-release; `v1.9.2` latest stable).
 - [ ] Release-scope wording (engine-only vs framework-validated vs full-platform) is consistent across docs.
 
 **Current status:** Largely addressed — see `docs/v2-merge-commit-ci-evidence.md`

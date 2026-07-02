@@ -183,8 +183,9 @@ filesystem, security-summary, self-tests, workflow-lint, and the release gate.
   dependency/SBOM security jobs are applicability-skipped in the engine repo;
   they exercise real consumer repositories only under a framework-validated
   scope, which this candidate does not claim.
-- **Candidates, not releases.** No `v2` tag is published (highest published tag
-  is `v1.9.2`); these are candidates.
+- **Pre-release, not stable.** `v2.0.0-beta.1` is published as a GitHub pre-release
+  (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; it is **not** stable
+  and **not** the latest release. The latest stable, supported tag remains `v1.9.2`.
 
 ## Relationship to release evidence
 

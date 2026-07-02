@@ -1,7 +1,9 @@
 # Sentinel Shield Release Process (v0.1.16)
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
-> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. Canonical status:
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest
+> stable, supported release; current development line **v2.0.0 beta** — `v2.0.0-beta.1`
+> **published as a GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1`
+> candidate; a pre-release, not stable and not the latest release. Canonical status:
 > [`product-status.md`](product-status.md).
 
 ## Release scope model (v2) — SELECTED: scoped release track
@@ -52,6 +54,20 @@ scanner binary run is part of the engine's own release gate** — by design.
 3. Run the validation block above locally.
 4. `git tag -a vX.Y.Z -m "Sentinel Shield vX.Y.Z"`
 5. `git push origin master && git push origin vX.Y.Z`
+6. Publish the GitHub Release from the pushed tag. For a beta/RC candidate mark it
+   **pre-release** and do **not** flag it as the latest stable release
+   (`gh release create vX.Y.Z --verify-tag --prerelease --latest=false ...`). Lead the
+   release body with the release-scope declaration (engine-only for the v2 cycle) and
+   link the release evidence (`evidence/releases/<version>.json`,
+   [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md)) and the
+   [migration guide](v2-migration-guide.md). Record the published Release page URL in the
+   release evidence / tracking record.
+
+### Published GitHub Releases (v2)
+
+| Version | Stage | Published Release page |
+| --- | --- | --- |
+| `v2.0.0-beta.1` | beta (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-beta.1> |
 
 ## How to validate a tag
 ```sh

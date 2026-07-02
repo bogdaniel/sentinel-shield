@@ -1,10 +1,11 @@
 # v2 Release Scope (engine-only)
 
-This document states precisely what the v2.0.0 alpha work proves and what it does
-not prove. It applies to the current development line: **v2.0.0-alpha.1 candidate —
-not yet published**. There is no v2 git tag; the highest published tag is `v1.9.2`,
-which remains the stable product line. The default branch is currently doing
-post-v2-alpha production-readiness work.
+This document states precisely what the v2.0.0 work proves and what it does
+not prove. It applies to the current development line: **`v2.0.0-beta.1` is published
+as a GitHub pre-release** (engine-only scope), superseding the earlier `v2.0.0-alpha.1`
+candidate — a pre-release, **not** stable and **not** the latest release. The latest
+stable, supported line remains v1.x (latest published tag `v1.9.2`). The default branch
+is currently doing post-v2-beta production-readiness work.
 
 The release cycle described here runs under the `engine-only` release scope. Under
 this scope the release is a **production-oriented engine** with

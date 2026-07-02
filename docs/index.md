@@ -1,7 +1,9 @@
 # Sentinel Shield — Documentation Hub
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published). Current development line
-> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published** (no `v2.*` tag). The v2 line is
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest stable,
+> supported release. Current development line **v2.0.0 beta** — `v2.0.0-beta.1` **published as a GitHub
+> pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; a pre-release, **not**
+> stable, **not** the latest release. The v2 line is
 > scoped **engine-only** ([`v2-release-scope.md`](v2-release-scope.md)) — a reusable-engine/baseline
 > release, **not** a claim of framework-specific production proof. **Laravel and Symfony are supported
 > by profiles, fixtures and engine tests but are not independently live-validated in real consumer

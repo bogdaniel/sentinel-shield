@@ -2,9 +2,11 @@
 
 All notable changes to Sentinel Shield are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). History began at `v0.1.0`
-and reached the **stable v1.x line** (latest published tag `v1.9.2`). The **v2.0.0
-line is in alpha**: `v2.0.0-alpha.1` below is a **candidate that has not been
-published** — no `v2.*` tag exists yet. See [`docs/product-status.md`](docs/product-status.md)
+and reached the **stable v1.x line** (latest published tag `v1.9.2`), which remains the
+latest stable, supported release. The **v2.0.0 line is in beta**: `v2.0.0-beta.1` is
+**published as a GitHub pre-release** (engine-only scope) — a pre-release, not stable and
+not the latest release — superseding the earlier `v2.0.0-alpha.1` candidate. See
+[`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
 
@@ -42,10 +44,22 @@ engine-only v2 scope.
   upgrading, v2-migration, workflow-execution-model, and consumer-validation docs document the
   above and use the real post-remediation flags.
 
-## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement (candidate — NOT yet published)
+## [2.0.0-beta.1] — Engine-Only Beta Pre-Release — 2026-07-02
 
-**MAJOR (alpha candidate).** This entry documents the `v2.0.0-alpha.1` candidate; **no `v2.*` tag
-has been published**. Changes the meaning of a profile: a profile now declares a machine-readable
+**MAJOR (beta pre-release).** `v2.0.0-beta.1` is **published as a GitHub
+[pre-release](https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-beta.1)**
+under **engine-only** scope: the engine is validated by its own GitHub-verified default-branch
+CI (engine commit `becec20`), and Laravel/Symfony profiles are engine- and fixture-tested but
+**not** live-validated in real consumer repositories. It is a pre-release — **not** stable,
+**not** the latest release, and **not** framework-validated. It supersedes the earlier
+`v2.0.0-alpha.1` candidate and carries the same profile tool-policy work recorded below. The
+**latest stable, supported line remains v1.x (latest published tag `v1.9.2`)**. Not a drop-in
+upgrade — read `docs/v2-migration-guide.md` first.
+
+## [2.0.0-alpha.1] — Profile Tool Provisioning & Required-Tool Enforcement (candidate — superseded by v2.0.0-beta.1)
+
+**MAJOR (alpha candidate).** This entry documents the `v2.0.0-alpha.1` candidate, which was
+**superseded by the published `v2.0.0-beta.1` pre-release**. Changes the meaning of a profile: a profile now declares a machine-readable
 **tool policy** (required/recommended/optional/one-of/disabled/external) and the toolchain is
 explicit, verifiable and upgradeable. The v2 line is scoped **engine-only**: it is backed by the
 engine's own green default-branch CI, **not** by real Laravel/Symfony consumer runs. **Laravel and
