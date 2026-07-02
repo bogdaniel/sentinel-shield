@@ -9,7 +9,7 @@
 > v2 release notes: [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) · branch protection:
 > [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
 > [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md).
-
+>
 > The canonical map of Sentinel Shield's docs. If a new team can't adopt from here without asking the
 > author, that's a bug — open an issue. Maturity labels defer to the single source of truth,
 > [`product-status.md`](product-status.md). Stability/compatibility is in [`product-contract.md`](product-contract.md).

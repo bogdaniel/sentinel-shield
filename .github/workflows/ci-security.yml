@@ -158,7 +158,9 @@ jobs:
   # as artifacts, and a single job would download them all before building.
   security-summary:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Multi-scanner job (Semgrep + third-party Semgrep + Gitleaks + Trivy + build/upload);
+    # matches ci-pipeline's security-scan budget — 10m can be exceeded on cold runners.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

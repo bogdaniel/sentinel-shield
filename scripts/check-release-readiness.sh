@@ -129,10 +129,21 @@ run_selftest_gate() {
 	fi
 }
 
+# Effective scope for DISPLAY: the explicit --scope if given, else the evidence
+# file's release_scope (default framework-validated when absent/unreadable), so the
+# printed Scope line reflects the scope the run is actually gated under.
+if [ -n "$SCOPE" ]; then
+	_display_scope="$SCOPE"
+elif [ -f "$EVIDENCE_FILE" ] && jq -e . "$EVIDENCE_FILE" >/dev/null 2>&1; then
+	_display_scope=$(jq -r '.release_scope // "framework-validated"' "$EVIDENCE_FILE")
+else
+	_display_scope="framework-validated"
+fi
+
 printf 'Sentinel Shield — release-readiness check\n'
 printf 'Version:  %s\n' "$VERSION"
 printf 'Stage:    %s (gates compose: alpha < beta < rc < ga)\n' "$STAGE"
-printf 'Scope:    %s\n' "${SCOPE:-<from evidence file (default framework-validated)>}"
+printf 'Scope:    %s%s\n' "$_display_scope" "$([ -z "$SCOPE" ] && printf ' (from evidence file)')"
 printf 'Verify:   %s%s\n' "$VERIFY_MODE" "$([ "$VERIFY_MODE" = offline ] && printf ' (structural-only; --verify-github required to authorize a beta/rc/ga tag)')"
 printf 'Evidence: %s\n' "$EVIDENCE_FILE"
 if [ "$SCOPE" = "engine-only" ]; then

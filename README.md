@@ -40,7 +40,7 @@ This repository is not a demo. It is intended for use in real production project
 > `sh scripts/maturity-report.sh` (tool status) · [`docs/troubleshooting.md`](docs/troubleshooting.md).
 > **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
 > **Install with an AI agent (optional path)** → [`docs/ai-assisted-install.md`](docs/ai-assisted-install.md)
-> + copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
+> plus the copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
 > (`sh scripts/print-ai-install-prompt.sh`). The manual quickstart remains fully supported.
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
