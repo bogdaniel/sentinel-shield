@@ -1,0 +1,19 @@
+# Fixture: NEGATIVE — a fork-reachable (pull_request) workflow granting contents: write.
+# Must trip merge-safety check 'fork-pr-write-permission'. Everything else clean.
+name: fixture-pr-write-perms
+on:
+  pull_request:
+permissions:
+  contents: write
+concurrency:
+  group: fixture-pr-write-perms-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false

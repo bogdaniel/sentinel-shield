@@ -1,0 +1,17 @@
+# Fixture: NEGATIVE — a uses: pinned to a mutable tag (@v4) instead of a 40-hex SHA.
+# Must trip merge-safety check 'mutable-action-ref'. Everything else clean.
+name: fixture-ms-mutable-ref
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: fixture-ms-mutable-ref-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (mutable tag)
+        uses: actions/checkout@v4
