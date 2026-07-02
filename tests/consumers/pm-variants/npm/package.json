@@ -1,0 +1,8 @@
+{
+  "name": "sentinel-shield-consumer-pm-npm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal real npm project. Its committed authoritative lockfile is the single source of package-manager authority for the resolver's positive-path tests. Zero-config dependency (ms) keeps the lockfile small but genuine.",
+  "packageManager": "npm@10.9.3",
+  "dependencies": { "ms": "2.1.3" }
+}
