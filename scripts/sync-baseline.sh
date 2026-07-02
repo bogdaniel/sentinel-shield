@@ -26,6 +26,14 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+# Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
+# Sourced defensively: the envelope layer is an optional add-on, so the command
+# still works if the lib is absent (e.g. a minimal copied tree in a test fixture).
+if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
+  # shellcheck source=scripts/lib/output-contract.sh
+  . "$SCRIPT_DIR/lib/output-contract.sh"
+  oc_intercept "sync-baseline" "$0" "$@"
+fi
 
 TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; EMIT_INSTALL_PLAN=""; NONINTERACTIVE=0; RECOVER=0
 

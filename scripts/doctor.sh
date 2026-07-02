@@ -45,6 +45,14 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
+# Sourced defensively: the envelope layer is an optional add-on, so the command
+# still works if the lib is absent (e.g. a minimal copied tree in a test fixture).
+if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
+  # shellcheck source=scripts/lib/output-contract.sh
+  . "$SCRIPT_DIR/lib/output-contract.sh"
+  oc_intercept "doctor" "$0" "$@"
+fi
 
 TARGET="."
 QUIET=0
