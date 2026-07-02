@@ -1,5 +1,13 @@
 # Product Contract (v1.0.0)
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published** (no `v2.*` tag). The v2 line is
+> scoped **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests
+> but are not independently live-validated in real consumer repositories.** Single source of truth:
+> [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
+> The `v1.0.0` in this title/body reflects its authoring era; any "pre-1.0" language predates the
+> published v1.x line and is retained as historical context.
+
 This is the **stability contract** for Sentinel Shield. It tells consumers which
 surfaces they may depend on, which are still moving, and how compatibility is handled
 from `v1.0.0` onward.

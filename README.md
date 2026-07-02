@@ -13,9 +13,14 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status: `v1.3.0` — released (additive minor; evidence-based Deptrac promotion).** The
-> STABLE surfaces follow **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3,
-> §6) — `v1.2.0` is docs-only/opt-in and **drop-in** from `v1.0.0`/`v1.1.0` (no contract change).
+> **Release status.** Stable product line: **v1.x** (latest tag `v1.9.2`). Current development
+> line: **v2.0.0 alpha** — `v2.0.0-alpha.1` is a **candidate, not yet published** (no v2 tag
+> exists); `master` carries post-v2-alpha production-readiness work. STABLE surfaces follow
+> **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6). The v2 line is
+> scoped **engine-only** — a reusable-engine/baseline release, **not** a claim of framework-specific
+> production proof. **Laravel and Symfony are supported by profiles, fixtures and engine tests but
+> are not independently live-validated in real consumer repositories.** Canonical status:
+> [`docs/product-status.md`](docs/product-status.md); scope: [`docs/v2-release-scope.md`](docs/v2-release-scope.md).
 >
 > **📖 Start here → the documentation hub: [`docs/index.md`](docs/index.md)** (Start Here, reader
 > paths, canonical doc map). Fast paths: **install & run in <30 min** →
@@ -35,7 +40,7 @@ This repository is not a demo. It is intended for use in real production project
 > `sh scripts/maturity-report.sh` (tool status) · [`docs/troubleshooting.md`](docs/troubleshooting.md).
 > **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
 > **Install with an AI agent (optional path)** → [`docs/ai-assisted-install.md`](docs/ai-assisted-install.md)
-> + copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
+> plus the copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
 > (`sh scripts/print-ai-install-prompt.sh`). The manual quickstart remains fully supported.
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to

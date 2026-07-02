@@ -1,11 +1,15 @@
 #!/bin/sh
 # Sentinel Shield production test — release evidence registry + validator.
 #
-# Proves the evidence machinery is FAIL-CLOSED: the shipped evidence files are
-# schema-valid but, because they carry no real consumer runs, they must NOT
-# satisfy a stage gate. A hand-built fixture WITH real-looking laravel+symfony
-# runs is the only thing that passes --require-stage beta. Malformed input is
-# rejected with exit 2.
+# Proves the evidence machinery is FAIL-CLOSED across release scopes:
+#   * framework-validated (the default when release_scope is absent): a file with
+#     no real consumer runs must NOT satisfy a stage gate; only a hand-built
+#     fixture WITH real laravel+symfony runs passes --require-stage beta.
+#   * engine-only: the release is backed by the engine's OWN CI (engine_ci[]).
+#     An engine-only beta with a populated, self-consistent engine_ci passes; an
+#     EMPTY engine_ci fails closed; the disclaimer banner is always printed.
+# The shipped v2.0.0-beta.1.json is an engine-only beta backed by real engine_ci.
+# Malformed input is rejected with exit 2.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
@@ -58,9 +62,108 @@ if command -v jq >/dev/null 2>&1; then
 	done
 fi
 
-# (b) --require-stage beta FAILS on the shipped files (fail-closed => exit 1).
+# (b) fail-closed for the framework/full-platform track: v2.0.0.json (full-platform,
+# no consumer runs) must FAIL --require-stage beta.
 run_validator 1 "fail-closed: shipped v2.0.0.json fails --require-stage beta" --file "$GA" --require-stage beta
-run_validator 1 "fail-closed: shipped v2.0.0-beta.1.json fails --require-stage beta" --file "$BETA" --require-stage beta
+
+# (b2) engine-only track: the shipped v2.0.0-beta.1.json is an engine-only beta
+# backed by real engine_ci, so it PASSES its own beta gate...
+run_validator 0 "engine-only: shipped v2.0.0-beta.1.json passes --require-stage beta" --file "$BETA" --require-stage beta
+# ...but forcing the framework-validated matrix onto it FAILS (no laravel/symfony
+# consumer runs). --scope must never be reinterpreted as "met".
+run_validator 1 "engine-only file under --scope framework-validated fails beta" --file "$BETA" --require-stage beta --scope framework-validated
+# The disclaimer must be printed, unmissably, for any engine-only evaluation.
+if sh "$VALIDATOR" --file "$BETA" --require-stage beta 2>/dev/null | grep -qF 'FRAMEWORK LIVE-VALIDATION NOT INCLUDED'; then
+	pass "engine-only prints 'FRAMEWORK LIVE-VALIDATION NOT INCLUDED'"
+else
+	fail "engine-only did NOT print the framework-live-validation disclaimer"
+fi
+
+# (b3) engine-only beta with an EMPTY engine_ci must FAIL CLOSED: an engine-only
+# release is not "no gate" — it still requires the engine's own green CI.
+EMPTY_ENGINE="$WORK/engine-only-empty.json"
+cat > "$EMPTY_ENGINE" <<'EOF'
+{
+  "version": "2.0.0-beta.1",
+  "stage": "beta",
+  "release_scope": "engine-only",
+  "engine_commit": "unknown",
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false, "symfony": false, "php_library": false, "node_react": false,
+    "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
+  }
+}
+EOF
+run_validator 1 "fail-closed: engine-only beta with empty engine_ci fails" --file "$EMPTY_ENGINE" --require-stage beta
+
+# (b4) an engine_ci run that did NOT succeed cannot back an engine-only beta.
+FAILED_ENGINE="$WORK/engine-only-failed.json"
+cat > "$FAILED_ENGINE" <<'EOF'
+{
+  "version": "2.0.0-beta.1",
+  "stage": "beta",
+  "release_scope": "engine-only",
+  "engine_commit": "0123456789abcdef0123456789abcdef01234567",
+  "engine_ci": [
+    {"workflow_name":"ci-self-test","repository":"org/engine","commit":"0123456789abcdef0123456789abcdef01234567","event":"push","workflow_run_id":2001,"workflow_url":"https://github.com/org/engine/actions/runs/2001","result":"failure","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"},
+    {"workflow_name":"ci-pipeline","repository":"org/engine","commit":"0123456789abcdef0123456789abcdef01234567","event":"push","workflow_run_id":2002,"workflow_url":"https://github.com/org/engine/actions/runs/2002","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
+  ],
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false, "symfony": false, "php_library": false, "node_react": false,
+    "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
+  }
+}
+EOF
+run_validator 1 "fail-closed: engine-only beta with a failed engine_ci run fails" --file "$FAILED_ENGINE" --require-stage beta
+
+# (b5) an invalid release_scope enum is a malformed record (non-overridable, exit 2).
+BADSCOPE="$WORK/badscope.json"
+cat > "$BADSCOPE" <<'EOF'
+{
+  "version": "2.0.0-beta.1",
+  "stage": "beta",
+  "release_scope": "engine-plus-vibes",
+  "engine_commit": "unknown",
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false, "symfony": false, "php_library": false, "node_react": false,
+    "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
+  }
+}
+EOF
+run_validator 2 "invalid release_scope enum rejected with exit 2" --file "$BADSCOPE"
+
+# (b6) ABSENT release_scope must default to framework-validated (the stricter
+# track), NOT engine-only. An engine-only-SHAPED file (engine_ci present, no
+# consumer runs, all flags false) that forgets to declare release_scope must
+# therefore FAIL --require-stage beta (needs laravel+symfony) — never be silently
+# treated as an engine-only pass. Regression guard for Finding 4.
+NOSCOPE="$WORK/no-scope-engine-shaped.json"
+cat > "$NOSCOPE" <<'EOF'
+{
+  "version": "2.0.0-beta.1",
+  "stage": "beta",
+  "engine_commit": "8bd33a91343603434026408aded2de0142989159",
+  "engine_ci": [
+    {"workflow_name":"ci-self-test","repository":"org/engine","commit":"8bd33a91343603434026408aded2de0142989159","event":"push","workflow_run_id":9001,"workflow_url":"https://github.com/org/engine/actions/runs/9001","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"},
+    {"workflow_name":"ci-pipeline","repository":"org/engine","commit":"8bd33a91343603434026408aded2de0142989159","event":"push","workflow_run_id":9002,"workflow_url":"https://github.com/org/engine/actions/runs/9002","result":"success","artifacts":[],"artifacts_verified":false,"verified_at":"2026-06-01T00:00:00Z","verification_method":"github-api"}
+  ],
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false, "symfony": false, "php_library": false, "node_react": false,
+    "combined_profile": false, "bootstrap_apply": false,
+    "rollback_npm": false, "rollback_pnpm": false, "rollback_yarn": false
+  }
+}
+EOF
+run_validator 1 "absent release_scope defaults to framework-validated => beta fails (not engine-only)" --file "$NOSCOPE" --require-stage beta
+# Explicitly forcing engine-only DOES pass the same file (proves the difference is the default, not the shape).
+run_validator 0 "same file under --scope engine-only passes beta" --file "$NOSCOPE" --require-stage beta --scope engine-only
 
 # (c) hand-built fixture WITH real-looking laravel+symfony runs passes beta.
 # Each run carries the FULL hardened proof shape: 40-hex commits, a 40-hex

@@ -28,6 +28,7 @@ jobs:
   # seen" fatal. Consumers with a JS/TS app run it normally.
   detect:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -43,6 +44,7 @@ jobs:
     needs: detect
     if: ${{ needs.detect.outputs.present == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       security-events: write   # required to upload CodeQL results
@@ -60,15 +62,15 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3.36.2
         with:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/autobuild@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3.36.2
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3.36.2
         with:
           category: "/language:${{ matrix.language }}"

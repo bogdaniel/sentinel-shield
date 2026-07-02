@@ -50,6 +50,7 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: production   # protected: require reviewers before this gate releases
     steps:
       - name: Checkout
@@ -75,6 +76,7 @@ jobs:
             MODE_ARG="--mode $MODE_INPUT"
           fi
           # No --require-profile: a project without a profile resolves to report-only.
+          # shellcheck disable=SC2086 # $MODE_ARG intentionally splits into "--mode <value>" or nothing
           sh "$RESOLVER" $MODE_ARG --output-dir reports --format all
 
       - name: Upload resolved gate artifacts

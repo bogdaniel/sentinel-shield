@@ -27,6 +27,7 @@ jobs:
   # .gitleaks.toml.)
   detect-deps:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -45,6 +46,7 @@ jobs:
 
   semgrep:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       # Maintained Semgrep image. Pin to a digest (image: semgrep/semgrep@sha256:...)
       # for reproducibility in sensitive pipelines.
@@ -60,6 +62,7 @@ jobs:
 
   gitleaks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -79,6 +82,7 @@ jobs:
     needs: detect-deps
     if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -93,6 +97,7 @@ jobs:
 
   trivy-fs:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -111,6 +116,7 @@ jobs:
     needs: detect-deps
     if: ${{ needs.detect-deps.outputs.present == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -152,6 +158,9 @@ jobs:
   # as artifacts, and a single job would download them all before building.
   security-summary:
     runs-on: ubuntu-latest
+    # Multi-scanner job (Semgrep + third-party Semgrep + Gitleaks + Trivy + build/upload);
+    # matches ci-pipeline's security-scan budget — 10m can be exceeded on cold runners.
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -169,7 +178,7 @@ jobs:
         # is honored (excludes vendored/generated assets — SAST only; dependency
         # scanners below are unaffected). See docs/semgrep-scoping.md.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep/app || true
         continue-on-error: true
@@ -195,7 +204,8 @@ jobs:
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} -c \
+          # shellcheck disable=SC2086 # $MOUNTS/$SCANT intentionally word-split into multiple -v/path args
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true

@@ -1,6 +1,7 @@
 {
   "version": "2.0.0",
   "stage": "ga",
+  "release_scope": "full-platform",
   "engine_commit": "unknown",
   "consumer_runs": [],
   "required_evidence": {

@@ -1,5 +1,12 @@
 # Roadmap (v0.1.16)
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. The v2 line is scoped
+> **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests but are
+> not independently live-validated in real consumer repositories.** Canonical status:
+> [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
+> The `v0.1.16` in this title reflects its authoring era; version references below are historical.
+
 Organized around **product maturity**, not tool accumulation. Sentinel Shield will not add more
 scanners until the existing matrix is live-validated. Each phase has a goal, required work, a
 definition of done, and risks.

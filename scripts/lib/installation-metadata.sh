@@ -1,3 +1,4 @@
+#!/bin/sh
 # Sentinel Shield — installation metadata (POSIX sh library).
 #
 # Source this file; do not execute it. It READS and WRITES the install record at

@@ -42,18 +42,23 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 # usage — print CLI usage/help to stdout.
 usage() {
-	printf 'Usage: validate-release-evidence.sh [--file <path>] [--require-stage <alpha|beta|rc|ga>] [--offline|--verify-github]\n'
+	printf 'Usage: validate-release-evidence.sh [--file <path>] [--require-stage <alpha|beta|rc|ga>] [--scope <engine-only|framework-validated|full-platform>] [--repo <owner/name>] [--offline|--verify-github|--verify-binding]\n'
 }
 
 FILE="$REPO_ROOT/evidence/releases/v2.0.0.json"
 REQUIRE_STAGE=""
 MODE="offline"
+SCOPE_OVERRIDE=""
+REPO_OVERRIDE=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--file) FILE="${2:?--file requires a value}"; shift 2 ;;
 		--require-stage) REQUIRE_STAGE="${2:?--require-stage requires a value}"; shift 2 ;;
+		--scope) SCOPE_OVERRIDE="${2:?--scope requires a value}"; shift 2 ;;
+		--repo) REPO_OVERRIDE="${2:?--repo requires a value}"; shift 2 ;;
 		--offline) MODE="offline"; shift ;;
 		--verify-github) MODE="verify-github"; shift ;;
+		--verify-binding) MODE="verify-binding"; shift ;;
 		-h | --help) usage; exit 0 ;;
 		*) log_error "unknown argument: $1"; usage >&2; exit 2 ;;
 	esac
@@ -63,11 +68,25 @@ case "$REQUIRE_STAGE" in
 	"" | alpha | beta | rc | ga) ;;
 	*) log_error "--require-stage must be one of: alpha beta rc ga"; exit 2 ;;
 esac
+case "$SCOPE_OVERRIDE" in
+	"" | engine-only | framework-validated | full-platform) ;;
+	*) log_error "--scope must be one of: engine-only framework-validated full-platform"; exit 2 ;;
+esac
 
 command_exists jq || { log_error "jq is required for JSON parsing but was not found. Install jq."; exit 3; }
 
 [ -f "$FILE" ] || { log_error "evidence file not found: $FILE"; exit 2; }
 jq -e . "$FILE" >/dev/null 2>&1 || { log_error "evidence file is not valid JSON: $FILE"; exit 2; }
+
+# Effective release scope: --scope overrides the file's release_scope field, which
+# itself defaults to 'framework-validated' when absent (so a legacy evidence file
+# with no release_scope keeps its stricter per-stack meaning).
+FILE_SCOPE=$(jq -r '.release_scope // "framework-validated"' "$FILE")
+SCOPE="${SCOPE_OVERRIDE:-$FILE_SCOPE}"
+case "$SCOPE" in
+	engine-only | framework-validated | full-platform) ;;
+	*) log_error "evidence release_scope is invalid: '$SCOPE'"; exit 2 ;;
+esac
 
 # --- structural validation (schema mirror, incl. FORMATS) -------------------
 # Emits one line per violation; any output => schema/format-invalid => exit 2.
@@ -84,6 +103,9 @@ ERRORS=$(jq -r '
 	def tmodes: ["config-only","require-existing","bootstrap-tools"];
 	def results: ["success","failure","cancelled","skipped"];
 	def runkeys: ["stack","repository","commit","sentinel_shield_commit","profile","tool_mode","workflow_run_id","workflow_url","result","artifacts","artifacts_verified","verified_at","verification_method"];
+	def ecikeys: ["workflow_name","repository","commit","event","workflow_run_id","workflow_url","result","artifacts","artifacts_verified","verified_at","verification_method"];
+	def events: ["push","pull_request","schedule","workflow_dispatch"];
+	def scopes: ["engine-only","framework-validated","full-platform"];
 	def artkeys: ["id","name","verified"];
 	. as $doc
 	| [
@@ -91,16 +113,49 @@ ERRORS=$(jq -r '
 		(if ($doc|has("version")) and ($doc.version|nestr) then empty else "version: missing or not a non-empty string" end),
 		(if ($doc|has("stage")) and (["alpha","beta","rc","ga"]|index($doc.stage // null)) then empty else "stage: missing or not in enum" end),
 		(if ($doc|has("engine_commit")) and (($doc.engine_commit|hex40) or ($doc.engine_commit == "unknown")) then empty else "engine_commit: must be 40 lowercase hex or the literal unknown" end),
+		(if ($doc|has("release_commit")) and (($doc.release_commit|hex40) | not) then "release_commit: must be 40 lowercase hex" else empty end),
+		(if ($doc|has("release_commit")) and (($doc.release_commit) != ($doc.engine_commit)) and (($doc.engine_commit // "") == "unknown") then "release_commit: cannot differ from engine_commit when engine_commit is 'unknown'" else empty end),
 		(if ($doc|has("consumer_runs")) and (($doc.consumer_runs|type) == "array") then empty else "consumer_runs: missing or not an array" end),
 		(if ($doc|has("required_evidence")) and (($doc.required_evidence|type) == "object") then empty else "required_evidence: missing or not an object" end),
+		(if ($doc|has("release_scope")) and ((scopes|index($doc.release_scope // null)) | not) then "release_scope: must be one of engine-only|framework-validated|full-platform" else empty end),
+		(if ($doc|has("engine_ci")) and (($doc.engine_ci|type) != "array") then "engine_ci: not an array" else empty end),
 		(if ($doc|type) == "object"
-		 then (($doc|keys[]) as $rk | select((["version","stage","engine_commit","consumer_runs","required_evidence"]|index($rk)) | not) | "root.\($rk): unexpected key")
+		 then (($doc|keys[]) as $rk | select((["version","stage","release_scope","engine_commit","release_commit","engine_ci","consumer_runs","required_evidence"]|index($rk)) | not) | "root.\($rk): unexpected key")
 		 else empty end),
 		(if (($doc.engine_commit // "") == "unknown")
 		    and ( (($doc.consumer_runs // []) | length > 0)
+		          or (($doc.engine_ci // []) | length > 0)
 		          or ( ($doc.required_evidence // {}) | to_entries | any(.value == true) ) )
-		 then "engine_commit: unknown is not allowed once consumer_runs/required_evidence indicate real evidence; record the real 40-hex commit SHA"
+		 then "engine_commit: unknown is not allowed once consumer_runs/engine_ci/required_evidence indicate real evidence; record the real 40-hex commit SHA"
 		 else empty end),
+		( ($doc.engine_ci // []) | (if type == "array" then . else [] end)
+		  | to_entries[] as $e
+		  | ($e.value) as $r
+		  | if ($r|type) == "object"
+		    then ( (ecikeys[] as $rk | select(($r|has($rk)) | not) | "engine_ci[\($e.key)].\($rk): missing"),
+		           (($r|keys[]) as $rkk | select((ecikeys|index($rkk)) | not) | "engine_ci[\($e.key)].\($rkk): unexpected key"),
+		           (if ($r.workflow_name? | nestr) then empty else "engine_ci[\($e.key)].workflow_name: empty" end),
+		           (if ($r.repository? | repo) then empty else "engine_ci[\($e.key)].repository: not owner/repo" end),
+		           (if ($r.commit? | hex40) then empty else "engine_ci[\($e.key)].commit: not 40 lowercase hex" end),
+		           (if ($r.event? and (events|index($r.event))) then empty else "engine_ci[\($e.key)].event: invalid" end),
+		           (if ($r|has("workflow_run_id")) and ($r.workflow_run_id | posintid) then empty else "engine_ci[\($e.key)].workflow_run_id: not a positive integer" end),
+		           (if ($r.workflow_url? | runurl) then empty else "engine_ci[\($e.key)].workflow_url: not a GitHub Actions run URL" end),
+		           (if ($r.result? and (results|index($r.result))) then empty else "engine_ci[\($e.key)].result: invalid" end),
+		           (if ($r.artifacts? | type) == "array" then empty else "engine_ci[\($e.key)].artifacts: not an array" end),
+		           (if ($r.artifacts? | type) == "array"
+		            then ( ($r.artifacts | to_entries[]) as $ae | ($ae.value) as $a
+		                   | if ($a|type) == "object"
+		                     then ( (artkeys[] as $ak | select(($a|has($ak)) | not) | "engine_ci[\($e.key)].artifacts[\($ae.key)].\($ak): missing"),
+		                            (($a|keys[]) as $akk | select((artkeys|index($akk)) | not) | "engine_ci[\($e.key)].artifacts[\($ae.key)].\($akk): unexpected key"),
+		                            (if ($a.id? | posint) then empty else "engine_ci[\($e.key)].artifacts[\($ae.key)].id: not a positive integer" end),
+		                            (if ($a.name? | nestr) then empty else "engine_ci[\($e.key)].artifacts[\($ae.key)].name: empty" end),
+		                            (if ($a.verified? | isbool) then empty else "engine_ci[\($e.key)].artifacts[\($ae.key)].verified: not a boolean" end) )
+		                     else "engine_ci[\($e.key)].artifacts[\($ae.key)]: not an object" end )
+		            else empty end),
+		           (if ($r.artifacts_verified? | isbool) then empty else "engine_ci[\($e.key)].artifacts_verified: not a boolean" end),
+		           (if ($r.verified_at? | isoz) then empty else "engine_ci[\($e.key)].verified_at: not an ISO-8601 UTC timestamp" end),
+		           (if ($r.verification_method? | nestr) then empty else "engine_ci[\($e.key)].verification_method: empty" end) )
+		    else "engine_ci[\($e.key)]: not an object" end ),
 		( ($doc.required_evidence // {}) as $re
 		  | if ($re|type) == "object"
 		    then ( (stacks[] as $k | select((($re|has($k)) and ($re[$k]|isbool)) | not) | "required_evidence.\($k): missing or not a boolean"),
@@ -215,7 +270,32 @@ SEMERRORS=$(jq -r '
 		  | group_by(.workflow_run_id | tostring)
 		  | .[]
 		  | select(([ .[].stack ] | unique | length) > 1)
-		  | "workflow_run_id \(.[0].workflow_run_id) is reused across distinct stacks (\([.[].stack] | unique | join(",")))" )
+		  | "workflow_run_id \(.[0].workflow_run_id) is reused across distinct stacks (\([.[].stack] | unique | join(",")))" ),
+		# engine_ci semantics: each engine run must exercise engine_commit and be self-consistent.
+		( ($doc.engine_ci // []) | to_entries[] as $e | ($e.value) as $r
+		  | ($r.repository // "") as $rep
+		  | (($r.workflow_run_id // "") | tostring) as $wrid
+		  | ($r.result // "") as $res
+		  | (
+			(if ($r.commit // "") == $eng then empty
+			 else "engine_ci[\($e.key)]: commit does not match top-level engine_commit" end),
+			( ($r.workflow_url // "") as $u
+			  | ($u | capture("^https://github\\.com/(?<owner>[^/]+)/(?<repo>[^/]+)/actions/runs/(?<rid>[0-9]+)$") // null) as $cap
+			  | if $cap == null then "engine_ci[\($e.key)]: workflow_url unparseable"
+			    else ( ("\($cap.owner)/\($cap.repo)") as $urepo
+			           | (if $urepo == $rep then empty
+			              else "engine_ci[\($e.key)]: workflow_url repo \($urepo) != repository \($rep)" end),
+			           (if $cap.rid == $wrid then empty
+			              else "engine_ci[\($e.key)]: workflow_url run-id \($cap.rid) != workflow_run_id \($wrid)" end) )
+			    end ),
+			( ($r.artifacts // []) | to_entries[] as $ae
+			  | select(($ae.value.verified // false) != true)
+			  | "engine_ci[\($e.key)].artifacts[\($ae.key)]: verified must be true" ),
+			(if (($r.artifacts_verified // false) == true) and (($r.artifacts // []) | length == 0)
+			 then "engine_ci[\($e.key)]: artifacts_verified is true but artifacts[] is empty" else empty end),
+			(if (($r.artifacts_verified // false) == true) and ($res != "success")
+			 then "engine_ci[\($e.key)]: artifacts_verified is true but result is \($res) (must be success)" else empty end)
+		  ) )
 	  ]
 	| .[]
 ' "$FILE" 2>/dev/null) || { log_error "evidence file failed semantic validation: $FILE"; exit 2; }
@@ -233,6 +313,57 @@ stage_rank() {
 		alpha) printf '%s' 0 ;; beta) printf '%s' 1 ;; rc) printf '%s' 2 ;; ga) printf '%s' 3 ;; *) printf '%s' -1 ;;
 	esac
 }
+
+# verify_commit_binding — prove the tag target (release_commit) only adds approved
+# release METADATA over the CI-validated release-source (engine_commit). This breaks
+# the circular self-reference of recording a commit's CI evidence inside that same
+# commit: the executable code lives in engine_commit (validated by engine_ci), and a
+# later metadata-only release_commit carries the evidence and is what the tag points at.
+#   0 = bound OK (equal commits, or metadata-only diff, or offline-unverifiable no-op)
+#   1 = could not verify (unknown commit / compare fetch failed) — fail closed
+#   2 = VIOLATION: the diff changes non-metadata (script/workflow/schema/executable)
+#   3 = required tool unavailable
+# Metadata allowlist (extension-anchored so a non-metadata artifact — e.g. a script
+# dropped under evidence/releases/ or docs/ — can never pass): evidence/releases/*.json,
+# CHANGELOG.md, docs/*release-evidence*.md, docs/*release-notes*.md,
+# docs/v2-merge-commit-ci-evidence*.md.
+verify_commit_binding() {
+	_rcx=$(jq -r '.release_commit // ""' "$FILE")
+	_enx=$(jq -r '.engine_commit // ""' "$FILE")
+	[ -n "$_rcx" ] || { log_info "commit-binding: no release_commit — the tag targets engine_commit itself (source == release)"; return 0; }
+	if [ "$_rcx" = "$_enx" ]; then
+		log_info "commit-binding: release_commit == engine_commit — the tag targets the CI-validated source commit"; return 0
+	fi
+	[ "$_enx" != "unknown" ] || { log_error "commit-binding: release_commit differs from engine_commit but engine_commit is 'unknown'"; return 2; }
+	_brepo="$REPO_OVERRIDE"
+	[ -n "$_brepo" ] || _brepo=$(jq -r '(.engine_ci[0].repository) // (.consumer_runs[0].repository) // ""' "$FILE")
+	[ -n "$_brepo" ] || { log_error "commit-binding: cannot determine the engine repository (no --repo and no engine_ci[]/consumer_runs[] repository)"; return 2; }
+	: "${GH_BIN:=gh}"
+	command_exists "$GH_BIN" || { log_error "commit-binding: GitHub compare requested but '$GH_BIN' is not available"; return 3; }
+	_cmpj=$("$GH_BIN" api "repos/$_brepo/compare/$_enx...$_rcx" 2>/dev/null) || {
+		log_error "commit-binding: compare $_enx...$_rcx not found on $_brepo (unknown/unreachable commit) — fail closed"; return 1; }
+	printf '%s' "$_cmpj" | jq -e . >/dev/null 2>&1 || { log_error "commit-binding: malformed compare response for $_brepo"; return 1; }
+	# The release_commit must be at/ahead of engine_commit (a descendant), never behind/diverged.
+	_status=$(printf '%s' "$_cmpj" | jq -r '.status // ""')
+	case "$_status" in
+		identical | ahead) ;;
+		*) log_error "commit-binding: release_commit is '$_status' relative to engine_commit (must be 'ahead' or 'identical') — fail closed"; return 2 ;;
+	esac
+	_files=$(printf '%s' "$_cmpj" | jq -r '.files[]?.filename // empty')
+	_bad=$(printf '%s\n' "$_files" | grep -vE '^$|^evidence/releases/[^/]+\.json$|^CHANGELOG\.md$|^docs/[^/]*release-evidence[^/]*\.md$|^docs/[^/]*release-notes[^/]*\.md$|^docs/v2-merge-commit-ci-evidence[^/]*\.md$' || true)
+	if [ -n "$_bad" ]; then
+		log_error "commit-binding VIOLATION: the diff engine_commit..release_commit changes NON-metadata files (executable/script/workflow/schema are forbidden in an evidence commit):"
+		printf '%s\n' "$_bad" | sed 's/^/  /' >&2
+		return 2
+	fi
+	log_info "commit-binding OK: release_commit adds only approved release metadata over engine_commit ($_brepo compare status=$_status)"
+	return 0
+}
+
+if [ "$MODE" = "verify-binding" ]; then
+	_brc=0; verify_commit_binding || _brc=$?
+	exit "$_brc"
+fi
 
 if [ -n "$REQUIRE_STAGE" ]; then
 	DOC_STAGE=$(jq -r '.stage // ""' "$FILE")
@@ -288,22 +419,110 @@ if [ "$MODE" = "verify-github" ]; then
 		_i=$((_i + 1))
 	done
 	log_info "GitHub verification passed for all $_n consumer run(s) in $FILE"
+
+	# Verify engine_ci runs against the engine repository itself.
+	_en=$(jq '.engine_ci | length' "$FILE")
+	_ei=0
+	while [ "$_ei" -lt "$_en" ]; do
+		_erepo=$(jq -r ".engine_ci[$_ei].repository" "$FILE")
+		_ecommit=$(jq -r ".engine_ci[$_ei].commit" "$FILE")
+		_erid=$(jq -r ".engine_ci[$_ei].workflow_run_id | tostring" "$FILE")
+		_ewurl=$(jq -r ".engine_ci[$_ei].workflow_url" "$FILE")
+		_eresult=$(jq -r ".engine_ci[$_ei].result" "$FILE")
+		_eevent=$(jq -r ".engine_ci[$_ei].event" "$FILE")
+		_ewfname=$(jq -r ".engine_ci[$_ei].workflow_name" "$FILE")
+		# Release evidence must be default-branch proof: only a push (or an explicitly
+		# approved workflow_dispatch) on the repo's DEFAULT branch counts. A PR run,
+		# a feature-branch run, or a scheduled run can never be release push evidence.
+		case "$_eevent" in
+			push | workflow_dispatch) ;;
+			*) log_error "GitHub verification: engine_ci run $_erid declares event '$_eevent'; release evidence requires 'push' or an approved 'workflow_dispatch'"; exit 1 ;;
+		esac
+		# Default branch for this repo (cache per repo across the loop).
+		if [ "$_erepo" != "${_db_repo:-}" ]; then
+			_db_json=$("$GH_BIN" api "repos/$_erepo" 2>/dev/null) || {
+				log_error "GitHub verification: could not fetch repository metadata for $_erepo (needed for default-branch check)"; exit 1; }
+			printf '%s' "$_db_json" | jq -e . >/dev/null 2>&1 || {
+				log_error "GitHub verification: malformed repository metadata for $_erepo"; exit 1; }
+			_default_branch=$(printf '%s' "$_db_json" | jq -r '.default_branch // ""')
+			[ -n "$_default_branch" ] || { log_error "GitHub verification: repository $_erepo reports no default_branch"; exit 1; }
+			_db_repo="$_erepo"
+		fi
+		_erunj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid" 2>/dev/null) || {
+			log_error "GitHub verification: engine run not found: $_erepo run $_erid"; exit 1; }
+		printf '%s' "$_erunj" | jq -e . >/dev/null 2>&1 || {
+			log_error "GitHub verification: malformed engine run response for $_erepo run $_erid"; exit 1; }
+		_ehs=$(printf '%s' "$_erunj" | jq -r '.head_sha // ""')
+		_econcl=$(printf '%s' "$_erunj" | jq -r '.conclusion // ""')
+		_eurl=$(printf '%s' "$_erunj" | jq -r '.html_url // ""')
+		_eidr=$(printf '%s' "$_erunj" | jq -r '.id // "" | tostring')
+		_eapievent=$(printf '%s' "$_erunj" | jq -r '.event // ""')
+		_ename=$(printf '%s' "$_erunj" | jq -r '.name // ""')
+		_ebranch=$(printf '%s' "$_erunj" | jq -r '.head_branch // ""')
+		_eapirepo=$(printf '%s' "$_erunj" | jq -r '.repository.full_name // ""')
+		[ "$_ehs" = "$_ecommit" ] || { log_error "GitHub verification: engine run $_erid head SHA ($_ehs) != commit ($_ecommit)"; exit 1; }
+		[ "$_econcl" = "$_eresult" ] || { log_error "GitHub verification: engine run $_erid conclusion ($_econcl) != result ($_eresult)"; exit 1; }
+		[ "$_eapievent" = "$_eevent" ] || { log_error "GitHub verification: engine run $_erid event ($_eapievent) != declared event ($_eevent)"; exit 1; }
+		[ "$_ename" = "$_ewfname" ] || { log_error "GitHub verification: engine run $_erid workflow name ($_ename) != declared workflow_name ($_ewfname) — a different workflow cannot stand in for '$_ewfname'"; exit 1; }
+		[ "$_ebranch" = "$_default_branch" ] || { log_error "GitHub verification: engine run $_erid head_branch ($_ebranch) != repository default branch ($_default_branch) — release evidence must be default-branch proof"; exit 1; }
+		{ [ "$_eapirepo" = "" ] || [ "$_eapirepo" = "$_erepo" ]; } || { log_error "GitHub verification: engine run $_erid repository.full_name ($_eapirepo) != declared repository ($_erepo)"; exit 1; }
+		[ "$_eurl" = "$_ewurl" ] || { log_error "GitHub verification: engine run $_erid html_url ($_eurl) != workflow_url ($_ewurl)"; exit 1; }
+		[ "$_eidr" = "$_erid" ] || { log_error "GitHub verification: engine run id ($_eidr) != workflow_run_id ($_erid)"; exit 1; }
+		_ewant=$(jq -c ".engine_ci[$_ei].artifacts" "$FILE")
+		_eartj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid/artifacts" 2>/dev/null) || {
+			log_error "GitHub verification: could not list artifacts for engine $_erepo run $_erid"; exit 1; }
+		printf '%s' "$_eartj" | jq -e . >/dev/null 2>&1 || {
+			log_error "GitHub verification: malformed artifacts response for engine $_erepo run $_erid"; exit 1; }
+		_emiss=$(jq -nr --argjson have "$_eartj" --argjson want "$_ewant" '
+			($have.artifacts // []) as $h
+			| [ $want[] | . as $w
+			    | select( ([ $h[] | select(.id == $w.id and .name == $w.name) ] | length) == 0 )
+			    | "\($w.id):\($w.name)" ]
+			| join(",")')
+		if [ -n "$_emiss" ]; then
+			log_error "GitHub verification: engine run $_erid is missing declared artifacts upstream: $_emiss"
+			exit 1
+		fi
+		_ei=$((_ei + 1))
+	done
+	[ "$_en" -gt 0 ] && log_info "GitHub verification passed for all $_en engine_ci run(s) in $FILE"
+
+	# Prove the tag target only adds approved metadata over the validated source.
+	_brc=0; verify_commit_binding || _brc=$?
+	case "$_brc" in
+		0) ;;
+		2) exit 2 ;;
+		3) exit 3 ;;
+		*) exit 1 ;;
+	esac
 fi
 
 # --- stage gate (fail-closed) ------------------------------------------------
 # A stage key is MET only when required_evidence[key] is true AND a consumer_run
 # with stack==key proves it: non-empty workflow_run_id, result=success,
 # artifacts_verified=true. Unmet keys are listed; any unmet => exit 1.
+# The engine-only track proves the reusable engine, NOT any framework. Disclose
+# that loudly and unmissably so an engine-only pass is never mistaken for
+# framework-validated readiness.
+if [ "$SCOPE" = "engine-only" ]; then
+	printf '%s\n' "FRAMEWORK LIVE-VALIDATION NOT INCLUDED"
+	log_warn "release_scope=engine-only: this record backs the ENGINE via its own CI only; Laravel/Symfony and other real-consumer live-validation are NOT included, and this release cannot claim framework-validated status"
+fi
+
 if [ -n "$REQUIRE_STAGE" ]; then
-	UNMET=$(jq -r --arg stage "$REQUIRE_STAGE" '
-		def need:
-			if . == "alpha" then []
-			elif . == "beta" then ["laravel","symfony"]
-			elif . == "rc" then ["laravel","symfony","php_library","node_react","combined_profile"]
-			else ["laravel","symfony","php_library","node_react","combined_profile","bootstrap_apply","rollback_npm","rollback_pnpm","rollback_yarn"]
+	UNMET=$(jq -r --arg stage "$REQUIRE_STAGE" --arg scope "$SCOPE" '
+		def need($scope):
+			if $scope == "engine-only" then []
+			elif $scope == "full-platform" then
+				(if . == "alpha" then [] else ["laravel","symfony","php_library","node_react","combined_profile","bootstrap_apply","rollback_npm","rollback_pnpm","rollback_yarn"] end)
+			else
+				(if . == "alpha" then []
+				 elif . == "beta" then ["laravel","symfony"]
+				 elif . == "rc" then ["laravel","symfony","php_library","node_react","combined_profile"]
+				 else ["laravel","symfony","php_library","node_react","combined_profile","bootstrap_apply","rollback_npm","rollback_pnpm","rollback_yarn"] end)
 			end;
 		. as $doc
-		| [ ($stage|need)[]
+		| [ ($stage|need($scope))[]
 			| . as $k
 			| select(
 				( (($doc.required_evidence[$k] // false) == true)
@@ -316,10 +535,30 @@ if [ -n "$REQUIRE_STAGE" ]; then
 	' "$FILE")
 
 	if [ -n "$UNMET" ]; then
-		log_error "release evidence does not meet stage '$REQUIRE_STAGE'; unmet: $UNMET"
+		log_error "release evidence does not meet stage '$REQUIRE_STAGE' (scope=$SCOPE); unmet: $UNMET"
 		exit 1
 	fi
-	log_info "release evidence meets stage '$REQUIRE_STAGE': $FILE"
+
+	# engine-only beta+ is NOT "no gate": it must be backed by the engine's own
+	# green default-branch CI at engine_commit. Empty/failed engine_ci => fail closed.
+	if [ "$SCOPE" = "engine-only" ] && [ "$(stage_rank "$REQUIRE_STAGE")" -ge 1 ]; then
+		_eng_commit=$(jq -r '.engine_commit' "$FILE")
+		ENG_UNMET=$(jq -r --arg eng "$_eng_commit" '
+			def core: ["ci-self-test","ci-pipeline"];
+			(.engine_ci // []) as $ec
+			| [ (if ($ec|length) == 0 then "engine_ci is empty (engine-only beta+ requires the engine default-branch CI runs at engine_commit)" else empty end),
+			    ($ec[] | select(.result != "success") | "engine_ci run \(.workflow_name) result=\(.result) (must be success)"),
+			    ($ec[] | select(.commit != $eng) | "engine_ci run \(.workflow_name) commit does not match engine_commit"),
+			    (core[] as $c | select(([ $ec[] | select(.workflow_name == $c and .result == "success") ] | length) == 0) | "engine_ci is missing a successful \($c) run") ]
+			| unique | join("; ")
+		' "$FILE")
+		if [ -n "$ENG_UNMET" ]; then
+			log_error "engine-only stage '$REQUIRE_STAGE' evidence unmet: $ENG_UNMET"
+			exit 1
+		fi
+	fi
+
+	log_info "release evidence meets stage '$REQUIRE_STAGE' (scope=$SCOPE): $FILE"
 fi
 
 if [ "$MODE" = "verify-github" ]; then

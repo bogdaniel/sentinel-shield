@@ -59,7 +59,7 @@ jobs:
         # is honored via `-w /src`. Do NOT switch to --config=auto in production — it is noisy.
         continue-on-error: true
         run: |
-          docker run --rm -v "$PWD:/src" -w /src ${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0} \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
           # gitleaks + actionlint + zizmor via their pinned actions/containers (see ci-security.yml)

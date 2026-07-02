@@ -1,3 +1,4 @@
+#!/bin/sh
 # Sentinel Shield — shared POSIX shell library.
 #
 # Source this file; do not execute it. It defines helper functions only and does
@@ -84,6 +85,17 @@ ss_require_jq() {
 # Emit a canonical collector object on stdout. The summary always has all ten count
 # keys (zeroed), with <summary_overrides_json> merged on top.
 ss_emit_collector() {
+	# Defensive: validate the two JSON arguments before feeding them to
+	# `jq --argjson`, so a malformed/empty report surfaces a structured error
+	# (fail closed, exit 2 — matching ss_collector_guard) instead of a raw jq crash.
+	if ! printf '%s' "$3" | jq empty 2>/dev/null; then
+		log_error "ss_emit_collector: <tool_report_json> for '$1' is not valid JSON"
+		return 2
+	fi
+	if ! printf '%s' "$4" | jq empty 2>/dev/null; then
+		log_error "ss_emit_collector: <summary_overrides_json> for '$1' is not valid JSON"
+		return 2
+	fi
 	jq -n \
 		--arg tool "$1" \
 		--arg status "$2" \

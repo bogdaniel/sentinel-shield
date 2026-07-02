@@ -1,3 +1,4 @@
+#!/bin/sh
 # Sentinel Shield — Composer package compatibility resolver (POSIX sh library).
 #
 # Source this file; do not execute it. It INSPECTS a project and a profile

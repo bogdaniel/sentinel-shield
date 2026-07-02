@@ -1,8 +1,49 @@
-# Product Status (v0.1.16)
+# Product Status
 
 This is the **single source of truth for Sentinel Shield maturity**. Where another doc
 (enterprise-scanner-matrix, production-readiness-audit) disagrees on a label, this file wins.
 It is deliberately conservative: a capability is only `proven` if there is cited evidence.
+
+## Canonical status (current)
+
+| Field | Value |
+| --- | --- |
+| Stable product line | **v1.x** (latest tag `v1.9.2`) |
+| Current development line | **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published** (no v2 tag exists) |
+| Current default branch (`master`) | post-v2-alpha production-readiness work |
+| Release scope under evaluation | **engine-only** (see [`v2-release-scope.md`](v2-release-scope.md)) |
+| Laravel & Symfony | **supported by profiles, fixtures and engine tests; NOT independently live-validated in real consumer repositories** |
+| Beta/GA scope | engine and reusable-baseline release; **not** a claim of framework-specific production proof |
+
+Sentinel Shield is a **production-oriented engine** with **production-readiness controls**;
+its **framework profiles are supported by deterministic tests**, not by live consumer proof.
+This is **not** a claim that the release is "fully production-proven for Laravel and Symfony."
+
+### v2 capability matrix (canonical)
+
+Columns separate the four evidence tiers so "engine-tested" is never read as "proven in a real
+consumer". `Real-consumer-tested = no` for every framework profile this cycle — that is deferred,
+tracked work, not a gap being hidden. See [`v2-release-scope.md`](v2-release-scope.md) and
+[`consumer-validation-runbook.md`](consumer-validation-runbook.md).
+
+| Capability | Implemented | Engine-tested | Fixture-tested | Real-consumer-tested | Gate-enforced | Current maturity | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Profile-policy / effective-profile resolution | yes | yes | yes | no | yes | proven (engine) | self-test `v2-toolpolicy`, `v2-review` |
+| Required/recommended/optional/one-of + required-tool fail-closed | yes | yes | yes | no | yes | proven (engine) | self-test `v2-enforcement` |
+| Local pipeline orchestration + stale-report protection | yes | yes | yes | no | yes | supported | `tests/prod/40-pipeline.sh`, `41-pipeline-evidence.sh` |
+| Install / sync / migration transactions + recovery | yes | yes | yes | no | yes | supported | `tests/prod/120-installer-tx.sh`, `121-recovery.sh` |
+| Composer / npm / pnpm / Yarn rollback | yes | yes | yes | no | n/a | supported | `tests/prod/60-rollback.sh` (byte-for-byte, PM-aware) |
+| Release-evidence validation + engine_ci | yes | yes | yes | n/a | yes | proven (engine) | `tests/prod/90-evidence.sh`, `91-evidence-semantic.sh`; `--verify-github` |
+| Engine GitHub Actions workflows (pinning, lint, timeouts, concurrency) | yes | yes | yes | yes (engine self-CI) | yes | proven (engine) | merge-commit CI, [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md) |
+| Laravel profile | yes | yes | yes | **no** | yes | **supported — not live-validated** | engine + fixture tests only |
+| Symfony profile | yes | yes | yes | **no** | yes | **supported — not live-validated** | engine + fixture tests only |
+| PHP-library profile | yes | yes | yes | **no** | yes | supported | `tests/fixtures/projects/php-library` |
+| Node/React profile | yes | yes | yes | **no** | yes | supported | `tests/fixtures/projects/node-react`, `tests/e2e` |
+| Combined (php+node) profile | yes | yes | yes | **no** | yes | supported | `tests/e2e/laravel-react-docker` |
+
+> The detailed maturity sections below (`## 1` onward) are **v1.x historical status**, preserved
+> as cited evidence for the v1 line. They are accurate for v1.x and are **not** superseded, but the
+> canonical current status is the table above.
 
 ## Maturity vocabulary (canonical)
 

@@ -62,11 +62,13 @@ SELF_TEST="${SELF_TEST:-sh $REPO_ROOT/scripts/self-test.sh}"
 
 # usage — print CLI usage to stdout.
 usage() {
-	printf 'Usage: check-release-readiness.sh --version <vX> --stage <alpha|beta|rc|ga> [--evidence <file>] [--override-reason "<text>"] [--override-file <record>]\n'
+	printf 'Usage: check-release-readiness.sh --version <vX> --stage <alpha|beta|rc|ga> [--scope <engine-only|framework-validated|full-platform>] [--offline|--verify-github] [--evidence <file>] [--override-reason "<text>"] [--override-file <record>]\n'
 }
 
 VERSION=""
 STAGE=""
+SCOPE=""
+VERIFY_MODE="offline"
 OVERRIDE_REASON=""
 OVERRIDE_FILE=""
 EVIDENCE_FILE=""
@@ -74,6 +76,9 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--version) VERSION="${2:?--version requires a value}"; shift 2 ;;
 		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
+		--scope) SCOPE="${2:?--scope requires a value}"; shift 2 ;;
+		--offline) VERIFY_MODE="offline"; shift ;;
+		--verify-github) VERIFY_MODE="verify-github"; shift ;;
 		--evidence) EVIDENCE_FILE="${2:?--evidence requires a value}"; shift 2 ;;
 		--override-reason) OVERRIDE_REASON="${2:?--override-reason requires a value}"; shift 2 ;;
 		--override-file) OVERRIDE_FILE="${2:?--override-file requires a value}"; shift 2 ;;
@@ -87,6 +92,13 @@ done
 case "$STAGE" in
 	alpha | beta | rc | ga) ;;
 	*) log_error "--stage must be one of: alpha|beta|rc|ga"; usage >&2; exit 2 ;;
+esac
+# --scope selects the evidence requirement matrix (validate-release-evidence.sh
+# owns the matrix). Empty => let the evidence file's release_scope decide (which
+# itself defaults to framework-validated). engine-only NEVER claims framework proof.
+case "$SCOPE" in
+	"" | engine-only | framework-validated | full-platform) ;;
+	*) log_error "--scope must be one of: engine-only|framework-validated|full-platform"; usage >&2; exit 2 ;;
 esac
 command_exists jq || { log_error "jq is required but was not found. Install jq."; exit 2; }
 command_exists yq || { log_error "yq is required (workflow structural parse) but was not found. Install yq."; exit 2; }
@@ -117,10 +129,26 @@ run_selftest_gate() {
 	fi
 }
 
+# Effective scope for DISPLAY: the explicit --scope if given, else the evidence
+# file's release_scope (default framework-validated when absent/unreadable), so the
+# printed Scope line reflects the scope the run is actually gated under.
+if [ -n "$SCOPE" ]; then
+	_display_scope="$SCOPE"
+elif [ -f "$EVIDENCE_FILE" ] && jq -e . "$EVIDENCE_FILE" >/dev/null 2>&1; then
+	_display_scope=$(jq -r '.release_scope // "framework-validated"' "$EVIDENCE_FILE")
+else
+	_display_scope="framework-validated"
+fi
+
 printf 'Sentinel Shield — release-readiness check\n'
 printf 'Version:  %s\n' "$VERSION"
 printf 'Stage:    %s (gates compose: alpha < beta < rc < ga)\n' "$STAGE"
+printf 'Scope:    %s%s\n' "$_display_scope" "$([ -z "$SCOPE" ] && printf ' (from evidence file)')"
+printf 'Verify:   %s%s\n' "$VERIFY_MODE" "$([ "$VERIFY_MODE" = offline ] && printf ' (structural-only; --verify-github required to authorize a beta/rc/ga tag)')"
 printf 'Evidence: %s\n' "$EVIDENCE_FILE"
+if [ "$SCOPE" = "engine-only" ]; then
+	printf 'FRAMEWORK LIVE-VALIDATION NOT INCLUDED — engine-only scope proves the engine, not Laravel/Symfony/consumer live-validation.\n'
+fi
 printf '\n'
 
 # --- alpha gate (always evaluated; the floor for every stage) ----------------
@@ -248,7 +276,9 @@ else
 	fail "actionlint is REQUIRED at stage '$STAGE' but is not installed (fail closed)"
 fi
 if command_exists zizmor; then
-	if zizmor "$REPO_ROOT"/templates/workflows >/dev/null 2>&1; then
+	# Pass explicit files, not the bare dir: zizmor only auto-collects workflows from a
+	# .github/workflows path, so `zizmor templates/workflows` yields "no inputs" (exit 3).
+	if zizmor "$REPO_ROOT"/templates/workflows/*.yml >/dev/null 2>&1; then
 		pass "zizmor clean (templates/workflows)"
 	else
 		fail "zizmor reported problems (templates/workflows)"
@@ -259,26 +289,54 @@ else
 	fail "zizmor is REQUIRED at stage '$STAGE' but is not installed (fail closed)"
 fi
 
-# --- evidence gate (beta/rc/ga): delegate to the evidence validator ----------
-# The validator owns evidence SHAPE and the cumulative beta->rc->ga ladder. We
-# FAIL CLOSED if it is absent or reports the stage unmet. A validator exit of 2
-# (malformed evidence / integrity / path-safety violation) is NON-OVERRIDABLE.
-if [ "$STAGE" != alpha ]; then
-	printf '\n[%s] real consumer/evidence validation (delegated to validate-release-evidence.sh)\n' "$STAGE"
-	_validator="$REPO_ROOT/scripts/validate-release-evidence.sh"
-	if [ ! -f "$_validator" ]; then
-		fail "evidence validator not found: scripts/validate-release-evidence.sh — cannot prove '$STAGE' evidence (fail closed)"
+# --- evidence gate: delegate to the evidence validator -----------------------
+# The validator owns evidence SHAPE and the cumulative ladder. FAIL CLOSED if it
+# is absent or reports the stage unmet. Validator exit 2 (malformed / integrity /
+# binding violation) is NON-OVERRIDABLE.
+#
+# VERIFICATION-MODE POLICY (Finding 2):
+#   * beta / rc / ga : --verify-github is MANDATORY. A structural-only (offline)
+#     invocation is INSUFFICIENT and fails closed — never printed as READY.
+#   * alpha : offline is allowed for DEVELOPMENT and labeled structural-only, but
+#     is NOT sufficient to authorize an alpha tag; --verify-github binds the
+#     engine_ci runs to real GitHub state and makes alpha tag-authorization eligible.
+printf '\n[%s] release evidence validation (delegated to validate-release-evidence.sh; verify=%s)\n' "$STAGE" "$VERIFY_MODE"
+_validator="$REPO_ROOT/scripts/validate-release-evidence.sh"
+EV_LABEL="n/a"
+if [ ! -f "$_validator" ]; then
+	fail "evidence validator not found: scripts/validate-release-evidence.sh — cannot prove '$STAGE' evidence (fail closed)"
+	EV_LABEL="unavailable"
+else
+	# ALWAYS run the validator (in the selected mode) so MALFORMED evidence is caught
+	# as exit 2 (NON-overridable) even for an offline beta+ invocation — the
+	# --verify-github requirement is enforced AFTER, never instead of, integrity.
+	set -- --file "$EVIDENCE_FILE" --require-stage "$STAGE"
+	[ -n "$SCOPE" ] && set -- "$@" --scope "$SCOPE"
+	if [ "$VERIFY_MODE" = verify-github ]; then set -- "$@" --verify-github; EV_LABEL="GitHub-verified"; else EV_LABEL="structural-only"; fi
+	_vrc=0
+	sh "$_validator" "$@" || _vrc=$?
+	if [ "$_vrc" -eq 2 ]; then
+		log_error "release evidence is MALFORMED/invalid (validator exit 2); this is NON-overridable — fail closed"
+		exit 2
+	fi
+	if [ "$STAGE" != alpha ] && [ "$VERIFY_MODE" != verify-github ]; then
+		# beta/rc/ga: structural-only is INSUFFICIENT regardless of whether it parsed.
+		fail "stage '$STAGE' requires GitHub-verified evidence (--verify-github); structural-only evidence is INSUFFICIENT (fail closed)"
+		EV_LABEL="structural-only (INSUFFICIENT for $STAGE)"
+	elif [ "$_vrc" -eq 0 ]; then
+		pass "release evidence satisfies --require-stage $STAGE ($EV_LABEL)"
+	elif [ "$_vrc" -eq 1 ]; then
+		fail "release evidence does NOT satisfy --require-stage $STAGE (see output above)"
+	elif [ "$_vrc" -eq 3 ]; then
+		fail "release evidence verification needs a tool that is unavailable (validator exit 3) — fail closed"
+	fi
+fi
+printf 'Evidence verification: %s\n' "$EV_LABEL"
+if [ "$STAGE" = alpha ]; then
+	if [ "$VERIFY_MODE" = verify-github ]; then
+		printf 'Alpha authorization: GitHub-verified — eligible for alpha tag authorization when READY.\n'
 	else
-		_vrc=0
-		sh "$_validator" --file "$EVIDENCE_FILE" --require-stage "$STAGE" || _vrc=$?
-		if [ "$_vrc" -eq 0 ]; then
-			pass "release evidence satisfies --require-stage $STAGE"
-		elif [ "$_vrc" -eq 1 ]; then
-			fail "release evidence does NOT satisfy --require-stage $STAGE (see output above)"
-		else
-			log_error "release evidence is MALFORMED/invalid (validator exit $_vrc); this is NON-overridable — fail closed"
-			exit 2
-		fi
+		printf 'Alpha authorization: structural-only — valid for DEVELOPMENT only; NOT sufficient to authorize a tag (re-run with --verify-github).\n'
 	fi
 fi
 

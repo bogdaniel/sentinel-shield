@@ -22,11 +22,24 @@ on:
 permissions:
   contents: read
 
+# Serialize DAST: never run two scans against the same TARGET at once, and never
+# CANCEL an in-flight scan (an active scan is mid-conversation with the target;
+# cancelling mid-run can leave the target in a bad state). The group must resolve
+# to the actual scan target so the nightly full scan (schedule → vars.STAGING_URL)
+# and a manual baseline dispatched against that same host (workflow_dispatch →
+# inputs.target_url) land in ONE group and serialize. Keying on github.ref would
+# NOT serialize them (schedule has no target_url input) — the whole point is
+# per-target exclusion, not per-ref.
+concurrency:
+  group: ci-zap-${{ github.repository }}-${{ github.event.inputs.target_url || vars.STAGING_URL }}
+  cancel-in-progress: false
+
 jobs:
   zap-baseline:
     # Passive baseline scan — safe, non-intrusive. Runs on manual dispatch.
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -45,6 +58,7 @@ jobs:
     # environment. Never enable for production.
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     environment: staging   # protected environment; reviewers/secrets scoped to staging
     steps:
       - name: Checkout

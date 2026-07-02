@@ -1,4 +1,13 @@
-# v1.0 Readiness Definition (pre-1.0)
+# v1.0 Readiness Definition (historical)
+
+> **Canonical status — read first.** This document is **historical**: it defined the path to
+> `v1.0` before that milestone. The **v1.x line is now published** (latest tag `v1.9.2`), so any
+> "pre-1.0", "v1.0 is NOT reached", or "v1.0.0-rc.1 is next" statements below are **superseded** and
+> retained only as the historical readiness record. The current development line is **v2.0.0 alpha**
+> (`v2.0.0-alpha.1` candidate — not yet published), scoped **engine-only**; **Laravel and Symfony are
+> supported by profiles, fixtures and engine tests but are not independently live-validated in real
+> consumer repositories.** Canonical status: [`product-status.md`](product-status.md); v2 scope:
+> [`v2-release-scope.md`](v2-release-scope.md).
 
 This document **defines the path to `v1.0`** for Sentinel Shield. It is a contract for what
 `v1.0` will *mean*, which surfaces are stable today, and the policies (migration, deprecation,

@@ -1,5 +1,12 @@
 # Product Readiness Checklist (v0.1.16)
 
+> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published); current development line
+> **v2.0.0 alpha** — `v2.0.0-alpha.1` candidate, **not yet published**. The v2 line is scoped
+> **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests but are
+> not independently live-validated in real consumer repositories.** Canonical status:
+> [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
+> This checklist's `v0.1.16` heading reflects its authoring era and is retained as historical context.
+
 Status legend: `done` · `partial` · `not started` · `blocked`. An item is `done` only with
 evidence (a self-test suite, a cited consumer run, or a shipped artifact). No item is marked
 `done` on intent alone.
