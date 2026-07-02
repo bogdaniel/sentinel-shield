@@ -98,8 +98,12 @@ See [`install-sync-ux.md`](install-sync-ux.md) and [`profile-adoption-guide.md`]
 - Record the **installed tag** (e.g. `v1.9.0`) and the **selected profile** in the repo.
 - Keep **managed files separate from overrides** — never hand-edit managed files; override via
   `.sentinel-shield/profile.yaml`.
-- Upgrade with **`sync-baseline.sh` dry-run first**, then `--apply --force` after reviewing drift
-  ([`install-sync-ux.md`](install-sync-ux.md)).
+- To **upgrade an existing install** to a new pinned ref, use the guided update prompt
+  ([`prompts/update-sentinel-shield.md`](../prompts/update-sentinel-shield.md)) — it acquires and
+  verifies the target engine, reviews managed-file drift, and preserves project-owned config before
+  applying. The raw `sync-baseline.sh` dry-run → `--apply --force` flow
+  ([`install-sync-ux.md`](install-sync-ux.md)) is for **initial setup / non-migration** baseline
+  syncs, not version upgrades.
 
 ## 8. How to avoid editing managed files
 
