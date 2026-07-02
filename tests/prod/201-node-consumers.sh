@@ -4,7 +4,7 @@
 # Validates the genuine consumer fixtures under tests/consumers/ (node-service,
 # react-app, pm-variants/{npm,pnpm,yarn}) against Sentinel Shield's package-manager
 # authority model and Node quality gates. Every check emits a schema-valid record
-# (schemas/node-consumer-validation.schema.json) via the shared reporter.
+# (schemas/consumer-validation.schema.json) via the shared reporter.
 #
 # TWO tiers, clearly separated (HONESTY: a skip is NEVER a pass):
 #   STRUCTURAL (always; network-free, deterministic) —
@@ -34,7 +34,7 @@ BPT="$ROOT/scripts/bootstrap-profile-tools.sh"
 
 . "$ROOT/scripts/lib/sentinel-shield-common.sh"
 . "$ROOT/scripts/lib/package-manager-resolver.sh"
-. "$ROOT/scripts/report-node-consumer.sh"
+. "$ROOT/scripts/report-consumer-validation.sh"
 
 WORK=$(mktemp -d)
 REC="$WORK/records.jsonl"
@@ -50,7 +50,15 @@ note_skip() { printf 'SKIP: %s\n' "$1"; SKIPS=$((SKIPS + 1)); }
 
 # rec <consumer> <pm> <check> <gate> <status> <reason> <mode> [detail]
 # Append a schema-valid record; a reporter failure is itself a test failure.
+# Derive the optional ecosystem tag from the consumer name: react-app is 'react',
+# the node fixtures are 'node', and stack-agnostic synthetic fixtures (negative
+# package-manager cases) carry no ecosystem.
 rec() {
+	case "$1" in
+		react-app | *react*) RCV_ECOSYSTEM=react ;;
+		node-service | pm-variants/*) RCV_ECOSYSTEM=node ;;
+		*) RCV_ECOSYSTEM="" ;;
+	esac
 	if ! rcv_record "$@" >> "$REC"; then
 		fail "reporter failed to emit record for check '$3'"
 	fi
@@ -310,7 +318,7 @@ else
 	fail "emitted records failed schema validation"
 fi
 # Also confirm the schema file itself is valid JSON (jq-structural gate).
-if jq -e . "$ROOT/schemas/node-consumer-validation.schema.json" >/dev/null 2>&1; then
+if jq -e . "$ROOT/schemas/consumer-validation.schema.json" >/dev/null 2>&1; then
 	pass "consumer-validation.schema.json is valid JSON"
 else
 	fail "consumer-validation.schema.json is not valid JSON"

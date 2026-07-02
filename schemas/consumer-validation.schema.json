@@ -2,184 +2,86 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/consumer-validation.schema.json",
   "title": "Sentinel Shield consumer-validation record",
-  "description": "One machine-readable record produced by a real-consumer validation driver (tests/prod/2NN-<stack>-consumer.sh) against a standalone consumer fixture that Sentinel Shield does NOT own. It records, per gate, whether the gate PASSED, FAILED, or was SKIPPED because a required toolchain was absent in the current runner. A 'skip' is NOT a pass: it is an explicitly deferred gate carrying a stable reason_code so CI (which has the toolchain) must still run it. The record also captures ONE mutation demonstration proving a runnable gate actually catches a regression. Validated jq-structurally here (jq -e .); ajv-validated in CI.",
+  "description": "One record emitted by a real-consumer validation driver (tests/prod/2NN-*-consumer.sh) for a SINGLE check against a genuine downstream consumer fixture Sentinel Shield does NOT own. Records are line-delimited JSON (one object per line). A record captures WHICH consumer and (for JS) package manager was exercised, WHICH gate/check ran, its status, a STABLE reason_code, and whether the check was proven LIVE (real toolchain executed) or STRUCTURAL (logic/contract asserted without executing the toolchain). The optional 'ecosystem' field (php|node|react) lets records from different stack drivers share this one schema. status=skip is NEVER a pass and MUST carry a reason: it is an explicitly deferred check (e.g. toolchain absent in this runner) that CI must still run. Validated jq-structurally here (jq -e .); ajv-validated in CI.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
-    "generated_at",
     "consumer",
-    "profile",
-    "toolchain",
-    "tool_groups",
-    "gates",
-    "mutation",
-    "result"
+    "package_manager",
+    "check",
+    "gate",
+    "status",
+    "reason_code",
+    "mode"
   ],
-  "additionalProperties": false,
   "properties": {
     "schema_version": {
       "const": "1",
-      "description": "Bump only on a breaking change to this record shape."
-    },
-    "generated_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "ISO-8601 UTC timestamp (timestamp_utc)."
+      "description": "Consumer-validation record schema version. Fixed at '1'. Bump only on a breaking change to this record shape."
     },
     "consumer": {
-      "type": "object",
-      "required": ["name", "kind", "path"],
-      "additionalProperties": false,
-      "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "kind": {
-          "type": "string",
-          "enum": [
-            "php-library",
-            "laravel",
-            "symfony",
-            "node-react",
-            "combined-profile"
-          ],
-          "description": "The consumer SHAPE. 'php-library' is a framework-agnostic Composer package: it is explicitly NOT Laravel or Symfony."
-        },
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Repo-relative path to the standalone consumer fixture."
-        }
-      }
-    },
-    "profile": {
       "type": "string",
       "minLength": 1,
-      "description": "The Sentinel Shield profile the consumer resolves to (e.g. php_library)."
+      "description": "Consumer fixture the check ran against (e.g. node-service, react-app, pm-variants/npm, php-library-consumer-fixture)."
     },
-    "toolchain": {
-      "type": "object",
-      "required": ["composer", "php"],
-      "additionalProperties": false,
-      "description": "Presence of each required binary in THIS runner. 'absent' forces the tool's gates to 'skip'.",
-      "properties": {
-        "composer": { "$ref": "#/$defs/presence" },
-        "php": { "$ref": "#/$defs/presence" }
-      }
+    "package_manager": {
+      "type": "string",
+      "enum": ["npm", "pnpm", "yarn", "none"],
+      "description": "Authoritative package manager for the consumer, or 'none' when the check is manager-agnostic (e.g. all PHP/Composer checks)."
     },
-    "tool_groups": {
-      "type": "object",
-      "required": ["test", "static_analysis", "style"],
-      "additionalProperties": false,
-      "description": "Each quality dimension is satisfied by exactly ONE tool from an allowed set (one-of). The consumer picks; the engine must not hard-code a single vendor.",
-      "properties": {
-        "test": { "$ref": "#/$defs/toolGroup" },
-        "static_analysis": { "$ref": "#/$defs/toolGroup" },
-        "style": { "$ref": "#/$defs/toolGroup" }
-      }
+    "check": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the specific check (e.g. pm-authority, lockfile-authority, one-of-test-runner, typecheck-mutation, static-analysis-mutation, rollback-byte-for-byte)."
     },
-    "gates": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/gate" },
-      "description": "Every gate the driver considered, in run order, each with an explicit status. Gates that could not run because a toolchain is absent MUST appear here with status 'skip' and a TOOLCHAIN_ABSENT_* reason_code — never omitted, never silently passed."
-    },
-    "mutation": {
-      "type": "object",
-      "required": [
-        "applied",
-        "target_gate",
-        "expected_status",
-        "observed_status",
-        "reason_code",
-        "caught"
+    "gate": {
+      "type": "string",
+      "enum": [
+        "package-manager",
+        "lockfile",
+        "one-of",
+        "typecheck",
+        "lint",
+        "test",
+        "audit",
+        "rollback",
+        "install",
+        "manifest",
+        "static-analysis",
+        "style",
+        "config"
       ],
-      "additionalProperties": false,
-      "description": "ONE fault injection against a RUNNABLE gate, proving the gate is not a no-op. 'caught' is true only when observed_status == expected_status (a real failure was observed).",
-      "properties": {
-        "applied": { "type": "boolean" },
-        "target_gate": {
-          "type": "string",
-          "minLength": 1,
-          "description": "gate.id the mutation was injected against."
-        },
-        "expected_status": { "$ref": "#/$defs/status" },
-        "observed_status": { "$ref": "#/$defs/status" },
-        "reason_code": { "$ref": "#/$defs/reasonCode" },
-        "caught": { "type": "boolean" }
-      }
-    },
-    "result": {
-      "type": "string",
-      "enum": ["pass", "fail", "partial"],
-      "description": "'pass' = every runnable gate passed and the mutation was caught. 'partial' = runnable gates passed but one or more gates are SKIP (deferred to CI). 'fail' = a runnable gate failed or the mutation was not caught."
-    },
-    "limitations": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "description": "Human-readable statements of what was NOT proven here (e.g. 'composer/php absent: phpunit/phpstan/pint deferred to CI')."
-    }
-  },
-  "$defs": {
-    "presence": {
-      "type": "string",
-      "enum": ["present", "absent"]
+      "description": "The engine gate the check exercises. The JS gates (package-manager..install) and the PHP gates (manifest/static-analysis/style/config) share this closed set so both drivers conform to one schema."
     },
     "status": {
       "type": "string",
-      "enum": ["pass", "fail", "skip"]
+      "enum": ["pass", "fail", "skip"],
+      "description": "Outcome. 'pass' = assertion held (including a mutation the gate correctly caught); 'fail' = a real defect or validation failure; 'skip' = could not run (toolchain/network absent) — recorded as a limitation, never counted as a pass."
     },
-    "toolGroup": {
-      "type": "object",
-      "required": ["selected", "candidates"],
-      "additionalProperties": false,
-      "properties": {
-        "selected": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The one tool the consumer chose to satisfy this dimension."
-        },
-        "candidates": {
-          "type": "array",
-          "minItems": 2,
-          "items": { "type": "string", "minLength": 1 },
-          "description": "The allowed one-of set for this dimension (proves the engine accepts alternatives)."
-        }
-      }
-    },
-    "gate": {
-      "type": "object",
-      "required": ["id", "tool_group", "tool", "status", "reason_code"],
-      "additionalProperties": false,
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "tool_group": {
-          "type": "string",
-          "enum": ["test", "static_analysis", "style", "manifest", "config"]
-        },
-        "tool": { "type": "string", "minLength": 1 },
-        "status": { "$ref": "#/$defs/status" },
-        "reason_code": { "$ref": "#/$defs/reasonCode" }
-      }
-    },
-    "reasonCode": {
+    "reason_code": {
       "type": "string",
-      "description": "Stable, greppable code. Skips MUST use a TOOLCHAIN_ABSENT_* code so CI can enumerate deferred work.",
-      "enum": [
-        "OK",
-        "MANIFEST_INVALID_JSON",
-        "PSR4_AUTOLOAD_MISSING",
-        "TEST_TOOL_MISSING",
-        "STATIC_ANALYSIS_TOOL_MISSING",
-        "STYLE_TOOL_MISSING",
-        "PHPSTAN_CONFIG_MISSING",
-        "STYLE_CONFIG_MISSING",
-        "SEEDED_FINDING_ABSENT",
-        "TEST_FAILURE",
-        "STATIC_ANALYSIS_ERROR",
-        "STYLE_VIOLATION",
-        "PHP_SYNTAX_ERROR",
-        "TOOLCHAIN_ABSENT_COMPOSER",
-        "TOOLCHAIN_ABSENT_PHP"
-      ]
+      "minLength": 1,
+      "description": "Stable machine code for the outcome (e.g. OK, MULTIPLE_AUTHORITATIVE_LOCKFILES, MANAGER_MISMATCH, MISSING_LOCKFILE, INVALID_MANAGER, TS_COMPILE_FAIL, ESLINT_ERROR, TEST_FAIL, LOCKFILE_RESTORED, LIVE_UNAVAILABLE, STATIC_ANALYSIS_TOOL_MISSING, TOOLCHAIN_ABSENT_COMPOSER, TOOLCHAIN_ABSENT_PHP). Skips MUST carry a reason so CI can enumerate deferred work."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["live", "structural"],
+      "description": "'live' = the real toolchain/manager was executed and observed (or is a live check deferred as skip); 'structural' = logic, contract, or fixture shape was asserted without executing the downstream toolchain."
+    },
+    "ecosystem": {
+      "type": "string",
+      "enum": ["php", "node", "react"],
+      "description": "Optional stack tag so records from different drivers share this schema. Omitted for stack-agnostic synthetic fixtures (e.g. package-manager negative cases)."
+    },
+    "detail": {
+      "type": "string",
+      "description": "Optional human-readable detail (paths, commands, observed values)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC time the record was emitted."
     }
   }
 }
