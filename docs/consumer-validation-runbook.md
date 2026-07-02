@@ -240,3 +240,23 @@ The version-controlled waiver record is the schema in SHARED CONTRACT #3
 finding, **malformed evidence**, a **failed rollback**, and any **path-safety** refusal.
 An override never makes the missing consumer runs exist — those remain MANDATORY and
 UNMET until captured as above.
+
+## In-repo structural harness (does NOT substitute for the CI run)
+
+Each consumer shape also ships a **standalone fixture + offline driver** in-repo. These prove
+the fixture is well-formed, PSR-4/one-of-tool-group correct, and that a mutation is caught at
+the right gate — *before* spending CI minutes. They are auto-discovered by
+`sh scripts/self-test.sh production-readiness`.
+
+| Shape | Fixture | Driver | Record schema |
+|-------|---------|--------|---------------|
+| `php_library` | [`tests/consumers/php-library/`](../tests/consumers/php-library/) | [`tests/prod/200-php-consumer.sh`](../tests/prod/200-php-consumer.sh) | [`consumer-validation.schema.json`](../schemas/consumer-validation.schema.json) |
+
+Every driver emits a record via the shared reporter
+[`scripts/report-consumer-validation.sh`](../scripts/report-consumer-validation.sh). Where the
+runner lacks a toolchain (e.g. `composer`/`php` absent in the sandbox), the affected gates are
+recorded as `status: "skip"` with a `TOOLCHAIN_ABSENT_*` `reason_code` and the record `result`
+is `partial` — **a structural `partial` is never proof of a consumer run.** It is a
+pre-flight, not the `evidence/releases/<version>.json` `consumer_runs[]` entry a real green CI
+run produces. See [`php-library-validation.md`](php-library-validation.md) for the per-gate
+breakdown.
