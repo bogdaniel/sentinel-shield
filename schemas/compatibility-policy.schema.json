@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/compatibility-policy.schema.json",
+  "title": "Sentinel Shield compatibility & support policy",
+  "description": "Canonical, machine-readable production compatibility and support matrix for the Sentinel Shield ENGINE (POSIX-sh + jq tooling). One document, committed at config/compatibility-policy.json, is the single authority for which operating systems, CPU architectures, shells, Git/jq/Docker/PHP/Node/package-manager/Composer versions, filesystem assumptions, required+optional tools, network requirements, and GitHub-hosted runner images are SUPPORTED, TESTED, or UNSUPPORTED. scripts/health.sh (fail-closed gate) and scripts/doctor.sh (supportability report) read this file via scripts/lib/compatibility-policy.sh. Validated jq-structurally by scripts/lib/compatibility-policy.sh cp_validate_policy (this repo has no ajv/check-jsonschema); this schema is the human-authoritative contract. Every version/enum component carries: the supported range, the tested versions, the unsupported versions, a deprecation policy, a STABLE expected_failure_reason, and the responsible validation_suite so an unsupported configuration FAILS with a stable diagnostic instead of an incidental command error.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_version",
+    "updated",
+    "components",
+    "filesystem",
+    "network",
+    "required_tools",
+    "optional_tools",
+    "runner_images"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Compatibility-policy schema version. Fixed at '1'. Bump only on a breaking change to this document shape."
+    },
+    "policy_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of the POLICY CONTENT (the supported ranges), independent of the engine version."
+    },
+    "updated": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "UTC date (YYYY-MM-DD) the supported ranges were last reviewed."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human summary of the policy's scope."
+    },
+    "components": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-component support matrix. Enum components (os/arch/shell) enumerate supported/unsupported VALUES; version components enumerate a minimum + supported majors and/or a minimum version.",
+      "required": [
+        "os",
+        "arch",
+        "shell",
+        "git",
+        "jq",
+        "docker",
+        "php",
+        "node",
+        "npm",
+        "pnpm",
+        "yarn",
+        "composer"
+      ],
+      "properties": {
+        "os": { "$ref": "#/$defs/enumComponent" },
+        "arch": { "$ref": "#/$defs/enumComponent" },
+        "shell": { "$ref": "#/$defs/enumComponent" },
+        "git": { "$ref": "#/$defs/versionComponent" },
+        "jq": { "$ref": "#/$defs/versionComponent" },
+        "docker": { "$ref": "#/$defs/versionComponent" },
+        "php": { "$ref": "#/$defs/versionComponent" },
+        "node": { "$ref": "#/$defs/versionComponent" },
+        "npm": { "$ref": "#/$defs/versionComponent" },
+        "pnpm": { "$ref": "#/$defs/versionComponent" },
+        "yarn": { "$ref": "#/$defs/versionComponent" },
+        "composer": { "$ref": "#/$defs/versionComponent" }
+      }
+    },
+    "filesystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_sensitivity", "assumptions", "validation_suite"],
+      "properties": {
+        "case_sensitivity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expected", "case_insensitive_action", "reason"],
+          "properties": {
+            "expected": { "type": "string", "enum": ["sensitive", "insensitive"] },
+            "case_insensitive_action": {
+              "type": "string",
+              "enum": ["warn", "fail"],
+              "description": "What health/doctor do when the host filesystem is case-insensitive. 'warn' = degraded (exit 1); 'fail' = unsupported (exit 3)."
+            },
+            "reason": { "type": "string", "minLength": 1 },
+            "note": { "type": "string" }
+          }
+        },
+        "symlinks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "reason"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "validation_suite": { "type": "string", "minLength": 1 }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "online_only_operations",
+        "offline_supported_operations",
+        "expected_failure_reason",
+        "validation_suite"
+      ],
+      "properties": {
+        "online_only_operations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "offline_supported_operations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "expected_failure_reason": { "type": "string", "minLength": 1 },
+        "validation_suite": { "type": "string", "minLength": 1 }
+      }
+    },
+    "required_tools": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Tools that MUST be present for the engine to run at all (POSIX sh, git, jq)."
+    },
+    "optional_tools": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Tools required only for specific stacks/profiles (docker, php, node, package managers, composer, shellcheck, curl, tar)."
+    },
+    "runner_images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "supported",
+        "tested",
+        "unsupported",
+        "deprecation_policy",
+        "expected_failure_reason",
+        "validation_suite"
+      ],
+      "properties": {
+        "supported": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+        "tested": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+        "unsupported": { "type": "array", "items": { "type": "string" } },
+        "deprecation_policy": { "type": "string", "minLength": 1 },
+        "expected_failure_reason": { "type": "string", "minLength": 1 },
+        "validation_suite": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "enumComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "mandatory",
+        "supported",
+        "tested",
+        "unsupported",
+        "deprecation_policy",
+        "expected_failure_reason",
+        "validation_suite"
+      ],
+      "properties": {
+        "kind": { "const": "enum" },
+        "mandatory": { "type": "boolean" },
+        "supported": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+        "tested": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+        "unsupported": { "type": "array", "items": { "type": "string" } },
+        "deprecation_policy": { "type": "string", "minLength": 1 },
+        "expected_failure_reason": { "type": "string", "minLength": 1 },
+        "validation_suite": { "type": "string", "minLength": 1 }
+      }
+    },
+    "versionComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "mandatory",
+        "minimum",
+        "tested",
+        "unsupported",
+        "deprecation_policy",
+        "expected_failure_reason",
+        "validation_suite"
+      ],
+      "properties": {
+        "kind": { "const": "version" },
+        "mandatory": { "type": "boolean" },
+        "optional": { "type": "boolean", "description": "Present only for components (e.g. docker) that are enabled per-profile rather than always required." },
+        "minimum": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
+          "description": "Lowest supported version (inclusive). A detected version below this is BELOW_MINIMUM and FAILS."
+        },
+        "supported_majors": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "When present, support is decided by MAJOR version: a major in this set is supported; a major below the smallest is below-minimum; any other major is unsupported. Used for package managers (npm 8-11, pnpm 8-10, yarn 1-4) and single-major runtimes (php 8, composer 2)."
+        },
+        "unsupported_majors": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "description": "Majors that are explicitly unsupported (redundant with the supported_majors logic but documents intent)."
+        },
+        "tested": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Versions actually exercised by CI matrices."
+        },
+        "unsupported": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human-readable unsupported ranges (e.g. '<8.1', '7.x')."
+        },
+        "required_absent_reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable reason code used when this component is REQUIRED by an operation/profile but absent (e.g. docker required by a container-backed action)."
+        },
+        "deprecation_policy": { "type": "string", "minLength": 1 },
+        "expected_failure_reason": { "type": "string", "minLength": 1 },
+        "validation_suite": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

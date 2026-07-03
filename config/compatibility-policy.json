@@ -1,0 +1,360 @@
+{
+  "schema_version": "1",
+  "policy_version": "1.0.0",
+  "updated": "2026-07-04",
+  "description": "Canonical production compatibility & support matrix for the Sentinel Shield engine. Authoritative for scripts/health.sh (fail-closed gate), scripts/doctor.sh (supportability report) and the ci-compatibility.yml matrices. Every range documents its minimum, tested versions, unsupported versions, deprecation policy, a stable expected_failure_reason and the responsible validation suite so an unsupported configuration fails with a stable diagnostic, never an incidental command error.",
+  "components": {
+    "os": {
+      "kind": "enum",
+      "mandatory": true,
+      "supported": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "tested": [
+        "linux",
+        "macos"
+      ],
+      "unsupported": [
+        "freebsd",
+        "openbsd",
+        "netbsd",
+        "aix",
+        "solaris"
+      ],
+      "deprecation_policy": "An OS family is supported while its vendor ships security updates. Windows is supported only through a POSIX layer (Git Bash, WSL, MSYS2); native cmd/PowerShell is not a supported shell. Removal is announced one minor policy_version ahead.",
+      "expected_failure_reason": "UNSUPPORTED_OS",
+      "validation_suite": ".github/workflows/ci-compatibility.yml"
+    },
+    "arch": {
+      "kind": "enum",
+      "mandatory": true,
+      "supported": [
+        "x86_64",
+        "arm64"
+      ],
+      "tested": [
+        "x86_64",
+        "arm64"
+      ],
+      "unsupported": [
+        "i386",
+        "i686",
+        "armv6l",
+        "armv7l",
+        "ppc64le",
+        "s390x",
+        "riscv64"
+      ],
+      "deprecation_policy": "64-bit x86_64 and arm64 are the only tested architectures. Others are refused rather than silently attempted because the container-backed scanners publish no images for them.",
+      "expected_failure_reason": "UNSUPPORTED_ARCH",
+      "validation_suite": ".github/workflows/ci-compatibility.yml"
+    },
+    "shell": {
+      "kind": "enum",
+      "mandatory": true,
+      "supported": [
+        "sh",
+        "bash",
+        "dash",
+        "ash",
+        "busybox",
+        "zsh"
+      ],
+      "tested": [
+        "dash",
+        "bash",
+        "zsh"
+      ],
+      "unsupported": [
+        "csh",
+        "tcsh",
+        "fish",
+        "ksh88",
+        "powershell",
+        "pwsh",
+        "cmd"
+      ],
+      "deprecation_policy": "All engine scripts are POSIX sh; any POSIX-compliant /bin/sh implementation is supported. Non-POSIX shells (csh/fish/PowerShell) are refused because the scripts are not portable to them.",
+      "expected_failure_reason": "UNSUPPORTED_SHELL",
+      "validation_suite": "tests/prod/260-compatibility-policy.sh"
+    },
+    "git": {
+      "kind": "version",
+      "mandatory": true,
+      "minimum": "2.20",
+      "tested": [
+        "2.34",
+        "2.39",
+        "2.43",
+        "2.45"
+      ],
+      "unsupported": [
+        "<2.20",
+        "1.x"
+      ],
+      "deprecation_policy": "Git 2.20 (2018) is the floor: it is the first release with a stable `git -C`, worktree and fetch behaviour the acquisition path relies on. The floor advances no faster than one minor policy_version per year.",
+      "expected_failure_reason": "UNSUPPORTED_GIT_VERSION",
+      "validation_suite": ".github/workflows/ci-compatibility.yml"
+    },
+    "jq": {
+      "kind": "version",
+      "mandatory": true,
+      "minimum": "1.6",
+      "tested": [
+        "1.6",
+        "1.7",
+        "1.7.1"
+      ],
+      "unsupported": [
+        "<1.6",
+        "1.5",
+        "1.4"
+      ],
+      "deprecation_policy": "jq 1.6 is the floor: earlier releases lack `ltrimstr`/`splits`/`@tsv` behaviours the collectors and validators depend on. jq is a HARD dependency of the whole engine.",
+      "expected_failure_reason": "UNSUPPORTED_JQ_VERSION",
+      "validation_suite": ".github/workflows/ci-compatibility.yml"
+    },
+    "docker": {
+      "kind": "version",
+      "mandatory": false,
+      "optional": true,
+      "minimum": "20.10",
+      "tested": [
+        "20.10",
+        "24.0",
+        "25.0",
+        "26.1",
+        "27.0"
+      ],
+      "unsupported": [
+        "<20.10",
+        "19.03",
+        "18.09"
+      ],
+      "required_absent_reason": "DOCKER_REQUIRED_ABSENT",
+      "deprecation_policy": "Docker is only needed for container-backed scanners (Semgrep, Trivy, ZAP, Dependency-Check). 20.10 is the floor for BuildKit + pinned-digest pulls. Absent Docker is fine for profiles that do not enable those scanners.",
+      "expected_failure_reason": "UNSUPPORTED_DOCKER_VERSION",
+      "validation_suite": ".github/workflows/ci-compatibility.yml"
+    },
+    "php": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "8.1",
+      "supported_majors": [
+        8
+      ],
+      "tested": [
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4"
+      ],
+      "unsupported": [
+        "<8.1",
+        "7.x",
+        "5.x"
+      ],
+      "deprecation_policy": "PHP is required only for PHP-stack profiles (Deptrac/PHPStan/Psalm). The supported band tracks php.net actively-supported branches (8.1-8.4); a branch is dropped ~6 months after it leaves security support.",
+      "expected_failure_reason": "UNSUPPORTED_PHP_VERSION",
+      "validation_suite": ".github/workflows/ci-php.yml"
+    },
+    "node": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "18.0",
+      "supported_majors": [
+        18,
+        20,
+        22
+      ],
+      "tested": [
+        "18.20",
+        "20.11",
+        "20.18",
+        "22.11"
+      ],
+      "unsupported": [
+        "<18",
+        "16.x",
+        "17.x",
+        "19.x",
+        "21.x",
+        "23.x"
+      ],
+      "deprecation_policy": "Node is required only for Node/React profiles. Only EVEN-numbered Active/Maintenance LTS lines (18, 20, 22) are supported; odd-numbered current lines are refused because they leave support before most release cycles finish.",
+      "expected_failure_reason": "UNSUPPORTED_NODE_VERSION",
+      "validation_suite": ".github/workflows/ci-node.yml"
+    },
+    "npm": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "8.0",
+      "supported_majors": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "tested": [
+        "8.19",
+        "9.9",
+        "10.9",
+        "11.0"
+      ],
+      "unsupported": [
+        "<8",
+        "6.x",
+        "7.x"
+      ],
+      "deprecation_policy": "npm majors 8-11 are supported (the versions bundled with Node 18-22 and their upgrades). npm 7 and earlier are refused: their lockfile v2/v3 handling and `npm ci` semantics differ from the immutable-install contract.",
+      "expected_failure_reason": "UNSUPPORTED_NPM_VERSION",
+      "validation_suite": ".github/workflows/ci-node.yml"
+    },
+    "pnpm": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "8.0",
+      "supported_majors": [
+        8,
+        9,
+        10
+      ],
+      "tested": [
+        "8.15",
+        "9.12",
+        "10.0"
+      ],
+      "unsupported": [
+        "<8",
+        "6.x",
+        "7.x"
+      ],
+      "deprecation_policy": "pnpm majors 8-10 are supported. pnpm is provisioned via Corepack; earlier majors used a lockfile format the frozen-lockfile install path does not honour.",
+      "expected_failure_reason": "UNSUPPORTED_PNPM_VERSION",
+      "validation_suite": ".github/workflows/ci-node.yml"
+    },
+    "yarn": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "1.22",
+      "supported_majors": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "tested": [
+        "1.22",
+        "3.6",
+        "4.5"
+      ],
+      "unsupported": [
+        "<1.22",
+        "5.x"
+      ],
+      "deprecation_policy": "Yarn Classic (1.x) and Yarn Modern (2-4) are both supported and resolve to DISTINCT immutable-install commands (--frozen-lockfile vs --immutable). Yarn 5+ is not yet released and is refused until validated.",
+      "expected_failure_reason": "UNSUPPORTED_YARN_VERSION",
+      "validation_suite": ".github/workflows/ci-node.yml"
+    },
+    "composer": {
+      "kind": "version",
+      "mandatory": false,
+      "minimum": "2.2",
+      "supported_majors": [
+        2
+      ],
+      "tested": [
+        "2.2",
+        "2.6",
+        "2.7",
+        "2.8"
+      ],
+      "unsupported": [
+        "<2.2",
+        "1.x"
+      ],
+      "deprecation_policy": "Composer 2.2 (the LTS floor) and later are supported. Composer 1.x is refused: its solver and `--no-plugins` semantics differ from the compat-resolver's assumptions.",
+      "expected_failure_reason": "UNSUPPORTED_COMPOSER_VERSION",
+      "validation_suite": ".github/workflows/ci-php.yml"
+    }
+  },
+  "filesystem": {
+    "case_sensitivity": {
+      "expected": "sensitive",
+      "case_insensitive_action": "warn",
+      "reason": "CASE_INSENSITIVE_FS",
+      "note": "macOS default APFS/HFS+ is case-insensitive. Managed files use case-unique lowercase names, so a case-insensitive filesystem is a warning (degraded), not a hard failure."
+    },
+    "symlinks": {
+      "required": true,
+      "reason": "SYMLINKS_UNSUPPORTED"
+    },
+    "assumptions": [
+      "UTF-8 file paths",
+      "POSIX file permissions (chmod bits are honoured)",
+      "atomic rename() within a single directory (used for temp-then-mv writes)",
+      "symlink creation is permitted (transaction containment relies on it)"
+    ],
+    "validation_suite": "tests/prod/260-compatibility-policy.sh"
+  },
+  "network": {
+    "online_only_operations": [
+      "scripts/acquire-sentinel-shield.sh (git clone/fetch of the engine)",
+      "docker image pull of pinned scanner digests",
+      "Dependency-Check NVD data sync",
+      "composer install / npm|pnpm|yarn install against a package registry"
+    ],
+    "offline_supported_operations": [
+      "scripts/doctor.sh",
+      "scripts/health.sh",
+      "gate resolution over already-collected reports",
+      "security-summary aggregation"
+    ],
+    "expected_failure_reason": "NETWORK_REQUIRED_OFFLINE",
+    "validation_suite": ".github/workflows/ci-compatibility.yml"
+  },
+  "required_tools": [
+    "sh",
+    "git",
+    "jq"
+  ],
+  "optional_tools": [
+    "docker",
+    "php",
+    "composer",
+    "node",
+    "npm",
+    "pnpm",
+    "yarn",
+    "shellcheck",
+    "curl",
+    "tar"
+  ],
+  "runner_images": {
+    "supported": [
+      "ubuntu-22.04",
+      "ubuntu-24.04",
+      "ubuntu-latest",
+      "macos-14",
+      "macos-15",
+      "macos-latest"
+    ],
+    "tested": [
+      "ubuntu-22.04",
+      "ubuntu-24.04"
+    ],
+    "unsupported": [
+      "ubuntu-20.04",
+      "ubuntu-18.04",
+      "macos-11",
+      "macos-12",
+      "macos-13",
+      "windows-2019"
+    ],
+    "deprecation_policy": "GitHub-hosted runner images are supported while GitHub itself supports them; an image is dropped from this list within one policy_version of GitHub's own deprecation. Pin to a dated image (ubuntu-24.04) for reproducibility rather than *-latest in release-critical jobs.",
+    "expected_failure_reason": "UNSUPPORTED_RUNNER_IMAGE",
+    "validation_suite": ".github/workflows/ci-compatibility.yml"
+  }
+}
