@@ -97,14 +97,23 @@ detect_prompt() {
 	esac
 }
 
+# _ere_escape — escape ERE metacharacters + the '#' sed delimiter in a path root,
+# so a root containing '.', '+', '(', '#' … relativizes fully instead of leaking.
+_ere_escape() { printf '%s' "$1" | sed 's/[]#.^$*+?(){}|[]/\\&/g'; }
+
 # redact — read STDIN, strip absolute local paths + secret shapes. WORKSPACE first,
-# then the engine source, then HOME; then mask common secret shapes.
+# then the engine source, then HOME; then mask common secret shapes. Path roots are
+# ERE-escaped before interpolation (raw interpolation could fail to match and leak).
 redact() {
+	_rw=$(_ere_escape "${WORK:-__no_work__}")
+	_rt=$(_ere_escape "${TARGET:-__no_target__}")
+	_rr=$(_ere_escape "${REPO_ROOT:-__no_repo__}")
+	_rh=$(_ere_escape "${HOME:-__no_home__}")
 	sed -E \
-		-e "s#${WORK}#<workspace>#g" \
-		-e "s#${TARGET:-__no_target__}#<target>#g" \
-		-e "s#${REPO_ROOT}#<engine-src>#g" \
-		-e "s#${HOME}#~#g" \
+		-e "s#${_rw}#<workspace>#g" \
+		-e "s#${_rt}#<target>#g" \
+		-e "s#${_rr}#<engine-src>#g" \
+		-e "s#${_rh}#~#g" \
 		-e 's/(AKIA|ASIA)[0-9A-Z]{16}/***REDACTED-AWS-KEY***/g' \
 		-e 's/gh[pousr]_[A-Za-z0-9]{20,}/***REDACTED-GH-TOKEN***/g' \
 		-e 's/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD))[=:][[:space:]]*[^[:space:]"'\'']+/\1=***REDACTED***/g'
@@ -219,7 +228,7 @@ _t0=$(date +%s); _rc=0
 _out=$(run_constrained sh "$ENGINE/scripts/install-baseline.sh" --target "$TARGET" --profile laravel --apply 2>&1) || _rc=$?
 _t1=$(date +%s)
 find "$TARGET" -type f 2>/dev/null | sort > "$INSTALL_AFTER"
-_gen=$(comm -13 "$INSTALL_BEFORE" "$INSTALL_AFTER" 2>/dev/null | sed "s#^${TARGET}#<target>#" | jq -R -s 'split("\n") | map(select(length > 0))')
+_gen=$(comm -13 "$INSTALL_BEFORE" "$INSTALL_AFTER" 2>/dev/null | sed "s#^$(_ere_escape "$TARGET")#<target>#" | jq -R -s 'split("\n") | map(select(length > 0))')
 if [ "$_rc" = 0 ]; then
 	record_step install "sh scripts/install-baseline.sh --target <target> --profile laravel --apply" 0 "$((_t1 - _t0))" ok \
 		"baseline installed" "$_gen"
