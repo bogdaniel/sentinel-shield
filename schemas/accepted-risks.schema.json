@@ -80,7 +80,36 @@
             "type": "string",
             "enum": ["pending", "approved", "rejected", "expired"]
           },
-          "approved_by": { "type": "string" }
+          "approved_by": { "type": "string" },
+          "scanner": {
+            "type": "string",
+            "description": "v1.11+ (production-security-policy). Scanner whose finding this record accepts (e.g. 'osv-scanner', 'grype', 'trivy'). scripts/enforce-security-policy.sh matches a finding only when its scanner equals this value — a record for the wrong scanner does NOT suppress the finding."
+          },
+          "category": {
+            "type": "string",
+            "description": "v1.11+ (production-security-policy). Finding category the record accepts (e.g. 'dependency_vulnerabilities'). Must equal the finding's category to match."
+          },
+          "finding_id": {
+            "type": "string",
+            "description": "v1.11+ (production-security-policy). Narrow finding identifier this record accepts. Required for a finding-scoped production waiver (no broad scanner/package suppression)."
+          },
+          "issue": {
+            "type": "string",
+            "description": "v1.11+ (production-security-policy). REQUIRED issue/tracking reference (URL or id) linking the accepted risk to a remediation ticket. A record without it is rejected by the production gate."
+          },
+          "created_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "v1.11+ (production-security-policy). Record creation date. (expires_at - created_at) must not exceed the policy max waiver lifetime."
+          },
+          "emergency": {
+            "type": "boolean",
+            "description": "v1.11+ (production-security-policy). Marks this as an emergency-release acceptance: short-lived, requires an approver and an incident reference, and may accept a critical finding the normal path would block."
+          },
+          "incident": {
+            "type": "string",
+            "description": "v1.11+ (production-security-policy). REQUIRED for emergency records: the incident reference the emergency release is tracked under."
+          }
         }
       }
     }

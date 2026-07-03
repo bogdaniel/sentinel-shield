@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/production-security-policy.schema.json",
+  "title": "Sentinel Shield production security policy",
+  "description": "Canonical production security acceptance and incident-response policy. Structural conformance is enforced fail-closed by scripts/lib/security-policy.sh sp_validate_policy (jq, not ajv). Documentary schema for humans and editors.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_version",
+    "updated",
+    "blocking_severities",
+    "waivable_severities",
+    "emergency_waivable_severities",
+    "never_waivable_categories",
+    "categories",
+    "required_scanners",
+    "scanner_freshness",
+    "scanner_execution",
+    "provenance",
+    "waivers",
+    "regression_baseline",
+    "emergency_release",
+    "incident_response"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "policy_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "updated": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "description": { "type": "string" },
+    "blocking_severities": { "type": "array", "minItems": 1, "items": { "enum": ["critical", "high", "medium", "low"] } },
+    "waivable_severities": { "type": "array", "items": { "enum": ["critical", "high", "medium", "low"] } },
+    "emergency_waivable_severities": { "type": "array", "items": { "enum": ["critical", "high", "medium", "low"] } },
+    "never_waivable_categories": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "fix_available_handling": { "type": "object", "additionalProperties": { "type": "string" } },
+    "categories": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["blocking", "reason"],
+        "properties": {
+          "blocking": { "type": "boolean" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "required_scanners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "category", "applies_when"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "applies_when": { "enum": ["always", "manifest_present", "dockerfile_present", "workflows_present"] },
+          "max_database_age_days": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "scanner_freshness": {
+      "type": "object",
+      "required": ["max_database_age_days", "stale_action", "unverifiable_age_action", "reason"],
+      "properties": {
+        "max_database_age_days": { "type": "integer", "minimum": 0 },
+        "stale_action": { "enum": ["block"] },
+        "unverifiable_age_action": { "enum": ["block"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "scanner_execution": {
+      "type": "object",
+      "required": ["failure_action", "zero_targets_action", "malformed_report_action", "missing_applicable_scanner_action", "missing_raw_digest_action", "reason"],
+      "properties": {
+        "failure_action": { "enum": ["block"] },
+        "zero_targets_action": { "enum": ["block"] },
+        "malformed_report_action": { "enum": ["fail-closed"] },
+        "missing_applicable_scanner_action": { "enum": ["block"] },
+        "missing_raw_digest_action": { "enum": ["block"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["require_signed_for", "unsigned_action", "unverifiable_action", "reason"],
+      "properties": {
+        "require_signed_for": { "type": "array", "items": { "type": "string" } },
+        "unsigned_action": { "enum": ["block"] },
+        "unverifiable_action": { "enum": ["block"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "waivers": {
+      "type": "object",
+      "required": ["max_lifetime_days", "mandatory_owner", "require_issue_reference", "require_review_approval", "prohibit_blanket_suppression", "prohibited_scopes", "reason"],
+      "properties": {
+        "max_lifetime_days": { "type": "integer", "minimum": 1 },
+        "mandatory_owner": { "type": "boolean" },
+        "mandatory_approver": { "type": "boolean" },
+        "require_issue_reference": { "type": "boolean" },
+        "require_review_approval": { "type": "boolean" },
+        "prohibit_blanket_suppression": { "type": "boolean" },
+        "prohibited_scopes": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "regression_baseline": {
+      "type": "object",
+      "required": ["enabled", "unexplained_finding_drop_action", "coverage_reduction_action", "min_coverage_ratio", "reason"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "unexplained_finding_drop_action": { "enum": ["block"] },
+        "coverage_reduction_action": { "enum": ["block"] },
+        "min_coverage_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "emergency_release": {
+      "type": "object",
+      "required": ["allowed", "max_lifetime_days", "mandatory_owner", "mandatory_approver", "require_incident_reference", "require_followup_issue", "reason"],
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "max_lifetime_days": { "type": "integer", "minimum": 1 },
+        "mandatory_owner": { "type": "boolean" },
+        "mandatory_approver": { "type": "boolean" },
+        "require_incident_reference": { "type": "boolean" },
+        "require_followup_issue": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "incident_response": {
+      "type": "object",
+      "required": ["disclosure_contact", "acknowledge_within_hours", "triage_within_hours", "public_disclosure_policy", "runbook", "reason"],
+      "properties": {
+        "disclosure_contact": { "type": "string", "minLength": 1 },
+        "acknowledge_within_hours": { "type": "integer", "minimum": 1 },
+        "triage_within_hours": { "type": "integer", "minimum": 1 },
+        "public_disclosure_policy": { "type": "string", "minLength": 1 },
+        "runbook": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

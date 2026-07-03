@@ -155,6 +155,60 @@
           "required": ["present"]
         }
       }
+    },
+    "targets": {
+      "type": "object",
+      "description": "v1.11+ (production-security-policy). Target-applicability + coverage for the security acceptance gate (scripts/enforce-security-policy.sh). expected = applicable scan targets; scanned = targets a required scanner actually parsed. A drop is a regression signal.",
+      "additionalProperties": true,
+      "properties": {
+        "expected": { "type": "integer", "minimum": 0 },
+        "scanned": { "type": "integer", "minimum": 0 },
+        "coverage_ratio": { "type": "number", "minimum": 0 }
+      }
+    },
+    "scanners": {
+      "type": "array",
+      "description": "v1.11+ (production-security-policy). Per-scanner EXECUTION record consumed by scripts/enforce-security-policy.sh: proves the scanner ran, its version, database freshness (age_days), target applicability, targets scanned, and the raw report digest. Produced by scripts/normalize-security-summary.sh. Optional for backward compatibility.",
+      "items": {
+        "type": "object",
+        "required": ["name", "category", "applicable", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "applicable": { "type": "boolean" },
+          "status": { "enum": ["success", "error", "not-applicable"] },
+          "version": { "type": ["string", "null"] },
+          "database": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "timestamp": { "type": ["string", "null"] },
+              "age_days": { "type": ["integer", "null"], "minimum": 0 }
+            }
+          },
+          "targets_scanned": { "type": ["integer", "null"], "minimum": 0 },
+          "raw_report_digest": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "v1.11+ (production-security-policy). Normalized, per-finding records consumed by scripts/enforce-security-policy.sh for severity/fix/waiver evaluation. Produced by scripts/normalize-security-summary.sh. Optional for backward compatibility.",
+      "items": {
+        "type": "object",
+        "required": ["id", "scanner", "category", "severity"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "scanner": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+          "fix_available": { "type": "boolean" },
+          "target": { "type": ["string", "null"] },
+          "reference": { "type": ["string", "null"] }
+        }
+      }
     }
   }
 }
