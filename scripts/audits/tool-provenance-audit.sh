@@ -36,6 +36,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/isolated-tools.sh
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
+# shellcheck source=scripts/lib/bounded-process.sh
+. "$SCRIPT_DIR/../lib/bounded-process.sh"
 
 ss_require_jq
 
@@ -57,9 +59,33 @@ done
 
 PLATFORM=$(isolated_tool_platform)
 ensure_dir "$(dirname "$OUTPUT")"
-TMPV=$(mktemp); TMPR=$(mktemp)
-trap 'rm -f "$TMPV" "$TMPR"' EXIT INT TERM
-: > "$TMPV"; : > "$TMPR"
+TMPV=$(mktemp); TMPR=$(mktemp); TMPP=$(mktemp)
+DPOUT=$(mktemp); DPERR=$(mktemp)
+trap 'rm -f "$TMPV" "$TMPR" "$TMPP" "$DPOUT" "$DPERR"' EXIT INT TERM
+: > "$TMPV"; : > "$TMPR"; : > "$TMPP"
+
+# docker_repo_digest <image> — resolve an immutable @sha256 digest for a repo:tag image
+# via a BOUNDED `docker inspect`. A wedged/unreachable Docker daemon makes an unbounded
+# `docker inspect` hang forever (the historical defect this audit had); bp_run caps it at
+# the docker-probe timeout, escalates TERM->KILL, and records a bounded-command-result to
+# TMPP so a timeout is visible in the machine report. On timeout/failure the digest is
+# empty (image stays 'unverified'), which under --require-image-digest FAILS CLOSED.
+docker_repo_digest() {
+	command_exists docker || { printf ''; return 0; }
+	_dp_to=$(bp_timeout docker-probe) || _dp_to=15
+	if bp_run docker-probe "$_dp_to" "$DPOUT" "$DPERR" -- \
+		docker inspect --format '{{index .RepoDigests 0}}' "$1"; then
+		_dp_dig=$(head -n1 "$DPOUT" 2>/dev/null) || _dp_dig=""
+	else
+		_dp_dig=""
+		if [ "${BP_STATUS:-}" = "timed-out" ]; then
+			log_warn "tool-provenance-audit: docker inspect for image digest exceeded ${_dp_to}s (daemon unreachable/unhealthy) — recorded as unverified"
+		fi
+	fi
+	bp_result_json >> "$TMPP"
+	case "$_dp_dig" in *@sha256:*) printf 'sha256:%s' "${_dp_dig##*@sha256:}" ;; *) printf '' ;; esac
+	unset _dp_to _dp_dig
+}
 
 # env_key <tool> — uppercase, non-alnum -> '_' (e.g. osv-scanner -> OSV_SCANNER).
 env_key() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_' | sed 's/_*$//'; }
@@ -115,10 +141,7 @@ for tool in $TOOLS; do
 		DIG=""
 		case "$IMG" in
 			*@sha256:*) DIG="sha256:${IMG##*@sha256:}" ;;
-			*) if command_exists docker; then
-					DIG=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMG" 2>/dev/null || true)
-					case "$DIG" in *@sha256:*) DIG="sha256:${DIG##*@sha256:}" ;; *) DIG="" ;; esac
-				fi ;;
+			*) DIG=$(docker_repo_digest "$IMG") ;;
 		esac
 		# verification_status is "unverified" when no immutable digest was resolved.
 		# Only fail closed on that when the caller demands it (release-authoritative).
@@ -138,14 +161,21 @@ VIOLATIONS=$(jq -s 'length' "$TMPV")
 STATUS=pass
 [ "$VIOLATIONS" -gt 0 ] && STATUS=fail
 
+# docker_probes: one bounded-command-result per BOUNDED docker inspect performed while
+# resolving image digests. A timed-out probe is visible here (status="timed-out"), so a
+# wedged Docker daemon can no longer hide behind a silently-empty digest.
+DOCKER_TIMEOUTS=$(jq -s '[.[] | select(.status == "timed-out")] | length' "$TMPP" 2>/dev/null || echo 0)
 jq -n \
-	--arg v "1.0" --arg ts "$(timestamp_utc)" --arg plat "$PLATFORM" --arg st "$STATUS" \
+	--arg v "1.1" --arg ts "$(timestamp_utc)" --arg plat "$PLATFORM" --arg st "$STATUS" \
 	--argjson checked "$CHECKED" \
+	--argjson dto "${DOCKER_TIMEOUTS:-0}" \
 	--slurpfile viol "$TMPV" \
-	--slurpfile recs "$TMPR" '
+	--slurpfile recs "$TMPR" \
+	--slurpfile probes "$TMPP" '
 	{ version:$v, generated_at:$ts, tool:"tool-provenance-audit", platform:$plat,
 	  status:$st, checked:$checked,
-	  violation_count:($viol|length), violations:$viol, records:$recs }' > "$OUTPUT"
+	  violation_count:($viol|length), violations:$viol, records:$recs,
+	  docker_probe_timeouts:$dto, docker_probes:$probes }' > "$OUTPUT"
 
 printf '\ntool-provenance-audit: checked %d tool(s), %d violation(s) -> %s\n' \
 	"$CHECKED" "$VIOLATIONS" "$OUTPUT"

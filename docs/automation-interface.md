@@ -136,6 +136,73 @@ command runs untouched and its human output and exit code are provably unchanged
 Conformance is covered by `tests/prod/230-output-contract.sh` (run under
 `sh scripts/self-test.sh production-readiness`).
 
+## Bounded external processes (`bounded-command-result`)
+
+Every external process the engine shells out to — `docker info` / `docker inspect`
+/ `docker image inspect`, scanner version probes and scanner execution, `gh api`,
+`git verify-tag`, package-manager version probes and installs, archive
+inspection/extraction, and external consumer validation — runs under a hard,
+bounded wall-clock timeout via [`scripts/lib/bounded-process.sh`](../scripts/lib/bounded-process.sh)
+(`bp_*` functions). This eliminates indefinite execution: a wedged Docker daemon
+or a stuck API can no longer freeze a gate.
+
+`bp_run` escalates **TERM → (bounded grace) → KILL**, reaps the whole descendant
+tree (no orphans), preserves the real exit code on normal completion, and
+classifies the outcome. `bp_result_json` emits ONE machine-readable object
+conforming to [`schemas/bounded-command-result.schema.json`](../schemas/bounded-command-result.schema.json):
+
+```json
+{
+  "schema": "bounded-command-result",
+  "command": "docker",
+  "command_category": "docker-probe",
+  "status": "timed-out",
+  "exit_code": null,
+  "signal": null,
+  "timeout_seconds": 15,
+  "duration_seconds": 15,
+  "timed_out": true,
+  "timestamp": "2026-07-04T00:00:00Z"
+}
+```
+
+`status` is one of `success | failed | timed-out | unavailable | signalled`.
+`exit_code` is `null` on `timed-out`, `unavailable`, and `signalled`; `signal`
+carries the number on `signalled`. **`command` is the executable basename only —
+command arguments are NEVER surfaced**, because they may carry credentials
+(tokens, registry auth, `--propertyfile` paths).
+
+### Configuration (safe defaults)
+
+| Category | Env override | Default (s) |
+| --- | --- | --- |
+| generic external process | `SENTINEL_SHIELD_PROCESS_TIMEOUT_SECONDS` | 120 |
+| docker probe (info/inspect) | `SENTINEL_SHIELD_DOCKER_PROBE_TIMEOUT_SECONDS` | 15 |
+| GitHub API (`gh api`) | `SENTINEL_SHIELD_GITHUB_API_TIMEOUT_SECONDS` | 60 |
+| scanner version probe | `SENTINEL_SHIELD_SCANNER_VERSION_TIMEOUT_SECONDS` | 30 |
+| scanner execution | `SENTINEL_SHIELD_SCANNER_TIMEOUT_SECONDS` | 300 |
+| git signature verify | `SENTINEL_SHIELD_GIT_VERIFY_TIMEOUT_SECONDS` | 60 |
+| package-manager probe | `SENTINEL_SHIELD_PACKAGE_PROBE_TIMEOUT_SECONDS` | 30 |
+| package install | `SENTINEL_SHIELD_PACKAGE_INSTALL_TIMEOUT_SECONDS` | 600 |
+| archive inspect/extract | `SENTINEL_SHIELD_ARCHIVE_TIMEOUT_SECONDS` | 120 |
+| consumer validation | `SENTINEL_SHIELD_CONSUMER_TIMEOUT_SECONDS` | 300 |
+
+Scanner-specific overrides are honoured too (e.g.
+`SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS`, `SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS`
+for the version probe). The kill grace is `SENTINEL_SHIELD_PROCESS_KILL_GRACE_SECONDS`
+(default 5s). The absolute upper bound is `SENTINEL_SHIELD_PROCESS_TIMEOUT_MAX_SECONDS`
+(default 86400). **Invalid timeouts fail closed**: zero, negative, non-numeric, or
+above-max values reject the invocation (return code 2) — nothing is silently coerced.
+
+When GNU `timeout`/`gtimeout` is present it is used; otherwise a portable watchdog
+(background command + once-per-second poll + `pgrep`-based tree reap) provides
+identical semantics. Set `SENTINEL_SHIELD_BP_FORCE_PORTABLE=1` to force the portable
+path (used by the test suite for deterministic escalation coverage).
+
+Conformance is covered by `tests/prod/250-bounded-processes.sh`. The timeout state
+also reaches the security audit report — see
+[security-operations.md](security-operations.md).
+
 ## Deferred (not in this contract)
 
 - **Failure-comprehension / error-contract overhaul** — a richer per-failure
