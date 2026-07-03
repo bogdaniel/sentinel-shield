@@ -163,3 +163,14 @@ run, the observed vs expected exit code, and a minimal reproduction. For machine
 context, attach the `--output json` envelope where the command supports it (secrets are
 masked and absolute paths stripped). Do not attach secrets or raw scanner reports
 containing sensitive data — use `scripts/support-bundle.sh` (redacted by default).
+
+## Incident, rollback, and release remediation
+
+Support remediation never mutates a published tag. A defect in a released version is fixed by
+publishing a **superseding** release and issuing an advisory that marks the affected version;
+when no fix is ready yet, the advisory recommends pinning to a known-good prior version. See
+[`rollback-policy.md`](rollback-policy.md) for the policy and the
+`scripts/authorize-production-release.sh declare-superseded` / `rollback-advisory` commands, and
+[`security-incident-response.md`](security-incident-response.md) for the incident workflow. The
+production release path itself is governed by
+[`production-release-runbook.md`](production-release-runbook.md).
