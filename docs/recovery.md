@@ -123,23 +123,26 @@ verification on top, without changing existing `--ref`/`--verify` behaviour (def
 
 ```sh
 sh scripts/acquire-sentinel-shield.sh --repository <owner/repo|url> --ref <tag|40-hex-sha> \
-   --destination <dir> --verify --verify-source checksum
+   --destination <dir> --verify --verify-source tree-checksum --expected-tree <40-hex-tree-oid>
 ```
 
-| mode | what it verifies |
+| mode | what it does |
 | --- | --- |
 | `none` (default) | nothing beyond the existing `--verify` commit identity |
-| `checksum` | records + verifies the deterministic `HEAD^{tree}` object id (content hash of the whole tree) |
-| `signature` | verifies a **signed annotated tag** with `git verify-tag` (GnuPG); **fails closed** if the tag is unsigned/bad or no verification key is available |
-| `checksum+signature` | both |
+| `tree-record` | **records** the deterministic `HEAD^{tree}` object id — a fingerprint, **not** a verification (nothing is compared) |
+| `tree-checksum` | **verifies**: requires `--expected-tree <hex>`, computes `HEAD^{tree}`, compares exactly, **fails closed** on mismatch (records both expected and calculated) |
+| `signature` | verifies a **signed annotated tag** with `git verify-tag` (GPG **or** SSH, per Git config) and that it peels to the expected commit; **fails closed** if unsigned/bad or no verification key is available |
+| `tree-checksum+signature` | both |
+| `checksum` | deprecated alias for `tree-record` (record-only), kept working with a warning |
 
 The method that passed is recorded in `.sentinel-shield-ref` as `verification_method` (and, for
-checksum, the verified `tree_checksum`). This is additive — readers that ignore the fields are
-unaffected.
+`tree-checksum`, both `tree_expected` and `tree_calculated`). This is additive — readers that ignore
+the fields are unaffected. A `tree-record` fingerprint is never reported as "verified".
 
-> Environment note: `signature` verification needs GnuPG plus the signer's public key. Where
-> those are absent (e.g. a minimal CI sandbox), `--verify-source signature` **fails closed** by
-> design rather than reporting a false pass — that is a genuine "cannot verify", not a success.
+> Environment note: `signature` verification needs a signing toolchain (GPG or SSH) plus the
+> signer's public key. Where those are absent (e.g. a minimal CI sandbox), `--verify-source
+> signature` **fails closed** by design rather than reporting a false pass — that is a genuine
+> "cannot verify", not a success.
 
 ## Exit codes (mutating scripts)
 
