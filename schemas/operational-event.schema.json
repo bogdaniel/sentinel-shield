@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/operational-event.schema.json",
+  "title": "Sentinel Shield operational event",
+  "description": "ONE line of an opt-in JSONL operational-event stream produced by scripts/lib/operational-events.sh (oe_emit). Each line is an independent, self-describing object recording one phase-transition of a Sentinel Shield operation (acquisition, install, sync, migration, bootstrap, doctor, pipeline, recovery, security scanning, evidence collection, artifact verification, release finalization, health). A stream is grouped by correlation_id (shared across an operation AND the recovery it triggers) and split by operation_id (unique per operation), so a failed operation and its recovery can be reconstructed in order. The object carries NO secrets, NO raw tokens, NO email, and NO repo-local absolute path: the target identity is a NON-REVERSIBLE 12-hex sha256 prefix and the free-text next_action is passed through the unified redaction library. The closed enums below are kept in lockstep with the oe_* vocabulary accessors; tests/prod/254-operational-health.sh cross-checks the two so the vocabulary can never drift from the code.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ts",
+    "command",
+    "phase",
+    "event_type",
+    "severity",
+    "reason_code",
+    "status",
+    "component",
+    "retryability",
+    "correlation_id",
+    "operation_id",
+    "target"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "operational-event",
+      "description": "Fixed discriminator for this object shape."
+    },
+    "schema_version": {
+      "const": "1",
+      "description": "Event-model schema version. Fixed at '1' for this contract."
+    },
+    "ts": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC timestamp when the event was emitted."
+    },
+    "command": {
+      "type": "string",
+      "enum": [
+        "acquisition",
+        "install",
+        "sync",
+        "migration",
+        "bootstrap",
+        "doctor",
+        "pipeline",
+        "recovery",
+        "security-scan",
+        "evidence-collection",
+        "artifact-verification",
+        "release-finalization",
+        "health",
+        "engine"
+      ],
+      "description": "The high-level operation that emitted the event."
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "start",
+        "precondition",
+        "acquire",
+        "snapshot",
+        "execute",
+        "mutate",
+        "validate",
+        "scan",
+        "collect",
+        "verify",
+        "finalize",
+        "rollback",
+        "complete"
+      ],
+      "description": "Lifecycle phase within the operation."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "start",
+        "progress",
+        "complete",
+        "error",
+        "timeout",
+        "retry",
+        "skip"
+      ],
+      "description": "The kind of transition this event records."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "notice",
+        "warning",
+        "error",
+        "critical"
+      ],
+      "description": "Operational severity of the event."
+    },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A STABLE, machine-consumable reason code (snake/kebab). Carries no free text and no secret."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "in-progress",
+        "success",
+        "failure",
+        "skipped",
+        "timeout",
+        "unknown"
+      ],
+      "description": "Outcome status at this point in the operation."
+    },
+    "component": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The subsystem that emitted the event (e.g. transaction, scanner, source-verification)."
+    },
+    "retryability": {
+      "type": "string",
+      "enum": [
+        "none",
+        "retryable",
+        "non-retryable",
+        "manual"
+      ],
+      "description": "Whether the recorded condition is safe to retry automatically, requires manual intervention, or is not applicable."
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shared across an operation AND any operation it triggers (e.g. a failed install and its recovery), so a full incident can be reconstructed."
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique to a single operation. Distinct operations under one correlation_id carry distinct operation_ids."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "NON-REVERSIBLE target identity: 'target:<12-hex>' (sha256 prefix of the absolute target path), or 'target:none'/'target:unknown'. NEVER a raw path."
+    },
+    "elapsed_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Best-effort (monotonic-where-available) elapsed milliseconds since the operation's start clock, or null when not measured."
+    },
+    "next_action": {
+      "type": ["string", "null"],
+      "description": "Optional operator hint for what to do next. Passed through the unified redaction library; carries no secret or absolute path."
+    }
+  }
+}
