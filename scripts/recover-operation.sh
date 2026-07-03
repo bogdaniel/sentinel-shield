@@ -25,6 +25,12 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# Opt-in operational-event emission (off by default). Sourced defensively so a minimal copied tree
+# still works; every oe_emit is a no-op unless SENTINEL_SHIELD_EVENTS=1 + a sink are configured.
+if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
+	# shellcheck source=scripts/lib/operational-events.sh
+	. "$SCRIPT_DIR/lib/operational-events.sh"
+fi
 
 TARGET=""; MODE="inspect"; FORMAT="human"
 
@@ -69,6 +75,34 @@ JOURNAL="$SS_DIR/transaction-journal.jsonl"
 TX_OP="unknown"; TX_SELF="scripts/recover-operation.sh"; TX_ACTIVE=0; TX_SNAP=""
 # shellcheck source=scripts/lib/transaction.sh
 . "$SCRIPT_DIR/lib/transaction.sh"
+
+# Opt-in operational events: mark the start of recovery and, via a fail-safe EXIT trap, emit a
+# terminal event whose status is derived from the real exit code (0 consistent / 4 could-not-clear).
+# The trap CAPTURES $? first and RETURNS it unchanged, so it can never alter the recovery exit
+# contract; emission itself is best-effort and never aborts recovery.
+_oe_recover_start_ms=""
+if command -v oe_now_ms >/dev/null 2>&1; then _oe_recover_start_ms=$(oe_now_ms); fi
+if command -v oe_emit >/dev/null 2>&1; then
+	oe_emit --command recovery --phase start --event-type start --status in-progress \
+		--reason-code "recovery_${MODE}" --component recovery --target "$TARGET" \
+		${_oe_recover_start_ms:+--start-ms "$_oe_recover_start_ms"} || :
+fi
+_oe_recover_on_exit() {
+	_oe_rc=$?
+	if command -v oe_emit >/dev/null 2>&1; then
+		_oe_st=success; _oe_et=complete; _oe_sev=info; _oe_rs=recovery_consistent
+		case "$_oe_rc" in
+			0) : ;;
+			4) _oe_st=failure; _oe_et=error; _oe_sev=error; _oe_rs=recovery_could_not_clear ;;
+			*) _oe_st=unknown; _oe_et=error; _oe_sev=warning; _oe_rs=recovery_aborted ;;
+		esac
+		oe_emit --command recovery --phase complete --event-type "$_oe_et" --severity "$_oe_sev" \
+			--status "$_oe_st" --reason-code "$_oe_rs" --component recovery --target "$TARGET" \
+			${_oe_recover_start_ms:+--start-ms "$_oe_recover_start_ms"} >/dev/null 2>&1 || :
+	fi
+	return "$_oe_rc"
+}
+trap _oe_recover_on_exit EXIT
 
 # journal_verify — validate the append-only journal chain. Delegates to the SINGLE
 # implementation in scripts/lib/transaction.sh (tx_journal_verify) so recovery duplicates no

@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/health-report.schema.json",
+  "title": "Sentinel Shield health report",
+  "description": "Machine-readable operational-health report produced by scripts/health.sh. It records a single rolled-up verdict (healthy | degraded | unhealthy | unknown) plus a per-check breakdown, each with a STABLE reason code drawn from a closed vocabulary. It is READ-ONLY output: it carries NO secret, NO raw token, NO email, and NO repo-local absolute path — the target identity is a NON-REVERSIBLE 'target:<12-hex>' sha256 prefix and every check detail is passed through the unified redaction library. The rollup precedence is unhealthy > degraded > unknown > healthy; the process exit code encodes the verdict (0/1/2/3, with 64 reserved for an invalid invocation). Offline runs (mode.offline=true) perform no network access; the github_connectivity check is only executed when network access is explicitly requested. The check-name and reason-code enums are kept in lockstep with scripts/health.sh; tests/prod/254-operational-health.sh cross-checks them.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "generated_at",
+    "target",
+    "mode",
+    "status",
+    "checks",
+    "reason_codes",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "health-report",
+      "description": "Fixed discriminator for this report shape."
+    },
+    "schema_version": {
+      "const": "1",
+      "description": "Health-report schema version. Fixed at '1' for this contract."
+    },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the report was produced."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "NON-REVERSIBLE target identity: 'target:<12-hex>' (sha256 prefix of the absolute target path), 'target:none', or 'target:unknown'. NEVER a raw path."
+    },
+    "mode": {
+      "type": "object",
+      "required": ["offline", "network_checked"],
+      "additionalProperties": false,
+      "description": "How the probe was run.",
+      "properties": {
+        "offline": {
+          "type": "boolean",
+          "description": "True when no network access was performed (the default). Offline runs never touch the network."
+        },
+        "network_checked": {
+          "type": "boolean",
+          "description": "True only when --check-network was given and the github_connectivity probe ran."
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["healthy", "degraded", "unhealthy", "unknown"],
+      "description": "The rolled-up verdict. Precedence: unhealthy > degraded > unknown > healthy."
+    },
+    "checks": {
+      "type": "array",
+      "description": "Per-check results, in evaluation order.",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "reason_code", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "metadata_consistency",
+              "operation_state",
+              "journal_integrity",
+              "tool_availability",
+              "scanner_health",
+              "report_freshness",
+              "ref_immutability",
+              "source_verification",
+              "managed_file_drift",
+              "package_manager_state",
+              "disk_space",
+              "write_permissions",
+              "time_sync",
+              "github_connectivity"
+            ],
+            "description": "Stable identifier of the individual health check."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "degraded", "unhealthy", "unknown", "skipped"],
+            "description": "The individual check's verdict. 'skipped' means not applicable / not configured / not requested and never contributes to the rollup."
+          },
+          "reason_code": {
+            "type": "string",
+            "enum": [
+              "metadata_ok",
+              "metadata_missing",
+              "metadata_invalid",
+              "operation_clean",
+              "operation_in_progress",
+              "operation_stale",
+              "operation_incomplete",
+              "operation_lock_torn",
+              "operation_completed_unreleased",
+              "operation_state_unknown",
+              "journal_ok",
+              "journal_absent",
+              "journal_tampered",
+              "journal_unverifiable",
+              "tools_ok",
+              "required_tool_missing",
+              "scanner_ok",
+              "scanner_db_stale",
+              "scanner_provenance_invalid",
+              "scanner_not_configured",
+              "report_fresh",
+              "report_stale",
+              "report_not_configured",
+              "ref_immutable",
+              "ref_moving",
+              "ref_unknown",
+              "ref_absent",
+              "source_verified",
+              "source_ref_mismatch",
+              "source_unverifiable",
+              "source_not_configured",
+              "managed_clean",
+              "managed_file_drift",
+              "managed_manifest_invalid",
+              "managed_not_configured",
+              "package_manager_ok",
+              "package_manager_unsupported",
+              "package_manager_ambiguous",
+              "package_manager_not_configured",
+              "disk_ok",
+              "disk_space_low",
+              "disk_space_unknown",
+              "write_ok",
+              "write_permission_denied",
+              "time_ok",
+              "time_skew_future",
+              "time_unknown",
+              "network_ok",
+              "network_unreachable",
+              "network_timeout",
+              "network_probe_invalid",
+              "network_not_requested"
+            ],
+            "description": "STABLE machine-consumable reason code for the check's verdict."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Short, REDACTED human-readable detail. Carries no secret and no absolute path."
+          }
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "The de-duplicated set of ACTIONABLE reason codes (from degraded/unhealthy/unknown checks only), in evaluation order. Empty when the target is healthy.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "metadata_missing",
+          "metadata_invalid",
+          "operation_in_progress",
+          "operation_stale",
+          "operation_incomplete",
+          "operation_lock_torn",
+          "operation_completed_unreleased",
+          "operation_state_unknown",
+          "journal_tampered",
+          "journal_unverifiable",
+          "required_tool_missing",
+          "scanner_db_stale",
+          "scanner_provenance_invalid",
+          "report_stale",
+          "ref_moving",
+          "ref_unknown",
+          "source_ref_mismatch",
+          "source_unverifiable",
+          "managed_file_drift",
+          "managed_manifest_invalid",
+          "package_manager_unsupported",
+          "package_manager_ambiguous",
+          "disk_space_low",
+          "disk_space_unknown",
+          "write_permission_denied",
+          "time_skew_future",
+          "network_unreachable",
+          "network_timeout",
+          "network_probe_invalid"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["healthy", "degraded", "unhealthy", "unknown", "skipped"],
+      "additionalProperties": false,
+      "description": "Per-status check counts.",
+      "properties": {
+        "healthy": { "type": "integer", "minimum": 0 },
+        "degraded": { "type": "integer", "minimum": 0 },
+        "unhealthy": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
