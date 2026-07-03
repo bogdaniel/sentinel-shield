@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/tool-provenance-audit.schema.json",
   "title": "Sentinel Shield tool-provenance audit report",
-  "description": "Machine report emitted by scripts/audits/tool-provenance-audit.sh. Records how each scanner tool is acquired (local binary, Docker image, or verified download) with resolved version / digest / platform, and verifies a checksum when one is declared. A non-empty 'violations' array (e.g. a checksum mismatch or a download declared without a checksum) means the gate failed closed.",
+  "description": "Machine report emitted by scripts/audits/tool-provenance-audit.sh. Records how each scanner tool is actually resolved for execution — a binary found on PATH, or a configured Docker image — with resolved version / path / digest / platform. For binaries it computes the SHA-256 of the PATH-resolved executable and verifies it against a declared expected checksum. For container images it records the configured reference and, where resolvable, the immutable @sha256 digest. A non-empty 'violations' array (a checksum mismatch, or an unverified image digest under --require-image-digest) means the gate failed closed.",
   "type": "object",
   "required": ["version", "generated_at", "tool", "platform", "status", "checked", "violation_count", "violations", "records"],
   "additionalProperties": false,
@@ -25,8 +25,8 @@
           "tool": { "type": "string", "description": "Tool key the violation concerns." },
           "check": {
             "type": "string",
-            "enum": ["checksum-mismatch", "missing-checksum"],
-            "description": "checksum-mismatch = resolved binary's SHA-256 != declared expected; missing-checksum = a download URL was declared with no expected SHA-256 (unverifiable acquisition)."
+            "enum": ["checksum-mismatch", "image-digest-unverified"],
+            "description": "checksum-mismatch = PATH-resolved binary's SHA-256 != declared expected; image-digest-unverified = a configured image resolved to no immutable @sha256 digest while --require-image-digest was set (fail closed)."
           },
           "message": { "type": "string", "description": "Human-readable explanation." }
         }
@@ -47,8 +47,8 @@
         "tool": { "type": "string", "description": "Tool key." },
         "source": {
           "type": "string",
-          "enum": ["local-binary", "docker-image", "download", "unresolved"],
-          "description": "How the tool was resolved. unresolved = neither a binary nor an image was found."
+          "enum": ["local-binary", "docker-image", "unresolved"],
+          "description": "How the tool was resolved for execution. local-binary = found on PATH; docker-image = a configured image reference; unresolved = neither a binary on PATH nor an image was found."
         },
         "resolved": { "type": "boolean", "description": "True unless source is unresolved." },
         "version": { "type": "string", "description": "Resolved tool version, or \"unknown\"." },
@@ -56,22 +56,23 @@
         "recorded_at": { "type": "string", "description": "ISO-8601 UTC capture timestamp." },
         "binary": {
           "type": ["object", "null"],
-          "description": "Present when a local binary (or download) was resolved.",
+          "description": "Present when a binary was resolved from PATH.",
           "additionalProperties": false,
           "properties": {
-            "path": { "type": ["string", "null"], "description": "Resolved binary path." },
-            "sha256": { "type": ["string", "null"], "description": "Computed SHA-256 of the binary." },
-            "expected_sha256": { "type": ["string", "null"], "description": "Declared expected SHA-256, if any." },
+            "path": { "type": ["string", "null"], "description": "Absolute path of the PATH-resolved executable (command -v)." },
+            "sha256": { "type": ["string", "null"], "description": "Computed SHA-256 of the PATH-resolved executable." },
+            "expected_sha256": { "type": ["string", "null"], "description": "Declared expected SHA-256 (SENTINEL_SHIELD_<T>_SHA256), if any." },
             "checksum_verified": { "type": ["boolean", "null"], "description": "true=verified match, false=mismatch, null=no expected checksum declared." }
           }
         },
         "image": {
           "type": ["object", "null"],
-          "description": "Present when a Docker image was resolved.",
+          "description": "Present when a Docker image was configured (source=docker-image).",
           "additionalProperties": false,
           "properties": {
-            "ref": { "type": ["string", "null"], "description": "Image reference (repo:tag or repo@sha256:...)." },
-            "digest": { "type": ["string", "null"], "description": "Resolved image digest (sha256:...), if inspectable." }
+            "configured_reference": { "type": ["string", "null"], "description": "The SENTINEL_SHIELD_<T>_IMAGE reference as configured (repo:tag or repo@sha256:...)." },
+            "resolved_digest": { "type": ["string", "null"], "description": "The immutable image digest (sha256:...) resolved from an @sha256 pin or `docker inspect` RepoDigests, if any." },
+            "verification_status": { "type": "string", "enum": ["verified", "unverified"], "description": "verified = an immutable digest was resolved; unverified = mutable-only provenance (no cryptographic proof)." }
           }
         },
         "vulnerability_db": {

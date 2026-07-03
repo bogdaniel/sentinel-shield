@@ -4,9 +4,10 @@
 # Exercises the v2 scanner-hardening surface:
 #   (A) checksum verification / reject-on-mismatch in scripts/lib/isolated-tools.sh
 #       (isolated_tool_verify_checksum, isolated_tool_fetch_verified).
-#   (B) scripts/audits/tool-provenance-audit.sh: records tool acquisition provenance
-#       and FAILS CLOSED on a checksum mismatch or an unverifiable (checksum-less)
-#       download; conforms to schemas/tool-provenance-audit.schema.json.
+#   (B) scripts/audits/tool-provenance-audit.sh: records how each tool is actually
+#       resolved for execution (PATH binary or configured image) and FAILS CLOSED on a
+#       checksum mismatch, or on an unverified image digest under --require-image-digest;
+#       conforms to schemas/tool-provenance-audit.schema.json.
 #   (C) the OSV and Grype collectors surface a `health` state
 #       (ok | findings | no-targets | scanner-error | parser-error) and a `provenance`
 #       object so an EMPTY report is distinguishable from a scanner that DID NOT RUN.
@@ -83,54 +84,78 @@ else
 	printf 'INFO: no curl/wget; skipping fetch_verified download path (verify path still covered)\n'
 fi
 
-# --- (B) tool-provenance-audit: reject checksum mismatch / missing checksum ---
+# --- (B) tool-provenance-audit: PATH-resolved checksum + image digest verification ---
 [ -x "$AUDIT" ] || fail "provenance audit not executable: $AUDIT"
 [ -f "$SCHEMA" ] && jq -e . "$SCHEMA" >/dev/null 2>&1 \
 	&& pass "provenance audit schema is present and jq-valid" \
 	|| fail "provenance audit schema missing or not jq-valid: $SCHEMA"
 
-FOOBIN="$WORK/foo-bin"
+# The audit resolves scanners from PATH only (command -v), matching the wrappers.
+# Place a fake executable on a temp bin dir prepended to PATH and exercise the
+# PATH-resolved checksum verify / mismatch over that exact file.
+FAKEBIN="$WORK/bin"; mkdir -p "$FAKEBIN"
+FOOBIN="$FAKEBIN/foo"
 printf '#!/bin/sh\necho "foo 1.2.3"\n' > "$FOOBIN"
 chmod +x "$FOOBIN"
 FOOSHA=$(sh "$HELPER" isolated_tool_sha256 "$FOOBIN" 2>/dev/null || true)
 
-# B1: mismatch -> fail closed with a checksum-mismatch violation.
+# B1: PATH-resolved binary, wrong checksum -> fail closed with a checksum-mismatch violation.
 O1="$WORK/prov-mismatch.json"
-if SENTINEL_SHIELD_FOO_BINARY="$FOOBIN" SENTINEL_SHIELD_FOO_SHA256="$WRONGSHA" \
+if PATH="$FAKEBIN:$PATH" SENTINEL_SHIELD_FOO_SHA256="$WRONGSHA" \
 	sh "$AUDIT" --output "$O1" foo >/dev/null 2>&1; then
 	fail "provenance audit exited 0 on a checksum mismatch (should fail closed)"
 else
 	if [ "$(jq -r '.status' "$O1" 2>/dev/null)" = "fail" ] \
 		&& [ "$(jq -r '[.violations[].check]|unique|join(",")' "$O1")" = "checksum-mismatch" ] \
 		&& [ "$(jq -r '.records[0].source' "$O1")" = "local-binary" ] \
+		&& [ "$(jq -r '.records[0].binary.path' "$O1")" = "$FOOBIN" ] \
 		&& [ "$(jq -r '.records[0].binary.checksum_verified' "$O1")" = "false" ]; then
-		pass "provenance audit fails closed on checksum-mismatch (record marks verified=false)"
+		pass "provenance audit fails closed on checksum-mismatch of the PATH-resolved binary (verified=false)"
 	else
 		fail "provenance audit mismatch report malformed: $(jq -c '{status,violations,r:.records[0].binary}' "$O1" 2>/dev/null || echo '?')"
 	fi
 fi
 
-# B2: correct checksum -> pass, verified=true.
+# B2: PATH-resolved binary, correct checksum -> pass, verified=true, path recorded.
 O2="$WORK/prov-ok.json"
-if [ -n "$FOOSHA" ] && SENTINEL_SHIELD_FOO_BINARY="$FOOBIN" SENTINEL_SHIELD_FOO_SHA256="$FOOSHA" \
+if [ -n "$FOOSHA" ] && PATH="$FAKEBIN:$PATH" SENTINEL_SHIELD_FOO_SHA256="$FOOSHA" \
 	sh "$AUDIT" --output "$O2" foo >/dev/null 2>&1; then
 	[ "$(jq -r '.status' "$O2")" = "pass" ] \
+		&& [ "$(jq -r '.records[0].binary.path' "$O2")" = "$FOOBIN" ] \
 		&& [ "$(jq -r '.records[0].binary.checksum_verified' "$O2")" = "true" ] \
-		&& pass "provenance audit passes with a matching checksum (verified=true)" \
+		&& pass "provenance audit passes with a matching checksum on the PATH-resolved binary (verified=true)" \
 		|| fail "provenance audit ok-case report malformed: $(jq -c '{status,r:.records[0].binary}' "$O2")"
 else
 	fail "provenance audit exited non-zero with a matching checksum"
 fi
 
-# B3: download URL with NO checksum -> missing-checksum violation (fail closed).
-O3="$WORK/prov-missing.json"
-if SENTINEL_SHIELD_BAR_URL="file://$ART" sh "$AUDIT" --output "$O3" bar >/dev/null 2>&1; then
-	fail "provenance audit exited 0 for a checksum-less download (should fail closed)"
+# B3: configured image with no immutable digest -> unverified, but NO violation by default.
+# 'zzz-scanner' is not on PATH, so the audit takes the docker-image branch; a plain
+# repo:tag with no @sha256 (and no matching local image) resolves to no digest.
+O3="$WORK/prov-image-default.json"
+if SENTINEL_SHIELD_ZZZ_SCANNER_IMAGE="example.invalid/zzz-scanner:latest" \
+	sh "$AUDIT" --output "$O3" zzz-scanner >/dev/null 2>&1; then
+	[ "$(jq -r '.status' "$O3")" = "pass" ] \
+		&& [ "$(jq -r '.records[0].source' "$O3")" = "docker-image" ] \
+		&& [ "$(jq -r '.records[0].image.configured_reference' "$O3")" = "example.invalid/zzz-scanner:latest" ] \
+		&& [ "$(jq -r '.records[0].image.verification_status' "$O3")" = "unverified" ] \
+		&& pass "provenance audit records an unverified image digest without failing by default" \
+		|| fail "provenance audit image default-case malformed: $(jq -c '{status,r:.records[0].image}' "$O3")"
 else
-	[ "$(jq -r '[.violations[].check]|unique|join(",")' "$O3")" = "missing-checksum" ] \
-		&& [ "$(jq -r '.records[0].source' "$O3")" = "download" ] \
-		&& pass "provenance audit fails closed on a checksum-less download (missing-checksum)" \
-		|| fail "provenance audit missing-checksum report malformed: $(jq -c '{v:.violations,s:.records[0].source}' "$O3")"
+	fail "provenance audit failed on an unverified image with no --require-image-digest (should not fail)"
+fi
+
+# B3b: same unverified image + --require-image-digest -> fail closed (image-digest-unverified).
+O3B="$WORK/prov-image-required.json"
+if SENTINEL_SHIELD_ZZZ_SCANNER_IMAGE="example.invalid/zzz-scanner:latest" \
+	sh "$AUDIT" --require-image-digest --output "$O3B" zzz-scanner >/dev/null 2>&1; then
+	fail "provenance audit exited 0 for an unverified image under --require-image-digest (should fail closed)"
+else
+	[ "$(jq -r '.status' "$O3B")" = "fail" ] \
+		&& [ "$(jq -r '[.violations[].check]|unique|join(",")' "$O3B")" = "image-digest-unverified" ] \
+		&& [ "$(jq -r '.records[0].image.verification_status' "$O3B")" = "unverified" ] \
+		&& pass "provenance audit fails closed on an unverified image under --require-image-digest" \
+		|| fail "provenance audit image required-case malformed: $(jq -c '{status,v:.violations,r:.records[0].image}' "$O3B")"
 fi
 
 # B4: unresolved tool -> recorded, no violation.

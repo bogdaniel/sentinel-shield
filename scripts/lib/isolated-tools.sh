@@ -275,7 +275,13 @@ isolated_tool_fetch_verified() {
 # Emit ONE provenance record (JSON object) on stdout, conforming to the record shape
 # in schemas/tool-provenance-audit.schema.json. Empty positional values become JSON
 # null; <checksum_verified> accepts "true"|"false" (anything else -> null); <source>
-# is one of local-binary|docker-image|download|unresolved. Requires jq.
+# is one of local-binary|docker-image|unresolved. Requires jq.
+#
+# The image object records what the container path actually resolved:
+#   configured_reference — the SENTINEL_SHIELD_<T>_IMAGE reference as configured;
+#   resolved_digest      — the immutable @sha256 digest, when one could be resolved;
+#   verification_status  — "verified" when an immutable digest was resolved, else
+#                          "unverified" (mutable-only provenance, no cryptographic proof).
 isolated_tool_provenance_record() {
 	command_exists jq || { log_warn "isolated_tool_provenance_record: jq unavailable; no provenance emitted"; return 1; }
 	jq -n \
@@ -304,7 +310,8 @@ isolated_tool_provenance_record() {
 				{ path: nn($bpath), sha256: nn($bsha),
 				  expected_sha256: nn($esha), checksum_verified: nb($cv) } end),
 			image: (if $iref == "" and $idigest == "" then null else
-				{ ref: nn($iref), digest: nn($idigest) } end),
+				{ configured_reference: nn($iref), resolved_digest: nn($idigest),
+				  verification_status: (if $idigest == "" then "unverified" else "verified" end) } end),
 			vulnerability_db: { timestamp: nn($db) }
 		}'
 }
