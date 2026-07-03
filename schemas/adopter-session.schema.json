@@ -2,15 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/adopter-session.schema.json",
   "title": "Sentinel Shield external-adopter session record",
-  "description": "Evidence produced by tests/adopter/black-box-install.sh: a machine-readable transcript of a first-time external adopter driving the DOCUMENTED install flow (acquire -> verify -> dry-run -> install -> doctor -> local pipeline) from an empty workspace, using only git + curl + documented prerequisites and only published docs (README.md, docs/ai-assisted-install.md). Every command, exit code, elapsed time, generated file and user-facing message is recorded. It carries NO secrets and NO absolute local paths (HOME relativized to '~', the workspace root to '<workspace>', the target to '<target>'). A non-empty undocumented_requirements[] means the flow required an env var or path NOT in the published docs, which is a usability failure (result=fail).",
+  "description": "Evidence produced by tests/adopter/black-box-install.sh: a machine-readable transcript of a first-time external adopter driving the DOCUMENTED install flow (acquire -> verify -> dry-run -> install -> doctor -> local pipeline) from an empty workspace. Determinism comes from OBSERVABLE, CONSTRAINED execution: every engine command runs under a minimal allowlisted environment (env -i with only PATH/HOME/TMPDIR plus the documented SENTINEL_SHIELD_REF/SENTINEL_SHIELD_PATH when set) with stdin from /dev/null, so any undocumented prerequisite or interactive prompt manifests as a FAILED step. Every command, exit code, elapsed time, generated file and user-facing message is recorded. It carries NO secrets and NO absolute local paths (HOME relativized to '~', the workspace root to '<workspace>', the target to '<target>'). result=pass only when every required step succeeded under the constrained environment.",
   "type": "object",
   "required": [
     "schema_version",
     "harness",
     "started_at",
     "finished_at",
+    "documented_environment",
+    "injected_inputs",
+    "unexpected_prompt",
     "steps",
-    "undocumented_requirements",
     "result"
   ],
   "additionalProperties": false,
@@ -100,15 +102,24 @@
         }
       }
     },
-    "undocumented_requirements": {
+    "documented_environment": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Env vars or paths the flow REQUIRED that are NOT in the published docs. Non-empty => usability failure."
+      "description": "The environment allowlist applied to every engine command (env -i base PATH/HOME/TMPDIR plus the documented SENTINEL_SHIELD_REF/SENTINEL_SHIELD_PATH when set). Any other variable was absent."
+    },
+    "injected_inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Inputs the harness fed to engine commands' stdin. Empty: stdin is /dev/null, so no answers are supplied and a blocking read gets EOF and fails."
+    },
+    "unexpected_prompt": {
+      "type": "boolean",
+      "description": "true if an engine command tried to prompt interactively (observed on a failing step whose stdin was /dev/null); false otherwise."
     },
     "result": {
       "type": "string",
       "enum": ["pass", "fail"],
-      "description": "pass only when every required step is ok (or an explicitly-reasoned skip) and undocumented_requirements is empty."
+      "description": "pass only when every required step is ok (or an explicitly-reasoned skip) under the constrained environment; fail when any required step failed."
     }
   }
 }

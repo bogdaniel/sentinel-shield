@@ -12,20 +12,30 @@
 # recorded into a machine-readable session JSON conforming to
 # schemas/adopter-session.schema.json.
 #
-# RULES (a black box, honestly):
-#   * Only DOCUMENTED interfaces are used: the published flags and the two
-#     documented env vars SENTINEL_SHIELD_REF and SENTINEL_SHIELD_PATH. If the flow
-#     ever REQUIRES an undocumented env var or an internal path, it is recorded in
-#     undocumented_requirements[] and the session FAILS.
+# RULES (a black box, honestly — via OBSERVABLE, CONSTRAINED execution):
+#   * CONSTRAINED ENVIRONMENT. Every engine command runs under a MINIMAL ALLOWLISTED
+#     environment (`env -i` with only PATH, HOME, TMPDIR) PLUS the two DOCUMENTED env
+#     vars SENTINEL_SHIELD_REF / SENTINEL_SHIELD_PATH when they are set. Any other
+#     (undocumented) SENTINEL_SHIELD_* variable is therefore absent. If the flow needs
+#     a hidden prerequisite, the step FAILS and the session fails — the failing step
+#     and reason are recorded. This is deterministic; it does not scan output.
+#   * NO INTERACTIVE PROMPTS. Engine commands run with stdin from /dev/null, so a
+#     blocking `read` gets EOF and FAILS rather than hanging. injected_inputs stays
+#     empty (the harness feeds no answers) and unexpected_prompt records whether a
+#     prompt manifested.
+#   * A documented flow PASSES only when it completes using the declared prerequisites,
+#     documented inputs, and documented env vars — observed by step success under the
+#     constrained environment.
 #   * Offline-safe: the engine is acquired via the DOCUMENTED `--repository <path>`
 #     form (a local checkout) using the current HEAD commit as the immutable `--ref`,
 #     so no network is needed. A genuinely network-only step (e.g. cloning from
 #     GitHub) is SKIPPED with an explicit reason when offline — a skip is NOT a pass.
-#   * The session record carries NO secrets and NO absolute local paths.
+#   * The session record carries NO secrets and NO absolute local paths, and records
+#     the environment allowlist (documented_environment).
 #
 # Standalone: `sh tests/adopter/black-box-install.sh [--session-out <path>]`.
-# Exit: 0 when result=pass; 1 when result=fail (a required step failed or an
-# undocumented requirement was hit); 2 on harness misuse / missing hard prereq.
+# Exit: 0 when result=pass; 1 when result=fail (a required step failed under the
+# constrained environment); 2 on harness misuse / missing hard prereq.
 set -eu
 
 HARNESS_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -53,9 +63,39 @@ trap 'rm -rf "$WORK"' EXIT INT TERM
 
 STEPS="$WORK/steps.jsonl"                # one JSON step object per line
 : > "$STEPS"
-UNDOCUMENTED="$WORK/undocumented.txt"    # one undocumented requirement per line
-: > "$UNDOCUMENTED"
+UNEXPECTED_PROMPT=false                  # set true if an engine command tried to prompt
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# run_constrained <cmd> [args...] — run an engine command under a MINIMAL ALLOWLISTED
+# environment: env -i wipes the environment, then only PATH/HOME/TMPDIR are re-added,
+# PLUS the two DOCUMENTED env vars SENTINEL_SHIELD_REF / SENTINEL_SHIELD_PATH when set.
+# Every other (undocumented) SENTINEL_SHIELD_* variable is thereby absent. stdin is
+# /dev/null so any blocking interactive read gets EOF and fails rather than hangs.
+run_constrained() {
+	if [ -n "${SENTINEL_SHIELD_REF:-}" ] && [ -n "${SENTINEL_SHIELD_PATH:-}" ]; then
+		env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" \
+			SENTINEL_SHIELD_REF="$SENTINEL_SHIELD_REF" SENTINEL_SHIELD_PATH="$SENTINEL_SHIELD_PATH" \
+			"$@" </dev/null
+	elif [ -n "${SENTINEL_SHIELD_REF:-}" ]; then
+		env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" \
+			SENTINEL_SHIELD_REF="$SENTINEL_SHIELD_REF" "$@" </dev/null
+	elif [ -n "${SENTINEL_SHIELD_PATH:-}" ]; then
+		env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" \
+			SENTINEL_SHIELD_PATH="$SENTINEL_SHIELD_PATH" "$@" </dev/null
+	else
+		env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" "$@" </dev/null
+	fi
+}
+
+# detect_prompt <output> — set UNEXPECTED_PROMPT=true if a FAILED step's output shows
+# an interactive prompt marker (it blocked on stdin, which was /dev/null). Only called
+# on failing steps, so normal informational output cannot yield a false positive.
+detect_prompt() {
+	case "$1" in
+		*'[y/N]'* | *'[Y/n]'* | *'(y/n)'* | *'Password:'* | *'password:'* | *'Are you sure'*)
+			UNEXPECTED_PROMPT=true ;;
+	esac
+}
 
 # redact — read STDIN, strip absolute local paths + secret shapes. WORKSPACE first,
 # then the engine source, then HOME; then mask common secret shapes.
@@ -85,8 +125,6 @@ record_step() {
 		>> "$STEPS"
 }
 
-note_undocumented() { printf '%s\n' "$1" >> "$UNDOCUMENTED"; }
-
 # --- prerequisites (documented: git + curl + jq + POSIX sh) ----------------------
 GIT_OK=0; command -v git >/dev/null 2>&1 && GIT_OK=1
 CURL_OK=0; command -v curl >/dev/null 2>&1 && CURL_OK=1
@@ -110,7 +148,7 @@ RESOLVED_COMMIT=""
 if [ "$GIT_OK" = 1 ] && [ -n "$REF" ]; then
 	_t0=$(date +%s)
 	_acq_rc=0
-	_acq_out=$(sh "$REPO_ROOT/scripts/acquire-sentinel-shield.sh" \
+	_acq_out=$(run_constrained sh "$REPO_ROOT/scripts/acquire-sentinel-shield.sh" \
 		--repository "$REPO_ROOT" --ref "$REF" --destination "$ENGINE_DEST" --verify 2>&1) || _acq_rc=$?
 	_t1=$(date +%s)
 	if [ "$_acq_rc" = 0 ] && [ -f "$ENGINE_DEST/scripts/doctor.sh" ]; then
@@ -120,9 +158,10 @@ if [ "$GIT_OK" = 1 ] && [ -n "$REF" ]; then
 			"sh scripts/acquire-sentinel-shield.sh --repository <engine-src> --ref $REF --destination <workspace>/engine --verify" \
 			"$_acq_rc" "$((_t1 - _t0))" ok "engine acquired to an immutable checkout (offline, local --repository path)"
 	else
+		detect_prompt "$_acq_out"
 		record_step acquire \
 			"sh scripts/acquire-sentinel-shield.sh --repository <engine-src> --ref $REF --destination <workspace>/engine --verify" \
-			"$_acq_rc" "$((_t1 - _t0))" fail "acquire did not produce a usable checkout (rc=$_acq_rc)"
+			"$_acq_rc" "$((_t1 - _t0))" fail "acquire did not produce a usable checkout (rc=$_acq_rc): $(printf '%s\n' "$_acq_out" | tail -n1)"
 	fi
 else
 	record_step acquire \
@@ -163,12 +202,13 @@ INSTALL_BEFORE="$WORK/before.list"; INSTALL_AFTER="$WORK/after.list"
 
 # --- step: dry-run install (no --apply) ------------------------------------------
 _t0=$(date +%s); _rc=0
-_out=$(sh "$ENGINE/scripts/install-baseline.sh" --target "$TARGET" --profile laravel 2>&1) || _rc=$?
+_out=$(run_constrained sh "$ENGINE/scripts/install-baseline.sh" --target "$TARGET" --profile laravel 2>&1) || _rc=$?
 _t1=$(date +%s)
 if [ "$_rc" = 0 ]; then
 	record_step dry-run "sh scripts/install-baseline.sh --target <target> --profile laravel" 0 "$((_t1 - _t0))" ok \
 		"dry-run plan produced; nothing written"
 else
+	detect_prompt "$_out"
 	record_step dry-run "sh scripts/install-baseline.sh --target <target> --profile laravel" "$_rc" "$((_t1 - _t0))" fail \
 		"dry-run exited non-zero (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)"
 fi
@@ -176,7 +216,7 @@ fi
 # --- step: install (--apply); capture generated files ----------------------------
 find "$TARGET" -type f 2>/dev/null | sort > "$INSTALL_BEFORE"
 _t0=$(date +%s); _rc=0
-_out=$(sh "$ENGINE/scripts/install-baseline.sh" --target "$TARGET" --profile laravel --apply 2>&1) || _rc=$?
+_out=$(run_constrained sh "$ENGINE/scripts/install-baseline.sh" --target "$TARGET" --profile laravel --apply 2>&1) || _rc=$?
 _t1=$(date +%s)
 find "$TARGET" -type f 2>/dev/null | sort > "$INSTALL_AFTER"
 _gen=$(comm -13 "$INSTALL_BEFORE" "$INSTALL_AFTER" 2>/dev/null | sed "s#^${TARGET}#<target>#" | jq -R -s 'split("\n") | map(select(length > 0))')
@@ -184,13 +224,14 @@ if [ "$_rc" = 0 ]; then
 	record_step install "sh scripts/install-baseline.sh --target <target> --profile laravel --apply" 0 "$((_t1 - _t0))" ok \
 		"baseline installed" "$_gen"
 else
+	detect_prompt "$_out"
 	record_step install "sh scripts/install-baseline.sh --target <target> --profile laravel --apply" "$_rc" "$((_t1 - _t0))" fail \
 		"install --apply exited non-zero (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)" "$_gen"
 fi
 
 # --- step: doctor (preflight) ----------------------------------------------------
 _t0=$(date +%s); _rc=0
-_out=$(sh "$ENGINE/scripts/doctor.sh" --target "$TARGET" 2>&1) || _rc=$?
+_out=$(run_constrained sh "$ENGINE/scripts/doctor.sh" --target "$TARGET" 2>&1) || _rc=$?
 _t1=$(date +%s)
 # doctor: 0 healthy, 1 warnings-only, and 3 (profile-required scanners not yet
 # provisioned) are all HONEST outcomes for a bare adopter who has not run
@@ -199,7 +240,7 @@ case "$_rc" in
 	0) record_step doctor "sh scripts/doctor.sh --target <target>" 0 "$((_t1 - _t0))" ok "preflight ran (exit 0: healthy)" ;;
 	1) record_step doctor "sh scripts/doctor.sh --target <target>" 1 "$((_t1 - _t0))" ok "preflight ran (exit 1: warnings-only)" ;;
 	3) record_step doctor "sh scripts/doctor.sh --target <target>" 3 "$((_t1 - _t0))" ok "preflight ran (exit 3: profile-required scanner(s) not yet provisioned — expected before bootstrap-profile-tools)" ;;
-	*) record_step doctor "sh scripts/doctor.sh --target <target>" "$_rc" "$((_t1 - _t0))" fail "doctor reported a blocking config/exec condition (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)" ;;
+	*) detect_prompt "$_out"; record_step doctor "sh scripts/doctor.sh --target <target>" "$_rc" "$((_t1 - _t0))" fail "doctor reported a blocking config/exec condition (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)" ;;
 esac
 
 # --- step: local pipeline --------------------------------------------------------
@@ -207,24 +248,30 @@ esac
 # outcome for a bare adopter; a passed/failed gate (0/1) is also acceptable. Only a
 # config error (2) or execution error (4) is a genuine flow failure.
 _t0=$(date +%s); _rc=0
-_out=$(sh "$ENGINE/scripts/run-local-pipeline.sh" --profile laravel --target "$TARGET" --stage pr 2>&1) || _rc=$?
+_out=$(run_constrained sh "$ENGINE/scripts/run-local-pipeline.sh" --profile laravel --target "$TARGET" --stage pr 2>&1) || _rc=$?
 _t1=$(date +%s)
 case "$_rc" in
 	0) record_step local-pipeline "sh scripts/run-local-pipeline.sh --profile laravel --target <target> --stage pr" 0 "$((_t1 - _t0))" ok "gate passed" ;;
 	1) record_step local-pipeline "sh scripts/run-local-pipeline.sh --profile laravel --target <target> --stage pr" 1 "$((_t1 - _t0))" ok "gate ran; findings blocked the build (honest)" ;;
 	3) record_step local-pipeline "sh scripts/run-local-pipeline.sh --profile laravel --target <target> --stage pr" 3 "$((_t1 - _t0))" ok "required tool/one-of group unavailable (honest exit 3 — expected for a bare adopter)" ;;
-	*) record_step local-pipeline "sh scripts/run-local-pipeline.sh --profile laravel --target <target> --stage pr" "$_rc" "$((_t1 - _t0))" fail "pipeline hit a config/execution problem (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)" ;;
+	*) detect_prompt "$_out"; record_step local-pipeline "sh scripts/run-local-pipeline.sh --profile laravel --target <target> --stage pr" "$_rc" "$((_t1 - _t0))" fail "pipeline hit a config/execution problem (rc=$_rc): $(printf '%s\n' "$_out" | tail -n1)" ;;
 esac
 
 # --- assemble the session record -------------------------------------------------
 FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 STEPS_JSON=$(jq -s '.' "$STEPS")
-UNDOC_JSON=$(sed '/^$/d' "$UNDOCUMENTED" | jq -R -s 'split("\n") | map(select(length > 0))')
 
-# result=pass only when NO step failed AND no undocumented requirement was hit.
+# The environment allowlist actually applied to every engine command (env -i base
+# plus the documented SENTINEL_SHIELD_* vars only when they were set).
+_env_list="PATH HOME TMPDIR"
+[ -n "${SENTINEL_SHIELD_REF:-}" ] && _env_list="$_env_list SENTINEL_SHIELD_REF"
+[ -n "${SENTINEL_SHIELD_PATH:-}" ] && _env_list="$_env_list SENTINEL_SHIELD_PATH"
+# shellcheck disable=SC2086
+DOC_ENV_JSON=$(printf '%s\n' $_env_list | jq -R -s 'split("\n") | map(select(length > 0))')
+
+# result=pass only when NO step failed under the constrained environment.
 _any_fail=$(printf '%s' "$STEPS_JSON" | jq '[.[] | select(.status == "fail")] | length')
-_undoc_n=$(printf '%s' "$UNDOC_JSON" | jq 'length')
-if [ "$_any_fail" = 0 ] && [ "$_undoc_n" = 0 ]; then RESULT=pass; else RESULT=fail; fi
+if [ "$_any_fail" = 0 ]; then RESULT=pass; else RESULT=fail; fi
 
 jq -n \
 	--arg schema_version "1" \
@@ -236,7 +283,8 @@ jq -n \
 	--arg ref "$REF" \
 	--arg resolved_commit "$RESOLVED_COMMIT" \
 	--argjson steps "$STEPS_JSON" \
-	--argjson undocumented_requirements "$UNDOC_JSON" \
+	--argjson documented_environment "$DOC_ENV_JSON" \
+	--argjson unexpected_prompt "$UNEXPECTED_PROMPT" \
 	--arg result "$RESULT" \
 	'{
 		schema_version: $schema_version,
@@ -249,15 +297,17 @@ jq -n \
 			env_vars: ["SENTINEL_SHIELD_REF", "SENTINEL_SHIELD_PATH"],
 			docs: ["README.md", "docs/ai-assisted-install.md"]
 		},
+		documented_environment: $documented_environment,
+		injected_inputs: [],
+		unexpected_prompt: $unexpected_prompt,
 		steps: $steps,
-		undocumented_requirements: $undocumented_requirements,
 		result: $result
 	}' > "$SESSION_OUT"
 
 # Echo the session to stdout (machine-readable) and a short human summary to stderr.
 cat "$SESSION_OUT"
-printf '\nblack-box-install: result=%s (%s step(s) failed, %s undocumented requirement(s))\n' \
-	"$RESULT" "$_any_fail" "$_undoc_n" >&2
+printf '\nblack-box-install: result=%s (%s step(s) failed; env allowlist: %s; unexpected_prompt=%s)\n' \
+	"$RESULT" "$_any_fail" "$_env_list" "$UNEXPECTED_PROMPT" >&2
 printf 'black-box-install: session written to %s\n' "$SESSION_OUT" >&2
 
 [ "$RESULT" = pass ] && exit 0

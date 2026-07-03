@@ -1,13 +1,15 @@
 # External-adopter validation (black-box install harness)
 
-`tests/adopter/black-box-install.sh` proves that a **first-time external adopter**
-can install and run Sentinel Shield using **only** the published documentation
-([`README.md`](../README.md), [`docs/ai-assisted-install.md`](ai-assisted-install.md))
-and the documented prerequisites — with **no internal knowledge** of the engine,
-no undocumented environment variables, and no private paths.
+`tests/adopter/black-box-install.sh` exercises the **documented install flow** as a
+**first-time external adopter** would: from an empty workspace, using the documented
+prerequisites and the published documentation
+([`README.md`](../README.md), [`docs/ai-assisted-install.md`](ai-assisted-install.md)).
 
-It is a black box: it drives the documented flow and records what actually
-happened, rather than asserting how the internals work.
+It is a black box: it drives the documented flow and records what actually happened,
+rather than asserting how the internals work. Its determinism comes from **observable,
+constrained execution** — every engine command runs under a minimal allowlisted
+environment with stdin closed, so a hidden prerequisite or an interactive prompt
+surfaces as a **failed step** rather than a silent pass or a hang.
 
 ## What it does
 
@@ -29,17 +31,23 @@ sh tests/adopter/black-box-install.sh                 # session -> stdout + a te
 sh tests/adopter/black-box-install.sh --session-out session.json
 ```
 
-Exit code: `0` when `result=pass`, `1` when a required step failed or an
-undocumented requirement was hit, `2` on harness misuse / a missing hard
-prerequisite.
+Exit code: `0` when `result=pass`, `1` when a required step failed under the
+constrained environment, `2` on harness misuse / a missing hard prerequisite.
 
 ## Rules it enforces
 
-- **Documented interfaces only.** The flow uses published flags and the two
-  documented env vars `SENTINEL_SHIELD_REF` and `SENTINEL_SHIELD_PATH`. If any
-  step ever *requires* an undocumented env var or an internal path, it is
-  recorded in `undocumented_requirements[]` and the session **fails**. A green
-  run therefore evidences that the documented surface is sufficient.
+- **Constrained environment (deterministic).** Every engine command runs under a
+  minimal allowlisted environment via `env -i` — only `PATH`, `HOME`, `TMPDIR`,
+  plus the two documented env vars `SENTINEL_SHIELD_REF` and `SENTINEL_SHIELD_PATH`
+  when set. Every other (undocumented) `SENTINEL_SHIELD_*` variable is therefore
+  absent, so if a step depends on a hidden prerequisite it **fails** (recorded with
+  the failing step and reason). The allowlist actually applied is recorded in
+  `documented_environment`. This is a deterministic, observable check — it does
+  **not** scan command output for variable names.
+- **No interactive prompts.** Engine commands run with stdin from `/dev/null`, so a
+  blocking `read` gets EOF and **fails** rather than hanging. `injected_inputs` stays
+  empty (the harness feeds no answers) and `unexpected_prompt` records whether a
+  prompt manifested.
 - **Offline-safe, but a skip is not a pass.** The engine is acquired via the
   documented `--repository <path>` form (a local checkout) using the current
   `HEAD` commit as the immutable `--ref`, so no network is needed. A genuinely
@@ -58,21 +66,24 @@ prerequisite.
 
 Top level: `schema_version`, `harness`, `started_at`, `finished_at`, `workspace`,
 `engine_source`, `documented_inputs` (the env vars and docs the flow was allowed
-to use), `steps[]`, `undocumented_requirements[]`, and `result` (`pass`/`fail`).
+to use), `documented_environment[]` (the environment allowlist applied to every
+engine command), `injected_inputs[]` (empty — stdin is `/dev/null`),
+`unexpected_prompt` (boolean), `steps[]`, and `result` (`pass`/`fail`).
 
 Each step: `step`, `command` (redacted), `exit_code`, `elapsed_seconds`,
 `status` (`ok`/`skip`/`fail`), `message` (redacted; a skip carries an explicit
 reason), and `generated_files[]` (redacted).
 
-`result` is `pass` only when **no step failed** and
-`undocumented_requirements[]` is **empty**.
+`result` is `pass` only when **no required step failed** under the constrained
+environment.
 
 ## Interpreting results
 
-- `result: pass` — the documented flow was sufficient end to end.
-- A `fail` step with a non-empty `undocumented_requirements[]` — the docs are
-  missing something an adopter needed; fix the docs (or the default), not the
-  harness.
+- `result: pass` — the documented flow completed end to end under the constrained
+  environment (allowlisted env, stdin closed).
+- A `fail` step — the recorded step and reason show where the flow broke. Because the
+  environment was constrained to the documented allowlist, a break may mean a hidden
+  prerequisite; fix the docs (or the default), not the harness.
 - A `skip` step — read its `message`; the reason is always explicit. Network
   skips are expected offline; they are not evidence of success.
 
