@@ -24,6 +24,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/filesystem-safety.sh
+. "$SCRIPT_DIR/lib/filesystem-safety.sh"
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 usage() {
@@ -62,6 +64,13 @@ jq -e . "$EVIDENCE" >/dev/null 2>&1 || { log_error "evidence is not valid JSON: 
 if [ -n "$ARTIFACTS" ]; then
 	[ -f "$ARTIFACTS" ] || { log_error "artifacts report not found: $ARTIFACTS"; exit 2; }
 	jq -e . "$ARTIFACTS" >/dev/null 2>&1 || { log_error "artifacts report is not valid JSON: $ARTIFACTS"; exit 2; }
+fi
+# Output-destination trust boundary: a generated manifest (release evidence) must NEVER be
+# written THROUGH a symlink or onto a device/FIFO/socket — a swapped --output could redirect
+# release evidence outside the repository or block on a special file. Fail closed BEFORE any work.
+if [ -n "$OUTPUT" ]; then
+	_od=$(fs_assert_not_symlink "$OUTPUT") || { log_error "refusing to write the manifest to '$OUTPUT' ($_od): destination is a symlink"; exit 2; }
+	_od=$(fs_assert_no_special "$OUTPUT") || { log_error "refusing to write the manifest to '$OUTPUT' ($_od): destination is a device/FIFO/socket"; exit 2; }
 fi
 
 # --- resolve core identity ---------------------------------------------------

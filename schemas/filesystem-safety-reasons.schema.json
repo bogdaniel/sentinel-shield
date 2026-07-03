@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/filesystem-safety-reasons.schema.json",
+  "title": "Sentinel Shield filesystem-safety reason codes",
+  "description": "The CLOSED, STABLE catalog of reason tokens emitted by scripts/lib/filesystem-safety.sh when a filesystem trust-boundary check fails closed. Each token is a machine-stable discriminator a caller may surface in a diagnostic, journal, or JSON record. The library function fs_reason_codes prints exactly this set (one per line); tests/prod/252-filesystem-boundaries.sh cross-checks the two so the enum can never drift from the code. Contains NO secrets and NO paths.",
+  "type": "object",
+  "required": ["schema", "reason_codes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "filesystem-safety-reasons",
+      "description": "Fixed discriminator for this catalog shape."
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The complete, closed set of stable reason tokens the library can emit.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "FS_INVALID_PATH",
+          "FS_PATH_TOO_LONG",
+          "FS_NAME_TOO_LONG",
+          "FS_ROOT_SYMLINK",
+          "FS_ROOT_NOT_DIR",
+          "FS_SYMLINK_COMPONENT",
+          "FS_ESCAPES_ROOT",
+          "FS_IS_SYMLINK",
+          "FS_NOT_REGULAR",
+          "FS_SPECIAL_FILE",
+          "FS_UNEXPECTED_HARDLINK",
+          "FS_GROUP_WORLD_WRITABLE",
+          "FS_OWNER_MISMATCH",
+          "FS_CASE_COLLISION",
+          "FS_PATH_COLLISION",
+          "FS_TEMP_OUTSIDE_ROOT",
+          "FS_REFUSE_DELETE",
+          "FS_RACE_DETECTED",
+          "FS_MKDIR_FAILED",
+          "FS_WRITE_FAILED",
+          "FS_MODE_FAILED"
+        ]
+      }
+    }
+  }
+}

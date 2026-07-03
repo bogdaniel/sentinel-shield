@@ -204,6 +204,18 @@ the fields are unaffected. A `tree-record` fingerprint is never reported as "ver
 > signature` **fails closed** by design rather than reporting a false pass — that is a genuine
 > "cannot verify", not a success.
 
+## Filesystem trust boundaries during recovery
+
+Recovery re-validates every path it touches (the lock, the journal, each snapshot, and each
+managed file it restores or removes) for **physical containment** — no symlinked parent, no
+`..`/absolute escape, regular-file-only, bounded length — before mutating it, and it never
+follows a symlink planted between validation and use. This is the same fail-closed invariant
+that `scripts/lib/filesystem-safety.sh` states for the rest of the codebase; see
+`docs/security-model.md` for the full set of guarantees and the stable reason codes
+(`schemas/filesystem-safety-reasons.schema.json`). A recursive cleanup during recovery is
+restricted to the operation-owned snapshot/temp dirs — it refuses `/`, `$HOME`, the repo root,
+an empty argument, or any unowned directory.
+
 ## Exit codes (mutating scripts)
 
 | code | meaning |

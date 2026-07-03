@@ -145,8 +145,12 @@ verify_one_artifact() {
 			_reasons="$_reasons download-failed"; _archive_safe=false
 		else
 			_sha=$(ss_sha256_file "$_zip" || printf '')
-			# Pre-extraction safety scan.
+			# Pre-extraction safety scan (path traversal, symlinks, dupes, zip-bomb) PLUS a
+			# case-fold collision scan: two entries differing only by case would silently
+			# clobber each other on a case-insensitive extraction filesystem.
 			_scan=$(archive_safety_scan "$_zip" "$MAX_BYTES" "$MAX_ENTRIES")
+			_cscan=$(archive_safety_case_scan "$_zip")
+			[ -n "$_cscan" ] && _scan=$(printf '%s\n%s' "$_scan" "$_cscan" | sed '/^$/d')
 			if [ -n "$_scan" ]; then
 				_archive_safe=false
 				# Fold each violation token into the reasons list.
