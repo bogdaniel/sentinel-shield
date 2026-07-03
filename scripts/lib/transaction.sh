@@ -105,6 +105,16 @@ tx_journal() {
 tx_snapshot() {
 	[ -n "$TX_SNAP" ] || return 0
 	grep -qxF "$1" "$TX_SNAP/touched" 2>/dev/null && return 0
+	# PHYSICAL containment BEFORE copying a pre-write file, appending to touched/created, or
+	# creating any destination parent dir. A symlinked parent inside $TARGET is fail-closed:
+	# abort the live operation so the caller's cleanup trap rolls back (never write through it).
+	_ts_reason=$(_tx_contained "$TARGET" "$1" "TARGET_SYMLINK_PARENT") || {
+		log_error "tx: refusing to snapshot an unsafe path: $1 ($_ts_reason)"
+		tx_journal "snapshot" "$1" "REJECTED ($_ts_reason): unsafe transaction path — aborting operation"
+		exit 4
+	}
+	# _tx_contained has already rejected a symlinked final component, so an existing target here
+	# is a real regular file/dir (a genuine pre-write state to preserve).
 	if [ -e "$TARGET/$1" ]; then
 		ensure_dir "$TX_SNAP/snap/$(dirname -- "$1")"
 		cp -p "$TARGET/$1" "$TX_SNAP/snap/$1"
@@ -130,6 +140,145 @@ _tx_snap_safe() {
 	case "$1" in "$SS_DIR"/.txn-*) ;; *) return 1 ;; esac
 	case "$1" in *..*) return 1 ;; *) return 0 ;; esac
 }
+
+# --- PHYSICAL containment validation -----------------------------------------
+# The lexical _tx_rel_safe above rejects absolute paths and '..' but CANNOT see a parent
+# component that is a SYMLINK: `a/b/c` where $TARGET/a is a symlink to /tmp/outside is
+# lexically clean yet physically escapes. _tx_contained walks the real filesystem to close
+# that hole and is the single choke point every mutating transaction path passes through
+# (snapshot, rollback, recovery). It NEVER follows a symlinked component and NEVER requires
+# the final destination to exist (so a brand-new file is fine).
+#
+# Bounds on a (possibly tampered) manifest so a hostile file cannot blow up recovery.
+: "${TX_MAX_PATH_LEN:=1024}"
+: "${TX_MAX_ENTRIES:=10000}"
+
+# _tx_contained <base> <relpath> <symlink-reason> — verify that <base>/<relpath> stays
+# physically within <base>. On success returns 0 and prints nothing. On failure prints a
+# STABLE reason to stdout and returns 1:
+#   INVALID_TRANSACTION_PATH  empty / absolute / '..' traversal / control-char (NUL, NL, CR,
+#                             TAB, …) / '.'-or-empty component / unresolvable <base>.
+#   <symlink-reason>          a parent (or the final) component is a symlink OR the nearest
+#                             existing parent physically resolves outside <base>
+#                             (callers pass TARGET_SYMLINK_PARENT or SNAPSHOT_SYMLINK).
+# Contract: (2) walk EVERY existing parent from <base>; (3) reject any symlinked component;
+# (4) resolve the nearest existing parent with `cd -P`/`pwd -P`; (5) confirm it is <base> or
+# below <base>/; (6) the final component need not exist.
+_tx_contained() {
+	_pc_base="$1"; _pc_rel="$2"; _pc_symreason="${3:-TARGET_SYMLINK_PARENT}"
+	# (1) lexical gate (reuse _tx_rel_safe) + control-character rejection.
+	_tx_rel_safe "$_pc_rel" || { printf '%s' "INVALID_TRANSACTION_PATH"; return 1; }
+	case "$_pc_rel" in
+		*[[:cntrl:]]*) printf '%s' "INVALID_TRANSACTION_PATH"; return 1 ;;
+	esac
+	# Canonicalise the base itself (it must exist and be a directory).
+	_pc_basereal=$(CDPATH= cd -P -- "$_pc_base" 2>/dev/null && pwd -P) \
+		|| { printf '%s' "INVALID_TRANSACTION_PATH"; return 1; }
+	# (2)/(3) walk each component under the LITERAL base so a symlinked component is caught
+	# as it would actually be traversed; track the deepest EXISTING directory.
+	_pc_cur="$_pc_base"; _pc_deepest="$_pc_base"; _pc_rest="$_pc_rel"
+	while [ -n "$_pc_rest" ]; do
+		case "$_pc_rest" in
+			*/*) _pc_comp=${_pc_rest%%/*}; _pc_rest=${_pc_rest#*/} ;;
+			*)   _pc_comp=$_pc_rest; _pc_rest="" ;;
+		esac
+		case "$_pc_comp" in
+			"" | . | ..) printf '%s' "INVALID_TRANSACTION_PATH"; return 1 ;;
+		esac
+		_pc_cur="$_pc_cur/$_pc_comp"
+		# A symlink at ANY component (broken or not) escapes containment — reject.
+		if [ -L "$_pc_cur" ]; then printf '%s' "$_pc_symreason"; return 1; fi
+		# First non-existent component: the remainder is new; the nearest existing parent
+		# has been found. Stop descending.
+		[ -e "$_pc_cur" ] || break
+		[ -d "$_pc_cur" ] && _pc_deepest="$_pc_cur"
+	done
+	# (4)/(5) physically resolve the nearest existing parent and confirm containment.
+	_pc_real=$(CDPATH= cd -P -- "$_pc_deepest" 2>/dev/null && pwd -P) \
+		|| { printf '%s' "$_pc_symreason"; return 1; }
+	[ "$_pc_real" = "$_pc_basereal" ] && return 0
+	_pc_after=${_pc_real#"$_pc_basereal"/}
+	[ "$_pc_after" != "$_pc_real" ] || { printf '%s' "$_pc_symreason"; return 1; }
+	return 0
+}
+
+# _tx_manifest_check <snapshot-dir> — HARDEN the untrusted touched/created manifests before a
+# single entry is executed. On the FIRST problem it sets _TX_MC_PATH + _TX_MC_REASON (a stable
+# reason) and returns 1; returns 0 when both manifests are well-formed and mutually consistent.
+# Enforces: one physically-contained relative path per line; a bounded line length + entry
+# count; no duplicate line within a manifest; every 'created' path also present in 'touched';
+# and NO 'created' path carrying a snapshot copy (created == no prior state — a snapshot for it
+# means the entry is claimed BOTH newly-created and modified). Stable reasons:
+#   INVALID_TRANSACTION_PATH, DUPLICATE_TRANSACTION_PATH, CONTRADICTORY_TRANSACTION_STATE,
+#   plus TARGET_SYMLINK_PARENT from _tx_contained.
+_tx_manifest_check() {
+	_mc_snap="$1"; _TX_MC_PATH=""; _TX_MC_REASON=""
+	_mc_touched="$_mc_snap/touched"; _mc_created="$_mc_snap/created"
+	if [ ! -f "$_mc_touched" ]; then
+		_TX_MC_PATH="$_mc_touched"; _TX_MC_REASON="INVALID_TRANSACTION_PATH"; return 1
+	fi
+	# Duplicate line within 'touched' (byte-identical dupes included — a well-formed manifest
+	# is deduped at write time, so ANY repeat signals tampering).
+	_mc_dup=$(grep -v '^$' "$_mc_touched" 2>/dev/null | sort | uniq -d | head -n 1)
+	if [ -n "$_mc_dup" ]; then
+		_TX_MC_PATH="$_mc_dup"; _TX_MC_REASON="DUPLICATE_TRANSACTION_PATH"; return 1
+	fi
+	# Per-line: bounded count + length; exactly one physically-contained relative path.
+	_mc_n=0
+	while IFS= read -r _mc_line || [ -n "$_mc_line" ]; do
+		[ -n "$_mc_line" ] || continue
+		_mc_n=$((_mc_n + 1))
+		if [ "$_mc_n" -gt "$TX_MAX_ENTRIES" ] || [ "${#_mc_line}" -gt "$TX_MAX_PATH_LEN" ]; then
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="INVALID_TRANSACTION_PATH"; return 1
+		fi
+		_mc_r=$(_tx_contained "$TARGET" "$_mc_line" "TARGET_SYMLINK_PARENT") || {
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="$_mc_r"; return 1; }
+	done < "$_mc_touched"
+	# 'created' is optional; when present it must be a consistent subset of 'touched'.
+	[ -f "$_mc_created" ] || return 0
+	_mc_dup=$(grep -v '^$' "$_mc_created" 2>/dev/null | sort | uniq -d | head -n 1)
+	if [ -n "$_mc_dup" ]; then
+		_TX_MC_PATH="$_mc_dup"; _TX_MC_REASON="DUPLICATE_TRANSACTION_PATH"; return 1
+	fi
+	_mc_n=0
+	while IFS= read -r _mc_line || [ -n "$_mc_line" ]; do
+		[ -n "$_mc_line" ] || continue
+		_mc_n=$((_mc_n + 1))
+		if [ "$_mc_n" -gt "$TX_MAX_ENTRIES" ] || [ "${#_mc_line}" -gt "$TX_MAX_PATH_LEN" ]; then
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="INVALID_TRANSACTION_PATH"; return 1
+		fi
+		_mc_r=$(_tx_contained "$TARGET" "$_mc_line" "TARGET_SYMLINK_PARENT") || {
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="$_mc_r"; return 1; }
+		# A 'created' path must be declared in 'touched' too …
+		if ! grep -qxF "$_mc_line" "$_mc_touched" 2>/dev/null; then
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="CONTRADICTORY_TRANSACTION_STATE"; return 1
+		fi
+		# … and must NOT also carry a snapshot copy (that would claim it both created + modified).
+		if [ -e "$_mc_snap/snap/$_mc_line" ] || [ -L "$_mc_snap/snap/$_mc_line" ]; then
+			_TX_MC_PATH="$_mc_line"; _TX_MC_REASON="CONTRADICTORY_TRANSACTION_STATE"; return 1
+		fi
+	done < "$_mc_created"
+	return 0
+}
+
+# _tx_guard_entry <relpath> <created?0|1> — physically validate ONE touched entry on both the
+# target and (for a modified entry) the snapshot side, IMMEDIATELY before it is mutated, so a
+# symlink planted between validation and use cannot be followed. Fails closed via
+# _tx_recover_fail (retain lock+snapshot, exit 4) on any containment/shape violation.
+_tx_guard_entry() {
+	_ge_rel="$1"; _ge_created="$2"
+	_ge_r=$(_tx_contained "$TARGET" "$_ge_rel" "TARGET_SYMLINK_PARENT") \
+		|| _tx_recover_fail "$_ge_rel" "containment-target" "$_ge_r: target path escapes $TARGET via a symlinked parent (or is otherwise unsafe)"
+	[ "$_ge_created" = "1" ] && return 0
+	# Modified entry: its snapshot copy must be contained, exist, and be a REGULAR file that is
+	# NOT a symlink (a malicious symlink inside the snapshot must never be followed).
+	_ge_r=$(_tx_contained "$TX_SNAP/snap" "$_ge_rel" "SNAPSHOT_SYMLINK") \
+		|| _tx_recover_fail "$_ge_rel" "containment-snapshot" "$_ge_r: snapshot path escapes the snapshot dir via a symlinked parent"
+	[ -e "$TX_SNAP/snap/$_ge_rel" ] \
+		|| _tx_recover_fail "$_ge_rel" "missing-expected-snapshot" "no snapshot for a modified file (snapshot corrupt/incomplete) — refusing to touch the live file"
+	{ [ -f "$TX_SNAP/snap/$_ge_rel" ] && [ ! -L "$TX_SNAP/snap/$_ge_rel" ]; } \
+		|| _tx_recover_fail "$_ge_rel" "snapshot-not-regular" "SNAPSHOT_SYMLINK: snapshot entry is not a regular file (symlink/dir/device) — refusing to follow it"
+}
 # _tx_lock_valid <lockfile> — jq-structural validation against
 # schemas/operation-lock.schema.json (CONTRACT(2)); ajv may be absent so this is the
 # authoritative check. Fails closed on any missing/ill-typed field.
@@ -147,13 +296,22 @@ _tx_lock_valid() {
 }
 
 # tx_rollback — restore every snapshotted file (or remove files that were newly created).
+# Every path is PHYSICALLY re-validated (target + snapshot side) before it is touched; an
+# entry that would escape $TARGET via a symlinked parent is NEVER skipped-and-continued —
+# it fails closed through the shared recovery path (retain lock+snapshot, exit 4).
 tx_rollback() {
 	[ -n "$TX_SNAP" ] && [ -f "$TX_SNAP/touched" ] || return 0
 	_tx_snap_safe "$TX_SNAP" || { log_warn "tx: refusing rollback from an unexpected snapshot dir: $TX_SNAP"; return 0; }
+	_snap="$TX_SNAP"
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
-		_tx_rel_safe "$_rel" || { log_warn "tx: skipping unsafe rollback path: $_rel"; continue; }
-		if [ -e "$TX_SNAP/snap/$_rel" ]; then
+		_rb_r=$(_tx_contained "$TARGET" "$_rel" "TARGET_SYMLINK_PARENT") \
+			|| _tx_recover_fail "$_rel" "rollback-containment" "$_rb_r: refusing to roll back a path that escapes $TARGET via a symlinked parent"
+		if [ -e "$TX_SNAP/snap/$_rel" ] || [ -L "$TX_SNAP/snap/$_rel" ]; then
+			_rb_r=$(_tx_contained "$TX_SNAP/snap" "$_rel" "SNAPSHOT_SYMLINK") \
+				|| _tx_recover_fail "$_rel" "rollback-snapshot" "$_rb_r: snapshot entry escapes the snapshot dir via a symlinked parent"
+			{ [ -f "$TX_SNAP/snap/$_rel" ] && [ ! -L "$TX_SNAP/snap/$_rel" ]; } \
+				|| _tx_recover_fail "$_rel" "rollback-snapshot" "SNAPSHOT_SYMLINK: snapshot entry is not a regular file — refusing to follow it"
 			ensure_dir "$TARGET/$(dirname -- "$_rel")"
 			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
 			tx_journal "rollback-step" "$_rel" "restored pre-write copy"
@@ -242,22 +400,24 @@ _tx_recover_fail() {
 # failure it calls _tx_recover_fail (which exits 4) — it never returns non-zero quietly.
 _tx_recover_apply() {
 	_created="$TX_SNAP/created"
-	# (5) validate EVERY touched path before mutating anything.
-	while IFS= read -r _rel; do
-		[ -n "$_rel" ] || continue
-		_tx_rel_safe "$_rel" || _tx_recover_fail "$_rel" "validate-touched-path" "touched path is absolute or contains '..' (refusing to restore outside the target)"
-	done < "$TX_SNAP/touched"
-	# (6)/(7) restore MODIFIED files from their snapshot; remove NEWLY-CREATED files.
+	# (5) HARDEN the manifests up front: one contained relative path per line, bounded
+	# count/length, no duplicates, no created-vs-modified contradiction (fails closed).
+	_tx_manifest_check "$TX_SNAP" \
+		|| _tx_recover_fail "$_TX_MC_PATH" "manifest-validation" "manifest rejected ($_TX_MC_REASON)"
+	# (6)/(7) restore MODIFIED files from their snapshot; remove NEWLY-CREATED files. Every
+	# path is PHYSICALLY re-validated (target + snapshot side) immediately before it is touched.
 	while IFS= read -r _rel; do
 		[ -n "$_rel" ] || continue
 		if grep -qxF "$_rel" "$_created" 2>/dev/null; then
+			_tx_guard_entry "$_rel" 1
 			rm -f "$TARGET/$_rel" 2>/dev/null || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
 			[ -e "$TARGET/$_rel" ] && _tx_recover_fail "$_rel" "remove-created" "newly-created file is still present after removal"
 			tx_journal "rollback-step" "$_rel" "removed newly-created file"
 		else
-			# A modified file's pre-write snapshot MUST exist; a missing one means a
-			# corrupt/incomplete snapshot — refuse rather than delete the live file.
-			[ -e "$TX_SNAP/snap/$_rel" ] || _tx_recover_fail "$_rel" "missing-expected-snapshot" "no snapshot for a modified file (snapshot corrupt/incomplete) — refusing to touch the live file"
+			# A modified file's pre-write snapshot MUST exist, be physically contained, and be a
+			# regular (non-symlink) file — refuse rather than follow a planted link or delete a
+			# live file over a corrupt/incomplete snapshot.
+			_tx_guard_entry "$_rel" 0
 			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
 			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
 			tx_journal "rollback-step" "$_rel" "restored pre-write copy"
@@ -286,9 +446,12 @@ tx_recover() {
 	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
 	# (2) lock.target must equal the current canonical target.
 	[ "$_ltarget" = "$TARGET" ] || _tx_recover_fail "$LOCK" "target-mismatch" "lock target '$_ltarget' != current canonical target '$TARGET'"
-	# (3) re-validate snapshot_dir containment (UNTRUSTED) and existence.
+	# (3) re-validate snapshot_dir containment (UNTRUSTED) and existence — LEXICALLY, then
+	# PHYSICALLY (the .txn-* dir must not itself be a symlink pointing outside $SS_DIR).
 	_tx_snap_safe "$_snap" || _tx_recover_fail "$_snap" "snapshot-dir-unsafe" "snapshot_dir is not canonically contained in $SS_DIR/.txn-*"
 	[ -d "$_snap" ] || _tx_recover_fail "$_snap" "snapshot-dir-missing" "snapshot_dir does not exist"
+	_sd_r=$(_tx_contained "$SS_DIR" "$(basename -- "$_snap")" "SNAPSHOT_SYMLINK") \
+		|| _tx_recover_fail "$_snap" "snapshot-dir-symlink" "$_sd_r: snapshot_dir resolves outside $SS_DIR (symlinked .txn dir)"
 	# (4) the touched manifest must exist & be readable.
 	[ -f "$_snap/touched" ] && [ -r "$_snap/touched" ] || _tx_recover_fail "$_snap/touched" "touched-manifest-missing" "the touched manifest is absent or unreadable"
 	# (5)-(9) validated rollback + post-verify (exits 4 on the first failure).

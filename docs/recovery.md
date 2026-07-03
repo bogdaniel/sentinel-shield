@@ -46,6 +46,40 @@ snapshot, stamps the lock `state=rollback-incomplete`, prints the exact failing 
 + a manual procedure, and exits `4`. A corrupt/incomplete snapshot is treated as *potential data
 loss* and never silently deleted.
 
+### Symlink containment — the engine never follows a transaction path outside the consumer root
+
+A lexical check (reject absolute paths and `..`) is **not** enough: a path like `a/b/c` is
+lexically clean yet still escapes the target if `a` is a **symlink** to somewhere else. Every
+mutating transaction path — snapshotting a pre-write file, restoring a snapshot, deleting a
+newly-created file, and creating a restoration parent directory — therefore passes through a
+**physical** containment validator that walks the real filesystem:
+
+- it rejects an empty / absolute / `..`-traversal / control-character path outright
+  (`INVALID_TRANSACTION_PATH`);
+- it walks **every existing parent component** from the consumer root and **rejects any component
+  that is a symlink** (`TARGET_SYMLINK_PARENT`), then resolves the nearest existing parent with
+  `cd -P`/`pwd -P` and confirms it is the target root or below it (a brand-new destination file
+  need not exist);
+- on the snapshot side it verifies the `.txn-*` dir resolves under `.sentinel-shield`, that a
+  snapshot entry does not traverse a symlinked parent, and that a file restore reads a **regular
+  file** — a malicious symlink planted inside the snapshot is **never followed**
+  (`SNAPSHOT_SYMLINK`);
+- the `touched`/`created` manifests are hardened before a single entry runs: one contained
+  relative path per line, a bounded line length and entry count, no duplicate line
+  (`DUPLICATE_TRANSACTION_PATH`), and no path claimed as **both** newly-created and modified
+  (`CONTRADICTORY_TRANSACTION_STATE`) — a malformed manifest never partially executes.
+
+**Recovery rejects a symlinked-parent path and fails closed.** When a symlink (or a tampered
+manifest) would make a rollback step land outside the consumer root, recovery does **not** skip
+that entry and continue — it retains the lock **and** the snapshot, stamps the lock
+`state=rollback-incomplete`, journals the exact rejected path and reason, and exits `4` so the
+state is preserved for **manual inspection**. This holds whether the escape was pre-planted before
+an interrupted run or introduced after the snapshot but before rollback (a TOCTOU swap): each path
+is re-validated **immediately before** it is touched. During a **live** `--apply`, the same
+validator aborts the operation at snapshot time and the normal auto-rollback then unwinds it — so
+nothing is ever written or deleted *through* a symlink out of the target. These guarantees are
+regression-tested by `tests/prod/211-transaction-symlink.sh`.
+
 ## `recover-operation.sh` — inspect and resume
 
 `scripts/recover-operation.sh` is an operator front-end over the same library (it duplicates no
