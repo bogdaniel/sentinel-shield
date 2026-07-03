@@ -23,8 +23,34 @@
     },
     "harness": {
       "type": "string",
-      "enum": ["black-box-install"],
-      "description": "Which adopter harness produced the record."
+      "enum": ["black-box-install", "adopter-scenarios"],
+      "description": "Which adopter harness produced the record. 'black-box-install' is the single-session harness; 'adopter-scenarios' is the multi-environment suite that emits one record per scenario."
+    },
+    "scenario": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional scenario id when produced by the multi-environment suite (e.g. clean-linux|minimal-posix|managed-file-conflict|read-only-project|interrupted-recovery|proxy-configured|offline-restricted). Absent for the single black-box session."
+    },
+    "platform": {
+      "type": "string",
+      "description": "Optional redacted host descriptor the scenario ran on (e.g. the output of `uname -s`), so macOS-vs-Linux shell coverage is attributable."
+    },
+    "budget_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Optional per-step wall-clock budget (seconds) the scorecard's bounded-durations criterion holds this scenario's mandatory steps to. When absent, the scorecard applies its default budget."
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional recovery evidence for scenarios that inject a failure and then recover. 'required' marks a mutation-bearing failure that MUST be reversible; 'restored' asserts the target was returned to its expected pre-failure state. The scorecard fails closed when required=true but restored!=true.",
+      "required": ["required", "performed", "restored"],
+      "properties": {
+        "required": { "type": "boolean", "description": "true when a mutation-bearing failure was injected that must be recoverable." },
+        "performed": { "type": "boolean", "description": "true when a recovery operation was actually executed." },
+        "restored": { "type": "boolean", "description": "true when recovery restored the target to its expected state (verified, not assumed)." },
+        "method": { "type": "string", "description": "Redacted description of how recovery was performed (e.g. 'recover-operation.sh --resume-rollback')." }
+      }
     },
     "started_at": {
       "type": "string",
@@ -93,6 +119,10 @@
           "message": {
             "type": "string",
             "description": "Redacted user-facing message or skip/failure reason. A skip MUST carry an explicit reason (a skip is not a pass)."
+          },
+          "next_action": {
+            "type": "string",
+            "description": "Redacted safe next action the adopter should take. The scorecard's errors-have-next-actions criterion requires every 'fail' step to carry a non-empty next_action."
           },
           "generated_files": {
             "type": "array",

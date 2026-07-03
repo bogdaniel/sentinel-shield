@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/adopter-scorecard.schema.json",
+  "title": "Sentinel Shield external-adopter usability scorecard",
+  "description": "Consolidated, machine-readable verdict produced by scripts/report-adopter-usability.sh from one or more adopter-session records (schemas/adopter-session.schema.json). It scores the adopter experience against the fixed set of BLOCKING production-readiness criteria and yields a single pass/fail. Every criterion is derived deterministically from the session evidence; a criterion FAILS CLOSED when the evidence is missing, malformed, stale, or ambiguous. Every failed criterion carries an explicit, copy-pasteable reproduction command. The scorecard carries NO secrets and NO absolute local paths (the generator refuses to emit one that would).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generator",
+    "generated_at",
+    "sessions_evaluated",
+    "scenarios",
+    "criteria",
+    "totals",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Adopter-scorecard schema version. Fixed at '1'."
+    },
+    "generator": {
+      "type": "string",
+      "enum": ["report-adopter-usability"],
+      "description": "Which reporter produced the scorecard."
+    },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the scorecard was generated."
+    },
+    "budget_seconds_default": {
+      "type": "number",
+      "description": "Per-step wall-clock budget applied to sessions that do not declare their own budget_seconds."
+    },
+    "sessions_evaluated": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of adopter-session records folded into this scorecard. Must be >= 1: an empty evidence set fails closed (no scorecard is emitted)."
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Per-scenario summary, one entry per evaluated session.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "harness", "result", "steps_total", "steps_failed", "budget_seconds"],
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Scenario id (from the session's scenario field, else its harness)."
+          },
+          "harness": { "type": "string", "minLength": 1 },
+          "source": {
+            "type": "string",
+            "description": "Redacted basename of the session file this summary came from."
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail"],
+            "description": "The session's own result."
+          },
+          "steps_total": { "type": "integer", "minimum": 0 },
+          "steps_failed": { "type": "integer", "minimum": 0 },
+          "steps_skipped": { "type": "integer", "minimum": 0 },
+          "budget_seconds": {
+            "type": "number",
+            "description": "The per-step budget applied to this scenario."
+          },
+          "recovery": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Recovery evidence carried by the session, if any."
+          }
+        }
+      }
+    },
+    "skipped_scenarios": {
+      "type": "array",
+      "description": "Scenarios the adopter suite could not run (e.g. an unsupported flow offline). Informational and always explicitly reasoned; a skip is NOT counted as a pass.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "reason"],
+        "properties": {
+          "scenario": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The fixed set of BLOCKING adopter-scorecard criteria, each evaluated across every session.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "blocking", "status", "offenders", "reproduction"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "undocumented-prerequisites",
+              "unexplained-failures",
+              "unrecoverable-mutations",
+              "errors-have-next-actions",
+              "bounded-durations",
+              "files-attributable",
+              "recovery-restores-state",
+              "no-secrets-no-abs-paths"
+            ],
+            "description": "Stable criterion id."
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "blocking": {
+            "const": true,
+            "description": "Every scorecard criterion is blocking. Fixed true."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail"],
+            "description": "pass only when NO offender was found across all evaluated sessions."
+          },
+          "offenders": {
+            "type": "array",
+            "description": "Redacted, evidence-anchored offenders (scenario + step + detail). Empty when status=pass.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["scenario", "detail"],
+              "properties": {
+                "scenario": { "type": "string", "minLength": 1 },
+                "step": { "type": "string" },
+                "detail": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "reproduction": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A copy-pasteable command that reproduces this criterion's verdict from the session evidence."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenarios", "sessions_passed", "sessions_failed", "criteria_passed", "criteria_failed"],
+      "properties": {
+        "scenarios": { "type": "integer", "minimum": 1 },
+        "sessions_passed": { "type": "integer", "minimum": 0 },
+        "sessions_failed": { "type": "integer", "minimum": 0 },
+        "criteria_passed": { "type": "integer", "minimum": 0 },
+        "criteria_failed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "result": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "Overall production-readiness verdict: pass only when EVERY blocking criterion passed across EVERY evaluated session and at least one session was evaluated."
+    }
+  }
+}
