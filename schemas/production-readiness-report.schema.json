@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/production-readiness-report.schema.json",
+  "title": "Sentinel Shield production-readiness report",
+  "description": "The machine-readable record emitted by `scripts/run-production-readiness.sh run` and independently re-verified by its `review` mode. It records the identity of the source under test (commit / default branch / event / workflow), the changed-file inventory, the per-gate verdicts, the compatibility / adopter / security / scanner / artifact / limitations evidence, and the version recommendation. The report is UNTRUSTED input to `review`: `review` re-derives every trust decision and FAILS CLOSED when any field is missing, malformed, stale, ambiguous, or does not match the caller's independent expectations. Engine-only scope: framework live-validation is never claimed by this report. Contains NO secrets, tokens, or repo-local absolute paths.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "generated_at",
+    "title",
+    "release_scope",
+    "source",
+    "gates",
+    "summary",
+    "version_recommendation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1", "description": "Only \"1\" is supported; consumers fail closed otherwise." },
+    "kind": { "type": "string", "const": "production-readiness-report" },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC generation timestamp. `review` rejects a report older than --max-age-seconds (stale) or dated in the future (fail closed)."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "engine-only",
+      "description": "Human title. MUST state engine-only scope until the framework tracks are independently validated; `review` fails closed if 'engine-only' is absent."
+    },
+    "release_scope": {
+      "type": "string",
+      "enum": ["engine-only", "framework-validated", "full-platform"],
+      "description": "Governance track. Only 'engine-only' is recommendable to GA (v2.0.0) by this harness."
+    },
+    "source": {
+      "type": "object",
+      "description": "Identity of the code under test. `review` matches every field against independent --expected-* expectations.",
+      "required": ["commit", "default_branch", "event", "workflow"],
+      "additionalProperties": false,
+      "properties": {
+        "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|unknown)$", "description": "The source commit. 'unknown' is a structure-only placeholder that NEVER satisfies review." },
+        "default_branch": { "type": "string", "minLength": 1, "description": "Default branch the source commit must belong to (typically 'master')." },
+        "event": { "type": "string", "enum": ["push", "workflow_dispatch", "pull_request", "unknown"], "description": "CI event. Only push/workflow_dispatch is release proof; pull_request is never accepted by review." },
+        "workflow": { "type": "string", "minLength": 1, "description": "Workflow identity (e.g. 'ci-production-readiness')." },
+        "run_id": { "type": "string", "description": "CI run identifier (informational)." },
+        "actor": { "type": "string", "description": "CI actor (informational)." }
+      }
+    },
+    "changed_files": {
+      "type": "array",
+      "description": "Inventory of files changed relative to the merge base. Drives test-applicability review.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "gates": {
+      "type": "array",
+      "description": "Per-gate verdicts. A required gate that is 'fail', 'timeout', or 'skipped' blocks readiness.",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["pass", "fail", "skipped", "timeout"] },
+          "required": { "type": "boolean" },
+          "detail": { "type": "string" },
+          "reproduce": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "duration_seconds": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "passed", "failed", "skipped", "timed_out"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "timed_out": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "description": "Compatibility-matrix coverage. `review` requires complete==true and an empty missing[].",
+      "additionalProperties": false,
+      "properties": {
+        "complete": { "type": "boolean" },
+        "covered": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "missing": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "adopter": {
+      "type": "object",
+      "description": "Adopter scorecard summary. `review` requires result=='pass' and score>=--min-adopter-score.",
+      "additionalProperties": false,
+      "properties": {
+        "result": { "type": "string", "enum": ["pass", "fail", "unknown"] },
+        "score": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accepted": { "type": "boolean", "description": "Production security acceptance decision (no unresolved critical/high, no expired waivers)." }
+      }
+    },
+    "scanners": {
+      "type": "array",
+      "description": "Scanner health. `review` fails closed on any scanner-error/parser-error.",
+      "items": {
+        "type": "object",
+        "required": ["tool", "health"],
+        "additionalProperties": false,
+        "properties": {
+          "tool": { "type": "string", "minLength": 1 },
+          "health": { "type": "string", "enum": ["ok", "findings", "no-targets", "scanner-error", "parser-error"] }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Published/verified artifacts. `review` requires ownership_ok==true and a 64-hex sha256 for each.",
+      "items": {
+        "type": "object",
+        "required": ["name", "sha256", "ownership_ok"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "ownership_ok": { "type": "boolean" },
+          "content_verified": { "type": "boolean" }
+        }
+      }
+    },
+    "limitations": {
+      "type": "object",
+      "description": "Published limitations. `review` requires documented==true and framework_live_validation==false.",
+      "additionalProperties": false,
+      "properties": {
+        "documented": { "type": "boolean" },
+        "framework_live_validation": { "type": "boolean" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Release-evidence completeness used by the version-decision helper.",
+      "additionalProperties": false,
+      "properties": {
+        "default_branch_ci": { "type": "boolean", "description": "A successful push/workflow_dispatch engine CI run on the source commit is present." },
+        "evidence_complete": { "type": "boolean", "description": "The full release-evidence + manifest reproducibility bundle is present and green." },
+        "soak_complete": { "type": "boolean", "description": "The required soak/observation window has elapsed with no regression." }
+      }
+    },
+    "tag_policy": {
+      "type": "object",
+      "description": "Tag-target policy assertion. `review` fails closed if destructive tag operations were performed.",
+      "additionalProperties": false,
+      "properties": {
+        "destructive_ops_performed": { "type": "boolean" },
+        "tag_targets_source_commit": { "type": "boolean" }
+      }
+    },
+    "version_recommendation": {
+      "type": "object",
+      "required": ["version", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "enum": ["v2.0.0-beta.3", "v2.0.0-rc.1", "v2.0.0"],
+          "description": "beta.3 = material blockers remain; rc.1 = behavior complete, soak/evidence remains; 2.0.0 = all engine-only GA criteria pass."
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}
