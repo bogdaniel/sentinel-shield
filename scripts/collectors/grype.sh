@@ -44,7 +44,8 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	PROV=$(ss_provenance_object "$PROVENANCE" "" "")
 	REPORT=$(jq -n --argjson p "$PROV" '{status:"execution-error", health:"parser-error", critical:0, high:0, medium:0, provenance:$p}')
 	ss_emit_collector "$TOOL" "execution-error" "$REPORT" '{}'
-	exit 0
+	# fail-closed: unparseable scanner output is an error, not a clean result
+	exit 2
 fi
 
 # Native provenance fallback: Grype embeds its own version and DB build time.

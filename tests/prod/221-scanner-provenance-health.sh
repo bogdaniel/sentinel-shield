@@ -157,7 +157,12 @@ osv_case() {
 		printf '%s' "$_content" > "$_in"
 	fi
 	if [ -n "$_sidecar" ]; then printf '%s' "$_sidecar" > "$WORK/osv-$_name.provenance.json"; fi
-	_out=$(sh "$OSV" --input "$_in" --tool-name osv_scanner 2>/dev/null) || { fail "osv collector crashed for $_name"; return; }
+	_rc=0
+	_out=$(sh "$OSV" --input "$_in" --tool-name osv_scanner 2>/dev/null) || _rc=$?
+	# fail-closed contract: an unparseable report must exit 2; all other health states exit 0
+	if [ "$_xhealth" = parser-error ]; then _xrc=2; else _xrc=0; fi
+	if [ "$_rc" = "$_xrc" ]; then pass "osv $_name -> exit $_rc (fail-closed contract)"; else fail "osv $_name -> exit $_rc, wanted $_xrc"; fi
+	if [ -z "$_out" ]; then fail "osv collector produced no report for $_name"; return; fi
 	_gs=$(printf '%s' "$_out" | jq -r '.status')
 	_gh=$(printf '%s' "$_out" | jq -r '.tool_report.health')
 	if [ "$_gs" = "$_xstatus" ] && [ "$_gh" = "$_xhealth" ]; then

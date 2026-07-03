@@ -43,7 +43,8 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	log_error "$TOOL: invalid JSON in '$INPUT' (health=parser-error)"
 	REPORT=$(jq -n --argjson p "$PROV" '{status:"execution-error", health:"parser-error", critical:0, high:0, medium:0, provenance:$p}')
 	ss_emit_collector "$TOOL" "execution-error" "$REPORT" '{}'
-	exit 0
+	# fail-closed: unparseable scanner output is an error, not a clean result
+	exit 2
 fi
 
 OV=$(jq 'if has("results") then
