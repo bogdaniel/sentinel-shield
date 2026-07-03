@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/release-candidate.schema.json",
+  "title": "Sentinel Shield release candidate descriptor",
+  "description": "A read-only descriptor produced by `authorize-production-release.sh prepare` and re-verified by `verify-candidate`. It names the exact release identity (version/stage/scope/source_commit/tag) and POINTS AT the independent evidence artifacts that back each production-GA gate. The descriptor NEVER contains the gate verdicts as trusted booleans — verify-candidate re-derives every verdict from the referenced artifacts and FAILS CLOSED when any is missing, malformed, or not green. Relative artifact/doc paths are resolved against --base-dir (default: the descriptor's own directory). Contains NO secrets.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "stage",
+    "release_scope",
+    "source_commit",
+    "tag",
+    "artifacts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1", "description": "Only \"1\" is supported; consumers fail closed otherwise." },
+    "version": { "type": "string", "minLength": 1, "description": "Release version label, e.g. '2.0.0'." },
+    "stage": { "type": "string", "enum": ["beta", "rc", "ga"], "description": "Production release stage." },
+    "release_scope": {
+      "type": "string",
+      "enum": ["engine-only", "framework-validated", "full-platform"],
+      "description": "Governance track. Only 'engine-only' is authorizable to GA by this tool; framework-validated/full-platform GA remains BLOCKED."
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The exact default-branch source commit whose CI proves this candidate. Must equal the evidence engine_commit."
+    },
+    "tag": { "type": "string", "minLength": 1, "description": "Intended tag name, e.g. 'v2.0.0'." },
+    "default_branch": { "type": "string", "minLength": 1, "description": "Default branch the source_commit must belong to (default 'master'). Informational; the CI-event check rejects pull_request-only evidence." },
+    "artifacts": {
+      "type": "object",
+      "description": "Paths to the independent evidence artifacts re-verified by verify-candidate. Required members must be present for a GA candidate; RC additionally may omit adopter/compat where policy permits (verify-candidate enforces per-stage requirements).",
+      "additionalProperties": false,
+      "properties": {
+        "evidence": { "type": "string", "minLength": 1, "description": "release-evidence.json (schemas/release-evidence.schema.json)." },
+        "manifest": { "type": "string", "minLength": 1, "description": "release-manifest.json (schemas/release-manifest.schema.json)." },
+        "artifact_verification": { "type": "string", "minLength": 1, "description": "verify-release-artifacts.sh report." },
+        "security_acceptance": { "type": "string", "minLength": 1, "description": "enforce-security-policy.sh acceptance report (schemas/security-acceptance.schema.json)." },
+        "compatibility_matrix": { "type": "string", "minLength": 1, "description": "Compatibility-matrix report." },
+        "adopter_scorecard": { "type": "string", "minLength": 1, "description": "Adopter scorecard (schemas/adopter-scorecard.schema.json)." },
+        "upgrade_validation": { "type": "string", "minLength": 1, "description": "Upgrade-validation report." },
+        "rollback_validation": { "type": "string", "minLength": 1, "description": "Rollback-validation report." },
+        "waivers": { "type": "string", "minLength": 1, "description": "accepted-risks.json (schemas/accepted-risks.schema.json)." }
+      }
+    },
+    "docs": {
+      "type": "object",
+      "description": "Published-limitations and support/incident-response readiness documents. verify-candidate requires each named file to exist and be non-empty.",
+      "additionalProperties": false,
+      "properties": {
+        "limitations": { "type": "string", "minLength": 1 },
+        "support_policy": { "type": "string", "minLength": 1 },
+        "incident_response": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

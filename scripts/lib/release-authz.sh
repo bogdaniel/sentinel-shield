@@ -1,0 +1,349 @@
+#!/bin/sh
+# Sentinel Shield — production release authorization library (POSIX sh, ra_* functions).
+#
+# Source this file; do NOT execute it. It backs scripts/authorize-production-release.sh and
+# scripts/verify-published-release.sh with the fail-closed validators behind release
+# preparation, candidate verification, authorization-record governance, and the
+# never-delete/never-move destructive-operation guard.
+#
+# Requires scripts/lib/sentinel-shield-common.sh (log_*/command_exists) sourced FIRST, and jq.
+# All validators FAIL CLOSED: missing / empty / malformed / non-conformant input returns
+# non-zero, and callers MUST treat that as a gate failure — never a pass. This library
+# enables no `set -eu`, logs to STDERR only, and records NO secrets or local key paths.
+#
+# Standard return codes used by the ra_* validators that distinguish malformed from rejected:
+#   0 ok/pass    1 rejected (well-formed but does not satisfy the gate)    2 malformed/fail-closed
+
+# Include guard (safe to source more than once).
+if [ "${__SENTINEL_SHIELD_RELEASE_AUTHZ_LOADED:-}" = "1" ]; then
+	return 0 2>/dev/null
+fi
+__SENTINEL_SHIELD_RELEASE_AUTHZ_LOADED=1
+
+# RA_TIMEOUT is read by callers to distinguish a timed-out bounded operation (distinct
+# exit code 4) from a clean result.
+RA_TIMEOUT=0
+
+# ra_bounded <seconds> <cmd...> — run a bounded operation. When a timeout tool is present,
+# wrap the command; on timeout set RA_TIMEOUT=1 and return 124. Without a timeout tool the
+# command runs directly (git/jq over local files cannot hang on I/O), preserving behaviour
+# on hosts (e.g. stock macOS) that ship no timeout(1).
+ra_bounded() {
+	_ra_lim=$1
+	shift
+	if command_exists timeout; then
+		timeout "$_ra_lim" "$@"
+		_ra_rc=$?
+	elif command_exists gtimeout; then
+		gtimeout "$_ra_lim" "$@"
+		_ra_rc=$?
+	else
+		"$@"
+		_ra_rc=$?
+	fi
+	# RA_TIMEOUT is consumed cross-file by the caller scripts; shellcheck cannot see that.
+	# shellcheck disable=SC2034
+	if [ "$_ra_rc" = 124 ]; then RA_TIMEOUT=1; fi
+	return "$_ra_rc"
+}
+
+# ra_today_utc — current date as YYYY-MM-DD (UTC), overridable for deterministic tests via
+# SENTINEL_SHIELD_RELEASE_NOW (falls back to the shared security override, then to date(1)).
+ra_today_utc() {
+	if [ -n "${SENTINEL_SHIELD_RELEASE_NOW:-}" ]; then
+		printf '%s' "$SENTINEL_SHIELD_RELEASE_NOW"
+	elif [ -n "${SENTINEL_SHIELD_SECURITY_NOW:-}" ]; then
+		printf '%s' "$SENTINEL_SHIELD_SECURITY_NOW"
+	else
+		date -u +%Y-%m-%d
+	fi
+}
+
+# ra_is_hex40 <value> — 0 iff EXACTLY 40 lowercase-or-upper hex chars.
+ra_is_hex40() {
+	case "${1:-}" in
+		"" | *[!0-9A-Fa-f]*) return 1 ;;
+	esac
+	[ "${#1}" -eq 40 ]
+}
+
+# ra_is_hex64 <value> — 0 iff EXACTLY 64 lowercase-or-upper hex chars.
+ra_is_hex64() {
+	case "${1:-}" in
+		"" | *[!0-9A-Fa-f]*) return 1 ;;
+	esac
+	[ "${#1}" -eq 64 ]
+}
+
+# ra_json_ok <path> — 0 iff file exists, is non-empty, and is valid JSON.
+ra_json_ok() {
+	[ -n "${1:-}" ] && [ -s "$1" ] || return 1
+	command_exists jq || return 1
+	jq -e . "$1" >/dev/null 2>&1
+}
+
+# --- destructive-operation guard ---------------------------------------------
+# ra_guard_destructive <all-argv...> — REFUSE the operation (return 2, logging) if any
+# forbidden destructive tag/release flag is present anywhere in argv. A Sentinel Shield
+# rollback NEVER deletes or moves a released tag and NEVER deletes a GitHub Release; it
+# publishes a superseding fixed release instead. This guard is called by every mode so an
+# attempted tag movement or release deletion is refused up-front.
+ra_guard_destructive() {
+	for _ra_a in "$@"; do
+		case "$_ra_a" in
+			--delete-tag | --move-tag | --force-tag | --retag | --overwrite-tag \
+				| --delete-release | --remove-release | --unpublish | --delete-published \
+				| --rewrite-history | --force-push)
+				log_error "ra_guard_destructive: refusing '$_ra_a' — Sentinel Shield NEVER deletes or moves a released tag or deletes a published release."
+				log_error "Roll forward instead: publish a SUPERSEDING fixed release and mark the affected version via 'declare-superseded'/'rollback-advisory'."
+				return 2
+				;;
+		esac
+	done
+	return 0
+}
+
+# --- generic gate reader -----------------------------------------------------
+# ra_gate_ok <path> — 0 iff the JSON report presents an explicit green verdict and no
+# explicit incompleteness/failure signal. Recognizes result|decision|status|verdict in a
+# fixed pass vocabulary and additionally requires: incomplete!=true, complete!=false,
+# missing[] empty, failure_count==0. An unrecognized/empty verdict FAILS CLOSED.
+ra_gate_ok() {
+	ra_json_ok "$1" || {
+		log_error "ra_gate_ok: '${1:-}' is missing/empty/not JSON (fail closed)"
+		return 1
+	}
+	jq -e '
+		((.result? // .decision? // .status? // .verdict? // "") | tostring | ascii_downcase) as $d
+		| ($d == "pass" or $d == "accepted" or $d == "accepted-emergency" or $d == "ready"
+			or $d == "complete" or $d == "green" or $d == "ok" or $d == "success")
+			and ((.incomplete // false) == false)
+			and ((.complete // true) == true)
+			and (((.missing // []) | length) == 0)
+			and (((.failure_count // 0)) == 0)
+	' "$1" >/dev/null 2>&1
+}
+
+# ra_security_acceptance_ok <path> — 0 iff a conformant security-acceptance report with a
+# green decision (accepted | accepted-emergency). Requires enough structure that a bare
+# {"decision":"accepted"} cannot masquerade as a full acceptance record.
+ra_security_acceptance_ok() {
+	ra_json_ok "$1" || {
+		log_error "ra_security_acceptance_ok: '${1:-}' missing/empty/not JSON (fail closed)"
+		return 1
+	}
+	jq -e '
+		(.schema_version == "1")
+		and (.decision | . == "accepted" or . == "accepted-emergency")
+		and (.findings | type == "object")
+		and ((.findings.blocking // 0) == 0)
+		and (.violations | type == "array")
+		and ((.violations | length) == 0)
+	' "$1" >/dev/null 2>&1
+}
+
+# --- evidence source / default-branch CI gate --------------------------------
+# ra_check_evidence_source <evidence> <source_commit> — prove the candidate's source commit
+# is the CI-validated DEFAULT-BRANCH commit. Returns:
+#   0 ok   1 rejected (mismatch / PR-only proof / missing default-branch CI)   2 malformed
+# Rejection reason token is logged for stable diagnostics.
+ra_check_evidence_source() {
+	_rev="$1"
+	_rsrc="$2"
+	ra_json_ok "$_rev" || {
+		log_error "ra_check_evidence_source: evidence '${_rev:-}' missing/empty/not JSON (fail closed)"
+		return 2
+	}
+	ra_is_hex40 "$_rsrc" || {
+		log_error "ra_check_evidence_source: --source-commit is not a 40-hex SHA"
+		return 2
+	}
+	_rsrc=$(printf '%s' "$_rsrc" | tr 'A-F' 'a-f')
+	_reng=$(jq -r '.engine_commit // ""' "$_rev")
+	if [ "$_reng" != "$_rsrc" ]; then
+		log_error "ra_check_evidence_source: SOURCE_COMMIT_MISMATCH — evidence engine_commit ($_reng) != expected source_commit ($_rsrc)"
+		return 1
+	fi
+	# A qualifying default-branch run: event push|workflow_dispatch, result success, on source_commit.
+	_good=$(jq -r --arg c "$_rsrc" '
+		[ (.engine_ci // [])[]
+		  | select((.event == "push" or .event == "workflow_dispatch") and .result == "success" and .commit == $c) ]
+		| length' "$_rev" 2>/dev/null)
+	case "$_good" in '' | *[!0-9]*) log_error "ra_check_evidence_source: could not evaluate engine_ci runs (fail closed)"; return 2 ;; esac
+	if [ "$_good" -ge 1 ]; then
+		return 0
+	fi
+	# Distinguish PR-only proof from a total absence of default-branch CI for a stable reason.
+	_pr=$(jq -r '[ (.engine_ci // [])[] | select(.event == "pull_request") ] | length' "$_rev" 2>/dev/null)
+	case "$_pr" in '' | *[!0-9]*) _pr=0 ;; esac
+	if [ "$_pr" -ge 1 ]; then
+		log_error "ra_check_evidence_source: PR_CI_NOT_RELEASE_PROOF — only pull_request runs are present; release proof requires default-branch (push/workflow_dispatch) success on the source commit."
+	else
+		log_error "ra_check_evidence_source: MISSING_DEFAULT_BRANCH_CI — no successful default-branch engine_ci run on the source commit."
+	fi
+	return 1
+}
+
+# --- waiver expiry gate ------------------------------------------------------
+# ra_no_expired_waivers <accepted-risks|""> [today] — 0 iff no waiver has expired. An absent/
+# empty file is a valid no-waivers state (0). Returns 1 when an approved waiver is expired,
+# 2 when the file is present but malformed. Dates are ISO YYYY-MM-DD (lexical compare is
+# correct for that form).
+ra_no_expired_waivers() {
+	_rwf="${1:-}"
+	_rtoday="${2:-$(ra_today_utc)}"
+	[ -n "$_rwf" ] && [ -f "$_rwf" ] && [ -s "$_rwf" ] || return 0
+	ra_json_ok "$_rwf" || {
+		log_error "ra_no_expired_waivers: '$_rwf' is not valid JSON (fail closed)"
+		return 2
+	}
+	jq -e 'type == "object" and (.risks | type == "array")' "$_rwf" >/dev/null 2>&1 || {
+		log_error "ra_no_expired_waivers: '$_rwf' must be an object with a 'risks' array (fail closed)"
+		return 2
+	}
+	case "$_rtoday" in
+		[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+		*) log_error "ra_no_expired_waivers: reference date '$_rtoday' is not YYYY-MM-DD"; return 2 ;;
+	esac
+	_bad=$(jq -r --arg today "$_rtoday" '
+		[ .risks[]
+		  | select((.expires_at // "") == "" or (.expires_at < $today)) | .id // "?" ]
+		| join(",")' "$_rwf" 2>/dev/null) || {
+		log_error "ra_no_expired_waivers: could not evaluate waivers (fail closed)"
+		return 2
+	}
+	if [ -n "$_bad" ]; then
+		log_error "ra_no_expired_waivers: EXPIRED_WAIVER — expired/undated waiver(s): $_bad (as of $_rtoday)"
+		return 1
+	fi
+	return 0
+}
+
+# --- artifact-digest reproducibility gate ------------------------------------
+# ra_artifacts_match_manifest <artifacts-report> <manifest> — 0 iff the set of 64-hex
+# artifact digests in the verification report EQUALS the set recorded in the manifest body.
+# Both empty is a match (engine-only releases may ship no artifacts). Any drift is a
+# DIGEST_MISMATCH (return 1). Malformed inputs fail closed (return 2).
+ra_artifacts_match_manifest() {
+	ra_json_ok "$1" || { log_error "ra_artifacts_match_manifest: artifacts report '${1:-}' not JSON (fail closed)"; return 2; }
+	ra_json_ok "$2" || { log_error "ra_artifacts_match_manifest: manifest '${2:-}' not JSON (fail closed)"; return 2; }
+	_ra_a=$(jq -c '[ .artifacts[]?.sha256 | select(type == "string" and test("^[0-9a-f]{64}$")) ] | unique' "$1" 2>/dev/null) || {
+		log_error "ra_artifacts_match_manifest: could not read artifact digests (fail closed)"
+		return 2
+	}
+	_ra_m=$(jq -c '[ .body.artifact_digests[]?.sha256 | select(type == "string" and test("^[0-9a-f]{64}$")) ] | unique' "$2" 2>/dev/null) || {
+		log_error "ra_artifacts_match_manifest: could not read manifest artifact_digests (fail closed)"
+		return 2
+	}
+	if [ "$_ra_a" != "$_ra_m" ]; then
+		log_error "ra_artifacts_match_manifest: DIGEST_MISMATCH — verified artifact digests do not equal the manifest fingerprint (report=$_ra_a manifest=$_ra_m)"
+		return 1
+	fi
+	return 0
+}
+
+# --- candidate descriptor validation -----------------------------------------
+# ra_validate_candidate <descriptor> — fail-closed structural conformance to
+# schemas/release-candidate.schema.json (the parts jq can express). 0 valid, else non-zero.
+ra_validate_candidate() {
+	ra_json_ok "$1" || {
+		log_error "ra_validate_candidate: '${1:-}' missing/empty/not JSON (fail closed)"
+		return 1
+	}
+	jq -e '
+		(.schema_version == "1")
+		and (.version | type == "string" and (length > 0))
+		and (.stage | . == "beta" or . == "rc" or . == "ga")
+		and (.release_scope | . == "engine-only" or . == "framework-validated" or . == "full-platform")
+		and (.source_commit | type == "string" and test("^[0-9a-f]{40}$"))
+		and (.tag | type == "string" and (length > 0))
+		and (.artifacts | type == "object")
+	' "$1" >/dev/null 2>&1 || {
+		log_error "ra_validate_candidate: '$1' does not conform to release-candidate.schema.json"
+		return 1
+	}
+	return 0
+}
+
+# --- authorization record validation -----------------------------------------
+# ra_validate_authorization <record> — fail-closed STRUCTURAL conformance to
+# schemas/release-authorization.schema.json. Cross-field binding to a candidate is checked by
+# the caller (ra_authorization_binds). Returns 0 valid, 2 malformed/non-conformant.
+ra_validate_authorization() {
+	ra_json_ok "$1" || {
+		log_error "ra_validate_authorization: '${1:-}' missing/empty/not JSON (fail closed)"
+		return 2
+	}
+	jq -e '
+		def isodt: (type == "string") and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+		(.schema_version == "1")
+		and (.version | type == "string" and (length > 0))
+		and (.stage | . == "beta" or . == "rc" or . == "ga")
+		and (.release_scope | . == "engine-only" or . == "framework-validated" or . == "full-platform")
+		and (.source_commit | type == "string" and test("^[0-9a-f]{40}$"))
+		and (.tag | type == "string" and (length > 0))
+		and (.candidate_hash | type == "string" and test("^[0-9a-f]{64}$"))
+		and (.authorization | type == "object")
+		and (.authorization.method | . == "interactive" or . == "signed")
+		and (.authorization.token | type == "string" and (length >= 8))
+		and (.authorization.requested_by | type == "string" and (length > 0))
+		and (.authorization.approved_by | type == "string" and (length > 0))
+		and (.created_at | isodt)
+		and (.expires_at | isodt)
+	' "$1" >/dev/null 2>&1 || {
+		log_error "ra_validate_authorization: '$1' does not conform to release-authorization.schema.json"
+		return 2
+	}
+	return 0
+}
+
+# ra_authorization_binds <record> <version> <stage> <scope> <source_commit> <tag> <candidate_hash> [today] [confirm_token]
+# Enforce the cross-field governance rules JSON Schema cannot: the record must match the
+# VERIFIED candidate on every identity field, forbid self-approval, be unexpired, and (for
+# the interactive method) require the supplied --confirm-token to equal authorization.token.
+# Returns 0 authorized, 1 governance-rejected. Assumes ra_validate_authorization already passed.
+ra_authorization_binds() {
+	_rrec="$1"
+	_rv="$2"
+	_rs="$3"
+	_rsc="$4"
+	_rcommit="$5"
+	_rtag="$6"
+	_rhash="$7"
+	_rtoday="${8:-$(ra_today_utc)}"
+	_rconfirm="${9:-}"
+	_rerr=$(jq -r \
+		--arg v "$_rv" --arg s "$_rs" --arg sc "$_rsc" --arg c "$_rcommit" \
+		--arg tag "$_rtag" --arg h "$_rhash" --arg today "$_rtoday" '
+		def d2i(s): (s | split("-") | (.[0]|tonumber)*10000 + (.[1]|tonumber)*100 + (.[2]|tonumber));
+		. as $r
+		| [
+			(if $r.version == $v then empty else "version mismatch: record=\($r.version) candidate=\($v)" end),
+			(if $r.stage == $s then empty else "stage mismatch: record=\($r.stage) candidate=\($s)" end),
+			(if $r.release_scope == $sc then empty else "release_scope mismatch: record=\($r.release_scope) candidate=\($sc)" end),
+			(if $r.source_commit == $c then empty else "source_commit mismatch: record=\($r.source_commit) candidate=\($c)" end),
+			(if $r.tag == $tag then empty else "tag mismatch: record=\($r.tag) candidate=\($tag)" end),
+			(if $r.candidate_hash == $h then empty else "candidate_hash mismatch: record does not authorize this manifest fingerprint" end),
+			(if $r.authorization.requested_by != $r.authorization.approved_by then empty else "self-approval FORBIDDEN: requested_by == approved_by (\($r.authorization.requested_by))" end),
+			(if (d2i($r.expires_at[0:10]) >= d2i($today)) then empty else "EXPIRED: expires_at=\($r.expires_at) is not on/after \($today)" end)
+		  ]
+		| .[]
+	' "$_rrec" 2>/dev/null) || {
+		log_error "ra_authorization_binds: governance check failed to evaluate (fail closed)"
+		return 1
+	}
+	if [ -n "$_rerr" ]; then
+		printf '%s\n' "$_rerr" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "ra_authorization_binds: $_l"; done
+		return 1
+	fi
+	# Interactive method: the confirmation token must be re-supplied and match.
+	_rmethod=$(jq -r '.authorization.method' "$_rrec")
+	if [ "$_rmethod" = interactive ]; then
+		_rtok=$(jq -r '.authorization.token' "$_rrec")
+		if [ -z "$_rconfirm" ] || [ "$_rconfirm" != "$_rtok" ]; then
+			log_error "ra_authorization_binds: interactive authorization requires --confirm-token to equal the record's authorization.token (fail closed)"
+			return 1
+		fi
+	fi
+	return 0
+}
