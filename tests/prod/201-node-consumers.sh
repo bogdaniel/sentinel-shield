@@ -13,6 +13,11 @@
 #     * package-manager NEGATIVE cases with stable reason codes
 #       (MULTIPLE_AUTHORITATIVE_LOCKFILES / MANAGER_MISMATCH / MISSING_LOCKFILE /
 #       INVALID_MANAGER);
+#     * packageManager DECLARATION validation + version policy with stable reason
+#       codes (INVALID_PACKAGE_MANAGER_DECLARATION / UNSUPPORTED_PACKAGE_MANAGER /
+#       INVALID_PACKAGE_MANAGER_VERSION / UNSUPPORTED_PACKAGE_MANAGER_VERSION /
+#       MALFORMED_PACKAGE_JSON) — a present invalid declaration NEVER falls back
+#       to a lockfile;
 #     * one-of tool groups (Jest|Vitest, ESLint, TypeScript, audit provider);
 #     * mutation-fixture wiring (the 3 intentional-defect fixtures exist and are
 #       excluded from the baseline configs);
@@ -77,12 +82,13 @@ has_dep() {
 log_info "201-node-consumers: STRUCTURAL tier (network-free)"
 
 # --- A. lockfile authority + positive pm resolution --------------------------
-# consumer-relpath | expected-manager
-CONSUMER_SPECS='node-service|npm
-react-app|npm
-pm-variants/npm|npm
-pm-variants/pnpm|pnpm
-pm-variants/yarn|yarn'
+# consumer-relpath | expected-manager | expected-immutable-command-id
+# (pm-variants/yarn declares classic yarn@1.x -> the classic frozen-lockfile command-id.)
+CONSUMER_SPECS='node-service|npm|npm-ci
+react-app|npm|npm-ci
+pm-variants/npm|npm|npm-ci
+pm-variants/pnpm|pnpm|pnpm-frozen-lockfile
+pm-variants/yarn|yarn|yarn-classic-frozen'
 
 # Iterate in the CURRENT shell (never in a pipe subshell) so pass/fail counters
 # and emitted records both survive.
@@ -93,6 +99,7 @@ for _spec in $CONSUMER_SPECS; do
 	IFS=$_oifs
 	_rel=$(printf '%s' "$_spec" | cut -d'|' -f1)
 	_mgr=$(printf '%s' "$_spec" | cut -d'|' -f2)
+	_cid=$(printf '%s' "$_spec" | cut -d'|' -f3)
 	_dir="$CONSUMERS/$_rel"
 	_present=$(pm_authoritative_lockfiles "$_dir")
 	_n=0
@@ -103,20 +110,34 @@ for _spec in $CONSUMER_SPECS; do
 	else
 		fail "$_rel: node_modules must be gitignored"
 	fi
+	# pm_resolve now emits: ok<TAB>manager<TAB>version<TAB>lockfile<TAB>immutable-command-id
 	_line=$(pm_resolve "$_dir" immutable "") || true
 	_ok=$(printf '%s' "$_line" | cut -f1)
 	_got=$(printf '%s' "$_line" | cut -f2)
+	_ver=$(printf '%s' "$_line" | cut -f3)
+	_lock=$(printf '%s' "$_line" | cut -f4)
+	_gotcid=$(printf '%s' "$_line" | cut -f5)
 	assert_eq "$_rel: pm_resolve => ok/$_mgr" "$_ok/$_got" "ok/$_mgr"
-	_cmd=$(pm_immutable_cmd "$_mgr" "$_dir")
-	case "$_mgr" in
-		npm) _want='ci$' ;;
-		pnpm) _want='install --frozen-lockfile$' ;;
-		yarn) _want='install --immutable$' ;;
+	assert_eq "$_rel: pm_resolve lockfile field" "$_lock" "$(pm_lockfile_for "$_mgr")"
+	assert_eq "$_rel: pm_resolve immutable-command-id" "$_gotcid" "$_cid"
+	# These fixtures all declare a packageManager, so a real version (never '-') is recorded.
+	if [ "$_ver" != "-" ] && [ -n "$_ver" ]; then
+		pass "$_rel: declared version recorded ($_ver)"
+	else
+		fail "$_rel: declared version recorded (got '$_ver')"
+	fi
+	# The command-id maps to a FIXED template (never assembled from project content).
+	_cmd=$(pm_immutable_template "$_gotcid" "$_dir")
+	case "$_cid" in
+		npm-ci) _want='ci$' ;;
+		pnpm-frozen-lockfile) _want='install --frozen-lockfile$' ;;
+		yarn-immutable) _want='install --immutable$' ;;
+		yarn-classic-frozen) _want='install --frozen-lockfile$' ;;
 	esac
 	if printf '%s' "$_cmd" | grep -q "$_want"; then
-		pass "$_rel: immutable cmd manager-correct ($_cmd)"
+		pass "$_rel: immutable template manager-correct ($_cmd)"
 	else
-		fail "$_rel: immutable cmd manager-correct (got '$_cmd')"
+		fail "$_rel: immutable template manager-correct (got '$_cmd')"
 	fi
 	rec "$_rel" "$_mgr" "lockfile-authority" "lockfile" "pass" "OK" "structural" "$_line"
 	rec "$_rel" "$_mgr" "pm-authority" "package-manager" "pass" "OK" "structural" "$_cmd"
@@ -148,6 +169,83 @@ neg_case "negative: missing lockfile in immutable mode" "$_ml" "" "MISSING_LOCKF
 
 _iv="$WORK/neg-invalid"; mkdir -p "$_iv"; printf '{}' > "$_iv/package.json"; : > "$_iv/package-lock.json"
 neg_case "negative: invalid override manager" "$_iv" "bun" "INVALID_MANAGER"
+
+# --- B2. packageManager DECLARATION validation (present-but-invalid MUST fail) -
+# A PRESENT invalid packageManager declaration fails with a stable reason code and is NEVER
+# silently dropped so the sole lockfile can be chosen against the project's explicit intent.
+# Each fixture ALSO commits a package-lock.json to PROVE the declaration error takes precedence
+# over lockfile fallback (the whole point of TASK 4).
+decl_neg() { # desc  packageManager-JSON-value  expect_code
+	_dd=$(mktemp -d "$WORK/declXXXXXX")
+	printf '{"packageManager":%s}\n' "$2" > "$_dd/package.json"
+	: > "$_dd/package-lock.json" # a sole lockfile the engine must NOT fall back to
+	_line=$(pm_resolve "$_dd" immutable "") || true
+	_st=$(printf '%s' "$_line" | cut -f1)
+	_code=$(printf '%s' "$_line" | cut -f2)
+	assert_eq "$1" "$_st/$_code" "error/$3"
+	rec "declaration/$3" "none" "pm-declaration-negative" "package-manager" "pass" "$3" "structural" "$1"
+}
+
+decl_neg "decl: bun@1.2.0 unsupported manager (not npm|pnpm|yarn)" '"bun@1.2.0"' "UNSUPPORTED_PACKAGE_MANAGER"
+decl_neg "decl: pnpm (no version) is malformed" '"pnpm"' "INVALID_PACKAGE_MANAGER_DECLARATION"
+decl_neg "decl: @9.0.0 missing manager name" '"@9.0.0"' "INVALID_PACKAGE_MANAGER_DECLARATION"
+decl_neg "decl: npm@not-a-version invalid version syntax" '"npm@not-a-version"' "INVALID_PACKAGE_MANAGER_VERSION"
+decl_neg "decl: non-string number value is malformed" '10' "INVALID_PACKAGE_MANAGER_DECLARATION"
+decl_neg "decl: non-string object value is malformed" '{"name":"npm"}' "INVALID_PACKAGE_MANAGER_DECLARATION"
+decl_neg "decl: command-like/whitespace content rejected" '"npm@10 && rm -rf /"' "INVALID_PACKAGE_MANAGER_DECLARATION"
+decl_neg "decl: unsupported pnpm major (5.x)" '"pnpm@5.0.0"' "UNSUPPORTED_PACKAGE_MANAGER_VERSION"
+
+# malformed package.json (TASK 5 case 11): unparseable JSON fails, never a silent lockfile pick.
+_bad=$(mktemp -d "$WORK/badpjXXXXXX")
+printf '{ this is : not valid json' > "$_bad/package.json"; : > "$_bad/package-lock.json"
+_line=$(pm_resolve "$_bad" immutable "") || true
+assert_eq "decl: malformed package.json rejected" \
+	"$(printf '%s' "$_line" | cut -f1)/$(printf '%s' "$_line" | cut -f2)" "error/MALFORMED_PACKAGE_JSON"
+rec "declaration/MALFORMED_PACKAGE_JSON" "none" "pm-declaration-negative" "package-manager" "pass" "MALFORMED_PACKAGE_JSON" "structural" "unparseable package.json"
+
+# --- B3. version-policy + command-id POSITIVES and remaining TASK 5 cases ------
+# Helper: build a fixture with a declaration + a chosen lockfile and assert the full ok line.
+pol_ok() { # desc  packageManager-value  lockfile-name  expect: mgr/version/cmdid
+	_pd=$(mktemp -d "$WORK/polXXXXXX")
+	printf '{"packageManager":"%s"}\n' "$2" > "$_pd/package.json"
+	: > "$_pd/$3"
+	_line=$(pm_resolve "$_pd" immutable "") || true
+	_got="$(printf '%s' "$_line" | cut -f1)/$(printf '%s' "$_line" | cut -f2)/$(printf '%s' "$_line" | cut -f3)/$(printf '%s' "$_line" | cut -f5)"
+	assert_eq "$1" "$_got" "$4"
+	rec "policy/ok" "$(printf '%s' "$_line" | cut -f2)" "pm-policy-positive" "package-manager" "pass" "OK" "structural" "$_line"
+}
+
+# (1) supported npm + lock ; (3) supported pnpm + lock ; (5)+(6) supported yarn MODERN + lock.
+pol_ok "policy: supported npm@11 + lock" "npm@11.0.0" "package-lock.json" "ok/npm/11.0.0/npm-ci"
+pol_ok "policy: supported pnpm@9 + lock" "pnpm@9.1.0" "pnpm-lock.yaml" "ok/pnpm/9.1.0/pnpm-frozen-lockfile"
+pol_ok "policy: supported yarn MODERN@4 + lock -> yarn-immutable" "yarn@4.1.0" "yarn.lock" "ok/yarn/4.1.0/yarn-immutable"
+# (6) yarn CLASSIC vs MODERN: classic (1.x) -> distinct classic frozen-lockfile command-id.
+pol_ok "policy: yarn CLASSIC@1 + lock -> yarn-classic-frozen" "yarn@1.22.22" "yarn.lock" "ok/yarn/1.22.22/yarn-classic-frozen"
+
+# (2) unsupported npm major ; (4) unsupported pnpm major (both WITH a matching lockfile, so the
+# failure is the VERSION policy — not a mismatch or missing lock).
+_un=$(mktemp -d "$WORK/unmajXXXXXX"); printf '{"packageManager":"npm@2.0.0"}\n' > "$_un/package.json"; : > "$_un/package-lock.json"
+neg_case "policy: unsupported npm major (2.x) + matching lock" "$_un" "" "UNSUPPORTED_PACKAGE_MANAGER_VERSION"
+_up=$(mktemp -d "$WORK/unpnpmXXXXXX"); printf '{"packageManager":"pnpm@5.0.0"}\n' > "$_up/package.json"; : > "$_up/pnpm-lock.yaml"
+neg_case "policy: unsupported pnpm major (5.x) + matching lock" "$_up" "" "UNSUPPORTED_PACKAGE_MANAGER_VERSION"
+
+# (7) manager-vs-lockfile conflict: valid declaration disagrees with the committed lockfile.
+_cf=$(mktemp -d "$WORK/conflictXXXXXX"); printf '{"packageManager":"pnpm@9.0.0"}\n' > "$_cf/package.json"; : > "$_cf/package-lock.json"
+neg_case "policy: declared pnpm but npm lockfile -> MANAGER_MISMATCH" "$_cf" "" "MANAGER_MISMATCH"
+
+# (10) CLI override conflicting with a valid declaration -> MANAGER_MISMATCH (never silent override).
+_ov=$(mktemp -d "$WORK/overrideXXXXXX"); printf '{"packageManager":"npm@10.0.0"}\n' > "$_ov/package.json"; : > "$_ov/package-lock.json"
+neg_case "policy: override pnpm vs declared npm -> MANAGER_MISMATCH" "$_ov" "pnpm" "MANAGER_MISMATCH"
+
+# pm_policy emits a machine-readable row per manager (contract for downstream tooling).
+_pol_rows=$(pm_policy | grep -c .)
+_pol_yarn_majors=$(pm_policy | awk -F'\t' '$1=="yarn"{print $2}')
+_pol_yarn_cp=$(pm_policy | awk -F'\t' '$1=="yarn"{print $3}')
+if [ "$_pol_rows" -eq 3 ] && [ "$_pol_yarn_majors" = "1 2 3 4" ] && [ "$_pol_yarn_cp" = "yes" ]; then
+	pass "policy: pm_policy emits 3 machine-readable manager rows (yarn majors + corepack correct)"
+else
+	fail "policy: pm_policy rows (rows=$_pol_rows yarn_majors='$_pol_yarn_majors' corepack='$_pol_yarn_cp')"
+fi
 
 # --- C. one-of tool groups + audit provider ----------------------------------
 # For each app consumer: exactly one test runner (Jest|Vitest); ESLint present;

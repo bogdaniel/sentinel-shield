@@ -44,32 +44,60 @@ project and decides which manager is authoritative and which immutable install
 command reproduces the lockfile. It never writes, never runs a package manager, and
 **never switches the manager**.
 
-Authority mapping (exactly one per repo):
+Authority mapping (exactly one per repo). Each manager maps to a FIXED
+`immutable-command-id`; callers translate that id to a fixed command TEMPLATE via
+`pm_immutable_template <command-id> <dir>` — the resolver never emits a shell
+command assembled from untrusted project content:
 
-| lockfile            | manager | immutable install command                       |
-| ------------------- | ------- | ----------------------------------------------- |
-| `package-lock.json` | npm     | `npm --prefix <dir> ci`                         |
-| `pnpm-lock.yaml`    | pnpm    | `pnpm --dir <dir> install --frozen-lockfile`    |
-| `yarn.lock`         | yarn    | `yarn --cwd <dir> install --immutable`          |
+| lockfile            | manager | immutable-command-id   | command template                                |
+| ------------------- | ------- | ---------------------- | ----------------------------------------------- |
+| `package-lock.json` | npm     | `npm-ci`               | `npm --prefix <dir> ci`                         |
+| `pnpm-lock.yaml`    | pnpm    | `pnpm-frozen-lockfile` | `pnpm --dir <dir> install --frozen-lockfile`    |
+| `yarn.lock` (modern)| yarn ≥2 | `yarn-immutable`       | `yarn --cwd <dir> install --immutable`          |
+| `yarn.lock` (classic)| yarn 1 | `yarn-classic-frozen`  | `yarn --cwd <dir> install --frozen-lockfile`    |
 
 Resolution precedence: **explicit override → `packageManager` field → the sole
-lockfile**. The chosen manager is cross-checked against the committed lockfile.
+lockfile**. The chosen manager is cross-checked against the committed lockfile. A
+**present but invalid** `packageManager` declaration is a HARD FAILURE — it is never
+silently dropped so the sole lockfile can be chosen against an explicit project intent.
 
 `pm_resolve <target> <mode> [override]` prints one TSV line and sets exit status:
 
 ```
-ok<TAB><manager><TAB><lockfile>            exit 0
-error<TAB><REASON_CODE><TAB><message>      exit 2
+ok<TAB><manager><TAB><version><TAB><lockfile><TAB><immutable-command-id>   exit 0
+error<TAB><REASON_CODE><TAB><message>                                      exit 2
 ```
+
+`<version>` is the declared version (e.g. `10.9.3`) or `-` when none was declared.
+
+### Supported-version policy
+
+A machine-readable policy (`pm_policy` prints one TSV row per manager;
+`pm_supported_majors <manager>` prints the accepted majors):
+
+| manager | supported majors | Corepack? | notes                                                        |
+| ------- | ---------------- | --------- | ------------------------------------------------------------ |
+| npm     | 8, 9, 10, 11     | no (ships with Node) | `npm ci` immutable install                         |
+| pnpm    | 8, 9, 10         | yes       | `pnpm install --frozen-lockfile`                             |
+| yarn    | 1, 2, 3, 4       | yes (v≥2) | **classic** (1.x) → `install --frozen-lockfile`; **modern** (≥2) → `install --immutable` |
+
+Accepted version syntax is `MAJOR[.MINOR[.PATCH]]` with an optional `-prerelease`
+tag; a Corepack integrity suffix (`+sha…`) is tolerated and ignored. Yarn CLASSIC
+and MODERN are DISTINCT policies with different immutable commands and command-ids.
 
 Stable reason codes (asserted by the driver):
 
-| code                                | when                                             |
-| ----------------------------------- | ------------------------------------------------ |
-| `MULTIPLE_AUTHORITATIVE_LOCKFILES`  | more than one authoritative lockfile committed   |
-| `MANAGER_MISMATCH`                  | chosen manager ≠ the committed lockfile          |
-| `MISSING_LOCKFILE`                  | immutable mode, chosen manager has no lockfile   |
-| `INVALID_MANAGER`                   | override / declared value is not npm\|pnpm\|yarn |
+| code                                 | when                                                       |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `MULTIPLE_AUTHORITATIVE_LOCKFILES`   | more than one authoritative lockfile committed             |
+| `MANAGER_MISMATCH`                   | chosen manager ≠ the committed lockfile, or a CLI override conflicts with the declaration |
+| `MISSING_LOCKFILE`                   | immutable mode, chosen manager has no lockfile             |
+| `INVALID_MANAGER`                    | CLI override value is not npm\|pnpm\|yarn                  |
+| `MALFORMED_PACKAGE_JSON`             | `package.json` exists but is not valid JSON                |
+| `INVALID_PACKAGE_MANAGER_DECLARATION`| `packageManager` present but not `name@version` (missing name/version, non-string, whitespace/command-like content) |
+| `UNSUPPORTED_PACKAGE_MANAGER`        | declared name is not npm\|pnpm\|yarn (e.g. `bun@1.2.0`)    |
+| `INVALID_PACKAGE_MANAGER_VERSION`    | declared version is not valid version syntax (e.g. `npm@not-a-version`) |
+| `UNSUPPORTED_PACKAGE_MANAGER_VERSION`| version syntax valid but major outside the supported range |
 
 ## Intentional defects (mutations)
 
@@ -139,6 +167,10 @@ Commit only the lockfiles; `node_modules/` stays ignored.
 
 ## Sandbox note
 
-`yarn install --immutable` is the Yarn Berry (v2+) form. The sandbox ships classic
-Yarn 1.22, which tolerates the flag; the `yarn.lock` variant is generated with
-classic Yarn and is genuine. The engine's canonical immutable command is unchanged.
+`yarn install --immutable` is the Yarn Berry (v2+) form; `yarn install
+--frozen-lockfile` is the classic (1.x) form. The `pm-variants/yarn` fixture
+declares classic `yarn@1.22.22`, so the resolver selects the
+`yarn-classic-frozen` command-id (frozen-lockfile) — the honest classic command —
+rather than the modern `--immutable` flag. A modern declaration (`yarn@2/3/4`)
+resolves to `yarn-immutable`. The `yarn.lock` variant is generated with classic
+Yarn and is genuine.

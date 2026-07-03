@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/installation-metadata.schema.json",
+  "title": "Sentinel Shield immutable source-acquisition record",
+  "description": "Shape of the .sentinel-shield-ref record written by scripts/acquire-sentinel-shield.sh next to an acquired immutable checkout. It captures the NORMALIZED, privacy-preserving provenance of the source (repository kind, ref, resolved commit) plus the OPTIONAL source-verification outcome. Contains NO secrets, tokens, credentials, or local/home paths: a local-path source records repository=null and credential userinfo is never persisted. All verification fields are additive; readers that ignore them are unaffected. The verification contract is EXPLICIT: tree-record RECORDS a computed HEAD tree id (never a comparison); tree-checksum COMPARES the computed tree to a required expected tree and records BOTH; signature verifies a signed annotated tag AND its target commit. A calculated-but-uncompared value is NEVER labelled verified.",
+  "type": "object",
+  "required": [
+    "repository_kind",
+    "repository",
+    "ref",
+    "resolved_commit",
+    "ref_kind",
+    "verification_method"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "repository_kind": {
+      "type": "string",
+      "enum": ["github", "url", "local"],
+      "description": "How the source was named: 'github' (owner/repo shorthand), 'url' (explicit remote, sanitized), or 'local' (a local path, whose value is NEVER persisted)."
+    },
+    "repository": {
+      "type": ["string", "null"],
+      "description": "Normalized provenance: owner/repo for github, a sanitized URL (no userinfo/query/fragment) for url, and null for a local path. MUST NOT carry credential userinfo."
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The immutable ref that was acquired: an annotated/lightweight tag name, or a full 40-hex commit SHA. Moving branches are refused at acquisition and never recorded."
+    },
+    "resolved_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The full 40-hex commit SHA the checkout HEAD resolved to."
+    },
+    "ref_kind": {
+      "type": "string",
+      "enum": ["tag", "sha"],
+      "description": "Authoritative classification of 'ref' at acquisition time — the immutability proof doctor.sh relies on. 'tag' or 'sha' only (a name is never trusted as a tag without this)."
+    },
+    "verification_method": {
+      "type": "string",
+      "enum": [
+        "none",
+        "tree-record",
+        "tree-checksum",
+        "signature",
+        "tree-checksum+signature"
+      ],
+      "description": "Which OPTIONAL source verification ran. 'none' = disabled. 'tree-record' = the HEAD tree id was RECORDED but compared to nothing (not a verification). 'tree-checksum' = the HEAD tree was compared EXACTLY to a caller-supplied expected tree (fail closed). 'signature' = a signed annotated tag was verified (GPG or SSH per Git config) and its target commit confirmed. Combined mode requires both."
+    },
+    "tree_expected": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The caller-supplied expected HEAD tree object id. Present ONLY for tree-checksum modes — an uncompared tree-record NEVER records an expectation."
+    },
+    "tree_calculated": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The deterministic HEAD tree object id (git rev-parse HEAD^{tree}) computed from the checkout. Present for any tree mode. For tree-checksum it equals tree_expected (a mismatch fails closed and writes no record)."
+    },
+    "signature_status": {
+      "type": "string",
+      "enum": ["good"],
+      "description": "Signature outcome for signature modes. Only 'good' is ever recorded — an unverifiable/bad signature fails closed and writes no record."
+    },
+    "signature_mechanism": {
+      "type": "string",
+      "enum": ["gpg", "ssh", "unknown"],
+      "description": "Best-effort classification of the mechanism git used to verify the tag (GPG status lines vs SSH), or 'unknown' when not determinable. Derived without echoing signer identity or key paths."
+    },
+    "tag_object": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The annotated tag OBJECT id (refs/tags/<ref>) that was signature-verified."
+    },
+    "peeled_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The COMMIT the verified signed tag peels to (refs/tags/<ref>^{commit}); it must equal resolved_commit (identity is never bypassed by a good signature)."
+    }
+  }
+}
