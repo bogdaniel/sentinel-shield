@@ -56,6 +56,14 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+# Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
+# Sourced defensively: the envelope layer is an optional add-on, so the command
+# still works if the lib is absent (e.g. a minimal copied tree in a test fixture).
+if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
+  # shellcheck source=scripts/lib/output-contract.sh
+  . "$SCRIPT_DIR/lib/output-contract.sh"
+  oc_intercept "check-release-readiness" "$0" "$@"
+fi
 
 # Self-test invocation — overridable so tests can stub it with a fast fake.
 SELF_TEST="${SELF_TEST:-sh $REPO_ROOT/scripts/self-test.sh}"

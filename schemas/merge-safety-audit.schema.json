@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/merge-safety-audit.schema.json",
+  "title": "Sentinel Shield merge-safety audit report",
+  "description": "Machine report emitted by scripts/audits/merge-safety-audit.sh. Flags unsafe workflow patterns (privileged pull_request_target checkout, write permissions on fork-reachable jobs, secret exposure to fork PRs, mutable action refs, release jobs on unprotected refs) across .github/workflows/*.yml and templates/workflows/*.yml. A non-empty 'violations' array means the gate failed closed.",
+  "type": "object",
+  "required": ["version", "generated_at", "tool", "files_scanned", "checks", "status", "violation_count", "violations"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string" },
+    "generated_at": { "type": "string", "description": "ISO-8601 UTC timestamp of the audit run." },
+    "tool": { "const": "merge-safety-audit" },
+    "files_scanned": { "type": "integer", "minimum": 0 },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "pull-request-target-checkout",
+          "fork-pr-write-permission",
+          "pull-request-target-secret",
+          "mutable-action-ref",
+          "release-on-unprotected-ref"
+        ]
+      }
+    },
+    "status": { "type": "string", "enum": ["pass", "fail"] },
+    "violation_count": { "type": "integer", "minimum": 0 },
+    "violations": {
+      "type": "array",
+      "description": "One object per finding. Empty when status=pass.",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "check", "ref", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 0 },
+          "check": {
+            "type": "string",
+            "enum": [
+              "pull-request-target-checkout",
+              "fork-pr-write-permission",
+              "pull-request-target-secret",
+              "mutable-action-ref",
+              "release-on-unprotected-ref"
+            ]
+          },
+          "ref": { "type": "string", "description": "The offending token (uses ref, scope, secret, or step snippet)." },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,49 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### v2.0.0-beta.2 (DRAFT — engine-only, not published) — production-readiness hardening
+
+Additive hardening increment on top of the published `v2.0.0-beta.1` engine-only
+pre-release. **No STABLE CLI, exit code, env var, or schema was renamed or removed.**
+Framework live-validation remains **excluded**: Laravel/Symfony are engine- and
+fixture-tested only, and the standalone PHP-library consumer is **structural only**
+(live composer/phpunit/phpstan/pint gates are CI-deferred SKIPs). Final commit / CI-run /
+artifact / tag identifiers are pending the release commit. See
+[`docs/v2.0.0-beta.2-release-notes.md`](docs/v2.0.0-beta.2-release-notes.md) and
+[`docs/migration-beta1-to-beta2.md`](docs/migration-beta1-to-beta2.md).
+
+- **CI / actions.** New `scripts/audits/workflow-runtime-audit.sh` gate (SHA-pins,
+  least-privilege `permissions`, `timeout-minutes`, `concurrency`, `if-no-files-found`)
+  wired into `ci-workflow-lint`; action inventory recorded.
+- **Scanners.** OSV-Scanner action `v1.9.0` → `v2.3.8`; Grype (`anchore/scan-action`)
+  `v4` → `v7.4.0` (re-pinned by SHA). Collectors carry scanner-version + db-timestamp
+  metadata and tool-provenance checksums. New scanner-health vocabulary
+  (`ok|findings|no-targets|scanner-error|parser-error`) with **fail-closed exit 2 on
+  `parser-error`** (unparseable output is never treated as clean).
+- **Consumer validation.** One unified consumer-validation record schema
+  (`schemas/consumer-validation.schema.json`) via `scripts/report-consumer-validation.sh`.
+  Node service + React app **LIVE-TESTED** (real npm/pnpm/yarn lockfiles;
+  `npm ci` / `pnpm --frozen-lockfile` / `yarn --immutable`; mutations caught;
+  byte-for-byte rollback). Standalone PHP-library consumer **STRUCTURAL only**.
+- **Installer / recovery.** `scripts/lib/transaction.sh` extracted verbatim from three
+  inline copies; append-only transaction journal + `scripts/recover-operation.sh`
+  (fail-closed, exit 4 on tampered/partial journal); optional
+  `scripts/lib/source-verification.sh` (tree checksum / signed-tag); deterministic
+  installation-plan JSON.
+- **Automation interface.** Opt-in `--output json` command-result envelope on `doctor`,
+  `install-baseline`, `sync-baseline`, `plan-upgrade`, `bootstrap-profile-tools`,
+  `run-local-pipeline`, `check-release-readiness` (human output + exit codes unchanged;
+  secrets masked, absolute paths stripped; `schemas/command-result.schema.json`).
+  Black-box adopter harness (`tests/adopter/black-box-install.sh`).
+- **Governance.** `config/required-checks.json` registry +
+  `scripts/audits/required-checks-audit.sh` + `scripts/audits/merge-safety-audit.sh`
+  wired into `ci-workflow-lint`.
+- **Evidence / provenance.** `scripts/collect-release-evidence.sh` (engine_ci[]
+  generator from the GitHub API), `scripts/verify-release-artifacts.sh` + archive-safety
+  guards, reproducible release manifest (`scripts/generate-release-manifest.sh` +
+  `scripts/verify-release-manifest.sh`), finite two-commit finalization
+  (`scripts/finalize-release-evidence.sh`). Signing/attestation deferred.
+
 ### Hardening (production readiness)
 - **Safe acquisition (destructive-cleanup guard).** `acquire-sentinel-shield.sh` validates
   `--destination` before any destructive step; `--cleanup` / re-acquire **refuse** (exit 2,

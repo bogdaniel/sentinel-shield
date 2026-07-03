@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/workflow-runtime-audit.schema.json",
+  "title": "Sentinel Shield workflow-runtime audit report",
+  "description": "Machine report emitted by scripts/audits/workflow-runtime-audit.sh. Asserts runtime-hardening invariants over .github/workflows/*.yml and templates/workflows/*.yml. A non-empty 'violations' array means the gate failed closed.",
+  "type": "object",
+  "required": ["version", "generated_at", "tool", "files_scanned", "checks", "status", "violation_count", "violations"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Report schema version, e.g. \"1.0\"."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO-8601 UTC timestamp of the audit run."
+    },
+    "tool": {
+      "const": "workflow-runtime-audit",
+      "description": "Producing tool identifier."
+    },
+    "files_scanned": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of workflow files inspected."
+    },
+    "checks": {
+      "type": "array",
+      "description": "The full set of invariant ids this tool enforces.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "uses-sha-pin",
+          "job-permissions",
+          "job-timeout",
+          "workflow-concurrency",
+          "upload-artifact-if-no-files-found"
+        ]
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "pass = zero violations; fail = one or more."
+    },
+    "violation_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Length of the violations array."
+    },
+    "violations": {
+      "type": "array",
+      "description": "One object per detected violation. Empty when status=pass.",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "job", "check", "ref", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Path to the offending workflow file."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed line the violation anchors to."
+          },
+          "job": {
+            "type": "string",
+            "description": "Job name for job-scoped checks; empty string for file/step-scoped checks."
+          },
+          "check": {
+            "type": "string",
+            "enum": [
+              "uses-sha-pin",
+              "job-permissions",
+              "job-timeout",
+              "workflow-concurrency",
+              "upload-artifact-if-no-files-found"
+            ],
+            "description": "Which invariant was violated."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Offending `uses:` ref for uses-sha-pin; empty string otherwise."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation of the violation."
+          }
+        }
+      }
+    }
+  }
+}

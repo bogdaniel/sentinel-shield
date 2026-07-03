@@ -32,6 +32,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/source-verification.sh
+. "$SCRIPT_DIR/lib/source-verification.sh"
 
 # usage — print CLI usage/help to stdout (lists every flag).
 usage() {
@@ -43,6 +45,13 @@ Usage: acquire-sentinel-shield.sh --repository <owner/repo|url|path> --ref <tag|
   --destination <dir>                 Checkout directory (the only path mutated).
   --transport https|ssh|gh            Remote scheme for owner/repo shorthand (default: https).
   --verify                            Assert checkout HEAD == resolved commit; fail closed on mismatch.
+  --verify-source <mode>              OPTIONAL extra verification of the acquired checkout (default none):
+                                        tree-record            RECORD the deterministic HEAD tree id (NOT a check).
+                                        tree-checksum          compare HEAD tree to --expected-tree; fail closed.
+                                        signature              verify a signed annotated tag (GPG or SSH); fail closed.
+                                        tree-checksum+signature  both. (deprecated alias: checksum -> tree-record.)
+                                      Every mode ALSO asserts HEAD == the resolved commit first.
+  --expected-tree <40-hex>            REQUIRED with tree-checksum modes: the expected HEAD tree object id.
   --reuse-existing                    Reuse a present matching checkout instead of re-cloning.
   --cleanup                           Remove the destination first (or alone, just clean up).
   -h, --help                          Print this help and exit 0.
@@ -50,21 +59,64 @@ EOF
 }
 
 # write_ref_record <dest> <repo_kind> <repository|""> <ref> <commit> <ref_kind> — record the
-# resolved ref in the NORMALIZED, privacy-preserving shape (SHARED CONTRACT 1). NO credentials
-# and NO local/home paths are ever persisted: a local-path source records repository=null.
-# repository_kind is github|url|local; ref_kind is the authoritative tag|sha classification
-# doctor.sh relies on to prove immutability.
+# resolved ref in the NORMALIZED, privacy-preserving shape (SHARED CONTRACT 1; see
+# schemas/installation-metadata.schema.json). NO credentials and NO local/home paths are ever
+# persisted: a local-path source records repository=null. repository_kind is github|url|local;
+# ref_kind is the authoritative tag|sha classification doctor.sh relies on to prove immutability.
+# The OPTIONAL source-verification outcome is read from globals set by acquire_run_source_verify:
+#   verification_method  none|tree-record|tree-checksum|signature|tree-checksum+signature
+#   tree_expected        the caller-supplied expected tree id (tree-checksum modes only)
+#   tree_calculated      the computed HEAD tree id (any tree mode)
+#   signature_status/…   good + mechanism/tag_object/peeled_commit (signature modes only)
+# tree-record NEVER records a tree_expected — an uncompared value is a RECORD, not a match.
+# All added fields are additive; readers that ignore them are unaffected.
 write_ref_record() {
 	_rkind=$(json_escape "$2"); _rf=$(json_escape "$4"); _kind=$(json_escape "$6")
+	_vm=$(json_escape "${VMETHOD:-none}")
 	if [ -n "$3" ]; then
 		_repo="\"$(json_escape "$3")\""
 	else
 		_repo="null"
 	fi
-	printf '{"repository_kind":"%s","repository":%s,"ref":"%s","resolved_commit":"%s","ref_kind":"%s"}\n' \
-		"$_rkind" "$_repo" "$_rf" "$5" "$_kind" > "$1/.sentinel-shield-ref" || {
+	_extra=""
+	[ -n "${TREE_EXP:-}" ] && _extra="$_extra,\"tree_expected\":\"$(json_escape "$TREE_EXP")\""
+	[ -n "${TREE_CALC:-}" ] && _extra="$_extra,\"tree_calculated\":\"$(json_escape "$TREE_CALC")\""
+	if [ -n "${SIG_STATUS:-}" ]; then
+		_extra="$_extra,\"signature_status\":\"$(json_escape "$SIG_STATUS")\""
+		_extra="$_extra,\"signature_mechanism\":\"$(json_escape "${SIG_MECH:-unknown}")\""
+		[ -n "${TAG_OBJ:-}" ] && _extra="$_extra,\"tag_object\":\"$(json_escape "$TAG_OBJ")\""
+		[ -n "${PEELED:-}" ] && _extra="$_extra,\"peeled_commit\":\"$(json_escape "$PEELED")\""
+	fi
+	printf '{"repository_kind":"%s","repository":%s,"ref":"%s","resolved_commit":"%s","ref_kind":"%s","verification_method":"%s"%s}\n' \
+		"$_rkind" "$_repo" "$_rf" "$5" "$_kind" "$_vm" "$_extra" > "$1/.sentinel-shield-ref" || {
 		log_error "acquire: cannot write ref record to $1/.sentinel-shield-ref"; return 1
 	}
+}
+
+# acquire_run_source_verify <dir> <ref> <expected> — run OPTIONAL source verification per the
+# global VERIFY_SOURCE and EXPECTED_TREE. Sets the record globals consumed by write_ref_record:
+# VMETHOD (normalized method; "none" when disabled), TREE_EXP/TREE_CALC (tree modes), and
+# SIG_STATUS/SIG_MECH/TAG_OBJ/PEELED (signature modes). FAILS CLOSED (exit 4) on any verification
+# failure. A no-op when VERIFY_SOURCE=none, so existing --ref/--verify behaviour is unchanged.
+acquire_run_source_verify() {
+	VMETHOD="none"; TREE_EXP=""; TREE_CALC=""; SIG_STATUS=""; SIG_MECH=""; TAG_OBJ=""; PEELED=""
+	[ "$VERIFY_SOURCE" = "none" ] && return 0
+	VMETHOD=$(sv_verify "$1" "$2" "$3" "$VERIFY_SOURCE" "$EXPECTED_TREE") || {
+		log_error "acquire: source verification (--verify-source $VERIFY_SOURCE) FAILED — fail closed"; exit 4; }
+	case "$VMETHOD" in
+		*tree-record* | *tree-checksum*) TREE_CALC=$(sv_tree_checksum "$1" 2>/dev/null || true) ;;
+	esac
+	case "$VMETHOD" in
+		*tree-checksum*) TREE_EXP=$(printf '%s' "$EXPECTED_TREE" | tr 'A-F' 'a-f') ;;
+	esac
+	case "$VMETHOD" in
+		*signature*)
+			SIG_STATUS="good"
+			SIG_MECH=$(sv_signature_mechanism "$1" "$2" 2>/dev/null || printf 'unknown')
+			TAG_OBJ=$(sv_tag_object "$1" "$2")
+			PEELED=$(sv_tag_peeled_commit "$1" "$2")
+			;;
+	esac
 }
 
 # acquire_sanitize_url <url> — strip userinfo, query, and fragment from an explicit remote
@@ -164,6 +216,15 @@ REF=""
 DEST=""
 TRANSPORT="https"
 VERIFY=0
+VERIFY_SOURCE="none"
+EXPECTED_TREE=""
+VMETHOD="none"
+TREE_EXP=""
+TREE_CALC=""
+SIG_STATUS=""
+SIG_MECH=""
+TAG_OBJ=""
+PEELED=""
 REUSE=0
 CLEANUP=0
 while [ $# -gt 0 ]; do
@@ -175,6 +236,8 @@ while [ $# -gt 0 ]; do
 			DEST="$2"; shift 2 ;;
 		--transport) TRANSPORT="${2:?--transport requires a value}"; shift 2 ;;
 		--verify) VERIFY=1; shift ;;
+		--verify-source) VERIFY_SOURCE="${2:?--verify-source requires a value}"; shift 2 ;;
+		--expected-tree) EXPECTED_TREE="${2:?--expected-tree requires a value}"; shift 2 ;;
 		--reuse-existing) REUSE=1; shift ;;
 		--cleanup) CLEANUP=1; shift ;;
 		-h | --help) usage; exit 0 ;;
@@ -185,6 +248,22 @@ done
 case "$TRANSPORT" in
 	https | ssh | gh) ;;
 	*) log_error "acquire: invalid --transport '$TRANSPORT' (https|ssh|gh)"; exit 2 ;;
+esac
+case "$VERIFY_SOURCE" in
+	none | tree-record | tree-checksum | signature | tree-checksum+signature) ;;
+	checksum)
+		# Deprecated alias retained for backward compatibility: record-only, never "verified".
+		log_warn "acquire: --verify-source 'checksum' is a deprecated alias for 'tree-record' (records the HEAD tree id; it is NOT a comparison)"
+		VERIFY_SOURCE="tree-record" ;;
+	*) log_error "acquire: invalid --verify-source '$VERIFY_SOURCE' (none|tree-record|tree-checksum|signature|tree-checksum+signature)"; exit 2 ;;
+esac
+# tree-checksum modes REQUIRE a 40-hex expected tree; --expected-tree is meaningless elsewhere.
+case "$VERIFY_SOURCE" in
+	*tree-checksum*)
+		[ -n "$EXPECTED_TREE" ] || { log_error "acquire: --verify-source $VERIFY_SOURCE requires --expected-tree <40-hex>"; exit 2; }
+		printf '%s' "$EXPECTED_TREE" | grep -qE '^[0-9a-fA-F]{40}$' || { log_error "acquire: --expected-tree must be a full 40-hex tree object id"; exit 2; } ;;
+	*)
+		[ -z "$EXPECTED_TREE" ] || { log_error "acquire: --expected-tree is only valid with --verify-source tree-checksum[+signature]"; exit 2; } ;;
 esac
 [ -n "$DEST" ] || { log_error "acquire: --destination is required"; usage >&2; exit 2; }
 
@@ -283,6 +362,7 @@ if [ -e "$DEST" ]; then
 		# worktree is clean — a dirty checkout is not the immutable source, re-acquire.
 		if [ -n "$CUR" ] && [ "$CUR" = "$EXPECTED" ] && [ -z "$(git -C "$DEST" status --porcelain 2>/dev/null)" ]; then
 			log_info "acquire: reusing existing checkout at $DEST (HEAD=$CUR)"
+			acquire_run_source_verify "$DEST" "$REF" "$EXPECTED"
 			write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$CUR" "$KIND"
 			printf '%s\n' "$CUR"
 			exit 0
@@ -329,6 +409,7 @@ if [ "$VERIFY" = 1 ] && [ "$RESOLVED" != "$EXPECTED" ]; then
 	exit 4
 fi
 
+acquire_run_source_verify "$DEST" "$REF" "$EXPECTED"
 write_ref_record "$DEST" "$REPO_KIND" "$REPO_NORM" "$REF" "$RESOLVED" "$KIND"
 log_info "acquire: $REPO @ $REF -> $RESOLVED (checkout: $DEST)"
 printf '%s\n' "$RESOLVED"

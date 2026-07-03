@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/required-checks.schema.json",
+  "title": "Sentinel Shield required-checks registry",
+  "description": "Canonical registry (config/required-checks.json) of the stable GitHub check-run names published by the engine workflows under .github/workflows/. Consumed by scripts/audits/required-checks-audit.sh, which fails closed on drift against the live jobs.<id>.name.",
+  "type": "object",
+  "required": ["version", "workflows"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string", "description": "Registry schema version, e.g. \"1.0\"." },
+    "description": { "type": "string" },
+    "classifications": {
+      "type": "object",
+      "description": "Human glossary of the classification labels used below.",
+      "additionalProperties": { "type": "string" }
+    },
+    "workflows": {
+      "type": "object",
+      "description": "Map of workflow filename (basename under .github/workflows/) to its published checks.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["checks"],
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "classification"],
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The stable check-run name (jobs.<id>.name, or the job id when unset)."
+                },
+                "classification": {
+                  "type": "string",
+                  "enum": [
+                    "always-required",
+                    "applicability-detector",
+                    "conditional-heavy",
+                    "scheduled-only",
+                    "release-only"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

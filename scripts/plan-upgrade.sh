@@ -33,6 +33,15 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
+# Sourced defensively (optional add-on). NOTE: `--output <path>` still writes the
+# report to <path>; ONLY the exact token `--output json` selects the envelope
+# (documented in docs/automation-interface.md).
+if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
+  # shellcheck source=scripts/lib/output-contract.sh
+  . "$SCRIPT_DIR/lib/output-contract.sh"
+  oc_intercept "plan-upgrade" "$0" "$@"
+fi
 
 FROM=""; TO=""; PROFILE=""; FORMAT="text"; OUTPUT=""; TARGET=""
 

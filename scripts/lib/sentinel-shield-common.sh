@@ -69,6 +69,41 @@ timestamp_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 # utc_timestamp — backward-compatible alias for timestamp_utc.
 utc_timestamp() { timestamp_utc; }
 
+# --- digests -----------------------------------------------------------------
+# ss_sha256_file <path> — print the lowercase 64-hex SHA-256 of a file (no name),
+# using sha256sum or shasum (whichever exists). Prints nothing and returns 1 when
+# neither tool is available or the file is unreadable.
+ss_sha256_file() {
+	[ -n "${1:-}" ] && [ -f "$1" ] || return 1
+	# Capture the hasher's exit status BEFORE trimming the filename field: a piped
+	# `... | cut` would mask a hasher failure as success with empty output.
+	if command_exists sha256sum; then
+		_ss_h=$(sha256sum "$1" 2>/dev/null) || return 1
+	elif command_exists shasum; then
+		_ss_h=$(shasum -a 256 "$1" 2>/dev/null) || return 1
+	else
+		return 1
+	fi
+	[ -n "$_ss_h" ] || return 1
+	printf '%s\n' "${_ss_h%% *}"
+}
+
+# ss_sha256_stdin — print the lowercase 64-hex SHA-256 of stdin (no name).
+ss_sha256_stdin() {
+	if command_exists sha256sum; then
+		_ss_h=$(sha256sum 2>/dev/null) || return 1
+	elif command_exists shasum; then
+		_ss_h=$(shasum -a 256 2>/dev/null) || return 1
+	else
+		return 1
+	fi
+	[ -n "$_ss_h" ] || return 1
+	printf '%s\n' "${_ss_h%% *}"
+}
+
+# ss_have_sha256 — true when a SHA-256 tool is available.
+ss_have_sha256() { command_exists sha256sum || command_exists shasum; }
+
 # --- collector helpers (jq-dependent; used by scripts/collectors/*.sh) -------
 # These are only used by the scanner-normalization collectors, which require jq.
 # The resolver path does not call them, so jq remains optional for resolve-gates.
@@ -126,6 +161,39 @@ ss_emit_collector() {
 			} + $ov),
 			tool_report: $report
 		}'
+}
+
+# ss_provenance_object <sidecar-path> <fallback-version> <fallback-db-timestamp>
+# Echo a normalized provenance object for a scanner collector's tool_report. Prefers
+# fields from the sidecar written by isolated_tool_provenance_record (scripts/lib/
+# isolated-tools.sh) when it is present and valid JSON; otherwise falls back to values
+# parsed from the scanner's own native report (e.g. Grype's .descriptor). A populated
+# scanner_version / vulnerability_db.timestamp is what distinguishes an EMPTY report
+# (scanner ran, found nothing) from a scanner that DID NOT RUN (no provenance at all).
+# Requires jq. Fields that resolve to nothing become "unknown" (version) or null.
+ss_provenance_object() {
+	_pv_side='{}'
+	# Require an actual JSON object: `jq -e .` also accepts arrays/scalars, which
+	# would then fail when indexed as $side.version / $side.vulnerability_db.
+	if [ -n "${1:-}" ] && [ -f "$1" ] && [ -s "$1" ] && jq -e 'type == "object"' "$1" >/dev/null 2>&1; then
+		_pv_side=$(cat "$1")
+	fi
+	jq -n --argjson side "$_pv_side" --arg fv "${2:-}" --arg fdb "${3:-}" '
+		def nn(s): if s == "" or s == null then null else s end;
+		(($side.version // "") | if type == "string" then . else "" end) as $sv
+		| (($side.vulnerability_db.timestamp // "") | if type == "string" then . else "" end) as $sdb
+		| {
+			scanner_version: (
+				if $sv != "" and $sv != "unknown" then $sv
+				elif $fv != "" then $fv
+				elif $sv != "" then $sv
+				else "unknown" end ),
+			vulnerability_db: { timestamp: ( if $sdb != "" then $sdb elif $fdb != "" then $fdb else null end ) },
+			source: nn($side.source),
+			image: ($side.image // null),
+			captured_at: nn($side.recorded_at)
+		}'
+	unset _pv_side
 }
 
 # ss_collector_guard <tool> <input-path>

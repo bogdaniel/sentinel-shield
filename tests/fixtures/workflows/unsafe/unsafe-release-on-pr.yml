@@ -1,0 +1,21 @@
+# Fixture: NEGATIVE — a publish/release step reachable from a pull_request event.
+# Must trip merge-safety check 'release-on-unprotected-ref'. Everything else clean.
+name: fixture-release-on-pr
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: fixture-release-on-pr-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Publish (UNSAFE on PR)
+        run: npm publish --access public

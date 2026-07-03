@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/adopter-session.schema.json",
+  "title": "Sentinel Shield external-adopter session record",
+  "description": "Evidence produced by tests/adopter/black-box-install.sh: a machine-readable transcript of a first-time external adopter driving the DOCUMENTED install flow (acquire -> verify -> dry-run -> install -> doctor -> local pipeline) from an empty workspace. Determinism comes from OBSERVABLE, CONSTRAINED execution: every engine command runs under a minimal allowlisted environment (env -i with only PATH/HOME/TMPDIR plus the documented SENTINEL_SHIELD_REF/SENTINEL_SHIELD_PATH when set) with stdin from /dev/null, so any undocumented prerequisite or interactive prompt manifests as a FAILED step. Every command, exit code, elapsed time, generated file and user-facing message is recorded. It carries NO secrets and NO absolute local paths (HOME relativized to '~', the workspace root to '<workspace>', the target to '<target>'). result=pass only when every required step succeeded under the constrained environment.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "harness",
+    "started_at",
+    "finished_at",
+    "documented_environment",
+    "injected_inputs",
+    "unexpected_prompt",
+    "steps",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Adopter-session schema version. Fixed at '1'."
+    },
+    "harness": {
+      "type": "string",
+      "enum": ["black-box-install"],
+      "description": "Which adopter harness produced the record."
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the session started."
+    },
+    "finished_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the session finished."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "Redacted label for the empty workspace the session ran in (e.g. '<workspace>')."
+    },
+    "engine_source": {
+      "type": "object",
+      "description": "How the engine was acquired for the session (redacted).",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": "string" },
+        "ref": { "type": "string" },
+        "transport": { "type": "string" },
+        "resolved_commit": { "type": "string" }
+      }
+    },
+    "documented_inputs": {
+      "type": "object",
+      "description": "The ONLY inputs the flow was allowed to use: documented env vars and the published docs it followed.",
+      "additionalProperties": true,
+      "properties": {
+        "env_vars": { "type": "array", "items": { "type": "string" } },
+        "docs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered transcript of the flow's steps.",
+      "items": {
+        "type": "object",
+        "required": ["step", "command", "exit_code", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable step name (acquire|verify|dry-run|install|doctor|local-pipeline|...)."
+          },
+          "command": {
+            "type": "string",
+            "description": "The exact command run, redacted (no secrets, no absolute paths)."
+          },
+          "exit_code": {
+            "type": ["integer", "null"],
+            "description": "Process exit code, or null when the step was skipped before running."
+          },
+          "elapsed_seconds": {
+            "type": ["number", "null"],
+            "description": "Wall-clock seconds the command took, or null when skipped."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "skip", "fail"],
+            "description": "ok=ran and produced an acceptable outcome; skip=deliberately not run (explicit reason recorded); fail=required step failed."
+          },
+          "message": {
+            "type": "string",
+            "description": "Redacted user-facing message or skip/failure reason. A skip MUST carry an explicit reason (a skip is not a pass)."
+          },
+          "generated_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Redacted/relativized paths of files the step created."
+          }
+        }
+      }
+    },
+    "documented_environment": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The environment allowlist applied to every engine command (env -i base PATH/HOME/TMPDIR plus the documented SENTINEL_SHIELD_REF/SENTINEL_SHIELD_PATH when set). Any other variable was absent."
+    },
+    "injected_inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Inputs the harness fed to engine commands' stdin. Empty: stdin is /dev/null, so no answers are supplied and a blocking read gets EOF and fails."
+    },
+    "unexpected_prompt": {
+      "type": "boolean",
+      "description": "true if an engine command tried to prompt interactively (observed on a failing step whose stdin was /dev/null); false otherwise."
+    },
+    "result": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "pass only when every required step is ok (or an explicitly-reasoned skip) under the constrained environment; fail when any required step failed."
+    }
+  }
+}

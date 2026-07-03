@@ -1,0 +1,88 @@
+{
+  "$schema": "https://sentinel-shield/schemas/required-checks.schema.json",
+  "version": "1.0",
+  "description": "Canonical registry of the stable GitHub check-run names published by the engine's shipped workflows under .github/workflows/. GitHub branch protection matches jobs.<id>.name (or the job id when no name is set), NOT the .github/workflows/*.yml filename. scripts/audits/required-checks-audit.sh parses the live workflows and fails closed on any drift (renamed / removed / duplicate / unregistered checks) against this file. Keep this registry and the docs/branch-protection.md table in lockstep.",
+  "classifications": {
+    "always-required": "Runs on every pull_request/push; safe to mark as a required status check on master.",
+    "applicability-detector": "Lightweight detect/prepare gate that decides whether its heavy dependents run; requiring it keeps a check present on every PR while heavy jobs may legitimately skip.",
+    "conditional-heavy": "Heavy job gated behind an applicability-detector (needs/if); may legitimately skip when its surface is untouched, so do NOT mark it required by itself.",
+    "scheduled-only": "Runs only out-of-band (schedule/workflow_dispatch); never on ordinary PRs. Do NOT mark required.",
+    "release-only": "Runs only on release refs (tags/dispatch); not on ordinary PRs. Do NOT mark required for PR merges."
+  },
+  "workflows": {
+    "ci-self-test.yml": {
+      "checks": [
+        { "name": "full-self-test", "classification": "always-required" },
+        { "name": "syntax", "classification": "always-required" },
+        { "name": "lifecycle", "classification": "always-required" },
+        { "name": "fallback-policy", "classification": "always-required" },
+        { "name": "negative-policy", "classification": "always-required" },
+        { "name": "workflow-sanity", "classification": "always-required" }
+      ]
+    },
+    "ci-pipeline.yml": {
+      "checks": [
+        { "name": "prepare", "classification": "applicability-detector" },
+        { "name": "php-quality", "classification": "conditional-heavy" },
+        { "name": "node-quality", "classification": "conditional-heavy" },
+        { "name": "docker-security", "classification": "conditional-heavy" },
+        { "name": "security-scan", "classification": "always-required" },
+        { "name": "build-security-summary", "classification": "always-required" },
+        { "name": "release-gate", "classification": "always-required" }
+      ]
+    },
+    "ci-security.yml": {
+      "checks": [
+        { "name": "detect-deps", "classification": "applicability-detector" },
+        { "name": "semgrep", "classification": "always-required" },
+        { "name": "gitleaks", "classification": "always-required" },
+        { "name": "osv-scanner", "classification": "conditional-heavy" },
+        { "name": "trivy-fs", "classification": "always-required" },
+        { "name": "sbom", "classification": "conditional-heavy" },
+        { "name": "security-summary", "classification": "always-required" }
+      ]
+    },
+    "ci-workflow-lint.yml": {
+      "checks": [
+        { "name": "workflow-lint", "classification": "always-required" },
+        { "name": "workflow-runtime-audit", "classification": "always-required" },
+        { "name": "governance-audits", "classification": "always-required" }
+      ]
+    },
+    "ci-codeql.yml": {
+      "checks": [
+        { "name": "detect", "classification": "applicability-detector" },
+        { "name": "analyze", "classification": "conditional-heavy" }
+      ]
+    },
+    "ci-php.yml": {
+      "checks": [
+        { "name": "detect", "classification": "applicability-detector" },
+        { "name": "php", "classification": "conditional-heavy" }
+      ]
+    },
+    "ci-node.yml": {
+      "checks": [
+        { "name": "detect", "classification": "applicability-detector" },
+        { "name": "node", "classification": "conditional-heavy" }
+      ]
+    },
+    "ci-docker.yml": {
+      "checks": [
+        { "name": "detect", "classification": "applicability-detector" },
+        { "name": "docker", "classification": "conditional-heavy" }
+      ]
+    },
+    "ci-release-gate.yml": {
+      "checks": [
+        { "name": "gate", "classification": "release-only" }
+      ]
+    },
+    "ci-zap.yml": {
+      "checks": [
+        { "name": "zap-baseline", "classification": "scheduled-only" },
+        { "name": "zap-full", "classification": "scheduled-only" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# PHPStan configuration for the PHP-library consumer fixture.
+#
+# Level `max` is deliberate: it is strict enough to catch the seeded type defect in
+# App\Calculator::riskyLength() (strlen(int)). There is intentionally NO baseline and
+# NO ignoreErrors entry for that finding — baselining the seeded defect would hide the
+# very thing this fixture exists to prove the gate catches.
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    tmpDir: .phpstan-cache

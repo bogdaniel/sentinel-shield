@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/required-checks-audit.schema.json",
+  "title": "Sentinel Shield required-checks drift audit report",
+  "description": "Machine report emitted by scripts/audits/required-checks-audit.sh. Diffs the live jobs.<id>.name across .github/workflows/*.yml against config/required-checks.json. A non-empty 'violations' array means the gate failed closed on registry drift.",
+  "type": "object",
+  "required": ["version", "generated_at", "tool", "files_scanned", "checks", "status", "violation_count", "violations"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string" },
+    "generated_at": { "type": "string", "description": "ISO-8601 UTC timestamp of the audit run." },
+    "tool": { "const": "required-checks-audit" },
+    "files_scanned": { "type": "integer", "minimum": 0 },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["renamed", "missing", "unregistered", "duplicate", "unregistered-workflow", "missing-workflow"]
+      }
+    },
+    "status": { "type": "string", "enum": ["pass", "fail"] },
+    "violation_count": { "type": "integer", "minimum": 0 },
+    "violations": {
+      "type": "array",
+      "description": "One object per drift finding. Empty when status=pass.",
+      "items": {
+        "type": "object",
+        "required": ["type", "file", "name", "from"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["renamed", "missing", "unregistered", "duplicate", "unregistered-workflow", "missing-workflow"]
+          },
+          "file": { "type": "string", "description": "Workflow filename (basename)." },
+          "name": { "type": ["string", "null"], "description": "The check name in question (null for a missing-workflow)." },
+          "from": { "type": ["string", "null"], "description": "For type=renamed, the previous (registered) check name; null otherwise." }
+        }
+      }
+    }
+  }
+}

@@ -41,6 +41,38 @@ tracked work, not a gap being hidden. See [`v2-release-scope.md`](v2-release-sco
 | Node/React profile | yes | yes | yes | **no** | yes | supported | `tests/fixtures/projects/node-react`, `tests/e2e` |
 | Combined (php+node) profile | yes | yes | yes | **no** | yes | supported | `tests/e2e/laravel-react-docker` |
 
+### v2.0.0-beta.2 consumer-validation matrix (draft increment)
+
+The **beta.2** increment (engine-only, draft, not published) hardens the engine and adds
+**standalone consumer validation**. The columns below are the beta.2 evidence tiers:
+`standalone-consumer-tested` means the engine was exercised against a real, self-contained
+consumer project (not a synthetic fixture); `external-production-tested` means a real
+third-party production adopter — which is **false for everything** this cycle.
+`release-gated` means a self-test / CI gate blocks regressions. Laravel and Symfony
+**framework live-validation is FALSE**.
+
+| Capability | Implemented | Engine-tested | Fixture-tested | Standalone-consumer-tested | External-production-tested | Release-gated | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Node service consumer (npm) | yes | yes | yes | **yes (live)** | no | yes | real lockfile, `npm ci`, mutations caught, byte-for-byte rollback (`tests/consumers/node-service`, `201-node-consumers.sh`) |
+| Node PM-variant consumers (npm/pnpm/yarn) | yes | yes | yes | **yes (live)** | no | yes | real lockfiles, `pnpm --frozen-lockfile` / `yarn --immutable` (`tests/consumers/pm-variants`) |
+| React app consumer | yes | yes | yes | **yes (live)** | no | yes | real lockfile + install, byte-for-byte rollback (`tests/consumers/react-app`) |
+| Standalone PHP-library consumer | yes | yes | yes | **yes (structural only)** | no | yes | structure verified; live composer/phpunit/phpstan/pint gates are **CI-deferred SKIPs, not proven locally** (`tests/consumers/php-library`, `200-php-consumer.sh`) |
+| Laravel profile (framework live-validation) | yes | yes | yes | **no** | no | yes | engine + fixture only; **not** live-validated in a real Laravel consumer |
+| Symfony profile (framework live-validation) | yes | yes | yes | **no** | no | yes | engine + fixture only; **not** live-validated in a real Symfony consumer |
+| Unified consumer-validation record schema | yes | yes | yes | yes | no | yes | `schemas/consumer-validation.schema.json` via `report-consumer-validation.sh` |
+| Shared transaction lib + journal + recovery | yes | yes | yes | n/a | no | yes | `scripts/lib/transaction.sh`, `recover-operation.sh` (`210-transaction-journal.sh`, `121-recovery.sh`) |
+| Source verification (tree checksum / signed tag) | yes | yes | yes | n/a | no | yes | `scripts/lib/source-verification.sh` (opt-in) |
+| `--output json` command-result envelope | yes | yes | yes | n/a | no | yes | opt-in on 7 driver commands; `schemas/command-result.schema.json`; redacted (`230-output-contract.sh`) |
+| Workflow-runtime / required-checks / merge-safety audits | yes | yes (engine self-CI) | yes | n/a | no | yes | wired into `ci-workflow-lint` (`220`/`222`) |
+| Scanner-health vocabulary + fail-closed `parser-error` (exit 2) | yes | yes | yes | n/a | no | yes | `ok\|findings\|no-targets\|scanner-error\|parser-error` (`221-scanner-provenance-health.sh`) |
+| Release evidence generator / manifest / finalization | yes | yes | yes | n/a | n/a | yes | `collect-release-evidence.sh`, `generate`/`verify-release-manifest.sh`, `finalize-release-evidence.sh` (`240`–`243`) |
+
+> **No external-production-adoption claim.** `External-production-tested = no` for every row.
+> The standalone Node/React consumers are **live-tested** (real package managers); the standalone
+> PHP-library consumer is **structural only** (its live tooling gates are CI-deferred). Laravel and
+> Symfony **framework live-validation is FALSE** and remains deferred (see
+> [`v2-release-scope.md`](v2-release-scope.md), [`consumer-validation-runbook.md`](consumer-validation-runbook.md)).
+>
 > The detailed maturity sections below (`## 1` onward) are **v1.x historical status**, preserved
 > as cited evidence for the v1 line. They are accurate for v1.x and are **not** superseded, but the
 > canonical current status is the table above.

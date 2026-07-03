@@ -1,0 +1,21 @@
+# Fixture: NEGATIVE — a `uses:` pinned to a mutable tag (@v4) instead of a
+# 40-hex commit SHA. Must trip the uses-sha-pin check. Everything else compliant.
+name: fixture-mutable-ref
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fixture-mutable-ref-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
