@@ -90,7 +90,7 @@ All commands run locally against the integration HEAD.
 
 `evidence/releases/v2.0.0-beta.2.json`:
 
-```
+```text
 stage=beta  release_scope=engine-only  engine_commit="unknown"
 engine_ci=[]  consumer_runs=[]  required_evidence: all false
 ```
@@ -161,7 +161,7 @@ sh scripts/check-release-readiness.sh --version 2.0.0-beta.2 --stage beta \
 **Genuine run — exit 1 (NOT READY, fail closed).** The structural + static gates all
 PASS; the evidence gate fails closed exactly as designed:
 
-```
+```text
 [alpha] structural readiness
   PASS  self-test 'syntax' executed and passed
   PASS  self-test 'production-readiness' executed and passed
@@ -212,14 +212,14 @@ supplied (and none should be).
 Captured after committing the RC deliverables (so the working tree is clean — test
 `240-evidence-collection.sh` asserts `git status --porcelain evidence/releases` is empty):
 
-```
+```text
 sh scripts/self-test.sh production-readiness   → exit 0
 [sentinel-shield] production-readiness: OK (33/33 suites passed)
 ```
 
 Every suite passed, including the evidence-critical ones:
 
-```
+```text
 PASS tests/prod/80-command-contract.sh
 PASS tests/prod/90-evidence.sh
 PASS tests/prod/91-evidence-semantic.sh

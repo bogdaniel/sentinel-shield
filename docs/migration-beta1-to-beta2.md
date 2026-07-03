@@ -13,7 +13,7 @@ are already on v2.
 > engine- and fixture-tested only. The standalone PHP-library consumer is
 > **structural only** (live composer/phpunit/phpstan/pint gates are CI-deferred
 > SKIPs). See [Known limitations](#known-limitations).
-
+>
 > Version identifiers written as `<...>` are **placeholders** pending the release
 > commit and tag. Always pin to an **immutable tag or commit**, never a branch.
 

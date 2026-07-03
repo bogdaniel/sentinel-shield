@@ -97,6 +97,13 @@ archive_safety_scan() {
 # 1 on any post-extraction safety violation or extraction failure. Diagnostics on stderr.
 archive_safety_extract() {
 	_ae_zip="$1"; _ae_root="$2"
+	# Clear the extraction root first: ensure_dir preserves prior contents, so a
+	# reused --workdir could leave stale files that inflate the inventory or satisfy
+	# --require-embedded-commit for an artifact that does not contain that commit.
+	case "$_ae_root" in
+		"" | "/") log_error "archive-safety: refusing unsafe extraction root '$_ae_root'"; return 1 ;;
+	esac
+	rm -rf "$_ae_root"
 	ensure_dir "$_ae_root"
 	if ! unzip -qq -o -d "$_ae_root" "$_ae_zip" >/dev/null 2>&1; then
 		log_error "archive-safety: extraction failed for $_ae_zip"

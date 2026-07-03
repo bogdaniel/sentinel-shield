@@ -93,6 +93,8 @@ else
 	printf '%s' "$RELEASE_COMMIT" | grep -Eq '^[0-9a-f]{40}$' || { log_error "metadata-tag: release_commit is not a 40-hex SHA"; exit 1; }
 	[ "$ENGINE_COMMIT" != unknown ] && [ -n "$ENGINE_COMMIT" ] || {
 		log_error "metadata-tag: engine_commit is unknown — cannot prove a metadata-only diff (fail closed)"; exit 1; }
+	printf '%s' "$ENGINE_COMMIT" | grep -Eq '^[0-9a-f]{40}$' || {
+		log_error "metadata-tag: engine_commit is not a 40-hex SHA (both sides of the binding must be immutable commit IDs)"; exit 1; }
 	for _c in "$ENGINE_COMMIT" "$RELEASE_COMMIT"; do
 		git -C "$ROOTDIR" rev-parse -q --verify "$_c^{commit}" >/dev/null 2>&1 || {
 			log_error "metadata-tag: commit $_c is not present in $ROOTDIR (fail closed)"; exit 1; }

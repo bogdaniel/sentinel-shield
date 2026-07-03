@@ -205,7 +205,10 @@ for f in $FILES; do
 				else printf "%d\t0\n", sline
 			}
 		}
-		/^[[:space:]]*-[[:space:]]/ { flush(); block=""; have=1; sline=NR }
+		# A real step starts with "- <key>:" (e.g. "- uses:", "- name:"). Plain
+		# list scalars like a nested "with.path:" item ("- dist/**") are NOT step
+		# boundaries and must not flush the block early.
+		/^[[:space:]]*-[[:space:]]+[A-Za-z0-9_-]+:/ { flush(); block=""; have=1; sline=NR }
 		{ block = block "\n" $0 }
 		END { flush() }
 	' "$f")

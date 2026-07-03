@@ -300,7 +300,7 @@ isolated_tool_provenance_record() {
 			version: (if $version == "" then "unknown" else $version end),
 			platform: nn($plat),
 			recorded_at: $ts,
-			binary: (if $bpath == "" and $bsha == "" then null else
+			binary: (if $bpath == "" and $bsha == "" and $esha == "" then null else
 				{ path: nn($bpath), sha256: nn($bsha),
 				  expected_sha256: nn($esha), checksum_verified: nb($cv) } end),
 			image: (if $iref == "" and $idigest == "" then null else

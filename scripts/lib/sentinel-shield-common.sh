@@ -75,24 +75,30 @@ utc_timestamp() { timestamp_utc; }
 # neither tool is available or the file is unreadable.
 ss_sha256_file() {
 	[ -n "${1:-}" ] && [ -f "$1" ] || return 1
+	# Capture the hasher's exit status BEFORE trimming the filename field: a piped
+	# `... | cut` would mask a hasher failure as success with empty output.
 	if command_exists sha256sum; then
-		sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+		_ss_h=$(sha256sum "$1" 2>/dev/null) || return 1
 	elif command_exists shasum; then
-		shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+		_ss_h=$(shasum -a 256 "$1" 2>/dev/null) || return 1
 	else
 		return 1
 	fi
+	[ -n "$_ss_h" ] || return 1
+	printf '%s\n' "${_ss_h%% *}"
 }
 
 # ss_sha256_stdin — print the lowercase 64-hex SHA-256 of stdin (no name).
 ss_sha256_stdin() {
 	if command_exists sha256sum; then
-		sha256sum 2>/dev/null | cut -d' ' -f1
+		_ss_h=$(sha256sum 2>/dev/null) || return 1
 	elif command_exists shasum; then
-		shasum -a 256 2>/dev/null | cut -d' ' -f1
+		_ss_h=$(shasum -a 256 2>/dev/null) || return 1
 	else
 		return 1
 	fi
+	[ -n "$_ss_h" ] || return 1
+	printf '%s\n' "${_ss_h%% *}"
 }
 
 # ss_have_sha256 — true when a SHA-256 tool is available.
@@ -167,7 +173,9 @@ ss_emit_collector() {
 # Requires jq. Fields that resolve to nothing become "unknown" (version) or null.
 ss_provenance_object() {
 	_pv_side='{}'
-	if [ -n "${1:-}" ] && [ -f "$1" ] && [ -s "$1" ] && jq -e . "$1" >/dev/null 2>&1; then
+	# Require an actual JSON object: `jq -e .` also accepts arrays/scalars, which
+	# would then fail when indexed as $side.version / $side.vulnerability_db.
+	if [ -n "${1:-}" ] && [ -f "$1" ] && [ -s "$1" ] && jq -e 'type == "object"' "$1" >/dev/null 2>&1; then
 		_pv_side=$(cat "$1")
 	fi
 	jq -n --argjson side "$_pv_side" --arg fv "${2:-}" --arg fdb "${3:-}" '

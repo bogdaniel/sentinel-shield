@@ -91,6 +91,13 @@ else
 	log_error "provide either --evidence <file> or --repo <owner/name> --run <id>"; usage >&2; exit 2
 fi
 
+# COMMIT drives the embedded-commit grep; a malformed value like '.' would match
+# unrelated text. Accept only empty, 'unknown', or a 40-hex SHA (fixed-string later).
+if [ -n "$COMMIT" ] && [ "$COMMIT" != unknown ]; then
+	printf '%s' "$COMMIT" | grep -Eq '^[0-9a-f]{40}$' || {
+		log_error "--commit/engine_commit must be a 40-hex SHA or 'unknown'"; exit 2; }
+fi
+
 if [ -n "$WORKDIR" ]; then
 	ensure_dir "$WORKDIR"; ROOT_WORK="$WORKDIR"; _cleanup_work=0
 else
@@ -117,7 +124,9 @@ verify_one_artifact() {
 	# Ownership: the artifact must belong to THIS run and carry a positive id + name.
 	if [ -z "$_aid" ] || [ "$_aid" = null ]; then _reasons="$_reasons missing-artifact-id"; _ownership_ok=false; fi
 	if [ -z "$_aname" ] || [ "$_aname" = null ]; then _reasons="$_reasons missing-artifact-name"; _ownership_ok=false; fi
-	if [ -n "$_aowner" ] && [ "$_aowner" != null ] && [ "$_aowner" != "$_run" ]; then
+	if [ -z "$_aowner" ] || [ "$_aowner" = null ]; then
+		_reasons="$_reasons missing-workflow-run-id"; _ownership_ok=false
+	elif [ "$_aowner" != "$_run" ]; then
 		_reasons="$_reasons run-ownership-mismatch:$_aowner!=$_run"; _ownership_ok=false
 	fi
 	# Expiration.
@@ -158,7 +167,7 @@ verify_one_artifact() {
 					_filecount=$(printf '%s' "$_files_json" | jq 'length')
 					# Embedded commit: does any file reference the engine commit?
 					if [ -n "$COMMIT" ] && [ "$COMMIT" != unknown ]; then
-						if grep -rqI -- "$COMMIT" "$_extract" 2>/dev/null; then _embedded_found=true; fi
+						if grep -rqIF -- "$COMMIT" "$_extract" 2>/dev/null; then _embedded_found=true; fi
 					fi
 				fi
 			fi

@@ -72,7 +72,7 @@ third-party production adopter — which is **false for everything** this cycle.
 > PHP-library consumer is **structural only** (its live tooling gates are CI-deferred). Laravel and
 > Symfony **framework live-validation is FALSE** and remains deferred (see
 > [`v2-release-scope.md`](v2-release-scope.md), [`consumer-validation-runbook.md`](consumer-validation-runbook.md)).
-
+>
 > The detailed maturity sections below (`## 1` onward) are **v1.x historical status**, preserved
 > as cited evidence for the v1 line. They are accurate for v1.x and are **not** superseded, but the
 > canonical current status is the table above.

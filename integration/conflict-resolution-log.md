@@ -49,7 +49,7 @@ Because the only writer to `common.sh` was Stack 2 and its edits are append-only
 had **no overlapping hunks** and required no manual resolution. Verified: no conflict
 markers anywhere in the range —
 
-```
+```sh
 git diff master..HEAD | grep -nE '^(<<<<<<<|=======|>>>>>>>)'   # → (no output)
 ```
 

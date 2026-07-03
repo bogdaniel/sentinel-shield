@@ -48,11 +48,15 @@ oc_version() { printf '%s' "${SENTINEL_SHIELD_VERSION:-2.0.0}"; }
 # OC_TARGET_ROOT and OC_HOME (exported by oc_run_wrapped) drive path relativization.
 oc_redact() {
 	# Longest / most specific replacements first (TARGET before HOME so a target
-	# nested under HOME is labelled <target>, not ~/...).
+	# nested under HOME is labelled <target>, not ~/...). Escape ERE metacharacters
+	# and the '#' delimiter in the roots first: an unescaped root containing '.',
+	# '+', '(' … or '#' could fail to match and leak the absolute path.
 	_oc_home="${OC_HOME:-$HOME}"
+	_oc_troot=$(printf '%s' "${OC_TARGET_ROOT:-}" | sed 's/[]#.^$*+?(){}|[]/\\&/g')
+	_oc_home_e=$(printf '%s' "$_oc_home" | sed 's/[]#.^$*+?(){}|[]/\\&/g')
 	sed -E \
-		${OC_TARGET_ROOT:+-e "s#${OC_TARGET_ROOT}#<target>#g"} \
-		${_oc_home:+-e "s#${_oc_home}#~#g"} \
+		${OC_TARGET_ROOT:+-e "s#${_oc_troot}#<target>#g"} \
+		${_oc_home:+-e "s#${_oc_home_e}#~#g"} \
 		-e 's/(AKIA|ASIA)[0-9A-Z]{16}/***REDACTED-AWS-KEY***/g' \
 		-e 's/gh[pousr]_[A-Za-z0-9]{20,}/***REDACTED-GH-TOKEN***/g' \
 		-e 's/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/***REDACTED-JWT***/g' \
