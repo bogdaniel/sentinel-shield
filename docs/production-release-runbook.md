@@ -96,3 +96,51 @@ reproduce the manifest fingerprint.
 The tool refuses `--delete-tag`, `--move-tag`, `--force-tag`, `--retag`, `--delete-release`,
 `--force-push` (and similar) in **every** mode. Released tags are immutable. To fix a bad
 release you roll **forward** — see [`rollback-policy.md`](rollback-policy.md).
+
+## Production-readiness candidate + independent evidence review
+
+Before a candidate is even assembled, the whole engine-only surface is gated by the
+production-readiness harness `scripts/run-production-readiness.sh`
+(schema: [`schemas/production-readiness-report.schema.json`](../schemas/production-readiness-report.schema.json))
+and its CI wiring `.github/workflows/ci-production-readiness.yml`. It has four modes:
+
+```sh
+# 1) Orchestrate every local gate (shell syntax, shellcheck, actionlint, schema validation,
+#    self-tests, prod tests, adopter scenarios, consumer validation, security acceptance,
+#    release-authorization negative+positive, archive/artifact adversarial, evidence+manifest
+#    reproducibility) and emit the report. Each gate is bounded; a hung gate yields a DISTINCT
+#    exit code 4.
+scripts/run-production-readiness.sh run \
+  --source-commit <40hex> --workflow ci-production-readiness --event push \
+  --default-branch master --changed-files changed.txt \
+  --out-json integration/production-readiness-report.json \
+  --out-md integration/production-readiness-report.md
+
+# 2) INDEPENDENTLY review that report as UNTRUSTED evidence. review re-derives EVERY trust
+#    decision — source commit, workflow identity, default branch, event type, freshness,
+#    changed-file inventory, summary consistency, skipped/failed required gates, tag-target
+#    policy, scanner health, compatibility coverage, adopter score, security acceptance,
+#    published limitations, artifact ownership+content — and FAILS CLOSED on any mismatch.
+#      --profile ci-gate proves what CI can prove (identity/gates/freshness/tag-policy/title);
+#      --profile release (default) additionally proves the compat/adopter/security/artifact
+#      evidence and the soak window.
+scripts/run-production-readiness.sh review \
+  --report integration/production-readiness-report.json \
+  --expected-commit <40hex> --expected-workflow ci-production-readiness \
+  --expected-default-branch master --profile release
+
+# 3) Version-decision helper — beta.3 (material blockers), rc.1 (behavior complete,
+#    soak/evidence remains), or 2.0.0 (all engine-only GA criteria pass). --strict falls back
+#    to the beta.3 floor unless independent review passes.
+scripts/run-production-readiness.sh version-decision \
+  --report integration/production-readiness-report.json \
+  --strict --expected-commit <40hex> --expected-workflow ci-production-readiness
+
+# 4) Emit the structure-only integration report skeleton (real values filled at integration).
+scripts/run-production-readiness.sh emit-template
+```
+
+The emitted report title **must** state engine-only until the framework tracks
+(Laravel/Symfony live-validation) are independently validated on their own track; `review`
+fails closed if it does not. The report carries no secrets, tokens, signing-key paths, or
+repo-local absolute paths.

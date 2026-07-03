@@ -1,0 +1,56 @@
+{
+  "schema_version": "1",
+  "kind": "production-readiness-report",
+  "generated_at": "2026-07-04T00:00:00Z",
+  "title": "Sentinel Shield production-readiness — engine-only (framework tracks not independently validated)",
+  "release_scope": "engine-only",
+  "source": {
+    "commit": "unknown",
+    "default_branch": "master",
+    "event": "unknown",
+    "workflow": "ci-production-readiness"
+  },
+  "changed_files": [],
+  "gates": [],
+  "summary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "timed_out": 0
+  },
+  "compatibility": {
+    "complete": false,
+    "covered": [],
+    "missing": []
+  },
+  "adopter": {
+    "result": "unknown",
+    "score": 0
+  },
+  "security": {
+    "accepted": false
+  },
+  "scanners": [],
+  "artifacts": [],
+  "limitations": {
+    "documented": false,
+    "framework_live_validation": false
+  },
+  "evidence": {
+    "default_branch_ci": false,
+    "evidence_complete": false,
+    "soak_complete": false
+  },
+  "tag_policy": {
+    "destructive_ops_performed": false,
+    "tag_targets_source_commit": false
+  },
+  "version_recommendation": {
+    "version": "v2.0.0-beta.3",
+    "rationale": "Structure-only template — real values are filled at integration time by run-production-readiness.sh run.",
+    "blockers": [
+      "template-not-yet-populated"
+    ]
+  }
+}
