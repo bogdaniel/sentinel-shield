@@ -69,6 +69,35 @@ timestamp_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 # utc_timestamp — backward-compatible alias for timestamp_utc.
 utc_timestamp() { timestamp_utc; }
 
+# --- digests -----------------------------------------------------------------
+# ss_sha256_file <path> — print the lowercase 64-hex SHA-256 of a file (no name),
+# using sha256sum or shasum (whichever exists). Prints nothing and returns 1 when
+# neither tool is available or the file is unreadable.
+ss_sha256_file() {
+	[ -n "${1:-}" ] && [ -f "$1" ] || return 1
+	if command_exists sha256sum; then
+		sha256sum "$1" 2>/dev/null | cut -d' ' -f1
+	elif command_exists shasum; then
+		shasum -a 256 "$1" 2>/dev/null | cut -d' ' -f1
+	else
+		return 1
+	fi
+}
+
+# ss_sha256_stdin — print the lowercase 64-hex SHA-256 of stdin (no name).
+ss_sha256_stdin() {
+	if command_exists sha256sum; then
+		sha256sum 2>/dev/null | cut -d' ' -f1
+	elif command_exists shasum; then
+		shasum -a 256 2>/dev/null | cut -d' ' -f1
+	else
+		return 1
+	fi
+}
+
+# ss_have_sha256 — true when a SHA-256 tool is available.
+ss_have_sha256() { command_exists sha256sum || command_exists shasum; }
+
 # --- collector helpers (jq-dependent; used by scripts/collectors/*.sh) -------
 # These are only used by the scanner-normalization collectors, which require jq.
 # The resolver path does not call them, so jq remains optional for resolve-gates.
