@@ -80,7 +80,7 @@ tg_style() {
 	else echo ""; fi
 }
 
-log_info "200-php-consumer: STRUCTURAL tier (network-free; composer/php absent)"
+log_info "200-php-consumer: structural gates + toolchain-adaptive live gates (network-free)"
 
 # ===========================================================================
 # RUNNABLE GATES (structural — no composer/php needed)
@@ -190,23 +190,57 @@ else
 fi
 
 # ===========================================================================
-# SKIP GATES (require composer/php — ABSENT in this runner; deferred to CI)
-# A skip is NOT a pass: recorded 'live' (real toolchain deferred) with a stable
-# TOOLCHAIN_ABSENT_* reason so CI can enumerate the deferred work.
+# LIVE GATES — toolchain-ADAPTIVE. Cheap, network-free gates (composer validate,
+# php -l) RUN for real when the tool is present (e.g. in CI); when absent they are
+# recorded as an explicit reason-coded SKIP. Dependency-install gates
+# (phpunit/phpstan/pint) need `composer install` (network) and stay deferred to a
+# dedicated CI job. A skip is NOT a pass; and a present toolchain must NEVER fail
+# this suite merely for being present.
 # ===========================================================================
 COMPOSER_PRESENCE=absent
 PHP_PRESENCE=absent
 command -v composer >/dev/null 2>&1 && COMPOSER_PRESENCE=present
 command -v php >/dev/null 2>&1 && PHP_PRESENCE=present
+log_info "200-php-consumer: toolchain composer=$COMPOSER_PRESENCE php=$PHP_PRESENCE"
 
-rec "$CONSUMER_NAME" "$PM" "composer-validate" "manifest" "skip" "TOOLCHAIN_ABSENT_COMPOSER" "live" "composer absent in runner"
-rec "$CONSUMER_NAME" "$PM" "phpunit-run" "test" "skip" "TOOLCHAIN_ABSENT_PHP" "live" "php absent in runner"
-rec "$CONSUMER_NAME" "$PM" "phpstan-analyse" "static-analysis" "skip" "TOOLCHAIN_ABSENT_PHP" "live" "php absent in runner"
-rec "$CONSUMER_NAME" "$PM" "pint-check" "style" "skip" "TOOLCHAIN_ABSENT_PHP" "live" "php absent in runner"
-rec "$CONSUMER_NAME" "$PM" "php-syntax-lint" "config" "skip" "TOOLCHAIN_ABSENT_PHP" "live" "php absent in runner"
+# composer validate (schema only, network-free) — live when composer is present.
+if [ "$COMPOSER_PRESENCE" = present ]; then
+	if ( cd "$CONSUMER" && composer validate --no-check-all --no-check-lock --no-check-publish >/dev/null 2>&1 ); then
+		pass "live: composer validate passes on the consumer manifest"
+		rec "$CONSUMER_NAME" "$PM" "composer-validate" "manifest" "pass" "OK" "live" "composer validate --no-check-all"
+	else
+		fail "live: composer validate failed on the consumer manifest"
+		rec "$CONSUMER_NAME" "$PM" "composer-validate" "manifest" "fail" "COMPOSER_VALIDATE_FAILED" "live" "composer validate --no-check-all"
+	fi
+else
+	rec "$CONSUMER_NAME" "$PM" "composer-validate" "manifest" "skip" "TOOLCHAIN_ABSENT_COMPOSER" "live" "composer absent in runner"
+fi
 
-check "toolchain: composer absent in this runner (gate deferred)" "$COMPOSER_PRESENCE" "absent"
-check "toolchain: php absent in this runner (gate deferred)" "$PHP_PRESENCE" "absent"
+# php -l (network-free) — lint every PSR-4 source when php is present.
+if [ "$PHP_PRESENCE" = present ]; then
+	_lint_ok=1
+	for _f in "$CONSUMER"/src/*.php; do
+		[ -f "$_f" ] || continue
+		php -l "$_f" >/dev/null 2>&1 || _lint_ok=0
+	done
+	if [ "$_lint_ok" = 1 ]; then
+		pass "live: php -l passes on all consumer src/*.php"
+		rec "$CONSUMER_NAME" "$PM" "php-syntax-lint" "config" "pass" "OK" "live" "php -l src/*.php"
+	else
+		fail "live: php -l reported a syntax error in consumer src"
+		rec "$CONSUMER_NAME" "$PM" "php-syntax-lint" "config" "fail" "PHP_SYNTAX_ERROR" "live" "php -l src/*.php"
+	fi
+else
+	rec "$CONSUMER_NAME" "$PM" "php-syntax-lint" "config" "skip" "TOOLCHAIN_ABSENT_PHP" "live" "php absent in runner"
+fi
+
+# Dependency-install gates need `composer install` (network) — deferred to a
+# dedicated CI job regardless of php presence; recorded as an explicit skip.
+_dep_reason=DEPS_NOT_INSTALLED
+[ "$PHP_PRESENCE" = present ] || _dep_reason=TOOLCHAIN_ABSENT_PHP
+rec "$CONSUMER_NAME" "$PM" "phpunit-run" "test" "skip" "$_dep_reason" "live" "requires composer install (deferred to CI)"
+rec "$CONSUMER_NAME" "$PM" "phpstan-analyse" "static-analysis" "skip" "$_dep_reason" "live" "requires composer install (deferred to CI)"
+rec "$CONSUMER_NAME" "$PM" "pint-check" "style" "skip" "$_dep_reason" "live" "requires composer install (deferred to CI)"
 
 # ===========================================================================
 # MUTATION: prove a RUNNABLE gate actually catches a regression.
@@ -256,9 +290,11 @@ if [ "$_skips" -ge 1 ]; then
 else
 	fail "record: expected >=1 explicit SKIP gate"
 fi
-# Every skip must carry a TOOLCHAIN_ABSENT_* reason (never a bare/hidden skip).
-_badskip=$(jq -s -r '[.[] | select(.status=="skip" and (.reason_code|startswith("TOOLCHAIN_ABSENT_")|not))] | length' "$REC")
-check "record: every SKIP carries a TOOLCHAIN_ABSENT_* reason_code" "$_badskip" "0"
+# Every skip must carry a recognized, stable deferral reason (never a bare/hidden
+# skip): TOOLCHAIN_ABSENT_* when the tool is missing, or DEPS_NOT_INSTALLED for a
+# gate that needs `composer install` (deferred to a dedicated CI job).
+_badskip=$(jq -s -r '[.[] | select(.status=="skip") | select((.reason_code|test("^(TOOLCHAIN_ABSENT_[A-Z]+|DEPS_NOT_INSTALLED)$"))|not)] | length' "$REC")
+check "record: every SKIP carries a recognized deferral reason_code" "$_badskip" "0"
 
 # The mutation record proves the static-analysis gate caught the injected regression.
 _mut=$(jq -s -r '[.[] | select(.check=="static-analysis-mutation" and .status=="pass" and .reason_code=="STATIC_ANALYSIS_TOOL_MISSING")] | length' "$REC")
