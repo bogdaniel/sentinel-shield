@@ -158,7 +158,30 @@ sh scripts/check-release-readiness.sh --version 2.0.0-beta.2 --stage beta \
   --scope engine-only --offline --evidence evidence/releases/v2.0.0-beta.2.json
 ```
 
-<!-- ENGINE_ONLY_RESULT -->
+**Genuine run — exit 1 (NOT READY, fail closed).** The structural + static gates all
+PASS; the evidence gate fails closed exactly as designed:
+
+```
+[alpha] structural readiness
+  PASS  self-test 'syntax' executed and passed
+  PASS  self-test 'production-readiness' executed and passed
+  PASS  self-test 'e2e' executed and passed
+  PASS  self-test 'all' executed and passed
+  PASS  workflow templates parse (yq) / schemas valid JSON (jq) / fixtures / hygiene / SHA-pins
+[beta] static validators
+  PASS  shellcheck clean / actionlint clean / zizmor clean
+[beta] release evidence validation (verify=offline)
+  [error] engine-only stage 'beta' evidence unmet: engine_ci is empty
+          (engine-only beta+ requires the engine default-branch CI runs at engine_commit);
+          missing a successful ci-pipeline run; missing a successful ci-self-test run
+  FAIL  stage 'beta' requires GitHub-verified evidence (--verify-github);
+        structural-only evidence is INSUFFICIENT (fail closed)
+----
+release-readiness: 2.0.0-beta.2 stage=beta — NOT READY (1 unmet gate(s)); fail closed
+```
+
+This run genuinely executed `self-test all` (macro-regression) as its `[alpha]` gate — all
+four self-test groups PASS — so it doubles as the `self-test all` GREEN evidence for §2.1.
 
 > **NON-AUTHORITATIVE.** `--offline` proves structure only. The readiness banner itself
 > states: *"offline (structural-only; --verify-github required to authorize a beta/rc/ga
@@ -189,7 +212,26 @@ supplied (and none should be).
 Captured after committing the RC deliverables (so the working tree is clean — test
 `240-evidence-collection.sh` asserts `git status --porcelain evidence/releases` is empty):
 
-<!-- POST_COMMIT_PROD -->
+```
+sh scripts/self-test.sh production-readiness   → exit 0
+[sentinel-shield] production-readiness: OK (33/33 suites passed)
+```
+
+Every suite passed, including the evidence-critical ones:
+
+```
+PASS tests/prod/80-command-contract.sh
+PASS tests/prod/90-evidence.sh
+PASS tests/prod/91-evidence-semantic.sh
+PASS tests/prod/92-release-binding.sh
+PASS tests/prod/240-evidence-collection.sh   (git status clean — new draft committed)
+PASS tests/prod/242-release-manifest.sh
+```
+
+Note: while the draft evidence file was *uncommitted*, suite `240` fails on purpose (it
+asserts `git status --porcelain evidence/releases` is empty — a pure-generator guard).
+Committing the RC deliverables restores the clean tree and 33/33. There is no code
+regression; the transient failure was solely the untracked file.
 
 ---
 
