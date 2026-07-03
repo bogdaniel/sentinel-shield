@@ -185,3 +185,126 @@ isolated_tool_version() {
 	printf '%s' "$_it_ver"
 	unset _it_lock _it_ver
 }
+
+# --- tool acquisition provenance & checksum verification ----------------------
+# The scanner wrappers (scripts/audits/*.sh) acquire a tool by preferring a local
+# binary, else a Docker image from an env var. Historically neither path recorded
+# WHAT was resolved, and a downloaded binary was trusted without verification.
+# These helpers close that gap: they record the resolved URL/digest/version/platform
+# and verify a checksum (rejecting on mismatch) when a binary is fetched. They depend
+# only on sentinel-shield-common.sh helpers (log_*, command_exists, ensure_dir,
+# timestamp_utc) — source that first.
+
+# isolated_tool_platform — echo "<os>/<arch>" lowercased (e.g. linux/x86_64).
+# Best-effort; unknown components fall back to "unknown".
+isolated_tool_platform() {
+	_it_os=$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')
+	_it_arch=$(uname -m 2>/dev/null)
+	printf '%s/%s' "${_it_os:-unknown}" "${_it_arch:-unknown}"
+	unset _it_os _it_arch
+}
+
+# isolated_tool_sha256 <file> — print the file's SHA-256 hex digest on stdout.
+# Tries sha256sum, then shasum -a 256, then openssl. Returns non-zero (empty stdout)
+# if the file is unreadable or no hasher is available.
+isolated_tool_sha256() {
+	[ -f "${1:-}" ] || return 1
+	if command_exists sha256sum; then
+		sha256sum "$1" 2>/dev/null | awk '{print $1; exit}'
+	elif command_exists shasum; then
+		shasum -a 256 "$1" 2>/dev/null | awk '{print $1; exit}'
+	elif command_exists openssl; then
+		openssl dgst -sha256 "$1" 2>/dev/null | awk '{print $NF; exit}'
+	else
+		return 1
+	fi
+}
+
+# isolated_tool_verify_checksum <file> <expected-sha256>
+# Return 0 iff the file's SHA-256 equals <expected-sha256> (case-insensitive).
+# Rejects (returns 1) on empty expected value, unreadable file, absent hasher, or
+# any mismatch — fail closed, never trust-by-default.
+isolated_tool_verify_checksum() {
+	if [ -z "${2:-}" ]; then
+		log_error "isolated_tool_verify_checksum: no expected checksum supplied for '${1:-?}'"
+		return 1
+	fi
+	_it_act=$(isolated_tool_sha256 "$1") || _it_act=""
+	if [ -z "$_it_act" ]; then
+		log_error "isolated_tool_verify_checksum: cannot compute SHA-256 for '$1' (unreadable or no hasher)"
+		unset _it_act
+		return 1
+	fi
+	_it_exp=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
+	_it_got=$(printf '%s' "$_it_act" | tr '[:upper:]' '[:lower:]')
+	if [ "$_it_got" = "$_it_exp" ]; then
+		unset _it_act _it_exp _it_got
+		return 0
+	fi
+	log_error "isolated_tool_verify_checksum: CHECKSUM MISMATCH for '$1' (expected $_it_exp, got $_it_got)"
+	unset _it_act _it_exp _it_got
+	return 1
+}
+
+# isolated_tool_fetch_verified <url> <dest> <expected-sha256>
+# Download <url> to <dest> then verify its SHA-256. On download failure OR checksum
+# mismatch the partial/forged file is REMOVED and the function dies (reject-on-
+# mismatch, fail closed). Supports file:// URLs so callers/tests can exercise the
+# verify path offline. Requires curl or wget.
+isolated_tool_fetch_verified() {
+	[ -n "${1:-}" ] && [ -n "${2:-}" ] && [ -n "${3:-}" ] \
+		|| die "isolated_tool_fetch_verified: usage <url> <dest> <expected-sha256>"
+	ensure_dir "$(dirname -- "$2")"
+	if command_exists curl; then
+		curl -fsSL "$1" -o "$2" || { rm -f "$2"; die "isolated_tool_fetch_verified: download failed: $1"; }
+	elif command_exists wget; then
+		wget -qO "$2" "$1" || { rm -f "$2"; die "isolated_tool_fetch_verified: download failed: $1"; }
+	else
+		die "isolated_tool_fetch_verified: neither curl nor wget is available to fetch '$1'"
+	fi
+	if ! isolated_tool_verify_checksum "$2" "$3"; then
+		rm -f "$2"
+		die "isolated_tool_fetch_verified: checksum mismatch — rejected and removed '$2'"
+	fi
+	log_info "isolated_tool_fetch_verified: verified '$2' against expected SHA-256 (ok)"
+}
+
+# isolated_tool_provenance_record <tool> <source> <version> <image_ref> \
+#     <image_digest> <binary_path> <binary_sha256> <expected_sha256> \
+#     <checksum_verified> <db_timestamp> <platform>
+# Emit ONE provenance record (JSON object) on stdout, conforming to the record shape
+# in schemas/tool-provenance-audit.schema.json. Empty positional values become JSON
+# null; <checksum_verified> accepts "true"|"false" (anything else -> null); <source>
+# is one of local-binary|docker-image|download|unresolved. Requires jq.
+isolated_tool_provenance_record() {
+	command_exists jq || { log_warn "isolated_tool_provenance_record: jq unavailable; no provenance emitted"; return 1; }
+	jq -n \
+		--arg tool "${1:?isolated_tool_provenance_record: tool required}" \
+		--arg source "${2:-unresolved}" \
+		--arg version "${3:-}" \
+		--arg iref "${4:-}" \
+		--arg idigest "${5:-}" \
+		--arg bpath "${6:-}" \
+		--arg bsha "${7:-}" \
+		--arg esha "${8:-}" \
+		--arg cv "${9:-}" \
+		--arg db "${10:-}" \
+		--arg plat "${11:-}" \
+		--arg ts "$(timestamp_utc)" '
+		def nn(s): if s == "" then null else s end;
+		def nb(s): if s == "true" then true elif s == "false" then false else null end;
+		{
+			tool: $tool,
+			source: (if $source == "" then "unresolved" else $source end),
+			resolved: ($source != "" and $source != "unresolved"),
+			version: (if $version == "" then "unknown" else $version end),
+			platform: nn($plat),
+			recorded_at: $ts,
+			binary: (if $bpath == "" and $bsha == "" then null else
+				{ path: nn($bpath), sha256: nn($bsha),
+				  expected_sha256: nn($esha), checksum_verified: nb($cv) } end),
+			image: (if $iref == "" and $idigest == "" then null else
+				{ ref: nn($iref), digest: nn($idigest) } end),
+			vulnerability_db: { timestamp: nn($db) }
+		}'
+}

@@ -67,3 +67,41 @@ jobs:
           inputs: ".github/workflows/ templates/workflows/"
           advanced-security: false
           annotations: true
+
+  # Runtime-hardening gate: asserts SHA-pinned uses:, explicit per-job
+  # permissions + timeout-minutes, a workflow-level concurrency group, and
+  # if-no-files-found on every upload-artifact — across BOTH the engine CI and
+  # the consumer templates. Complements actionlint/zizmor with the invariants
+  # those linters do not enforce. Fail-closed; no continue-on-error.
+  workflow-runtime-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: workflow-runtime audit (uses/permissions/timeout/concurrency/artifacts)
+        run: sh scripts/audits/workflow-runtime-audit.sh
+
+  # Governance gates: (1) required-checks registry drift — the live jobs.<id>.name
+  # across .github/workflows/*.yml must stay in lockstep with config/required-checks.json,
+  # so branch-protection required checks never silently stop matching; (2) merge-safety —
+  # unsafe workflow patterns (privileged pull_request_target checkout, write perms /
+  # secret exposure on fork-reachable jobs, mutable action refs, release on unprotected
+  # refs) across engine CI AND consumer templates. Both fail-closed; no continue-on-error.
+  governance-audits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: required-checks registry drift audit
+        run: sh scripts/audits/required-checks-audit.sh
+
+      - name: merge-safety audit (unsafe workflow patterns)
+        run: sh scripts/audits/merge-safety-audit.sh

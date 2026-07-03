@@ -1,0 +1,20 @@
+# Fixture: NEGATIVE — pull_request_target that checks out UNTRUSTED PR head code.
+# Must trip merge-safety check 'pull-request-target-checkout'. Everything else clean.
+name: fixture-ppt-checkout
+on:
+  pull_request_target:
+permissions:
+  contents: read
+concurrency:
+  group: fixture-ppt-checkout-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR head (UNSAFE)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false

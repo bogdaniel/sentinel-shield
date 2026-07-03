@@ -1,0 +1,20 @@
+# Fixture: NEGATIVE — the job omits timeout-minutes (inherits the 6h default).
+# Must trip the job-timeout check. Everything else compliant.
+name: fixture-missing-timeout
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fixture-missing-timeout-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
