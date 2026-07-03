@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/command-result.schema.json",
+  "title": "Sentinel Shield command-result envelope",
+  "description": "Uniform, machine-readable result envelope emitted to STDOUT as ONE JSON object by any Sentinel Shield CLI command invoked with '--output json'. It is a RESULT (produced after the command runs), never a plan. It carries NO secrets and NO absolute local paths: warnings/artifacts/next_actions are redacted (HOME relativized to '~', the run's --target root to '<target>', and secret shapes masked). The process exit code is unchanged by '--output json'; this envelope only classifies it. exit_category is a stable coarse bucket; reason_codes are stable machine tokens (never free text).",
+  "type": "object",
+  "required": [
+    "command",
+    "version",
+    "status",
+    "exit_category",
+    "reason_codes",
+    "warnings",
+    "artifacts",
+    "next_actions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The canonical command name that produced this envelope (e.g. 'doctor', 'run-local-pipeline')."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Engine version the command reports (SENTINEL_SHIELD_VERSION, default '2.0.0')."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "warn", "error"],
+      "description": "Coarse outcome: ok (exit 0), warn (succeeded with non-blocking warnings), error (a blocking condition; exit non-zero)."
+    },
+    "exit_category": {
+      "type": "string",
+      "enum": [
+        "success",
+        "warnings",
+        "invalid_input",
+        "requirements_unmet",
+        "execution_error",
+        "not_ready",
+        "findings"
+      ],
+      "description": "Stable classification of the process exit code, uniform across commands. success=clean; warnings=non-blocking; invalid_input=bad invocation/config; requirements_unmet=a required tool/dependency absent; execution_error=an operation/runner failed or was interrupted; not_ready=a promotion gate is unmet; findings=security findings blocked the gate."
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Ordered stable machine tokens explaining the result (the primary reason first, then derived signals such as 'has_warnings'/'has_failures'). Never free text."
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "User-facing warnings surfaced by the run, redacted. May be empty."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths of files the command reported writing, redacted/relativized. May be empty."
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Redacted next-step guidance surfaced by the run (e.g. doctor's 'Next:' line, override instructions). May be empty."
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "Optional ISO-8601 UTC time the envelope was produced."
+    }
+  }
+}

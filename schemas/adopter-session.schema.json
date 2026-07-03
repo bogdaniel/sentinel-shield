@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/adopter-session.schema.json",
+  "title": "Sentinel Shield external-adopter session record",
+  "description": "Evidence produced by tests/adopter/black-box-install.sh: a machine-readable transcript of a first-time external adopter driving the DOCUMENTED install flow (acquire -> verify -> dry-run -> install -> doctor -> local pipeline) from an empty workspace, using only git + curl + documented prerequisites and only published docs (README.md, docs/ai-assisted-install.md). Every command, exit code, elapsed time, generated file and user-facing message is recorded. It carries NO secrets and NO absolute local paths (HOME relativized to '~', the workspace root to '<workspace>', the target to '<target>'). A non-empty undocumented_requirements[] means the flow required an env var or path NOT in the published docs, which is a usability failure (result=fail).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "harness",
+    "started_at",
+    "finished_at",
+    "steps",
+    "undocumented_requirements",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Adopter-session schema version. Fixed at '1'."
+    },
+    "harness": {
+      "type": "string",
+      "enum": ["black-box-install"],
+      "description": "Which adopter harness produced the record."
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the session started."
+    },
+    "finished_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "ISO-8601 UTC time the session finished."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "Redacted label for the empty workspace the session ran in (e.g. '<workspace>')."
+    },
+    "engine_source": {
+      "type": "object",
+      "description": "How the engine was acquired for the session (redacted).",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": "string" },
+        "ref": { "type": "string" },
+        "transport": { "type": "string" },
+        "resolved_commit": { "type": "string" }
+      }
+    },
+    "documented_inputs": {
+      "type": "object",
+      "description": "The ONLY inputs the flow was allowed to use: documented env vars and the published docs it followed.",
+      "additionalProperties": true,
+      "properties": {
+        "env_vars": { "type": "array", "items": { "type": "string" } },
+        "docs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered transcript of the flow's steps.",
+      "items": {
+        "type": "object",
+        "required": ["step", "command", "exit_code", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable step name (acquire|verify|dry-run|install|doctor|local-pipeline|...)."
+          },
+          "command": {
+            "type": "string",
+            "description": "The exact command run, redacted (no secrets, no absolute paths)."
+          },
+          "exit_code": {
+            "type": ["integer", "null"],
+            "description": "Process exit code, or null when the step was skipped before running."
+          },
+          "elapsed_seconds": {
+            "type": ["number", "null"],
+            "description": "Wall-clock seconds the command took, or null when skipped."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "skip", "fail"],
+            "description": "ok=ran and produced an acceptable outcome; skip=deliberately not run (explicit reason recorded); fail=required step failed."
+          },
+          "message": {
+            "type": "string",
+            "description": "Redacted user-facing message or skip/failure reason. A skip MUST carry an explicit reason (a skip is not a pass)."
+          },
+          "generated_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Redacted/relativized paths of files the step created."
+          }
+        }
+      }
+    },
+    "undocumented_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Env vars or paths the flow REQUIRED that are NOT in the published docs. Non-empty => usability failure."
+    },
+    "result": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "pass only when every required step is ok (or an explicitly-reasoned skip) and undocumented_requirements is empty."
+    }
+  }
+}

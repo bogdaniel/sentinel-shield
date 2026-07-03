@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/consumer-validation.schema.json",
+  "title": "Sentinel Shield consumer-validation record",
+  "description": "One record emitted by a real-consumer validation driver (tests/prod/2NN-*-consumer.sh) for a SINGLE check against a genuine downstream consumer fixture Sentinel Shield does NOT own. Records are line-delimited JSON (one object per line). A record captures WHICH consumer and (for JS) package manager was exercised, WHICH gate/check ran, its status, a STABLE reason_code, and whether the check was proven LIVE (real toolchain executed) or STRUCTURAL (logic/contract asserted without executing the toolchain). The optional 'ecosystem' field (php|node|react) lets records from different stack drivers share this one schema. status=skip is NEVER a pass and MUST carry a reason: it is an explicitly deferred check (e.g. toolchain absent in this runner) that CI must still run. Validated jq-structurally here (jq -e .); ajv-validated in CI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "consumer",
+    "package_manager",
+    "check",
+    "gate",
+    "status",
+    "reason_code",
+    "mode"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "description": "Consumer-validation record schema version. Fixed at '1'. Bump only on a breaking change to this record shape."
+    },
+    "consumer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Consumer fixture the check ran against (e.g. node-service, react-app, pm-variants/npm, php-library-consumer-fixture)."
+    },
+    "package_manager": {
+      "type": "string",
+      "enum": ["npm", "pnpm", "yarn", "none"],
+      "description": "Authoritative package manager for the consumer, or 'none' when the check is manager-agnostic (e.g. all PHP/Composer checks)."
+    },
+    "check": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier of the specific check (e.g. pm-authority, lockfile-authority, one-of-test-runner, typecheck-mutation, static-analysis-mutation, rollback-byte-for-byte)."
+    },
+    "gate": {
+      "type": "string",
+      "enum": [
+        "package-manager",
+        "lockfile",
+        "one-of",
+        "typecheck",
+        "lint",
+        "test",
+        "audit",
+        "rollback",
+        "install",
+        "manifest",
+        "static-analysis",
+        "style",
+        "config"
+      ],
+      "description": "The engine gate the check exercises. The JS gates (package-manager..install) and the PHP gates (manifest/static-analysis/style/config) share this closed set so both drivers conform to one schema."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail", "skip"],
+      "description": "Outcome. 'pass' = assertion held (including a mutation the gate correctly caught); 'fail' = a real defect or validation failure; 'skip' = could not run (toolchain/network absent) — recorded as a limitation, never counted as a pass."
+    },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable machine code for the outcome (e.g. OK, MULTIPLE_AUTHORITATIVE_LOCKFILES, MANAGER_MISMATCH, MISSING_LOCKFILE, INVALID_MANAGER, TS_COMPILE_FAIL, ESLINT_ERROR, TEST_FAIL, LOCKFILE_RESTORED, LIVE_UNAVAILABLE, STATIC_ANALYSIS_TOOL_MISSING, TOOLCHAIN_ABSENT_COMPOSER, TOOLCHAIN_ABSENT_PHP). Skips MUST carry a reason so CI can enumerate deferred work."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["live", "structural"],
+      "description": "'live' = the real toolchain/manager was executed and observed (or is a live check deferred as skip); 'structural' = logic, contract, or fixture shape was asserted without executing the downstream toolchain."
+    },
+    "ecosystem": {
+      "type": "string",
+      "enum": ["php", "node", "react"],
+      "description": "Optional stack tag so records from different drivers share this schema. Omitted for stack-agnostic synthetic fixtures (e.g. package-manager negative cases)."
+    },
+    "detail": {
+      "type": "string",
+      "description": "Optional human-readable detail (paths, commands, observed values)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC time the record was emitted."
+    }
+  }
+}
