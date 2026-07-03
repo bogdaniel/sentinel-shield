@@ -126,6 +126,36 @@ cited CI evidence. Fixture existence is never treated as proof.
   (`plan-upgrade.sh`, `sync-baseline.sh --emit-plan`) before any write, and reversible via
   re-acquisition of an earlier immutable ref.
 
+## Platform & toolchain compatibility
+
+The set of operating systems, CPU architectures, shells, and tool versions the **engine** runs on
+is declared once, machine-readably, in [`config/compatibility-policy.json`](../config/compatibility-policy.json)
+(schema: [`schemas/compatibility-policy.schema.json`](../schemas/compatibility-policy.schema.json))
+and rendered in [`docs/compatibility.md`](compatibility.md). It is enforced by the fail-closed gate
+`sh scripts/health.sh` and reported by `sh scripts/doctor.sh`.
+
+Lifecycle rules specific to that matrix:
+
+- **Fail closed with a stable reason.** An unsupported OS, architecture, shell, or below-minimum
+  mandatory tool fails with a stable `reason=<CODE>` (e.g. `UNSUPPORTED_NODE_VERSION`,
+  `UNSUPPORTED_SHELL`), never an incidental command error. `health.sh` exits **3** (unsupported),
+  **4** (a bounded probe timed out — unverifiable), or **2** (bad/missing policy). `doctor.sh`
+  mirrors a definite host incompatibility as exit **5**.
+- **Supported ≥ tested ≥ pinned.** *Supported* is what the gate accepts; *tested* is what the
+  `ci-compatibility.yml` matrices exercise; release-critical CI pins a dated runner image.
+- **Track upstream, announce before removal.** PHP tracks php.net active branches (8.1–8.4); Node
+  tracks even-numbered LTS lines (18, 20, 22); package managers track npm **8–11**, pnpm **8–10**,
+  Yarn **1–4**; GitHub runner images are dropped within one `policy_version` of GitHub's own
+  deprecation. A currently-supported configuration is removed no sooner than one minor
+  `policy_version` after it is announced deprecated. Mandatory-tool floors (Git 2.20, jq 1.6)
+  advance no faster than one minor `policy_version` per year.
+- **Adding support is test-gated.** A new configuration is not "supported" until it is added to the
+  policy JSON **and** guarded by [`tests/prod/260-compatibility-policy.sh`](../tests/prod/260-compatibility-policy.sh)
+  and (where a real toolchain is involved) a matrix row in
+  [`.github/workflows/ci-compatibility.yml`](../.github/workflows/ci-compatibility.yml).
+
+See [`docs/compatibility.md`](compatibility.md) for the full rendered matrix and stable reason codes.
+
 ## Reporting an issue
 
 Include: the exact tag/commit you pinned (`--ref`), the profile, the command and flags
