@@ -128,6 +128,7 @@ ss_cleanup() {
 		log_warn "install: operation failed/interrupted — rolling back snapshotted files."
 		tx_rollback
 		rm -f "$LOCK" 2>/dev/null || true
+		_tx_rm "$(_tx_lockdir)"
 		[ -n "${TX_SNAP:-}" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
 		TX_ACTIVE=0
 		[ "$_rc" -eq 0 ] && _rc=4
@@ -350,10 +351,9 @@ do_entry() { # do_entry <source> <target> <mode>
 		*) echo "skip (unknown mode '$_mode'): $2"; echo skip >> "$SUM"; return ;;
 	esac
 	if [ "$APPLY" -eq 0 ]; then echo "would write [$_mode]: $1 -> $2"; echo created >> "$SUM"; return; fi
-	tx_snapshot "$2"
-	mkdir -p "$(dirname "$_tgt")"
-	cp "$_src" "$_tgt"
-	tx_journal "mutation" "$2" "wrote managed file [mode=$_mode]"
+	# Durable, atomic managed-file write: snapshot -> staged temp -> fsync -> atomic rename ->
+	# post-write digest verification (tx_install_file fails closed, tripping the rollback trap).
+	tx_install_file "$_src" "$2"
 	if [ "$(basename "$2")" = "profile.yaml" ]; then
 		awk -v m="$MODE" 'BEGIN{d=0} /^  mode: / && !d {sub(/^  mode: .*/, "  mode: " m); d=1} {print}' "$_tgt" > "$_tgt.tmp" && mv "$_tgt.tmp" "$_tgt"
 	fi

@@ -37,7 +37,7 @@
     "pid": {
       "type": "integer",
       "minimum": 0,
-      "description": "PID of the process that acquired the lock."
+      "description": "PID of the process that acquired the lock. A raw PID can be reused; ownership is additionally bound by 'token' and 'pid_start'. UNTRUSTED for liveness on its own."
     },
     "snapshot_dir": {
       "type": "string",
@@ -47,8 +47,32 @@
     },
     "state": {
       "type": "string",
-      "enum": ["active", "rollback-incomplete"],
-      "description": "Lifecycle state: 'active' while the operation runs; 'rollback-incomplete' when a recovery attempt could not fully roll back and retained the lock for manual recovery."
+      "enum": ["initializing", "active", "validating", "committing", "rolling-back", "rollback-incomplete", "completed"],
+      "description": "Explicit state-machine position. Valid transitions only (see scripts/lib/transaction.sh _tx_state_transition_ok): initializing->active; active->validating|committing|rolling-back|completed; validating->committing|rolling-back; committing->completed; rolling-back->completed|rollback-incomplete; rollback-incomplete->rolling-back. 'completed' is durably recorded BEFORE the lock is removed, so a crash mid-finalise leaves a 'completed' marker the next run treats as already-finished (never rolled back). 'rollback-incomplete' retains the lock for manual recovery. An impossible transition is rejected."
+    },
+    "token": {
+      "type": "string",
+      "description": "PID-independent ownership token minted at acquisition (from /dev/urandom where available). Uniquely identifies THIS operation's ownership of the lock even if the PID is later reused by an unrelated process."
+    },
+    "hostname": {
+      "type": "string",
+      "description": "Host that acquired the lock. A lock whose hostname differs from the current host is never mistaken for a live process locally."
+    },
+    "host_id": {
+      "type": "string",
+      "description": "Stable machine identifier (Linux machine-id where available, else hostname). Distinguishes two hosts that share a hostname."
+    },
+    "pid_start": {
+      "type": "string",
+      "description": "Process-start identity of the owning PID (Linux /proc starttime, or BSD/macOS ps lstart). Empty where the platform exposes neither. Defeats PID reuse: a recycled PID whose start identity differs from this value is classified stale, not live."
+    },
+    "engine_version": {
+      "type": "string",
+      "description": "Sentinel Shield engine version that wrote the lock (audit)."
+    },
+    "lock_dir": {
+      "type": "string",
+      "description": "Path to the atomic mutual-exclusion directory (<target>/.sentinel-shield/operation-lock.d) whose single mkdir grants ownership. Recorded for audit; the on-disk directory is authoritative."
     }
   }
 }

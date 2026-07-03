@@ -26,15 +26,17 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 
-TARGET=""; MODE="inspect"
+TARGET=""; MODE="inspect"; FORMAT="human"
 
 usage() {
 	cat <<'EOF'
-Usage: recover-operation.sh --target <dir> [--mode inspect|resume-rollback]
+Usage: recover-operation.sh --target <dir> [--mode inspect|resume-rollback] [--format human|json]
   --target <dir>       Consuming project directory (required; must hold .sentinel-shield/).
   --mode <mode>        inspect (default) | resume-rollback.
   --inspect            Alias for --mode inspect (read-only report + journal integrity check).
   --resume-rollback    Alias for --mode resume-rollback (fail-closed tx_recover).
+  --format <fmt>       inspect output: human (default) | json (machine-readable contract:
+                       schemas/recovery-inspection.schema.json).
   -h, --help           Show help.
 EOF
 }
@@ -45,10 +47,13 @@ while [ $# -gt 0 ]; do
 		--mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
 		--inspect) MODE="inspect"; shift ;;
 		--resume-rollback) MODE="resume-rollback"; shift ;;
+		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		-h|--help) usage; exit 0 ;;
 		*) log_error "unknown argument '$1'"; usage; exit 2 ;;
 	esac
 done
+
+case "$FORMAT" in human|json) ;; *) log_error "invalid --format '$FORMAT' (human|json)"; exit 2 ;; esac
 
 [ -n "$TARGET" ] || { log_error "--target is required"; usage; exit 2; }
 [ -d "$TARGET" ] || { log_error "target '$TARGET' is not a directory"; exit 2; }
@@ -65,57 +70,101 @@ TX_OP="unknown"; TX_SELF="scripts/recover-operation.sh"; TX_ACTIVE=0; TX_SNAP=""
 # shellcheck source=scripts/lib/transaction.sh
 . "$SCRIPT_DIR/lib/transaction.sh"
 
-# journal_verify — validate the append-only journal chain. Rejects: a non-JSON (partial/truncated)
-# line; a missing required field; an unsafe (absolute/traversal) path; a broken seq; a broken prev
-# linkage; and a recomputed hash mismatch (in-place tampering). Prints the first failure and
-# returns 4; returns 0 when the journal is absent or fully consistent. Read-only.
-journal_verify() {
-	[ -f "$JOURNAL" ] || { echo "journal: none present ($JOURNAL absent)."; return 0; }
-	_jv_prev=""; _jv_expect=1; _jv_n=0
-	while IFS= read -r _line || [ -n "$_line" ]; do
-		[ -n "$_line" ] || continue
-		_jv_n=$((_jv_n + 1))
-		if ! printf '%s' "$_line" | jq -e . >/dev/null 2>&1; then
-			echo "journal: TAMPER/PARTIAL at line $_jv_n — not valid JSON (truncated or corrupt entry)." >&2
-			return 4
+# journal_verify — validate the append-only journal chain. Delegates to the SINGLE
+# implementation in scripts/lib/transaction.sh (tx_journal_verify) so recovery duplicates no
+# tx_* logic. Strict mode: reject a non-JSON/partial line, a missing/ill-typed field, an unsafe
+# path, a broken seq/prev linkage, and a recomputed-hash mismatch. Returns 0 (consistent/absent)
+# or 4 (tampered/partial).
+journal_verify() { tx_journal_verify strict; }
+
+# emit_inspection_json — the machine-readable inspection CONTRACT
+# (schemas/recovery-inspection.schema.json). Exposes: state, lock_owner{pid,token,hostname},
+# journal_valid, safe_to_resume, safe_to_rollback, required_manual_actions[]. Read-only; reuses
+# the same library validators (_tx_lock_valid, _tx_snap_safe, _tx_contained, tx_journal_verify)
+# the real recovery path uses, so the report can never disagree with what recovery would do.
+emit_inspection_json() {
+	_ij_state="null"; _ij_owner="null"; _ij_jvalid=false; _ij_resume=false; _ij_rollback=false
+	_ij_manual=""
+	# Journal integrity (strict = the read-only inspection standard).
+	if tx_journal_verify strict >/dev/null 2>&1; then _ij_jvalid=true; else
+		_ij_jvalid=false
+		_ij_manual="${_ij_manual}journal chain is tampered or has a partial entry — inspect and repair before resuming
+"
+	fi
+	if [ -f "$LOCK" ]; then
+		if _tx_lock_valid "$LOCK"; then
+			_ij_st=$(jq -r '.state // ""' "$LOCK" 2>/dev/null || echo "")
+			_ij_state=$(printf '%s' "$_ij_st" | jq -R .)
+			_ij_pid=$(jq -r '.pid // ""' "$LOCK" 2>/dev/null || echo "")
+			_ij_tok=$(jq -r '.token // ""' "$LOCK" 2>/dev/null || echo "")
+			_ij_host=$(jq -r '.hostname // ""' "$LOCK" 2>/dev/null || echo "")
+			_ij_owner=$(jq -n --argjson pid "$( [ -n "$_ij_pid" ] && printf '%s' "$_ij_pid" || printf 'null' )" \
+				--arg token "$_ij_tok" --arg hostname "$_ij_host" \
+				'{pid:$pid, token:(if $token=="" then null else $token end), hostname:(if $hostname=="" then null else $hostname end)}')
+			if [ "$_ij_st" = "completed" ]; then
+				# Already committed; resume-rollback will simply clear it (safe), nothing to roll back.
+				_ij_rollback=false; _ij_resume=true
+				_ij_manual="${_ij_manual}operation already committed (state=completed); run --resume-rollback to clear the stale marker
+"
+			else
+				_ij_rollback=true
+				_ij_lt=$(jq -r '.target // ""' "$LOCK" 2>/dev/null || echo "")
+				if [ "$_ij_lt" != "$TARGET" ]; then
+					_ij_rollback=false
+					_ij_manual="${_ij_manual}lock target does not match the current canonical target — recovery must run against the recorded target
+"
+				fi
+				_ij_snap=$(jq -r '.snapshot_dir // ""' "$LOCK" 2>/dev/null || echo "")
+				if ! _tx_snap_safe "$_ij_snap" || [ ! -d "$_ij_snap" ]; then
+					_ij_rollback=false
+					_ij_manual="${_ij_manual}snapshot_dir is missing or not contained under .sentinel-shield/.txn-* — manual inspection required
+"
+				elif [ ! -f "$_ij_snap/touched" ]; then
+					_ij_rollback=false
+					_ij_manual="${_ij_manual}touched manifest is absent — the snapshot is incomplete; manual inspection required
+"
+				fi
+				# Resume is safe only when a rollback is safe AND the journal is intact enough.
+				if [ "$_ij_rollback" = true ] && tx_journal_verify lenient >/dev/null 2>&1; then
+					_ij_resume=true
+				else
+					_ij_resume=false
+				fi
+			fi
+		else
+			_ij_manual="${_ij_manual}operation-lock is present but not schema-valid (tampered/corrupt) — recovery will fail closed
+"
 		fi
-		# Required fields + correct types.
-		if ! printf '%s' "$_line" | jq -e '
-			(.schema_version=="1") and (.seq|type=="number") and
-			(.ts|type=="string" and (length>0)) and
-			(.operation|type=="string") and (.pid|type=="number") and
-			(.phase as $p | ["start","precondition","snapshot","mutation","validation","rollback-step","completion"]|index($p)!=null) and
-			(.path|type=="string") and (.detail|type=="string") and
-			(.prev|type=="string") and (.hash|type=="string" and (length>0))
-		' >/dev/null 2>&1; then
-			echo "journal: TAMPER/PARTIAL at line $_jv_n — missing/ill-typed field or unknown phase." >&2
-			return 4
-		fi
-		_jv_seq=$(printf '%s' "$_line" | jq -r '.seq')
-		_jv_path=$(printf '%s' "$_line" | jq -r '.path')
-		_jv_lprev=$(printf '%s' "$_line" | jq -r '.prev')
-		_jv_hash=$(printf '%s' "$_line" | jq -r '.hash')
-		# A file-scoped path must be project-relative (no absolute root, no '..').
-		case "$_jv_path" in
-			"" ) : ;;
-			/*|..|../*|*/..|*/../*) echo "journal: TAMPER at line $_jv_n — unsafe path '$_jv_path'." >&2; return 4 ;;
-		esac
-		# Monotonic sequence.
-		[ "$_jv_seq" = "$_jv_expect" ] || { echo "journal: TAMPER at line $_jv_n — seq=$_jv_seq, expected $_jv_expect." >&2; return 4; }
-		# Chain linkage.
-		[ "$_jv_lprev" = "$_jv_prev" ] || { echo "journal: TAMPER at line $_jv_n — prev linkage broken." >&2; return 4; }
-		# Recompute the digest over the entry MINUS its hash (same canonical form used to write it).
-		_jv_body=$(printf '%s' "$_line" | jq -c 'del(.hash)')
-		_jv_calc=$(printf '%s' "$_jv_body" | _tx_hash 2>/dev/null || true)
-		[ "$_jv_calc" = "$_jv_hash" ] || { echo "journal: TAMPER at line $_jv_n — hash mismatch (entry altered)." >&2; return 4; }
-		_jv_prev="$_jv_hash"; _jv_expect=$((_jv_expect + 1))
-	done < "$JOURNAL"
-	echo "journal: OK — $_jv_n entr$( [ "$_jv_n" -eq 1 ] && echo y || echo ies ) verified (chain + integrity intact)."
-	return 0
+	fi
+	_ij_manual_json=$(printf '%s' "$_ij_manual" | sed '/^$/d' | jq -R . | jq -s .)
+	jq -n \
+		--argjson state "$_ij_state" \
+		--argjson lock_owner "$_ij_owner" \
+		--argjson journal_valid "$_ij_jvalid" \
+		--argjson safe_to_resume "$_ij_resume" \
+		--argjson safe_to_rollback "$_ij_rollback" \
+		--argjson required_manual_actions "$_ij_manual_json" \
+		--arg target "$TARGET" '{
+			schema: "recovery-inspection",
+			target: $target,
+			state: $state,
+			lock_owner: $lock_owner,
+			journal_valid: $journal_valid,
+			safe_to_resume: $safe_to_resume,
+			safe_to_rollback: $safe_to_rollback,
+			required_manual_actions: $required_manual_actions
+		}'
 }
 
 case "$MODE" in
 	inspect)
+		if [ "$FORMAT" = "json" ]; then
+			# Machine-readable contract to stdout; exit 0 when the journal is consistent, 4 when
+			# it is tampered/partial (same fail-closed exit as the human report).
+			emit_inspection_json
+			tx_journal_verify strict >/dev/null 2>&1 || exit 4
+			exit 0
+		fi
 		echo "Sentinel Shield — operation inspection"
 		echo "Target: $TARGET"
 		echo "------------------------------------------------------------"

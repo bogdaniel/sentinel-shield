@@ -11,19 +11,53 @@ consuming project half-written. The transaction machinery lives in a single shar
 
 Every `--apply` run:
 
-1. **Detects a stale lock.** If `<target>/.sentinel-shield/operation-lock.json` already exists,
-   the run refuses to mutate and exits `4`, pointing you at `--recover`. A lock is left behind
-   only by an ungraceful kill (SIGKILL / power loss); a graceful failure rolls itself back.
-2. **Opens the transaction** (`tx_begin`): writes an atomic operation-lock
-   (`schemas/operation-lock.schema.json`) and creates a per-run snapshot dir
-   `<target>/.sentinel-shield/.txn-<pid>/`.
+1. **Detects a stale lock.** If `<target>/.sentinel-shield/operation-lock.json` (or a torn
+   mutex, below) already exists, the run refuses to mutate and exits `4`, pointing you at
+   `--recover`. A lock is left behind only by an ungraceful kill (SIGKILL / power loss); a
+   graceful failure rolls itself back. Detection distinguishes a still-**live** operation
+   (its recorded owner is alive on this host with a matching process-start identity) from an
+   **interrupted** one, and auto-finalises a lock that reached the durable `completed` state.
+2. **Opens the transaction** (`tx_begin`) with **atomic** lock acquisition. Ownership is granted
+   **only** by a successful `mkdir` of the mutex directory
+   `<target>/.sentinel-shield/operation-lock.d` — an atomic test-and-set on every POSIX
+   filesystem, so **two simultaneous operations on one project can never both proceed** (the
+   loser gets a non-zero `mkdir` and fails closed). The winner then writes a **durable** lock
+   marker (`schemas/operation-lock.schema.json`) carrying a PID-independent ownership **token**,
+   the process-start identity (`pid_start`, to defeat PID reuse), the **hostname**/`host_id`,
+   and the **engine version**, and creates a per-run snapshot dir
+   `<target>/.sentinel-shield/.txn-<pid>/`. The marker is published atomically (temp + rename)
+   and flushed.
 3. **Snapshots before writing** (`tx_snapshot`): each file is copied to the snapshot dir *once*,
-   in its pre-write state, before it is overwritten. Files that did not previously exist are
-   recorded in `created` (no copy) so recovery can tell a **modified** file (must be restored)
-   from a **newly-created** file (must be removed).
-4. **Commits** (`tx_commit`) on success: removes the lock and the snapshot dir.
-5. **Auto-rolls-back** on a graceful failure/interrupt (the caller's `ss_cleanup` trap calls
-   `tx_rollback`), then clears the lock — no manual step needed.
+   in its pre-write state, and the copy is **verified** (`cmp`) before the live file is ever
+   touched — a failed or mismatched snapshot fails closed rather than risk silent data loss on
+   rollback. Files that did not previously exist are recorded in `created` (no copy) so recovery
+   can tell a **modified** file (must be restored) from a **newly-created** file (must be
+   removed).
+4. **Writes durably** (`tx_install_file`): a managed file is written to a same-directory
+   in-flight temp, flushed, **atomically renamed** into place, then **post-write digest-verified**
+   (the on-disk bytes must match the source) and flushed again. An interrupted write can only
+   ever leave the in-flight temp — never a half-written managed file.
+5. **Commits** (`tx_commit`) on success via the durable state machine `active -> committing ->
+   completed`. Each state is fsync'd, and the lock + mutex are removed **only after** the terminal
+   `completed` state is durably recorded. A crash mid-finalise therefore leaves a `completed`
+   marker the next run/recovery treats as **already-finished** (idempotent), never as an
+   interrupted operation to roll back.
+6. **Auto-rolls-back** on a graceful failure/interrupt (the caller's `ss_cleanup` trap calls
+   `tx_rollback`), then clears the lock **and** the mutex — no manual step needed.
+
+### The transaction state machine
+
+The lock's `state` field is an explicit machine: `initializing | active | validating |
+committing | rolling-back | rollback-incomplete | completed`. Only these transitions are legal
+(`scripts/lib/transaction.sh :: _tx_state_transition_ok`); any other jump (e.g. `completed ->
+active`, or `rollback-incomplete -> completed` without passing through `rolling-back`) is
+**rejected**. Recovery uses the recorded state to decide direction:
+
+- `committing` / `completed` → **complete-forward**: every managed write and its post-write
+  validation already succeeded and were fsync'd, so recovery **never rolls those back** — it
+  clears the snapshot + lock and exits `0`.
+- `active` / `validating` / `rolling-back` / `rollback-incomplete` → **roll back** the partial
+  run (idempotent; a `rolling-back` or `rollback-incomplete` lock is a resumable rollback).
 
 ### Recovering an ungraceful kill
 
@@ -89,12 +123,28 @@ regression-tested by `tests/prod/211-transaction-symlink.sh`.
 # Read-only: report the interrupted operation (if any) and VERIFY the journal integrity.
 sh scripts/recover-operation.sh --target <dir> --inspect
 
+# Machine-readable inspection contract (schemas/recovery-inspection.schema.json).
+sh scripts/recover-operation.sh --target <dir> --inspect --format json
+
 # Perform the fail-closed rollback of an interrupted operation.
 sh scripts/recover-operation.sh --target <dir> --resume-rollback
 ```
 
 `--inspect` exits `0` when the journal is consistent, `4` when it is tampered/partial.
 `--resume-rollback` delegates to `tx_recover` (exit `0` on a clean recovery, `4` otherwise).
+
+**`--inspect --format json`** emits a read-only contract object
+(`schemas/recovery-inspection.schema.json`) computed with the **same** library validators the
+real recovery path uses, so the report can never disagree with what recovery would do:
+
+| field | meaning |
+| --- | --- |
+| `state` | the lock's recorded state-machine position (or `null`) |
+| `lock_owner` | `{pid, token, hostname}` of the current owner (or `null`) |
+| `journal_valid` | the journal chain verifies **strictly** (torn/partial line ⇒ `false`) |
+| `safe_to_rollback` | an interrupted op can be rolled back safely (valid lock + target match + contained snapshot + `touched` present) |
+| `safe_to_resume` | `--resume-rollback` is expected to exit `0` (a safe rollback with an intact-enough journal, or a `completed` lock that only needs clearing) |
+| `required_manual_actions` | human-actionable blockers preventing an unattended recovery (empty when clean) |
 
 ## The append-only transaction journal
 
@@ -109,11 +159,21 @@ contents** — only project-relative paths and short phase details.
 
 **Integrity.** Each entry carries `prev` (the previous entry's `hash`) and `hash`
 (= digest of the entry with its `hash` field removed; sha256 where available, else a `cksum:`
-CRC fallback). `recover-operation.sh --inspect` rejects: a non-JSON (truncated/partial) line, a
-missing/ill-typed field or unknown phase, an unsafe (absolute/`..`) path, a broken `seq`, a
-broken `prev` linkage, and a recomputed-hash mismatch (in-place tampering). A keyless hash chain
-detects truncation and prefix tampering; it is **not** tamper-*proof* against a full re-chaining
-rewrite — anchor the journal externally (WORM storage / signed backup) if you need that.
+CRC fallback). The single verifier `tx_journal_verify` (in `scripts/lib/transaction.sh`, which
+`recover-operation.sh` reuses — it duplicates no `tx_*` logic) rejects: a non-JSON
+(truncated/partial) line, a missing/ill-typed field or unknown phase, an unsafe (absolute/`..`)
+path, a broken `seq`, a broken `prev` linkage, and a recomputed-hash mismatch (in-place
+tampering). A keyless hash chain detects truncation and prefix tampering; it is **not**
+tamper-*proof* against a full re-chaining rewrite — anchor the journal externally (WORM storage /
+signed backup) if you need that.
+
+**Append durability + verify-before-resume.** Each entry is appended in a single write and then
+flushed to stable storage where a flush primitive exists. **Recovery verifies the journal chain
+before it resumes a rollback**: in `strict` mode (`--inspect`) *any* non-JSON line — including a
+torn trailing one — is rejected; in the `lenient` mode used by `--resume-rollback` a **single
+torn trailing line** (the crash's own interrupted append) is tolerated so a genuine crash is
+still recoverable, while any **earlier** corruption or a broken `seq`/`prev`/`hash` in the
+complete prefix still **fails closed**.
 
 ## Optional source verification
 
