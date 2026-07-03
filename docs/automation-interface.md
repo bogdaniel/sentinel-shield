@@ -237,6 +237,31 @@ Conformance is covered by `tests/prod/250-bounded-processes.sh`. The timeout sta
 also reaches the security audit report — see
 [security-operations.md](security-operations.md).
 
+## Health report (`scripts/health.sh`)
+
+Alongside the `--output json` envelope, the production health command emits a
+dedicated machine-readable **health report** on `stdout`
+([`schemas/health-report.schema.json`](../schemas/health-report.schema.json)): a
+rolled-up verdict (`healthy | degraded | unhealthy | unknown`) plus a per-check
+breakdown with **stable reason codes**. The process exit code encodes the
+verdict (`0`/`1`/`2`/`3`, `64` for a usage error). It is read-only and OFFLINE by
+default — the only network operation is a bounded connectivity probe gated behind
+`--check-network`. Full reason-code table and tuning knobs:
+[operations-runbook.md](operations-runbook.md).
+
+## Operational event stream (opt-in JSONL)
+
+Every long-running or mutating operation can emit a normalized, correlated
+**operational-event** stream ([`schemas/operational-event.schema.json`](../schemas/operational-event.schema.json))
+to a JSONL sink. It is strictly opt-in — enabled only when
+`SENTINEL_SHIELD_EVENTS=1` **and** `SENTINEL_SHIELD_EVENTS_FILE=<path>` are set —
+and off by default (a zero-cost no-op otherwise). Events are grouped by
+`correlation_id` (shared across an operation and the recovery it triggers) and
+split by `operation_id`, carry stable `reason_code`s, a non-reversible hashed
+target identity, and a best-effort `elapsed_ms`. See
+[operations-runbook.md](operations-runbook.md) for the model, correlation
+workflow, and validation.
+
 ## Deferred (not in this contract)
 
 - **Failure-comprehension / error-contract overhaul** — a richer per-failure
