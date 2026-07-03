@@ -1,0 +1,90 @@
+# Sentinel Shield — external-adopter validation.
+#
+# Runs the reproducible multi-environment external-adopter suite and its deterministic
+# scorecard tests, then enforces the adopter scorecard as a BLOCKING gate. Every step
+# fails CLOSED: a missing, malformed, or non-green scorecard fails the job. No
+# advisory-only / continue-on-error steps. Third-party actions are pinned by immutable
+# full commit SHA (docs/github-actions-security.md).
+name: ci-adopter-validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-adopter-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Deterministic, network-free scorecard generator tests (positive, negative,
+  # failure-injection, fail-closed, schema conformance, redaction).
+  scorecard-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Shell syntax (adopter scripts)
+        run: |
+          for f in scripts/report-adopter-usability.sh tests/adopter/adopter-scenarios.sh tests/prod/244-adopter-scorecard.sh; do
+            sh -n "$f" || exit 1
+          done
+
+      - name: Scorecard generator tests (BLOCKING)
+        run: sh tests/prod/244-adopter-scorecard.sh
+
+  # --------------------------------------------------------------------------
+  # The real multi-environment adopter suite: acquire -> verify -> dry-run ->
+  # install -> doctor -> pipeline -> inject failure -> recover, one schema-valid
+  # session per scenario, folded into a BLOCKING scorecard.
+  adopter-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Run external-adopter multi-environment suite (BLOCKING)
+        # Emits one session per scenario + the consolidated scorecard; exits non-zero
+        # unless every scenario passes AND the scorecard is green.
+        run: sh tests/adopter/adopter-scenarios.sh --out-dir "$GITHUB_WORKSPACE/adopter-out" --keep
+
+      - name: Enforce the adopter scorecard is green (BLOCKING)
+        run: |
+          SC="$GITHUB_WORKSPACE/adopter-out/adopter-scorecard.json"
+          test -s "$SC" || { echo "no adopter scorecard produced"; exit 1; }
+          jq -e . "$SC" >/dev/null 2>&1 || { echo "adopter scorecard is not valid JSON"; exit 1; }
+          RESULT=$(jq -r '.result' "$SC")
+          if [ "$RESULT" != "pass" ]; then
+            echo "adopter scorecard result=$RESULT — the following blocking criteria failed:"
+            jq -r '.criteria[] | select(.status=="fail") | "  - " + .title + "\n    reproduce: " + .reproduction' "$SC"
+            exit 1
+          fi
+          echo "adopter scorecard: PASS (all blocking criteria met)"
+
+      - name: Upload adopter session reports + scorecard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-shield-adopter-validation
+          path: adopter-out
+          retention-days: 14
+          if-no-files-found: error
