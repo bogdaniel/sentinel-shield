@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/redaction-report.schema.json",
+  "title": "Sentinel Shield redaction report",
+  "description": "Machine-readable summary produced by scripts/lib/redaction.sh (rd_report_json / rd_scan_paths). It records the sensitive-value registry's bounded state and the result of screening produced artifacts for CONFIRMED, high-confidence credential shapes before they are displayed, persisted, or uploaded. It carries COUNTS, CATEGORY names, and bound metadata ONLY — it NEVER contains a secret value, a raw token, a path, an email, or any redacted content. confirmed_secret_present=true means at least one artifact carried a confirmed secret and release readiness MUST fail closed. The categories[] enum is kept in lockstep with rd_scan_categories; tests/prod/253-redaction-security.sh cross-checks the two so the enum can never drift from the code.",
+  "type": "object",
+  "required": [
+    "schema",
+    "sensitive_values",
+    "categories",
+    "scan",
+    "confirmed_secret_present"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "redaction-report",
+      "description": "Fixed discriminator for this report shape."
+    },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "Optional ISO-8601 UTC time the report was produced."
+    },
+    "sensitive_values": {
+      "type": "object",
+      "required": ["registered", "capped", "cap_count", "cap_bytes"],
+      "additionalProperties": false,
+      "description": "Bounded state of the LITERAL sensitive-value registry. Counts only.",
+      "properties": {
+        "registered": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of literal secret values currently registered for redaction."
+        },
+        "capped": {
+          "type": "boolean",
+          "description": "True when at least one value was REFUSED for exceeding a bound (count/size/min-length) — the registry never silently truncates a value into a partial match."
+        },
+        "cap_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The maximum number of literal values the registry will hold (RD_MAX_SECRETS)."
+        },
+        "cap_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The maximum byte-length of a single registered value (RD_MAX_SECRET_BYTES)."
+        }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "The CLOSED set of high-confidence credential categories the artifact scanner screens for. A match in any is a CONFIRMED secret.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "github-token",
+          "aws-access-key",
+          "jwt",
+          "private-key-block",
+          "npm-token",
+          "slack-token",
+          "google-api-key"
+        ]
+      }
+    },
+    "scan": {
+      "type": "object",
+      "required": ["files_scanned", "files_with_secrets", "total_findings", "by_category"],
+      "additionalProperties": false,
+      "description": "Aggregate result of the artifact scan. Counts only — no filenames, no values.",
+      "properties": {
+        "files_scanned": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of regular files inspected."
+        },
+        "files_with_secrets": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of files that carried at least one confirmed secret."
+        },
+        "total_findings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total confirmed-secret match lines across all files and categories."
+        },
+        "by_category": {
+          "type": "object",
+          "description": "Per-category confirmed-match counts. Keys are drawn from categories[]; values are non-negative integers. Absent categories mean zero.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "confirmed_secret_present": {
+      "type": "boolean",
+      "description": "True iff total_findings > 0. When true, the produced artifact carries a confirmed secret and release readiness MUST fail closed (the scanner returns non-zero)."
+    }
+  }
+}

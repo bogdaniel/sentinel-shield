@@ -41,22 +41,44 @@ if [ "${__SENTINEL_SHIELD_OUTPUT_CONTRACT_LOADED:-}" = "1" ]; then
 fi
 __SENTINEL_SHIELD_OUTPUT_CONTRACT_LOADED=1
 
+# Pull in the unified redaction library (rd_*). oc_redact delegates to it so the envelope shares
+# ONE redaction implementation with every other persisted/displayed surface. __oc_dir resolves
+# THIS library's directory so the source works regardless of the caller's CWD.
+__oc_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
+if [ "${__SENTINEL_SHIELD_REDACTION_LOADED:-}" != "1" ]; then
+	if [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/lib/redaction.sh" ]; then
+		# shellcheck source=scripts/lib/redaction.sh
+		. "$SCRIPT_DIR/lib/redaction.sh"
+	elif [ -f "$__oc_dir/redaction.sh" ]; then
+		# shellcheck source=scripts/lib/redaction.sh
+		. "$__oc_dir/redaction.sh"
+	fi
+fi
+
 # oc_version — the engine version the envelope reports.
 oc_version() { printf '%s' "${SENTINEL_SHIELD_VERSION:-2.0.0}"; }
 
 # oc_redact — read STDIN, write STDIN with secrets + absolute local paths redacted.
 # OC_TARGET_ROOT and OC_HOME (exported by oc_run_wrapped) drive path relativization.
+# Delegates to the unified redaction library (rd_redact_stream) so the envelope, journals, reports,
+# and artifact scans all share ONE redaction implementation (longest-value-first literals + shape-
+# based structural masking + path relativization). TARGET is still resolved BEFORE HOME so a target
+# nested under HOME is labelled <target>, not ~/...
 oc_redact() {
-	# Longest / most specific replacements first (TARGET before HOME so a target
-	# nested under HOME is labelled <target>, not ~/...). Escape ERE metacharacters
-	# and the '#' delimiter in the roots first: an unescaped root containing '.',
-	# '+', '(' … or '#' could fail to match and leak the absolute path.
-	_oc_home="${OC_HOME:-$HOME}"
+	RD_HOME="${OC_HOME:-$HOME}"
+	RD_TARGET_ROOT="${OC_TARGET_ROOT:-}"
+	export RD_HOME RD_TARGET_ROOT
+	if command -v rd_redact_stream >/dev/null 2>&1; then
+		rd_redact_stream
+		return 0
+	fi
+	# Fallback (redaction library unavailable): the prior self-contained masker. Fail-safe, never
+	# fail-open — it still strips paths + common secret shapes.
 	_oc_troot=$(printf '%s' "${OC_TARGET_ROOT:-}" | sed 's/[]#.^$*+?(){}|[]/\\&/g')
-	_oc_home_e=$(printf '%s' "$_oc_home" | sed 's/[]#.^$*+?(){}|[]/\\&/g')
+	_oc_home_e=$(printf '%s' "$RD_HOME" | sed 's/[]#.^$*+?(){}|[]/\\&/g')
 	sed -E \
 		${OC_TARGET_ROOT:+-e "s#${_oc_troot}#<target>#g"} \
-		${_oc_home:+-e "s#${_oc_home_e}#~#g"} \
+		${RD_HOME:+-e "s#${_oc_home_e}#~#g"} \
 		-e 's/(AKIA|ASIA)[0-9A-Z]{16}/***REDACTED-AWS-KEY***/g' \
 		-e 's/gh[pousr]_[A-Za-z0-9]{20,}/***REDACTED-GH-TOKEN***/g' \
 		-e 's/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/***REDACTED-JWT***/g' \

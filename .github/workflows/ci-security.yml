@@ -243,6 +243,16 @@ jobs:
             --branch "$REF_NAME" \
             --workflow "$WORKFLOW_NAME"
 
+      - name: Fail-closed credential scan of the security summary (never upload a confirmed secret)
+        # Screens the produced, normalized summary for HIGH-CONFIDENCE credential shapes before it
+        # is uploaded. scripts/lib/redaction.sh :: rd_scan_paths prints a redaction report (COUNTS
+        # + CATEGORY names only, NEVER a value; schemas/redaction-report.schema.json) and returns
+        # non-zero if any confirmed secret is present. Fail closed — no continue-on-error, no
+        # `|| true`. (The deliberately-vulnerable sample projects live under tests/ and are not in
+        # this normalized summary, so this gate screens release-relevant output only.)
+        run: |
+          sh -eu -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/redaction.sh; rd_scan_paths reports/security-summary.json'
+
       - name: Upload raw scanner artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

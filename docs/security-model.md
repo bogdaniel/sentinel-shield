@@ -88,3 +88,71 @@ containment and symlink guarantees do not depend on any such degrade.
 
 See also `docs/recovery.md` (interrupted-operation recovery) and
 `schemas/filesystem-safety-reasons.schema.json`.
+
+# Sentinel Shield — security model: secret handling, environment isolation, diagnostic redaction
+
+Alongside the filesystem trust boundary, every string Sentinel Shield **displays or persists** —
+a diagnostic, a journal line, an intermediate JSON file, a generated report, a release artifact —
+passes through a single, fail-closed redaction layer, `scripts/lib/redaction.sh` (POSIX `sh`,
+source-only). It removes credentials and repo-local identity, and it proves, on demand, that a
+produced artifact carries no confirmed secret before it is uploaded.
+
+## Threat model
+
+Secret material and local identity must never leak into a place an operator or a downstream
+consumer can read:
+
+- a **token** in the environment, in command output, in a URL's userinfo, or in a query parameter;
+- a secret whose **value contains regex metacharacters** or sed-hostile bytes (`/`, `#`, `&`,
+  backslashes, Unicode) — which must never (a) inject a pattern into the redactor or (b) break its
+  own delimiters and thereby leak;
+- **repo-local absolute paths** (a nested project path under `$HOME`, the repo root, a temp root),
+  a **signing-key path** (SSH private key, GnuPG home) in a git error, or a user **email**;
+- **registry credentials** (npm `_authToken`, Composer / registry `_password`/`_auth`, docker
+  registry auth) in package-manager output;
+- a **confirmed secret** written into a release artifact that is then uploaded;
+- an **extremely long untrusted diagnostic line** used to blow up processing or push a secret past
+  a naive truncation.
+
+## Guarantees and the functions that enforce them
+
+| Guarantee | Function |
+| --- | --- |
+| Literal, longest-value-first redaction of known secret VALUES (no regex injection) | `rd_secret_add`, `rd_redact_stream` |
+| Bounded sensitive-value registry (capped count + per-value size; under-min refused) | `rd_secret_add` |
+| Also redact the percent-**encoded** form of a registered value | `rd_secret_add` / `rd_urlencode` |
+| Structural masking: GitHub tokens, `Authorization`, URL userinfo, npm/Composer/registry/docker auth, JWT, AWS keys, sensitive query params, SSH/GnuPG paths, emails, `NAME=VALUE` | `rd_redact_stream` (`_rd_pattern_stage`) |
+| Path relativization: `$HOME`→`~`, `--target`→`<target>`, repo→`<repo>`, temp→`<tmp>` | `rd_redact_stream` |
+| Extremely long line bounded AFTER literal redaction | `rd_redact_stream` (`RD_MAX_LINE`) |
+| No `set -x` leakage of a secret | `_rd_harden` (`set +x`) inside every secret-handling function |
+| Restrictive perms (0600) on the materialised registry temp file | `rd_mktemp` |
+| Allowlisted environment for an external tool; full env never printed | `rd_run_isolated` (`env -i` + named vars) |
+| Screen a produced artifact for CONFIRMED secrets; FAIL CLOSED before upload | `rd_scan_paths` |
+| Machine-readable report — counts + categories, **never a value** | `rd_report_json`, `rd_scan_paths` |
+
+### Redact before persistence, not only before display
+
+Callers pipe intermediate JSON and journal writes through `rd_redact_stream`, so a secret value
+never reaches an intermediate file — redaction is applied *before* the bytes are written, not only
+before they are shown. The command-result envelope shares this exact implementation
+(`scripts/lib/output-contract.sh :: oc_redact` delegates to `rd_redact_stream`).
+
+### Fail-closed confirmed-secret gate
+
+`rd_scan_paths` screens files/trees for **high-confidence** credential shapes (GitHub token, AWS
+access key, JWT, private-key block, npm token, Slack token, Google API key) and returns non-zero if
+any is present. `scripts/verify-release-artifacts.sh` runs it over every extracted artifact tree and
+**rejects** the artifact (`confirmed-secret-in-artifact`) rather than backing a release with it;
+`.github/workflows/ci-security.yml` runs the same scan over the normalized security summary before
+upload — no `continue-on-error`, no `|| true`.
+
+### Reason / report catalog (machine-readable)
+
+The CLOSED set of confirmed-secret categories is emitted by `rd_scan_categories` and cataloged in
+`schemas/redaction-report.schema.json`. `tests/prod/253-redaction-security.sh` cross-checks the two
+(jq, structural — this repo has no ajv) so the enum can never drift from the code, and injects all
+twelve required cases (token in env / output / URL userinfo / query param; regex-metacharacter and
+special-char/Unicode secrets; nested home path; signing-key path; registry creds; secret in an
+uploaded-artifact fixture; overlapping secrets; extremely long line), asserting removal plus a
+positive control for each. The report contains **no secret value** — only counts, category names,
+and bounded-registry metadata.

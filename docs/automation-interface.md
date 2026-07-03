@@ -78,16 +78,50 @@ text on `stderr`.
 
 ## Redaction guarantees
 
-Everything placed into the envelope is redacted before emission:
+Everything placed into the envelope is redacted **before emission** by the shared
+redaction library [`scripts/lib/redaction.sh`](../scripts/lib/redaction.sh)
+(`oc_redact` delegates to `rd_redact_stream`), so the envelope, journals, reports,
+and artifact scans share **one** redaction implementation. It applies, in order:
 
-- `$HOME` is relativized to `~`.
-- The run's `--target` root is relativized to `<target>`.
-- Common secret shapes are masked: AWS access keys, GitHub tokens, JWTs, bearer
-  tokens, and `NAME=VALUE` pairs whose `NAME` ends in
-  `_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD`/`_PASSWD`/`_PWD`.
+1. A **literal sensitive-value registry** — exact secret values a caller registers
+   (`rd_secret_add`) are removed as **literal** substrings, **longest-value-first**,
+   so a token containing regex metacharacters, `/`, `#`, `&`, backslashes, or
+   Unicode can neither inject a pattern nor break the redactor's delimiters, and
+   overlapping values collapse without leaving a fragment. The registry is **capped**
+   in count and per-value size; extremely long untrusted lines are **bounded**
+   *after* literal redaction so an embedded secret is removed before truncation.
+2. **Structural (shape-based) masking** — GitHub tokens, `Authorization` headers,
+   URL userinfo credentials, npm / Composer / registry / docker auth, JWTs, AWS
+   access keys, sensitive query parameters, SSH private-key and GnuPG paths, emails,
+   and `NAME=VALUE` pairs whose `NAME` ends in
+   `_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD`/`_PASSWD`/`_PWD`/`_AUTH`.
+3. **Path relativization** — `$HOME` → `~`, the run's `--target` root → `<target>`,
+   the repo root → `<repo>`, temp roots → `<tmp>`.
 
 The envelope therefore carries **no absolute local paths and no secret values**,
 so it is safe to log, attach to CI artifacts, or paste into an issue.
+
+Redaction happens **before persistence**, not only before display: callers pipe
+intermediate JSON and journal writes through `rd_redact_stream` so a secret value
+never reaches an intermediate file. `set -x` is disabled inside every
+secret-handling function so a shell trace can never echo a value, and
+`rd_run_isolated` runs an external tool under an **allowlisted** environment
+(`env -i` + named vars) so a child process never inherits an ambient secret. The
+full environment is never printed.
+
+### Confirmed-secret artifact gate + redaction report
+
+Before an artifact is uploaded or allowed to back a release, `rd_scan_paths`
+screens it for **high-confidence** credential shapes (GitHub tokens, AWS keys,
+JWTs, private-key blocks, npm tokens, Slack tokens, Google API keys) and **fails
+closed** (returns non-zero) if any is present. It emits a machine-readable
+**redaction report** conforming to
+[`schemas/redaction-report.schema.json`](../schemas/redaction-report.schema.json)
+that carries **counts + category names + bounded-registry metadata only — never a
+value**. `scripts/verify-release-artifacts.sh` rejects any downloaded artifact
+whose extracted tree contains a confirmed secret (`confirmed-secret-in-artifact`),
+and `ci-security.yml` runs the same fail-closed scan over the normalized security
+summary before upload.
 
 ## Reconciliation notes (backward compatibility)
 
