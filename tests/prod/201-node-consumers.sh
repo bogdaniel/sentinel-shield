@@ -222,6 +222,22 @@ pol_ok "policy: supported yarn MODERN@4 + lock -> yarn-immutable" "yarn@4.1.0" "
 # (6) yarn CLASSIC vs MODERN: classic (1.x) -> distinct classic frozen-lockfile command-id.
 pol_ok "policy: yarn CLASSIC@1 + lock -> yarn-classic-frozen" "yarn@1.22.22" "yarn.lock" "ok/yarn/1.22.22/yarn-classic-frozen"
 
+# (6b) BARE yarn.lock (no packageManager) — resolve Classic vs modern from the lockfile
+# FORMAT so Classic (v1, which has no --immutable) is not misresolved as `yarn --immutable`;
+# fail closed in immutable mode when the format is indeterminable.
+_yc=$(mktemp -d "$WORK/yarncXXXXXX"); printf '{}\n' > "$_yc/package.json"; printf '# yarn lockfile v1\n' > "$_yc/yarn.lock"
+_yl1=$(pm_resolve "$_yc" immutable "") || true
+assert_eq "policy: bare classic yarn.lock (v1) -> yarn-classic-frozen" \
+	"$(printf '%s' "$_yl1" | cut -f1)/$(printf '%s' "$_yl1" | cut -f5)" "ok/yarn-classic-frozen"
+_yb=$(mktemp -d "$WORK/yarnbXXXXXX"); printf '{}\n' > "$_yb/package.json"; printf '__metadata:\n  version: 8\n' > "$_yb/yarn.lock"
+_yl2=$(pm_resolve "$_yb" immutable "") || true
+assert_eq "policy: bare berry yarn.lock (__metadata) -> yarn-immutable" \
+	"$(printf '%s' "$_yl2" | cut -f1)/$(printf '%s' "$_yl2" | cut -f5)" "ok/yarn-immutable"
+_ya=$(mktemp -d "$WORK/yarnaXXXXXX"); printf '{}\n' > "$_ya/package.json"; : > "$_ya/yarn.lock"
+_yl3=$(pm_resolve "$_ya" immutable "") || true
+assert_eq "policy: ambiguous bare yarn.lock in immutable -> AMBIGUOUS_YARN_VERSION" \
+	"$(printf '%s' "$_yl3" | cut -f1)/$(printf '%s' "$_yl3" | cut -f2)" "error/AMBIGUOUS_YARN_VERSION"
+
 # (2) unsupported npm major ; (4) unsupported pnpm major (both WITH a matching lockfile, so the
 # failure is the VERSION policy — not a mismatch or missing lock).
 _un=$(mktemp -d "$WORK/unmajXXXXXX"); printf '{"packageManager":"npm@2.0.0"}\n' > "$_un/package.json"; : > "$_un/package-lock.json"

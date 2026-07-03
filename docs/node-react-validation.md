@@ -63,7 +63,7 @@ silently dropped so the sole lockfile can be chosen against an explicit project 
 
 `pm_resolve <target> <mode> [override]` prints one TSV line and sets exit status:
 
-```
+```text
 ok<TAB><manager><TAB><version><TAB><lockfile><TAB><immutable-command-id>   exit 0
 error<TAB><REASON_CODE><TAB><message>                                      exit 2
 ```
@@ -98,6 +98,7 @@ Stable reason codes (asserted by the driver):
 | `UNSUPPORTED_PACKAGE_MANAGER`        | declared name is not npm\|pnpm\|yarn (e.g. `bun@1.2.0`)    |
 | `INVALID_PACKAGE_MANAGER_VERSION`    | declared version is not valid version syntax (e.g. `npm@not-a-version`) |
 | `UNSUPPORTED_PACKAGE_MANAGER_VERSION`| version syntax valid but major outside the supported range |
+| `AMBIGUOUS_YARN_VERSION`             | immutable mode, bare `yarn.lock` with no declared version and an indeterminable lockfile format (Classic v1 vs Berry) — refuses to guess `yarn --immutable` |
 
 ## Intentional defects (mutations)
 

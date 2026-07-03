@@ -344,6 +344,19 @@ pm_resolve() {
 	if [ "$_version" != "-" ]; then
 		_major=${_version%%+*}
 		_major=${_major%%.*}
+	elif [ "$_chosen" = yarn ]; then
+		# No declared version, only a yarn.lock. Yarn Classic (v1) does NOT support
+		# `--immutable`, so it must not be misresolved as modern Yarn. Sniff the
+		# lockfile format; fail closed in immutable mode when it is indeterminable
+		# rather than guessing `yarn --immutable`.
+		if [ -f "$_target/yarn.lock" ] && grep -q '^# yarn lockfile v1' "$_target/yarn.lock" 2>/dev/null; then
+			_major=1
+		elif [ -f "$_target/yarn.lock" ] && grep -q '^__metadata:' "$_target/yarn.lock" 2>/dev/null; then
+			_major=2
+		elif [ "$_mode" = "immutable" ]; then
+			printf 'error\tAMBIGUOUS_YARN_VERSION\tyarn.lock present but its Yarn version is indeterminable; declare packageManager (refusing to guess yarn --immutable)\n'
+			return 2
+		fi
 	fi
 	printf 'ok\t%s\t%s\t%s\t%s\n' \
 		"$_chosen" "$_version" "$(pm_lockfile_for "$_chosen")" "$(pm_immutable_command_id "$_chosen" "$_major")"
