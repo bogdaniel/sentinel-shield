@@ -258,3 +258,30 @@ jobs:
           path: reports/security-summary.json
           retention-days: 90
           if-no-files-found: error
+
+  # Production security ACCEPTANCE gate (MACRO-TASK 3). Proves the acceptance engine and
+  # its policy are internally consistent and FAIL CLOSED: it validates the canonical
+  # production-security-policy against its schema and runs the deterministic, network-free
+  # acceptance/incident-response contract (tests/prod/261-production-security.sh) as a
+  # BLOCKING job. No continue-on-error / advisory steps: any non-green assertion fails CI.
+  security-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Ensure jq
+        run: |
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y jq; }
+      - name: Shell syntax (acceptance engine)
+        run: |
+          for f in scripts/enforce-security-policy.sh scripts/normalize-security-summary.sh scripts/lib/security-policy.sh; do
+            sh -n "$f"
+          done
+      - name: Production security policy conforms to its schema (structural)
+        run: |
+          sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/security-policy.sh; sp_validate_policy config/production-security-policy.json'
+      - name: Production security acceptance + incident-response contract (BLOCKING)
+        run: sh tests/prod/261-production-security.sh

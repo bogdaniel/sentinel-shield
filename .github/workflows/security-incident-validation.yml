@@ -1,0 +1,116 @@
+# Sentinel Shield — security incident-response validation (MACRO-TASK 3).
+#
+# Proves the DISCLOSURE + INCIDENT-RESPONSE and EMERGENCY-RELEASE contract is real and
+# enforced, not just documented. Every step fails CLOSED: a missing SECURITY.md section,
+# an incident-response policy that does not conform, or an emergency-release path that does
+# not behave as specified fails the job. Network-free + deterministic. Third-party actions
+# are pinned by immutable full commit SHA (docs/github-actions-security.md). No
+# continue-on-error / advisory-only steps.
+name: security-incident-validation
+
+on:
+  pull_request:
+    paths:
+      - 'SECURITY.md'
+      - 'docs/security-policy.md'
+      - 'docs/security-incident-response.md'
+      - 'config/production-security-policy.json'
+      - 'schemas/production-security-policy.schema.json'
+      - 'schemas/security-acceptance.schema.json'
+      - 'scripts/enforce-security-policy.sh'
+      - 'scripts/normalize-security-summary.sh'
+      - 'scripts/lib/security-policy.sh'
+      - '.github/workflows/security-incident-validation.yml'
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-incident-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  incident-response-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: |
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y jq; }
+
+      - name: Disclosure + incident-response documents exist with required sections (BLOCKING)
+        run: |
+          set -eu
+          fail=0
+          req_file() { [ -s "$1" ] || { echo "MISSING: $1"; fail=1; }; }
+          req_grep() { grep -qi "$2" "$1" || { echo "MISSING SECTION in $1: $2"; fail=1; }; }
+          req_file SECURITY.md
+          req_file docs/security-policy.md
+          req_file docs/security-incident-response.md
+          # SECURITY.md must carry a reporting channel and the coordinated-disclosure stance.
+          req_grep SECURITY.md 'report'
+          req_grep SECURITY.md 'disclosure'
+          # The incident runbook must cover the mandated phases.
+          req_grep docs/security-incident-response.md 'acknowledg'
+          req_grep docs/security-incident-response.md 'triage'
+          req_grep docs/security-incident-response.md 'emergency'
+          [ "$fail" -eq 0 ] || { echo "incident-response document contract FAILED"; exit 1; }
+
+      - name: Incident-response + emergency-release policy conforms (structural, BLOCKING)
+        run: |
+          set -eu
+          sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/security-policy.sh; sp_validate_policy config/production-security-policy.json'
+          # The policy must actually declare the incident-response + emergency-release contract.
+          jq -e '
+            (.incident_response.disclosure_contact | type == "string" and (length > 0))
+            and (.incident_response.acknowledge_within_hours | type == "number")
+            and (.incident_response.triage_within_hours | type == "number")
+            and (.incident_response.runbook == "docs/security-incident-response.md")
+            and (.emergency_release.allowed | type == "boolean")
+            and (.emergency_release.require_incident_reference == true)
+            and (.emergency_release.require_followup_issue == true)
+          ' config/production-security-policy.json >/dev/null
+
+      - name: Emergency-release path behaves as specified (BLOCKING)
+        run: |
+          set -eu
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          # A critical finding with all required scanners fresh + covered.
+          cat > "$work/summary.json" <<'JSON'
+          {
+            "version": "1.0", "generated_at": "1970-01-01T00:00:00Z",
+            "targets": { "expected": 1, "scanned": 1, "coverage_ratio": 1.0 },
+            "scanners": [
+              { "name": "semgrep", "category": "source_vulnerabilities", "applicable": true, "status": "success", "version": "x", "database": { "age_days": null }, "targets_scanned": 1, "raw_report_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
+              { "name": "gitleaks", "category": "leaked_secrets", "applicable": true, "status": "success", "version": "x", "database": { "age_days": null }, "targets_scanned": 1, "raw_report_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+              { "name": "osv-scanner", "category": "dependency_vulnerabilities", "applicable": true, "status": "success", "version": "x", "database": { "age_days": 1 }, "targets_scanned": 1, "raw_report_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+              { "name": "grype", "category": "dependency_vulnerabilities", "applicable": true, "status": "success", "version": "x", "database": { "age_days": 1 }, "targets_scanned": 1, "raw_report_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333" },
+              { "name": "trivy", "category": "container_findings", "applicable": true, "status": "success", "version": "x", "database": { "age_days": 1 }, "targets_scanned": 1, "raw_report_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
+              { "name": "actionlint", "category": "workflow_vulnerabilities", "applicable": true, "status": "success", "version": "x", "database": { "age_days": null }, "targets_scanned": 1, "raw_report_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555" }
+            ],
+            "findings": [ { "id": "CVE-INC", "scanner": "osv-scanner", "category": "dependency_vulnerabilities", "severity": "critical", "fix_available": false, "reference": "CVE-INC" } ]
+          }
+          JSON
+          cat > "$work/risks.json" <<'JSON'
+          {"version":"1","risks":[{"id":"E1","gate":"critical_vulnerabilities","owner":"alice","approved_by":"bob","issue":"https://tracker/inc","scanner":"osv-scanner","category":"dependency_vulnerabilities","finding_id":"CVE-INC","severity":"critical","reason":"active incident mitigation","created_at":"2999-01-01","expires_at":"2999-01-03","status":"approved","scope":"finding","emergency":true,"incident":"INC-CI"}]}
+          JSON
+          printf '{"version":"1","risks":[]}\n' > "$work/empty.json"
+          # Without the emergency waiver: the critical finding MUST reject (exit 1).
+          rc=0; sh scripts/enforce-security-policy.sh --summary "$work/summary.json" --accepted-risks "$work/empty.json" --output "$work/a0.json" >/dev/null 2>&1 || rc=$?
+          [ "$rc" -eq 1 ] || { echo "expected reject(1) without emergency waiver, got $rc"; exit 1; }
+          # With the emergency waiver: accepted-emergency (exit 0).
+          rc=0; sh scripts/enforce-security-policy.sh --summary "$work/summary.json" --accepted-risks "$work/risks.json" --output "$work/a1.json" >/dev/null 2>&1 || rc=$?
+          [ "$rc" -eq 0 ] || { echo "expected accept(0) with emergency waiver, got $rc"; exit 1; }
+          dec="$(jq -r '.decision' "$work/a1.json")"
+          [ "$dec" = "accepted-emergency" ] || { echo "expected decision accepted-emergency, got $dec"; exit 1; }
+          echo "emergency-release path verified"
