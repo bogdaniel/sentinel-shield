@@ -1,0 +1,2082 @@
+{
+  "base_commit": "86bba63097e93e0d7e064598fe62d8804fd321dd",
+  "head_commit": "439f8a59bf1d743ed8501a803dc121b9e71a76a6",
+  "branch": "macro-beta2/integration",
+  "file_count": 129,
+  "total_added": 16803,
+  "total_deleted": 567,
+  "subsystems": [
+    {
+      "subsystem": "changelog",
+      "risk": "low",
+      "file_count": 1,
+      "added": 43,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "status": "M",
+          "risk": "low",
+          "added": 43,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "ci-workflows",
+      "risk": "medium",
+      "file_count": 2,
+      "added": 40,
+      "deleted": 2,
+      "files": [
+        {
+          "path": ".github/workflows/ci-security.yml",
+          "status": "M",
+          "risk": "medium",
+          "added": 2,
+          "deleted": 2
+        },
+        {
+          "path": ".github/workflows/ci-workflow-lint.yml",
+          "status": "M",
+          "risk": "medium",
+          "added": 38,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "config",
+      "risk": "low",
+      "file_count": 1,
+      "added": 88,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "config/required-checks.json",
+          "status": "A",
+          "risk": "low",
+          "added": 88,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "consumer-output-contract",
+      "risk": "medium",
+      "file_count": 3,
+      "added": 540,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "scripts/lib/output-contract.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 280,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/lib/package-manager-resolver.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 163,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/report-consumer-validation.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 97,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "docs",
+      "risk": "low",
+      "file_count": 13,
+      "added": 1479,
+      "deleted": 12,
+      "files": [
+        {
+          "path": "docs/automation-interface.md",
+          "status": "A",
+          "risk": "low",
+          "added": 145,
+          "deleted": 0
+        },
+        {
+          "path": "docs/branch-protection.md",
+          "status": "M",
+          "risk": "low",
+          "added": 53,
+          "deleted": 12
+        },
+        {
+          "path": "docs/consumer-validation-runbook.md",
+          "status": "M",
+          "risk": "low",
+          "added": 20,
+          "deleted": 0
+        },
+        {
+          "path": "docs/external-adopter-validation.md",
+          "status": "A",
+          "risk": "low",
+          "added": 84,
+          "deleted": 0
+        },
+        {
+          "path": "docs/migration-beta1-to-beta2.md",
+          "status": "A",
+          "risk": "low",
+          "added": 155,
+          "deleted": 0
+        },
+        {
+          "path": "docs/node-react-validation.md",
+          "status": "A",
+          "risk": "low",
+          "added": 144,
+          "deleted": 0
+        },
+        {
+          "path": "docs/php-library-validation.md",
+          "status": "A",
+          "risk": "low",
+          "added": 112,
+          "deleted": 0
+        },
+        {
+          "path": "docs/product-status.md",
+          "status": "M",
+          "risk": "low",
+          "added": 32,
+          "deleted": 0
+        },
+        {
+          "path": "docs/recovery.md",
+          "status": "A",
+          "risk": "low",
+          "added": 116,
+          "deleted": 0
+        },
+        {
+          "path": "docs/release-provenance.md",
+          "status": "A",
+          "risk": "low",
+          "added": 211,
+          "deleted": 0
+        },
+        {
+          "path": "docs/support-policy.md",
+          "status": "A",
+          "risk": "low",
+          "added": 135,
+          "deleted": 0
+        },
+        {
+          "path": "docs/v2.0.0-beta.2-release-notes.md",
+          "status": "A",
+          "risk": "low",
+          "added": 206,
+          "deleted": 0
+        },
+        {
+          "path": "docs/workflow-action-inventory.md",
+          "status": "A",
+          "risk": "low",
+          "added": 66,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "file_count": 6,
+      "added": 847,
+      "deleted": 1,
+      "files": [
+        {
+          "path": "scripts/audits/grype.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 31,
+          "deleted": 1
+        },
+        {
+          "path": "scripts/audits/merge-safety-audit.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 209,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/audits/osv-scanner.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 24,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/audits/required-checks-audit.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 182,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/audits/tool-provenance-audit.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 153,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/audits/workflow-runtime-audit.sh",
+          "status": "A",
+          "risk": "medium",
+          "added": 248,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "installer-hardening",
+      "risk": "high",
+      "file_count": 3,
+      "added": 533,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "scripts/lib/source-verification.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 84,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/lib/transaction.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 304,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/recover-operation.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 145,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "release-artifact-safety",
+      "risk": "high",
+      "file_count": 1,
+      "added": 126,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "scripts/lib/archive-safety.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 126,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "file_count": 6,
+      "added": 886,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "scripts/check-release-readiness.sh",
+          "status": "M",
+          "risk": "high",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/collect-release-evidence.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 206,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/finalize-release-evidence.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 140,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/generate-release-manifest.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 196,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/verify-release-artifacts.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 240,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/verify-release-manifest.sh",
+          "status": "A",
+          "risk": "high",
+          "added": 96,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "file_count": 6,
+      "added": 411,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "schemas/merge-safety-audit.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 55,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/required-checks-audit.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 42,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/required-checks.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 55,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/tool-provenance-audit.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 88,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/transaction-journal.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 76,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/workflow-runtime-audit.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 95,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "file_count": 5,
+      "added": 505,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "schemas/adopter-session.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 114,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/command-result.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 73,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/consumer-validation.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 87,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/installation-plan.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 94,
+          "deleted": 0
+        },
+        {
+          "path": "schemas/release-manifest.schema.json",
+          "status": "A",
+          "risk": "low",
+          "added": 137,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "file_count": 10,
+      "added": 377,
+      "deleted": 538,
+      "files": [
+        {
+          "path": "scripts/acquire-sentinel-shield.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 47,
+          "deleted": 9
+        },
+        {
+          "path": "scripts/bootstrap-profile-tools.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/doctor.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/install-baseline.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 57,
+          "deleted": 196
+        },
+        {
+          "path": "scripts/lib/isolated-tools.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 123,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/lib/sentinel-shield-common.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 60,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/migrate-v1.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 3,
+          "deleted": 165
+        },
+        {
+          "path": "scripts/plan-upgrade.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 9,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/run-local-pipeline.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "scripts/sync-baseline.sh",
+          "status": "M",
+          "risk": "medium",
+          "added": 54,
+          "deleted": 168
+        }
+      ]
+    },
+    {
+      "subsystem": "security-scanners",
+      "risk": "high",
+      "file_count": 2,
+      "added": 122,
+      "deleted": 14,
+      "files": [
+        {
+          "path": "scripts/collectors/grype.sh",
+          "status": "M",
+          "risk": "high",
+          "added": 63,
+          "deleted": 7
+        },
+        {
+          "path": "scripts/collectors/osv-scanner.sh",
+          "status": "M",
+          "risk": "high",
+          "added": 59,
+          "deleted": 7
+        }
+      ]
+    },
+    {
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "file_count": 59,
+      "added": 8623,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "tests/adopter/black-box-install.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 264,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 4,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/eslint.config.js",
+          "status": "A",
+          "risk": "low",
+          "added": 18,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/mutations/failing.test.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 11,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/mutations/lint-error.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/mutations/type-error.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 5,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/package-lock.json",
+          "status": "A",
+          "risk": "low",
+          "added": 2873,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/package.json",
+          "status": "A",
+          "risk": "low",
+          "added": 24,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/src/index.test.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 22,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/src/index.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 16,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/tsconfig.json",
+          "status": "A",
+          "risk": "low",
+          "added": 15,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/node-service/vitest.config.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 11,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 5,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/README.md",
+          "status": "A",
+          "risk": "low",
+          "added": 63,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/composer.json",
+          "status": "A",
+          "risk": "low",
+          "added": 36,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/phpstan.neon.dist",
+          "status": "A",
+          "risk": "low",
+          "added": 12,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/phpunit.xml.dist",
+          "status": "A",
+          "risk": "low",
+          "added": 17,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/pint.json",
+          "status": "A",
+          "risk": "low",
+          "added": 11,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/src/Calculator.php",
+          "status": "A",
+          "risk": "low",
+          "added": 54,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/php-library/tests/CalculatorTest.php",
+          "status": "A",
+          "risk": "low",
+          "added": 44,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/npm/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 1,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/npm/package-lock.json",
+          "status": "A",
+          "risk": "low",
+          "added": 21,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/npm/package.json",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/pnpm/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 1,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/pnpm/package.json",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/pnpm/pnpm-lock.yaml",
+          "status": "A",
+          "risk": "low",
+          "added": 22,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/yarn/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 1,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/yarn/package.json",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/pm-variants/yarn/yarn.lock",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/.gitignore",
+          "status": "A",
+          "risk": "low",
+          "added": 4,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/eslint.config.js",
+          "status": "A",
+          "risk": "low",
+          "added": 17,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/mutations/failing.test.tsx",
+          "status": "A",
+          "risk": "low",
+          "added": 10,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/mutations/lint-error.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/mutations/type-error.tsx",
+          "status": "A",
+          "risk": "low",
+          "added": 8,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/package-lock.json",
+          "status": "A",
+          "risk": "low",
+          "added": 4582,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/package.json",
+          "status": "A",
+          "risk": "low",
+          "added": 34,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/src/Badge.test.tsx",
+          "status": "A",
+          "risk": "low",
+          "added": 18,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/src/Badge.tsx",
+          "status": "A",
+          "risk": "low",
+          "added": 26,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/tsconfig.json",
+          "status": "A",
+          "risk": "low",
+          "added": 17,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/vitest.config.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 15,
+          "deleted": 0
+        },
+        {
+          "path": "tests/consumers/react-app/vitest.setup.ts",
+          "status": "A",
+          "risk": "low",
+          "added": 1,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/README.md",
+          "status": "A",
+          "risk": "low",
+          "added": 22,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/absolute.zip",
+          "status": "A",
+          "risk": "low",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/duplicate-path.zip",
+          "status": "A",
+          "risk": "low",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/generate.py",
+          "status": "A",
+          "risk": "low",
+          "added": 41,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/oversize.zip",
+          "status": "A",
+          "risk": "low",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/symlink-escape.zip",
+          "status": "A",
+          "risk": "low",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/archives/traversal.zip",
+          "status": "A",
+          "risk": "low",
+          "added": 0,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/bad-missing-concurrency.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 18,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/bad-missing-if-no-files-found.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 25,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/bad-missing-permissions.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 18,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/bad-missing-timeout.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 20,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/bad-mutable-ref.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 21,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/good.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 27,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/unsafe/unsafe-mutable-ref.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 17,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/unsafe/unsafe-ppt-checkout.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 20,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/unsafe/unsafe-ppt-secret.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 23,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/unsafe/unsafe-pr-write-perms.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 19,
+          "deleted": 0
+        },
+        {
+          "path": "tests/fixtures/workflows/unsafe/unsafe-release-on-pr.yml",
+          "status": "A",
+          "risk": "low",
+          "added": 21,
+          "deleted": 0
+        }
+      ]
+    },
+    {
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "file_count": 11,
+      "added": 2183,
+      "deleted": 0,
+      "files": [
+        {
+          "path": "tests/prod/200-php-consumer.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 279,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/201-node-consumers.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 334,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/210-transaction-journal.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 164,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/220-workflow-runtime-audit.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 121,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/221-scanner-provenance-health.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 220,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/222-governance-audits.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 243,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/230-output-contract.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 183,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/240-evidence-collection.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 161,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/241-artifact-verification.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 162,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/242-release-manifest.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 146,
+          "deleted": 0
+        },
+        {
+          "path": "tests/prod/243-release-finalize.sh",
+          "status": "A",
+          "risk": "low",
+          "added": 170,
+          "deleted": 0
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/ci-security.yml",
+      "status": "M",
+      "subsystem": "ci-workflows",
+      "risk": "medium",
+      "added": 2,
+      "deleted": 2
+    },
+    {
+      "path": ".github/workflows/ci-workflow-lint.yml",
+      "status": "M",
+      "subsystem": "ci-workflows",
+      "risk": "medium",
+      "added": 38,
+      "deleted": 0
+    },
+    {
+      "path": "CHANGELOG.md",
+      "status": "M",
+      "subsystem": "changelog",
+      "risk": "low",
+      "added": 43,
+      "deleted": 0
+    },
+    {
+      "path": "config/required-checks.json",
+      "status": "A",
+      "subsystem": "config",
+      "risk": "low",
+      "added": 88,
+      "deleted": 0
+    },
+    {
+      "path": "docs/automation-interface.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 145,
+      "deleted": 0
+    },
+    {
+      "path": "docs/branch-protection.md",
+      "status": "M",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 53,
+      "deleted": 12
+    },
+    {
+      "path": "docs/consumer-validation-runbook.md",
+      "status": "M",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 20,
+      "deleted": 0
+    },
+    {
+      "path": "docs/external-adopter-validation.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 84,
+      "deleted": 0
+    },
+    {
+      "path": "docs/migration-beta1-to-beta2.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 155,
+      "deleted": 0
+    },
+    {
+      "path": "docs/node-react-validation.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 144,
+      "deleted": 0
+    },
+    {
+      "path": "docs/php-library-validation.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 112,
+      "deleted": 0
+    },
+    {
+      "path": "docs/product-status.md",
+      "status": "M",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 32,
+      "deleted": 0
+    },
+    {
+      "path": "docs/recovery.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 116,
+      "deleted": 0
+    },
+    {
+      "path": "docs/release-provenance.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 211,
+      "deleted": 0
+    },
+    {
+      "path": "docs/support-policy.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 135,
+      "deleted": 0
+    },
+    {
+      "path": "docs/v2.0.0-beta.2-release-notes.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 206,
+      "deleted": 0
+    },
+    {
+      "path": "docs/workflow-action-inventory.md",
+      "status": "A",
+      "subsystem": "docs",
+      "risk": "low",
+      "added": 66,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/adopter-session.schema.json",
+      "status": "A",
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "added": 114,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/command-result.schema.json",
+      "status": "A",
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "added": 73,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/consumer-validation.schema.json",
+      "status": "A",
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "added": 87,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/installation-plan.schema.json",
+      "status": "A",
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "added": 94,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/merge-safety-audit.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 55,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/release-manifest.schema.json",
+      "status": "A",
+      "subsystem": "schemas-release-consumer",
+      "risk": "low",
+      "added": 137,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/required-checks-audit.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 42,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/required-checks.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 55,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/tool-provenance-audit.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 88,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/transaction-journal.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 76,
+      "deleted": 0
+    },
+    {
+      "path": "schemas/workflow-runtime-audit.schema.json",
+      "status": "A",
+      "subsystem": "schemas-governance",
+      "risk": "low",
+      "added": 95,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/acquire-sentinel-shield.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 47,
+      "deleted": 9
+    },
+    {
+      "path": "scripts/audits/grype.sh",
+      "status": "M",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 31,
+      "deleted": 1
+    },
+    {
+      "path": "scripts/audits/merge-safety-audit.sh",
+      "status": "A",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 209,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/audits/osv-scanner.sh",
+      "status": "M",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 24,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/audits/required-checks-audit.sh",
+      "status": "A",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 182,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/audits/tool-provenance-audit.sh",
+      "status": "A",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 153,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/audits/workflow-runtime-audit.sh",
+      "status": "A",
+      "subsystem": "governance-audits",
+      "risk": "medium",
+      "added": 248,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/bootstrap-profile-tools.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/check-release-readiness.sh",
+      "status": "M",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/collect-release-evidence.sh",
+      "status": "A",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 206,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/collectors/grype.sh",
+      "status": "M",
+      "subsystem": "security-scanners",
+      "risk": "high",
+      "added": 63,
+      "deleted": 7
+    },
+    {
+      "path": "scripts/collectors/osv-scanner.sh",
+      "status": "M",
+      "subsystem": "security-scanners",
+      "risk": "high",
+      "added": 59,
+      "deleted": 7
+    },
+    {
+      "path": "scripts/doctor.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/finalize-release-evidence.sh",
+      "status": "A",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 140,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/generate-release-manifest.sh",
+      "status": "A",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 196,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/install-baseline.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 57,
+      "deleted": 196
+    },
+    {
+      "path": "scripts/lib/archive-safety.sh",
+      "status": "A",
+      "subsystem": "release-artifact-safety",
+      "risk": "high",
+      "added": 126,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/isolated-tools.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 123,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/output-contract.sh",
+      "status": "A",
+      "subsystem": "consumer-output-contract",
+      "risk": "medium",
+      "added": 280,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/package-manager-resolver.sh",
+      "status": "A",
+      "subsystem": "consumer-output-contract",
+      "risk": "medium",
+      "added": 163,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/sentinel-shield-common.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 60,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/source-verification.sh",
+      "status": "A",
+      "subsystem": "installer-hardening",
+      "risk": "high",
+      "added": 84,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/lib/transaction.sh",
+      "status": "A",
+      "subsystem": "installer-hardening",
+      "risk": "high",
+      "added": 304,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/migrate-v1.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 3,
+      "deleted": 165
+    },
+    {
+      "path": "scripts/plan-upgrade.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 9,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/recover-operation.sh",
+      "status": "A",
+      "subsystem": "installer-hardening",
+      "risk": "high",
+      "added": 145,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/report-consumer-validation.sh",
+      "status": "A",
+      "subsystem": "consumer-output-contract",
+      "risk": "medium",
+      "added": 97,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/run-local-pipeline.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/sync-baseline.sh",
+      "status": "M",
+      "subsystem": "scripts-other",
+      "risk": "medium",
+      "added": 54,
+      "deleted": 168
+    },
+    {
+      "path": "scripts/verify-release-artifacts.sh",
+      "status": "A",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 240,
+      "deleted": 0
+    },
+    {
+      "path": "scripts/verify-release-manifest.sh",
+      "status": "A",
+      "subsystem": "release-evidence-tooling",
+      "risk": "high",
+      "added": 96,
+      "deleted": 0
+    },
+    {
+      "path": "tests/adopter/black-box-install.sh",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 264,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 4,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/eslint.config.js",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 18,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/mutations/failing.test.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 11,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/mutations/lint-error.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/mutations/type-error.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 5,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/package-lock.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 2873,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/package.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 24,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/src/index.test.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 22,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/src/index.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 16,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/tsconfig.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 15,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/node-service/vitest.config.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 11,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 5,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/README.md",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 63,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/composer.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 36,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/phpstan.neon.dist",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 12,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/phpunit.xml.dist",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 17,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/pint.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 11,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/src/Calculator.php",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 54,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/php-library/tests/CalculatorTest.php",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 44,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/npm/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/npm/package-lock.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 21,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/npm/package.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/pnpm/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/pnpm/package.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/pnpm/pnpm-lock.yaml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 22,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/yarn/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/yarn/package.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/pm-variants/yarn/yarn.lock",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/.gitignore",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 4,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/eslint.config.js",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 17,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/mutations/failing.test.tsx",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 10,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/mutations/lint-error.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/mutations/type-error.tsx",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 8,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/package-lock.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 4582,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/package.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 34,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/src/Badge.test.tsx",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 18,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/src/Badge.tsx",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 26,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/tsconfig.json",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 17,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/vitest.config.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 15,
+      "deleted": 0
+    },
+    {
+      "path": "tests/consumers/react-app/vitest.setup.ts",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 1,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/README.md",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 22,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/absolute.zip",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 0,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/duplicate-path.zip",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 0,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/generate.py",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 41,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/oversize.zip",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 0,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/symlink-escape.zip",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 0,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/archives/traversal.zip",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 0,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/bad-missing-concurrency.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 18,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/bad-missing-if-no-files-found.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 25,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/bad-missing-permissions.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 18,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/bad-missing-timeout.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 20,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/bad-mutable-ref.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 21,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/good.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 27,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/unsafe/unsafe-mutable-ref.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 17,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/unsafe/unsafe-ppt-checkout.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 20,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/unsafe/unsafe-ppt-secret.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 23,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/unsafe/unsafe-pr-write-perms.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 19,
+      "deleted": 0
+    },
+    {
+      "path": "tests/fixtures/workflows/unsafe/unsafe-release-on-pr.yml",
+      "status": "A",
+      "subsystem": "tests-fixtures",
+      "risk": "low",
+      "added": 21,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/200-php-consumer.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 279,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/201-node-consumers.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 334,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/210-transaction-journal.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 164,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/220-workflow-runtime-audit.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 121,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/221-scanner-provenance-health.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 220,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/222-governance-audits.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 243,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/230-output-contract.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 183,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/240-evidence-collection.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 161,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/241-artifact-verification.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 162,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/242-release-manifest.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 146,
+      "deleted": 0
+    },
+    {
+      "path": "tests/prod/243-release-finalize.sh",
+      "status": "A",
+      "subsystem": "tests-prod",
+      "risk": "low",
+      "added": 170,
+      "deleted": 0
+    }
+  ]
+}

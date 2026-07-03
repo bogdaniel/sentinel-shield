@@ -1,0 +1,19 @@
+{
+  "version": "2.0.0-beta.2",
+  "stage": "beta",
+  "release_scope": "engine-only",
+  "engine_commit": "unknown",
+  "engine_ci": [],
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false,
+    "symfony": false,
+    "php_library": false,
+    "node_react": false,
+    "combined_profile": false,
+    "bootstrap_apply": false,
+    "rollback_npm": false,
+    "rollback_pnpm": false,
+    "rollback_yarn": false
+  }
+}
