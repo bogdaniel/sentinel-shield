@@ -104,8 +104,40 @@ bp_category_env() {
 	esac
 }
 
+# bp_env_name_ok <NAME> — return 0 iff <NAME> is a SAFE environment-variable identifier:
+#   (a) it matches the strict shell-identifier form ^[A-Z][A-Z0-9_]*$, AND
+#   (b) it lives inside the module's own, code-owned SENTINEL_SHIELD_ namespace.
+# (a) is a CHARACTER ALLOWLIST: a conforming name cannot contain a single shell
+# metacharacter — no '$', '`', '(', ')', '{', '}', ';', '|', '&', '<', '>', quote,
+# backslash, space, tab, or newline — so it can NEVER carry a command substitution
+# $(...), a backtick, a redirection, a delimiter, or any other injectable syntax.
+# (b) rejects caller-controlled names outside the module's namespace (PATH, HOME, IFS,
+# an attacker-chosen variable), so an untrusted string can be neither injected NOR used
+# to read an arbitrary process variable. FAIL CLOSED: anything else is rejected.
+BP_ENV_NAMESPACE_PREFIX='SENTINEL_SHIELD_'
+bp_env_name_ok() {
+	case "${1:-}" in
+		'' | [!A-Z]*)  return 1 ;;   # empty, or first char not an uppercase letter
+		*[!A-Z0-9_]*)  return 1 ;;   # any subsequent char outside [A-Z0-9_]
+	esac
+	# Confine to the code-owned namespace (the prefix is a literal, not a glob).
+	case "$1" in
+		"$BP_ENV_NAMESPACE_PREFIX"*) return 0 ;;
+		*)                           return 1 ;;
+	esac
+}
+
 # bp_env_get <NAME> — indirect read of an env var by name (POSIX, no bashisms).
-bp_env_get() { eval "printf '%s' \"\${$1:-}\""; }
+# SECURITY: <NAME> is validated with bp_env_name_ok BEFORE it is ever placed in an eval.
+# A name containing shell syntax (command substitution $(...), backticks, ';', '|', '&',
+# whitespace, braces, quotes, or any delimiter) fails validation and is REJECTED — the
+# function prints nothing and returns non-zero, and the injected content is NEVER
+# executed. Because the accepted character set excludes every shell metacharacter, the
+# subsequent eval of "${NAME:-}" is inert: it can only expand the named variable.
+bp_env_get() {
+	bp_env_name_ok "${1:-}" || return 1
+	eval "printf '%s' \"\${$1:-}\""
+}
 
 # bp_max_timeout — the upper bound (seconds) a timeout may take. Anything larger is
 # rejected as "excessive" (a runaway config that would defeat the purpose of bounding).
@@ -157,8 +189,16 @@ bp_validate_timeout() {
 # prints nothing and returns BP_RC_INVALID.
 bp_timeout() {
 	_bp_cat="$1"; _bp_over_env="${2:-}"
-	# 1. explicit per-call override env (e.g. scanner-specific).
+	# 1. explicit per-call override env (e.g. scanner-specific). The override env NAME is
+	#    caller-supplied, so it is validated as a safe, code-owned identifier BEFORE it is
+	#    ever used for an indirect lookup. A malformed/hostile name (shell metacharacters,
+	#    out-of-namespace) is REJECTED — FAIL CLOSED with BP_RC_INVALID, never silently
+	#    ignored — so a broken/attacker-controlled config is loud and cannot inject.
 	if [ -n "$_bp_over_env" ]; then
+		if ! bp_env_name_ok "$_bp_over_env"; then
+			log_error "bounded-process: override env name '$_bp_over_env' is not a valid ${BP_ENV_NAMESPACE_PREFIX}[A-Z0-9_]* identifier — rejected (fail closed)"
+			unset _bp_cat _bp_over_env; return "$BP_RC_INVALID"
+		fi
 		_bp_v=$(bp_env_get "$_bp_over_env")
 		if [ -n "$_bp_v" ]; then
 			if bp_is_valid_timeout "$_bp_v"; then printf '%s' "$_bp_v"; unset _bp_cat _bp_over_env _bp_v; return 0; fi
