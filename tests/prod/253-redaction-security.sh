@@ -332,6 +332,20 @@ case "$RED" in
 	*) fail "(20) root '/' handling unexpected: $RED" ;;
 esac
 
+# (21) path containing a BACKSLASH — the backslash byte is retained and matched LITERALLY (escaped
+#      for sed), never interpreted as an escape sequence, and a near-miss control survives.
+BSROOT='/tmp/back\slash'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$BSROOT" rd_redact_value "at $BSROOT/f.log and /tmp/backslash/g intact")
+case "$RED" in
+	*"$BSROOT"*) fail "(21) a temp root containing a backslash leaked: $RED" ;;
+	*"/tmp/backslash/g"*)
+		case "$RED" in
+			*"at <tmp> and"*) pass "(21) a temp root containing a backslash is matched LITERALLY (backslash retained; control /tmp/backslash survives)" ;;
+			*) fail "(21) backslash temp root not relativized: $RED" ;;
+		esac ;;
+	*) fail "(21) backslash temp root: control consumed or backslash misinterpreted: $RED" ;;
+esac
+
 # ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
