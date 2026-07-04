@@ -236,6 +236,10 @@ jobs:
           # The upstream jobs are the authoritative gates; here we only need a bounded, fast
           # plan that re-proves the shell/schema/report-shape surface and produces the report.
           GH_EVENT: ${{ github.event_name }}
+          # Route context values through env (never expand ${{ }} inside run:) to avoid
+          # template injection — consistent with GH_EVENT above.
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           cat > /tmp/pr-plan.json <<'PLAN'
           [
@@ -254,21 +258,24 @@ jobs:
           sh scripts/run-production-readiness.sh run \
             --plan /tmp/pr-plan.json \
             --changed-files changed-files.txt \
-            --source-commit "${{ github.sha }}" \
+            --source-commit "$SHA" \
             --workflow ci-production-readiness \
             --event "$EV" \
-            --default-branch "${{ github.event.repository.default_branch }}" \
+            --default-branch "$DEFAULT_BRANCH" \
             --out-json integration/production-readiness-report.json \
             --out-md integration/production-readiness-report.md
 
       - name: Independent review of the emitted report (UNTRUSTED evidence, ci-gate profile)
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           sh scripts/run-production-readiness.sh review \
             --report integration/production-readiness-report.json \
-            --expected-commit "${{ github.sha }}" \
+            --expected-commit "$SHA" \
             --expected-workflow ci-production-readiness \
-            --expected-default-branch "${{ github.event.repository.default_branch }}" \
+            --expected-default-branch "$DEFAULT_BRANCH" \
             --profile ci-gate \
             --max-age-seconds 3600
 
