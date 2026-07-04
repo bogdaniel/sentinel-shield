@@ -31,9 +31,24 @@ SP_TIMEOUT=0
 # present, wrap the command; on timeout set SP_TIMEOUT=1 and return 124. Without a
 # timeout tool the command runs directly (jq over a local file cannot hang on I/O),
 # preserving behaviour on hosts (e.g. stock macOS) with no timeout(1).
+# _sp_is_external <name> — 0 if <name> resolves to a filesystem path (an external
+# program `timeout` can exec), 1 if it is a shell function/builtin or is unknown.
+# `timeout` cannot run a shell function, so functions must be invoked directly.
+_sp_is_external() {
+	case $(command -v -- "$1" 2>/dev/null) in
+		*/*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 sp_bounded() {
 	_sp_lim=$1; shift
-	if command_exists timeout; then
+	# Only wrap EXTERNAL commands in `timeout`; a shell function (e.g. the local
+	# jq-based validators) would make `timeout` fail with 127 ("No such file or
+	# directory"). Those validations are bounded local jq work, not hangable.
+	if ! _sp_is_external "$1"; then
+		"$@"; _sp_rc=$?
+	elif command_exists timeout; then
 		timeout "$_sp_lim" "$@"; _sp_rc=$?
 	elif command_exists gtimeout; then
 		gtimeout "$_sp_lim" "$@"; _sp_rc=$?
