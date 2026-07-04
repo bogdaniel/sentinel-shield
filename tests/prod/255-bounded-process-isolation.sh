@@ -345,10 +345,18 @@ fi
 bp_job_control_supported() { return 1; }
 export SENTINEL_SHIELD_BP_FORCE_PORTABLE=1
 
+# On Linux, setsid(1) would ESTABLISH isolation even without job control, so run these
+# unavailability cases under a sandbox PATH that ALSO excludes setsid (BASE_TOOLS carries
+# no setsid). Combined with the bp_job_control_supported override above, isolation is
+# deterministically unavailable on every platform. pgrep IS present, so the default case
+# still bounds the hang via secondary descendant enumeration.
+SBI="$WORK/sb-noiso"
+make_sandbox "$SBI" ""
+
 # default (no strict flag): honest degradation, still bounded (pgrep present here).
 CPF="$WORK/c_noiso"
 rc=0
-SS_CHILDPID="$CPF" bp_run generic 1 "$OUTF" "$ERRF" -- "$SPAWN" || rc=$?
+SS_CHILDPID="$CPF" run_with_path "$SBI" generic 1 "$OUTF" "$ERRF" -- "$SPAWN" || rc=$?
 CH=$(cat "$CPF" 2>/dev/null || echo "")
 sleep 1
 if [ "$rc" -eq 124 ] && [ "$BP_ISOLATION" = none ] && [ "$BP_NO_ORPHANS" = 0 ] \
@@ -365,7 +373,7 @@ rm -f "$LAUNCHMARK"
 MARKER_CMD="$WORK/marker.sh"
 printf '#!/bin/sh\ntouch "%s"\nsleep 300\n' "$LAUNCHMARK" > "$MARKER_CMD"; chmod +x "$MARKER_CMD"
 rc=0
-SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 bp_run generic 5 "$OUTF" "$ERRF" -- "$MARKER_CMD" || rc=$?
+SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 run_with_path "$SBI" generic 5 "$OUTF" "$ERRF" -- "$MARKER_CMD" || rc=$?
 if [ "$rc" -eq 2 ] && [ "$BP_STATUS" = isolation-unavailable ] && [ ! -f "$LAUNCHMARK" ]; then
 	pass "REQUIRE_ISOLATION=1 with no job control: FAIL CLOSED (rc 2, status isolation-unavailable, command NOT launched)"
 else

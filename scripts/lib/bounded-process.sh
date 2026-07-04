@@ -284,6 +284,15 @@ bp_job_control_supported() {
 	( set -m 2>/dev/null; case $- in *m*) exit 0 ;; *) exit 1 ;; esac )
 }
 
+# bp_isolation_available — 0 iff the portable path can establish process-group isolation:
+# either setsid(1) is present (new-session isolation — works on shells WITHOUT job control,
+# e.g. dash on Linux) or POSIX job control is honored (set -m — works on bash-as-sh/macOS,
+# which ships no setsid). Used by the pre-launch fail-closed gate and by _bp_portable_exec.
+bp_isolation_available() {
+	command -v setsid >/dev/null 2>&1 && return 0
+	bp_job_control_supported
+}
+
 # bp_terminate <leader_pid> <isolated 0|1> <signal> — deliver <signal> to the command.
 # PRIMARY: when isolation is established (<isolated>=1) signal the ENTIRE process group
 # (kill -<sig> -<pgid>, pgid == leader_pid) so nothing in the group survives. SECONDARY:
@@ -328,20 +337,39 @@ _bp_portable_exec() {
 	# directed signal then reaps the COMPLETE tree. We probe support first, remember the
 	# caller's monitor-mode, and restore it once both jobs are placed so the caller's
 	# shell state is left exactly as we found it.
+	# Prefer setsid(1): it runs the command in a NEW SESSION (a new process group whose
+	# leader IS the command, pgid == pid). In a shell WITHOUT job control — notably dash on
+	# Linux CI — a backgrounded process is not a group leader, so setsid execs WITHOUT
+	# forking and $! still tracks the command. This is the containment path that works where
+	# `set -m` does NOT place background jobs in their own group. Fall back to POSIX job
+	# control (`set -m`) for shells that honor it non-interactively (bash-as-sh on macOS,
+	# which ships no setsid).
 	_bp_jc=0
-	bp_job_control_supported && _bp_jc=1
-	case $- in *m*) _bp_wasm=1 ;; *) _bp_wasm=0 ;; esac
-	if [ "$_bp_jc" = 1 ]; then set -m 2>/dev/null || _bp_jc=0; fi
+	_bp_setsid=0
+	_bp_wasm=1
+	if command -v setsid >/dev/null 2>&1; then
+		_bp_setsid=1
+	else
+		bp_job_control_supported && _bp_jc=1
+		case $- in *m*) _bp_wasm=1 ;; *) _bp_wasm=0 ;; esac
+		if [ "$_bp_jc" = 1 ]; then set -m 2>/dev/null || _bp_jc=0; fi
+	fi
 
-	"$@" >"$_bp_out" 2>"$_bp_err" &
-	_bp_cmd_pid=$!
+	if [ "$_bp_setsid" = 1 ]; then
+		setsid "$@" >"$_bp_out" 2>"$_bp_err" &
+		_bp_cmd_pid=$!
+	else
+		"$@" >"$_bp_out" 2>"$_bp_err" &
+		_bp_cmd_pid=$!
+	fi
 
 	# CONFIRM the isolation actually took: the child must be its OWN group leader and NOT
 	# share the caller's process group — otherwise a group-directed kill would strike the
-	# caller. If job control is unsupported, or `ps` demonstrably shows the child sharing
-	# our group, DISABLE the primary group-kill and fall back to descendant enumeration.
+	# caller. If neither mechanism was available, or `ps` demonstrably shows the child
+	# sharing our group, DISABLE the primary group-kill and fall back to descendant
+	# enumeration.
 	_bp_iso=0
-	if [ "$_bp_jc" = 1 ]; then
+	if [ "$_bp_setsid" = 1 ] || [ "$_bp_jc" = 1 ]; then
 		_bp_iso=1
 		if bp_have_ps; then
 			_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
@@ -410,7 +438,7 @@ _bp_portable_exec() {
 	bp_kill_tree "$_bp_cmd_pid" KILL
 
 	rm -f "$_bp_done" 2>/dev/null || true
-	unset _bp_done _bp_jc _bp_wasm _bp_iso _bp_cpg _bp_spg
+	unset _bp_done _bp_jc _bp_setsid _bp_wasm _bp_iso _bp_cpg _bp_spg
 }
 
 # _bp_gnu_exec <timeout> <grace> <out> <err> <flag> -- <cmd...>
@@ -474,9 +502,9 @@ bp_run() {
 	# (this shell does not honor POSIX job control), FAIL CLOSED — refuse to launch an
 	# uncontainable process rather than risk leaking orphans. The GNU-timeout path always
 	# provides process-group containment, so it is never blocked here.
-	if [ "${SENTINEL_SHIELD_BP_REQUIRE_ISOLATION:-0}" = "1" ] && bp_uses_portable && ! bp_job_control_supported; then
+	if [ "${SENTINEL_SHIELD_BP_REQUIRE_ISOLATION:-0}" = "1" ] && bp_uses_portable && ! bp_isolation_available; then
 		BP_STATUS="isolation-unavailable"; BP_ISOLATION="none"; BP_NO_ORPHANS=0
-		log_error "bounded-process: [$_bp_category] process-group isolation unavailable (no job control) and SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 — refusing to launch (fail closed)"
+		log_error "bounded-process: [$_bp_category] process-group isolation unavailable (no setsid, no job control) and SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 — refusing to launch (fail closed)"
 		unset _bp_category _bp_to _bp_out _bp_err _bp_grace
 		return "$BP_RC_INVALID"
 	fi
