@@ -222,7 +222,7 @@ fi
 # ============================================================================
 CPF="$WORK/c5"
 rc=0
-SENTINEL_SHIELD_BP_DEBUG=1 SS_CHILDPID="$CPF" bp_run generic 5 "$OUTF" "$ERRF" -- "$ORPHANER" || rc=$?
+SS_CHILDPID="$CPF" bp_run generic 5 "$OUTF" "$ERRF" -- "$ORPHANER" || rc=$?
 CH=$(cat "$CPF" 2>/dev/null || echo "")
 sleep 1
 if [ "$rc" -eq 0 ] && [ "$BP_STATUS" = success ] && [ "$BP_EXIT_CODE" = 0 ]; then
@@ -233,9 +233,6 @@ fi
 if [ -n "$CH" ] && ! alive "$CH"; then
 	pass "(5) child that outlived its parent was reaped by the final group sweep (no orphan)"
 else
-	printf 'DIAG(5): BP_ISOLATION=%s BP_NO_ORPHANS=%s orphan=%s\n' "$BP_ISOLATION" "$BP_NO_ORPHANS" "$CH" >&2
-	printf 'DIAG(5): orphan ps: %s\n' "$(ps -o pid=,ppid=,pgid=,sess=,stat=,comm= -p "$CH" 2>/dev/null | tr -s ' ')" >&2
-	printf 'DIAG(5): all pgids: %s\n' "$(ps -Ao pid=,pgid=,comm= 2>/dev/null | grep -iE 'sleep|perl|orphan' | tr '\n' '|')" >&2
 	reap_if_alive "$CH"
 	fail "(5) orphan $CH survived after the parent exited — final containment sweep failed"
 fi

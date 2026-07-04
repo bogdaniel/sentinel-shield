@@ -310,7 +310,6 @@ bp_isolation_available() {
 bp_kill_pgroup_members() {
 	_bp_kg="$1"; _bp_ks="$2"
 	bp_have_ps || { unset _bp_kg _bp_ks; return 0; }
-	[ -n "${SENTINEL_SHIELD_BP_DEBUG:-}" ] && printf 'BPDBG: enum kg=%s sig=%s members=[%s]\n' "$_bp_kg" "$_bp_ks" "$(ps -Ao pid=,pgid= 2>/dev/null | awk -v g="$_bp_kg" '$2==g{printf "%s ",$1}')" >&2
 	ps -Ao pid=,pgid= 2>/dev/null | while read -r _bp_kp _bp_kpg; do
 		[ "$_bp_kpg" = "$_bp_kg" ] || continue
 		[ "$_bp_kp" = "$$" ] && continue
@@ -336,10 +335,15 @@ bp_terminate() {
 # Both engines set the shell globals _bp_rc (raw wait/timeout status) and write the
 # literal token "timeout" to <flagfile> iff the run was terminated by OUR timeout.
 
-# bp_uses_portable — return 0 when the portable watchdog should be used (no GNU
-# timeout binary, or the caller forced it for deterministic testing).
+# bp_uses_portable — return 0 when the portable watchdog should be used. Prefer it whenever
+# perl is available: the perl-isolated path establishes a KNOWN process group and sweeps
+# orphaned members on EVERY exit path (success or timeout), whereas GNU `timeout` group-kills
+# ONLY on timeout — it leaks a child that outlives a fast-exiting parent (it never learns the
+# command's pid/group). GNU timeout is the fallback only when perl is absent. Also selected
+# when no timeout binary exists, or when the caller forces it for deterministic testing.
 bp_uses_portable() {
 	[ "${SENTINEL_SHIELD_BP_FORCE_PORTABLE:-0}" = "1" ] && return 0
+	command -v perl >/dev/null 2>&1 && return 0
 	if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
 		return 1
 	fi
@@ -462,7 +466,6 @@ _bp_portable_exec() {
 	# after its parent exited, a daemonized helper, a TERM-ignorer). When isolation is
 	# established, empty the whole group unconditionally (TERM then KILL) so NOTHING
 	# outlives the bounded command. Enumerated descendants are swept as secondary cleanup.
-	[ -n "${SENTINEL_SHIELD_BP_DEBUG:-}" ] && printf 'BPDBG: final-sweep cmd_pid=%s iso=%s pgrp=%s jc=%s cmd_pgid=%s\n' "$_bp_cmd_pid" "$_bp_iso" "${_bp_pgrp:-?}" "${_bp_jc:-?}" "$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null)" >&2
 	if [ "$_bp_iso" = 1 ]; then
 		bp_terminate "$_bp_cmd_pid" 1 TERM
 		bp_terminate "$_bp_cmd_pid" 1 KILL
