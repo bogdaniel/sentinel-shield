@@ -24,21 +24,39 @@
 #
 # EXECUTION MODEL
 #   * When GNU `timeout` (or `gtimeout`) is present it is used (it handles process
-#     groups natively), UNLESS SENTINEL_SHIELD_BP_FORCE_PORTABLE=1.
-#   * Otherwise a PORTABLE watchdog is used: the command runs in the background, a
-#     watchdog polls it once per second up to <timeout>, then sends TERM to the whole
-#     descendant tree, waits a bounded grace, then sends KILL. The watchdog and any
-#     leftover descendants are reaped before bp_run returns — no orphans.
+#     groups natively — it launches the command in a NEW process group and signals the
+#     whole group), UNLESS SENTINEL_SHIELD_BP_FORCE_PORTABLE=1.
+#   * Otherwise a PORTABLE watchdog is used. PRIMARY containment is PROCESS-GROUP
+#     isolation, NOT descendant enumeration: the command is launched under POSIX job
+#     control (`set -m`), which makes it a process-group LEADER (pgid == pid). On
+#     timeout the watchdog signals the COMPLETE process group (kill -TERM -PGID, then a
+#     bounded grace, then kill -KILL -PGID). This reaps children that fork, double-fork,
+#     reparent to init, or ignore individual TERMs — anything that stays in the group.
+#     Descendant enumeration (pgrep -P) is used ONLY as SECONDARY, best-effort cleanup.
+#     On EVERY completion path a final group sweep guarantees no member outlives the
+#     bounded command (e.g. a child that keeps running after its parent exits).
+#   * PLATFORM CLASSIFICATION: process-group isolation is available wherever POSIX job
+#     control is honored by /bin/sh (Linux dash/bash, macOS bash-as-sh, BSD sh). Where
+#     `set -m` is NOT honored (a stripped shell without job control), isolation is
+#     UNAVAILABLE; the wrapper then reports isolation="none", NEVER claims no_orphans,
+#     and — if SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 (production-required operations) —
+#     FAILS CLOSED rather than launch an uncontainable process.
 #
 # OUTPUT CONTRACT (bp_result_json, schemas/bounded-command-result.schema.json)
 #   { schema, command, command_category, status, exit_code, signal,
-#     timeout_seconds, duration_seconds, timed_out, timestamp }
+#     timeout_seconds, duration_seconds, timed_out,
+#     isolation, descendant_cleanup, timeout_status, no_orphans, timestamp }
 #   status is one of: success | failed | timed-out | unavailable | signalled.
 #   exit_code is null on timed-out / unavailable / signalled; signal is the number on
 #   signalled (else null). `command` is the executable BASENAME only — never args.
+#   isolation is "process-group" (complete group containment established) or "none".
+#   descendant_cleanup describes the reaping guarantee (complete | process-group-only |
+#   descendant-enumeration | none). timeout_status is "timed-out" | "within-timeout".
+#   no_orphans is true ONLY when process-group containment was actually established.
 
 # Include guard (safe to source more than once).
 if [ "${__SENTINEL_SHIELD_BOUNDED_PROCESS_LOADED:-}" = "1" ]; then
+	# shellcheck disable=SC2317  # reachable only when this file is re-sourced
 	return 0 2>/dev/null || true
 fi
 __SENTINEL_SHIELD_BOUNDED_PROCESS_LOADED=1
@@ -205,6 +223,42 @@ bp_kill_tree() {
 	unset _bp_root _bp_sig _bp_all _bp_frontier _bp_next _bp_p _bp_c _bp_rev
 }
 
+# --- process-group isolation -------------------------------------------------
+# bp_have_ps — true if `ps` is available (used to VERIFY isolation, never trusted blindly).
+bp_have_ps() { command -v ps >/dev/null 2>&1; }
+
+# bp_pgid_of <pid> — print the process-group id of <pid> (empty on any failure). POSIX
+# `ps -o pgid= -p <pid>`. Returns non-zero if ps is unavailable or the pid is gone.
+bp_pgid_of() {
+	bp_have_ps || return 1
+	_bp_pg=$(ps -o pgid= -p "$1" 2>/dev/null | tr -d ' \t')
+	[ -n "$_bp_pg" ] || { unset _bp_pg; return 1; }
+	printf '%s' "$_bp_pg"
+	unset _bp_pg
+}
+
+# bp_job_control_supported — return 0 iff POSIX job control (`set -m`) is honored by this
+# shell, i.e. an async job would be placed in its OWN process group. Probed in a SUBSHELL
+# so the caller's monitor-mode is never disturbed by the check itself.
+bp_job_control_supported() {
+	( set -m 2>/dev/null; case $- in *m*) exit 0 ;; *) exit 1 ;; esac )
+}
+
+# bp_terminate <leader_pid> <isolated 0|1> <signal> — deliver <signal> to the command.
+# PRIMARY: when isolation is established (<isolated>=1) signal the ENTIRE process group
+# (kill -<sig> -<pgid>, pgid == leader_pid) so nothing in the group survives. SECONDARY:
+# always sweep enumerated descendants (pgrep) as best-effort cleanup — and the ONLY
+# mechanism when isolation was unavailable. Never signals a group when isolation is NOT
+# established (that would risk striking the caller's own group). Always best-effort.
+bp_terminate() {
+	_bp_tp="$1"; _bp_ti="$2"; _bp_tsig="$3"
+	if [ "$_bp_ti" = 1 ]; then
+		kill "-$_bp_tsig" "-$_bp_tp" 2>/dev/null || true
+	fi
+	bp_kill_tree "$_bp_tp" "$_bp_tsig"
+	unset _bp_tp _bp_ti _bp_tsig
+}
+
 # --- execution engines -------------------------------------------------------
 # Both engines set the shell globals _bp_rc (raw wait/timeout status) and write the
 # literal token "timeout" to <flagfile> iff the run was terminated by OUR timeout.
@@ -220,6 +274,8 @@ bp_uses_portable() {
 }
 
 # _bp_portable_exec <timeout> <grace> <out> <err> <flag> -- <cmd...>
+# Sets, in addition to _bp_rc: _BP_ISO_ESTABLISHED (1 iff process-group containment was
+# established for this run, else 0) — bp_run maps it to the isolation/no_orphans fields.
 _bp_portable_exec() {
 	_bp_to="$1"; _bp_grace="$2"; _bp_out="$3"; _bp_err="$4"; _bp_flag="$5"; shift 5
 	[ "${1:-}" = "--" ] && shift
@@ -227,14 +283,44 @@ _bp_portable_exec() {
 	_bp_done="${_bp_flag}.done"
 	rm -f "$_bp_done" 2>/dev/null || true
 
+	# PRIMARY containment = PROCESS-GROUP ISOLATION. Enable POSIX job control so the
+	# command becomes a process-group LEADER (pgid == its own pid); a single group-
+	# directed signal then reaps the COMPLETE tree. We probe support first, remember the
+	# caller's monitor-mode, and restore it once both jobs are placed so the caller's
+	# shell state is left exactly as we found it.
+	_bp_jc=0
+	bp_job_control_supported && _bp_jc=1
+	case $- in *m*) _bp_wasm=1 ;; *) _bp_wasm=0 ;; esac
+	if [ "$_bp_jc" = 1 ]; then set -m 2>/dev/null || _bp_jc=0; fi
+
 	"$@" >"$_bp_out" 2>"$_bp_err" &
 	_bp_cmd_pid=$!
 
-	# Watchdog: poll once per second up to <timeout>, then TERM the whole tree, wait a
-	# bounded grace, then KILL. Runs in a subshell with errexit OFF so a benign kill
-	# failure (the command already exited) can never abort it early. It also stands down
-	# the instant the command completes (the parent touches <flag>.done), so it is never
-	# killed by a signal — avoiding job-control "Terminated" noise on stderr.
+	# CONFIRM the isolation actually took: the child must be its OWN group leader and NOT
+	# share the caller's process group — otherwise a group-directed kill would strike the
+	# caller. If job control is unsupported, or `ps` demonstrably shows the child sharing
+	# our group, DISABLE the primary group-kill and fall back to descendant enumeration.
+	_bp_iso=0
+	if [ "$_bp_jc" = 1 ]; then
+		_bp_iso=1
+		if bp_have_ps; then
+			_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
+			_bp_spg=$(bp_pgid_of "$$" 2>/dev/null) || _bp_spg=""
+			if [ -n "$_bp_cpg" ] && [ -n "$_bp_spg" ] && [ "$_bp_cpg" = "$_bp_spg" ]; then
+				_bp_iso=0
+			fi
+		fi
+	fi
+	_BP_ISO_ESTABLISHED="$_bp_iso"
+
+	# Watchdog: poll once per second up to <timeout>, then terminate the WHOLE process
+	# group (primary) plus any enumerated descendants (secondary), escalating TERM ->
+	# (bounded grace) -> KILL. Runs in a subshell with errexit OFF so a benign kill
+	# failure (the command already exited) can never abort it early. It stands down the
+	# instant the command completes (the parent touches <flag>.done), so it is never
+	# killed by a signal — avoiding job-control "Terminated" noise on stderr. Because the
+	# command is in its OWN process group, a group-kill can never strike the watchdog or
+	# the caller (both live in different groups).
 	(
 		set +e
 		_wd_i=0
@@ -247,16 +333,19 @@ _bp_portable_exec() {
 		[ -f "$_bp_done" ] && exit 0
 		kill -0 "$_bp_cmd_pid" 2>/dev/null || exit 0
 		printf 'timeout' > "$_bp_flag"
-		bp_kill_tree "$_bp_cmd_pid" TERM
+		bp_terminate "$_bp_cmd_pid" "$_bp_iso" TERM
 		_wd_j=0
 		while [ "$_wd_j" -lt "$_bp_grace" ]; do
-			kill -0 "$_bp_cmd_pid" 2>/dev/null || exit 0
+			kill -0 "$_bp_cmd_pid" 2>/dev/null || break
 			sleep 1
 			_wd_j=$((_wd_j + 1))
 		done
-		bp_kill_tree "$_bp_cmd_pid" KILL
+		bp_terminate "$_bp_cmd_pid" "$_bp_iso" KILL
 	) &
 	_bp_wd_pid=$!
+
+	# Restore the caller's monitor-mode now that both async jobs are placed.
+	if [ "$_bp_wasm" = 0 ]; then set +m 2>/dev/null || true; fi
 
 	# The 2>/dev/null on wait swallows the shell's own job-control notice ("Killed: 9")
 	# that some shells (bash-as-sh) emit for a signal-terminated job — the exit status is
@@ -268,8 +357,20 @@ _bp_portable_exec() {
 	# then reap it. It notices the done-flag within its poll interval and exits 0.
 	: > "$_bp_done"
 	wait "$_bp_wd_pid" 2>/dev/null || true
+
+	# FINAL CONTAINMENT SWEEP (completeness guarantee): the direct child has been reaped,
+	# but a member it spawned may still be alive in the group (a child that keeps running
+	# after its parent exited, a daemonized helper, a TERM-ignorer). When isolation is
+	# established, empty the whole group unconditionally (TERM then KILL) so NOTHING
+	# outlives the bounded command. Enumerated descendants are swept as secondary cleanup.
+	if [ "$_bp_iso" = 1 ]; then
+		kill -TERM "-$_bp_cmd_pid" 2>/dev/null || true
+		kill -KILL "-$_bp_cmd_pid" 2>/dev/null || true
+	fi
+	bp_kill_tree "$_bp_cmd_pid" KILL
+
 	rm -f "$_bp_done" 2>/dev/null || true
-	unset _bp_done
+	unset _bp_done _bp_jc _bp_wasm _bp_iso _bp_cpg _bp_spg
 }
 
 # _bp_gnu_exec <timeout> <grace> <out> <err> <flag> -- <cmd...>
@@ -280,6 +381,9 @@ _bp_gnu_exec() {
 	_bp_bin=timeout
 	command -v timeout >/dev/null 2>&1 || _bp_bin=gtimeout
 	_bp_rc=0
+	# GNU timeout WITHOUT --foreground launches the command in a NEW process group and
+	# signals the WHOLE group on timeout — so process-group containment is established.
+	_BP_ISO_ESTABLISHED=1
 	"$_bp_bin" -k "${_bp_grace}s" -s TERM "${_bp_to}s" "$@" >"$_bp_out" 2>"$_bp_err" || _bp_rc=$?
 	# GNU timeout signals 124 on the TERM-timeout. The classifier additionally treats a
 	# signal-death (rc>128) whose wall-clock reached the limit as a timeout.
@@ -300,9 +404,14 @@ _bp_gnu_exec() {
 #   BP_CATEGORY          the command category
 #   BP_COMMAND           the executable BASENAME only (never args; safe to log)
 #   BP_TIMED_OUT         1 iff timed out, else 0
+#   BP_ISOLATION         "process-group" (complete group containment established) | "none"
+#   BP_DESCENDANT_CLEANUP  complete | process-group-only | descendant-enumeration | none
+#   BP_TIMEOUT_STATUS    "timed-out" | "within-timeout"
+#   BP_NO_ORPHANS        1 ONLY when process-group containment was actually established
 # Return code: 0 (success) | preserved exit code (failed) | 128+signal (signalled) |
 #   BP_RC_TIMEOUT (timed out) | BP_RC_UNAVAILABLE (executable missing) |
-#   BP_RC_INVALID (invalid timeout).
+#   BP_RC_INVALID (invalid timeout, or SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 and
+#   process-group isolation is unavailable — FAIL CLOSED, command NOT launched).
 bp_run() {
 	[ "$#" -ge 5 ] || { log_error "bounded-process: bp_run needs <category> <timeout> <out> <err> [--] <cmd> [args...]"; return "$BP_RC_INVALID"; }
 	_bp_category="$1"; _bp_to="$2"; _bp_out="$3"; _bp_err="$4"; shift 4
@@ -312,11 +421,25 @@ bp_run() {
 	# Reset result globals so a caller never reads a stale value from a prior run.
 	BP_CATEGORY="$_bp_category"; BP_TIMEOUT_SECONDS="$_bp_to"
 	BP_STATUS=""; BP_EXIT_CODE=""; BP_SIGNAL=""; BP_DURATION_SECONDS="0"; BP_TIMED_OUT=0
+	BP_ISOLATION="none"; BP_DESCENDANT_CLEANUP="none"; BP_TIMEOUT_STATUS="within-timeout"; BP_NO_ORPHANS=0
 	BP_COMMAND=$(basename -- "$1" 2>/dev/null) || BP_COMMAND="$1"
+	_BP_ISO_ESTABLISHED=0
 
 	# Validate the timeout FIRST (fail closed on zero/negative/nonnumeric/excessive).
 	bp_validate_timeout "$_bp_to" || { BP_STATUS="invalid"; return "$BP_RC_INVALID"; }
 	_bp_grace=$(bp_kill_grace)
+
+	# Production-required operations may DEMAND complete process-group containment. When
+	# SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 and the portable path cannot establish it
+	# (this shell does not honor POSIX job control), FAIL CLOSED — refuse to launch an
+	# uncontainable process rather than risk leaking orphans. The GNU-timeout path always
+	# provides process-group containment, so it is never blocked here.
+	if [ "${SENTINEL_SHIELD_BP_REQUIRE_ISOLATION:-0}" = "1" ] && bp_uses_portable && ! bp_job_control_supported; then
+		BP_STATUS="isolation-unavailable"; BP_ISOLATION="none"; BP_NO_ORPHANS=0
+		log_error "bounded-process: [$_bp_category] process-group isolation unavailable (no job control) and SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 — refusing to launch (fail closed)"
+		unset _bp_category _bp_to _bp_out _bp_err _bp_grace
+		return "$BP_RC_INVALID"
+	fi
 
 	# Ensure capture files exist and are empty even on the earliest exit paths.
 	: > "$_bp_out" 2>/dev/null || true
@@ -345,6 +468,26 @@ bp_run() {
 	BP_DURATION_SECONDS=$((_bp_end - _bp_start))
 	[ "$BP_DURATION_SECONDS" -ge 0 ] 2>/dev/null || BP_DURATION_SECONDS=0
 
+	# --- containment reporting ------------------------------------------------
+	# Report what containment was ACTUALLY established (never over-claim). Primary is
+	# process-group isolation; descendant enumeration (pgrep) is only secondary cleanup.
+	# no_orphans is asserted ONLY when process-group containment was established.
+	if [ "${_BP_ISO_ESTABLISHED:-0}" = "1" ]; then
+		BP_ISOLATION="process-group"; BP_NO_ORPHANS=1
+		if command -v pgrep >/dev/null 2>&1; then
+			BP_DESCENDANT_CLEANUP="complete"
+		else
+			BP_DESCENDANT_CLEANUP="process-group-only"
+		fi
+	else
+		BP_ISOLATION="none"; BP_NO_ORPHANS=0
+		if command -v pgrep >/dev/null 2>&1; then
+			BP_DESCENDANT_CLEANUP="descendant-enumeration"
+		else
+			BP_DESCENDANT_CLEANUP="none"
+		fi
+	fi
+
 	# --- classify -------------------------------------------------------------
 	_bp_timedout=0
 	if [ -s "$_bp_flag" ]; then
@@ -357,26 +500,26 @@ bp_run() {
 	rm -f "$_bp_flag" 2>/dev/null || true
 
 	if [ "$_bp_timedout" -eq 1 ]; then
-		BP_STATUS="timed-out"; BP_TIMED_OUT=1; BP_EXIT_CODE=""; BP_SIGNAL=""
-		log_warn "bounded-process: [$_bp_category] '$BP_COMMAND' exceeded ${_bp_to}s timeout — terminated (TERM->KILL)"
-		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout
+		BP_STATUS="timed-out"; BP_TIMED_OUT=1; BP_TIMEOUT_STATUS="timed-out"; BP_EXIT_CODE=""; BP_SIGNAL=""
+		log_warn "bounded-process: [$_bp_category] '$BP_COMMAND' exceeded ${_bp_to}s timeout — terminated (TERM->KILL), isolation=$BP_ISOLATION"
+		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _BP_ISO_ESTABLISHED
 		return "$BP_RC_TIMEOUT"
 	fi
 	if [ "$_bp_rc" -eq 0 ]; then
 		BP_STATUS="success"; BP_EXIT_CODE=0; BP_SIGNAL=""
-		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout
+		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _BP_ISO_ESTABLISHED
 		return 0
 	fi
 	if [ "$_bp_rc" -gt 128 ]; then
 		BP_STATUS="signalled"; BP_SIGNAL=$((_bp_rc - 128)); BP_EXIT_CODE=""
 		log_warn "bounded-process: [$_bp_category] '$BP_COMMAND' terminated by signal $BP_SIGNAL"
 		_bp_ret="$_bp_rc"
-		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _bp_rc
+		unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _bp_rc _BP_ISO_ESTABLISHED
 		return "$_bp_ret"
 	fi
 	BP_STATUS="failed"; BP_EXIT_CODE="$_bp_rc"; BP_SIGNAL=""
 	_bp_ret="$_bp_rc"
-	unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _bp_rc
+	unset _bp_category _bp_to _bp_grace _bp_flag _bp_start _bp_end _bp_portable _bp_timedout _bp_rc _BP_ISO_ESTABLISHED
 	return "$_bp_ret"
 }
 
@@ -394,6 +537,8 @@ bp_result_json() {
 	[ -n "${BP_SIGNAL:-}" ] && _bp_sig_json="$BP_SIGNAL"
 	_bp_timedout_json=false
 	[ "${BP_TIMED_OUT:-0}" = "1" ] && _bp_timedout_json=true
+	_bp_noorphans_json=false
+	[ "${BP_NO_ORPHANS:-0}" = "1" ] && _bp_noorphans_json=true
 
 	if command -v jq >/dev/null 2>&1; then
 		jq -n \
@@ -405,6 +550,10 @@ bp_result_json() {
 			--argjson timeout_seconds "${BP_TIMEOUT_SECONDS:-0}" \
 			--argjson duration_seconds "${BP_DURATION_SECONDS:-0}" \
 			--argjson timed_out "$_bp_timedout_json" \
+			--arg isolation "${BP_ISOLATION:-none}" \
+			--arg descendant_cleanup "${BP_DESCENDANT_CLEANUP:-none}" \
+			--arg timeout_status "${BP_TIMEOUT_STATUS:-within-timeout}" \
+			--argjson no_orphans "$_bp_noorphans_json" \
 			--arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
 			{
 				schema: "bounded-command-result",
@@ -416,15 +565,20 @@ bp_result_json() {
 				timeout_seconds: $timeout_seconds,
 				duration_seconds: $duration_seconds,
 				timed_out: $timed_out,
+				isolation: $isolation,
+				descendant_cleanup: $descendant_cleanup,
+				timeout_status: $timeout_status,
+				no_orphans: $no_orphans,
 				timestamp: $timestamp
 			}'
 	else
-		printf '{"schema":"bounded-command-result","command":"%s","command_category":"%s","status":"%s","exit_code":%s,"signal":%s,"timeout_seconds":%s,"duration_seconds":%s,"timed_out":%s,"timestamp":"%s"}\n' \
+		printf '{"schema":"bounded-command-result","command":"%s","command_category":"%s","status":"%s","exit_code":%s,"signal":%s,"timeout_seconds":%s,"duration_seconds":%s,"timed_out":%s,"isolation":"%s","descendant_cleanup":"%s","timeout_status":"%s","no_orphans":%s,"timestamp":"%s"}\n' \
 			"${BP_COMMAND:-}" "${BP_CATEGORY:-}" "${BP_STATUS:-}" "$_bp_ec_json" "$_bp_sig_json" \
 			"${BP_TIMEOUT_SECONDS:-0}" "${BP_DURATION_SECONDS:-0}" "$_bp_timedout_json" \
-			"$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+			"${BP_ISOLATION:-none}" "${BP_DESCENDANT_CLEANUP:-none}" "${BP_TIMEOUT_STATUS:-within-timeout}" \
+			"$_bp_noorphans_json" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	fi
-	unset _bp_ec_json _bp_sig_json _bp_timedout_json
+	unset _bp_ec_json _bp_sig_json _bp_timedout_json _bp_noorphans_json
 }
 
 # bp_validate_result <path> — structural (jq-based) conformance check of a
@@ -447,7 +601,13 @@ bp_validate_result() {
 		(if .status == "timed-out"   then .exit_code == null and .timed_out == true else true end) and
 		(if .status == "unavailable" then .exit_code == null else true end) and
 		(if .status == "signalled"   then .exit_code == null and (.signal | type == "number") else true end) and
-		(if .status == "success"     then .exit_code == 0 else true end)
+		(if .status == "success"     then .exit_code == 0 else true end) and
+		(if has("isolation")          then (.isolation as $i | ["process-group","none"] | index($i) != null) else true end) and
+		(if has("descendant_cleanup") then (.descendant_cleanup as $d | ["complete","process-group-only","descendant-enumeration","none"] | index($d) != null) else true end) and
+		(if has("timeout_status")     then (.timeout_status as $t | ["timed-out","within-timeout"] | index($t) != null) else true end) and
+		(if has("no_orphans")         then (.no_orphans | type == "boolean") else true end) and
+		(if (has("timeout_status") and has("timed_out")) then ((.timeout_status == "timed-out") == .timed_out) else true end) and
+		(if (.no_orphans == true) then (.isolation == "process-group") else true end)
 	' "$1" >/dev/null 2>&1 || { log_error "bp_validate_result: '$1' does not conform to bounded-command-result.schema.json"; return 1; }
 	return 0
 }

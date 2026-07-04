@@ -57,7 +57,11 @@
           "signal": { "type": ["integer", "null"] },
           "timeout_seconds": { "type": "integer" },
           "duration_seconds": { "type": "integer" },
-          "timed_out": { "type": "boolean" }
+          "timed_out": { "type": "boolean" },
+          "isolation": { "type": "string", "enum": ["process-group", "none"] },
+          "descendant_cleanup": { "type": "string", "enum": ["complete", "process-group-only", "descendant-enumeration", "none"] },
+          "timeout_status": { "type": "string", "enum": ["timed-out", "within-timeout"] },
+          "no_orphans": { "type": "boolean" }
         }
       }
     }

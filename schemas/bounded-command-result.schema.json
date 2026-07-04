@@ -58,6 +58,25 @@
       "type": "boolean",
       "description": "True iff the process was terminated by the bounded timeout. Redundant with status=timed-out; provided as a direct boolean for gates."
     },
+    "isolation": {
+      "type": "string",
+      "enum": ["process-group", "none"],
+      "description": "PRIMARY containment established for the run. 'process-group'=the command ran as a process-group leader (native GNU timeout, or portable POSIX job control) so the COMPLETE group could be signalled on timeout — children that fork/double-fork/reparent/ignore-TERM are still reaped. 'none'=process-group isolation was unavailable on this platform; only best-effort descendant enumeration applies."
+    },
+    "descendant_cleanup": {
+      "type": "string",
+      "enum": ["complete", "process-group-only", "descendant-enumeration", "none"],
+      "description": "Reaping guarantee. 'complete'=process-group kill PLUS secondary descendant enumeration. 'process-group-only'=group kill without a pgrep secondary. 'descendant-enumeration'=no isolation, pgrep-based best-effort only. 'none'=no isolation and no enumeration available."
+    },
+    "timeout_status": {
+      "type": "string",
+      "enum": ["timed-out", "within-timeout"],
+      "description": "Whether the bounded wall-clock deadline was hit. 'timed-out' iff the process was terminated by the timeout (consistent with timed_out=true); otherwise 'within-timeout'."
+    },
+    "no_orphans": {
+      "type": "boolean",
+      "description": "True ONLY when process-group containment was actually established (isolation=process-group), guaranteeing nothing outlives the bounded command. NEVER true when isolation=none."
+    },
     "timestamp": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
@@ -90,6 +109,14 @@
     {
       "if": { "properties": { "status": { "const": "unavailable" } } },
       "then": { "properties": { "exit_code": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "no_orphans": { "const": true } }, "required": ["no_orphans"] },
+      "then": { "properties": { "isolation": { "const": "process-group" } }, "required": ["isolation"] }
+    },
+    {
+      "if": { "properties": { "timed_out": { "const": true } }, "required": ["timed_out", "timeout_status"] },
+      "then": { "properties": { "timeout_status": { "const": "timed-out" } } }
     }
   ]
 }
