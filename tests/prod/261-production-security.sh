@@ -307,6 +307,134 @@ jq --arg p "$WORK/raw/bad.json" '.scanners[0].raw_report=$p' "$WORK/manifest.jso
 NRC=0; sh "$NORMALIZE" --manifest "$WORK/manifest-bad.json" --output "$WORK/normbad.json" >/dev/null 2>&1 || NRC=$?
 assert_eq "normalize: malformed raw report -> exit 2 (fail closed)" "$NRC" "2"
 
+# ============================================================================
+# APPLICABILITY: an `applicable:false` claim is NOT self-authenticating. It must
+# carry an independent, complete, policy-approved, commit-bound, digest-backed
+# detector proof; the four core engine scans are ALWAYS required; a tree that
+# plainly triggers a scanner class contradicts the claim; and a summary that marks
+# EVERY required scanner non-applicable is rejected outright. (Task 3.)
+# ============================================================================
+APP_COMMIT="0123456789abcdef0123456789abcdef01234567"
+APP_DIGEST="sha256:$(printf '%064d' 0)"
+EMPTY_WS="$WORK/empty-ws"; mkdir -p "$EMPTY_WS"   # no manifests/Dockerfile/workflows -> recompute agrees "no"
+
+# lib unit: proof-completeness helper is fail-closed.
+_full_proof='{"detector":"d","detector_version":"1","result":"not-applicable","inspected_paths":["package.json"],"source_commit":"'"$APP_COMMIT"'"}'
+if sp_nonapplicability_complete "$_full_proof"; then pass "sp_nonapplicability_complete accepts a complete proof"; else fail "sp_nonapplicability_complete rejected a complete proof"; fi
+if sp_nonapplicability_complete '{"detector":"d","result":"x","inspected_paths":["a"],"source_commit":"c"}'; then fail "sp_nonapplicability_complete accepted a proof missing detector_version"; else pass "sp_nonapplicability_complete rejects an incomplete proof"; fi
+if sp_nonapplicability_complete '{"detector":"d","detector_version":"1","result":"x","inspected_paths":[],"source_commit":"c"}'; then fail "sp_nonapplicability_complete accepted empty inspected_paths"; else pass "sp_nonapplicability_complete rejects empty inspected_paths"; fi
+
+# run_enforce_app <summary> — enforce with a deterministic empty workspace + no risks.
+run_enforce_app() {
+	REP="$WORK/acceptance.json"; RC=0
+	sh "$ENFORCE" --policy "$POLICY" --summary "$1" --accepted-risks "$EMPTY_RISKS" \
+		--workspace "$EMPTY_WS" --output "$REP" >/dev/null 2>&1 || RC=$?
+}
+
+# mk_nonapp <extra-jq> — emit (to stdout) a summary where osv-scanner (dependency; NOT
+# always-required) is marked non-applicable off the clean baseline, with a source commit
+# and a full valid proof, then <extra-jq> shapes/breaks that proof.
+mk_nonapp() {
+	jq --arg commit "$APP_COMMIT" --arg dg "$APP_DIGEST" '
+		.source = { commit: $commit }
+		| (.scanners |= map(
+			if .name == "osv-scanner"
+			then .applicable = false | .status = "not-applicable"
+				 | .non_applicability = {
+					detector: "sentinel-applicability-detector",
+					detector_version: "1.2.0",
+					result: "not-applicable",
+					inspected_paths: ["package.json","composer.json","go.mod"],
+					source_commit: $commit,
+					detector_report_digest: $dg,
+					reason: "no-dependency-manifests"
+				 }
+			else . end))
+		| '"$1" "$WORK/clean.json"
+}
+
+# (15) genuine, fully-proven, policy-approved non-applicability -> exit 0 accepted.
+mk_nonapp '.' > "$WORK/app15.json"
+run_enforce_app "$WORK/app15.json"
+assert_eq "(15) genuine proven non-applicability -> exit 0" "$RC" "0"
+assert_eq "(15) decision accepted" "$(jq -r '.decision' "$REP")" "accepted"
+assert_conforms "(15) acceptance report conforms to schema" "$REP"
+
+# (16) spoofed non-applicability: applicable:false with NO proof -> reject.
+jq --arg commit "$APP_COMMIT" '.source={commit:$commit}
+	| (.scanners |= map(if .name=="osv-scanner" then .applicable=false|.status="not-applicable"|del(.non_applicability) else . end))' \
+	"$WORK/clean.json" > "$WORK/app16.json"
+run_enforce_app "$WORK/app16.json"
+assert_eq "(16) spoofed non-applicability (no proof) -> exit 1" "$RC" "1"
+assert_reason "(16) unproven claim recorded" "$REP" "NON_APPLICABLE_UNPROVEN"
+
+# (17) proof present but MISSING (empty) approved reason -> reject.
+mk_nonapp '(.scanners |= map(if .name=="osv-scanner" then .non_applicability.reason="" else . end))' > "$WORK/app17.json"
+run_enforce_app "$WORK/app17.json"
+assert_eq "(17) missing/unapproved reason -> exit 1" "$RC" "1"
+assert_reason "(17) unapproved reason recorded" "$REP" "NON_APPLICABLE_REASON_UNAPPROVED"
+
+# (18) proof for the WRONG source commit -> reject.
+mk_nonapp '(.scanners |= map(if .name=="osv-scanner" then .non_applicability.source_commit="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" else . end))' > "$WORK/app18.json"
+run_enforce_app "$WORK/app18.json"
+assert_eq "(18) wrong source commit -> exit 1" "$RC" "1"
+assert_reason "(18) source-commit mismatch recorded" "$REP" "NON_APPLICABLE_COMMIT_MISMATCH"
+
+# (19) proof MISSING the detector-report digest -> reject.
+mk_nonapp '(.scanners |= map(if .name=="osv-scanner" then del(.non_applicability.detector_report_digest) else . end))' > "$WORK/app19.json"
+run_enforce_app "$WORK/app19.json"
+assert_eq "(19) missing detector digest -> exit 1" "$RC" "1"
+assert_reason "(19) missing detector digest recorded" "$REP" "NON_APPLICABLE_NO_DIGEST"
+
+# (20) an ALWAYS-required engine scan (gitleaks) cannot be non-applicable, even fully proven.
+jq --arg commit "$APP_COMMIT" --arg dg "$APP_DIGEST" '.source={commit:$commit}
+	| (.scanners |= map(if .name=="gitleaks" then .applicable=false|.status="not-applicable"
+		| .non_applicability={detector:"d",detector_version:"1",result:"not-applicable",inspected_paths:["."],source_commit:$commit,detector_report_digest:$dg,reason:"no-source-code"} else . end))' \
+	"$WORK/clean.json" > "$WORK/app20.json"
+run_enforce_app "$WORK/app20.json"
+assert_eq "(20) always-required scanner non-applicable -> exit 1" "$RC" "1"
+assert_reason "(20) always-required violation recorded" "$REP" "NON_APPLICABLE_ALWAYS_REQUIRED"
+
+# (21) a summary marking EVERY required scanner non-applicable -> reject outright.
+jq --arg commit "$APP_COMMIT" --arg dg "$APP_DIGEST" '.source={commit:$commit}
+	| (.scanners |= map(.applicable=false | .status="not-applicable"
+		| .non_applicability={detector:"d",detector_version:"1",result:"not-applicable",inspected_paths:["."],source_commit:$commit,detector_report_digest:$dg,reason:"no-source-code"}))' \
+	"$WORK/clean.json" > "$WORK/app21.json"
+run_enforce_app "$WORK/app21.json"
+assert_eq "(21) all scanners non-applicable -> exit 1" "$RC" "1"
+assert_reason "(21) all-non-applicable rejection recorded" "$REP" "ALL_SCANNERS_NON_APPLICABLE"
+
+# (22) filesystem RECOMPUTE contradicts a non-applicability claim: osv-scanner marked
+# non-applicable but the probed workspace DOES carry a dependency manifest -> reject.
+RECOMP_WS="$WORK/recomp-ws"; mkdir -p "$RECOMP_WS"; printf '{}\n' > "$RECOMP_WS/package.json"
+mk_nonapp '.' > "$WORK/app22.json"
+RC=0; sh "$ENFORCE" --policy "$POLICY" --summary "$WORK/app22.json" --accepted-risks "$EMPTY_RISKS" \
+	--workspace "$RECOMP_WS" --output "$WORK/acceptance.json" >/dev/null 2>&1 || RC=$?
+assert_eq "(22) recompute contradicts non-applicability -> exit 1" "$RC" "1"
+assert_reason "(22) recompute contradiction recorded" "$WORK/acceptance.json" "NON_APPLICABLE_RECOMPUTED"
+
+# NORMALIZER carries the non_applicability proof + source through untouched.
+mkdir -p "$WORK/raw"
+printf '{"results":[]}\n' > "$WORK/raw/sg.json"
+cat > "$WORK/manifest-na.json" <<JSON
+{
+  "source": { "commit": "$APP_COMMIT" },
+  "targets": { "expected": 2, "scanned": 2 },
+  "scanners": [
+    { "name": "semgrep", "category": "source_vulnerabilities", "applicable": true, "status": "success", "version": "1.0.0", "raw_report": "$WORK/raw/sg.json", "targets_scanned": 2 },
+    { "name": "trivy", "category": "container_findings", "applicable": false, "status": "not-applicable", "version": "0.50.0",
+      "non_applicability": { "detector": "det", "detector_version": "1.0", "result": "not-applicable", "inspected_paths": ["Dockerfile"], "source_commit": "$APP_COMMIT", "detector_report_digest": "$APP_DIGEST", "reason": "no-container-image" } }
+  ]
+}
+JSON
+NRC=0; sh "$NORMALIZE" --manifest "$WORK/manifest-na.json" --output "$WORK/norm-na.json" >/dev/null 2>&1 || NRC=$?
+assert_eq "normalize: manifest with non-applicability proof -> exit 0" "$NRC" "0"
+if [ "$NRC" -eq 0 ]; then
+	assert_eq "normalize: source.commit carried through" "$(jq -r '.source.commit' "$WORK/norm-na.json")" "$APP_COMMIT"
+	assert_eq "normalize: non_applicability proof carried through" \
+		"$(jq -r '.scanners[] | select(.name=="trivy") | .non_applicability.reason' "$WORK/norm-na.json")" "no-container-image"
+fi
+
 printf '\n261-production-security: %d failure(s)\n' "$FAILS"
 [ "$FAILS" -eq 0 ] || exit 1
 printf 'All production-security assertions passed.\n'

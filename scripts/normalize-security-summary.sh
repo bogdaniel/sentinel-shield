@@ -106,6 +106,10 @@ while [ "$_i" -lt "$_n" ]; do
 	_dbts=$(printf '%s' "$_rec" | jq -r '.database_timestamp // ""')
 	_raw=$(printf '%s' "$_rec" | jq -r '.raw_report // ""')
 	_tgt=$(printf '%s' "$_rec" | jq -r 'if has("targets_scanned") then .targets_scanned else "null" end')
+	# Independent non-applicability proof (detector/version/result/paths/commit/reason/digest)
+	# passes through verbatim so the acceptance gate can authenticate an applicable:false claim.
+	_na=$(printf '%s' "$_rec" | jq -c 'if (.non_applicability | type == "object") then .non_applicability else null end')
+	case "$_na" in ''|null) _najson=null ;; *) _najson=$_na ;; esac
 
 	[ -n "$_name" ] || die_cfg "scanner[$_i] missing name in manifest"
 	[ -n "$_cat" ] || die_cfg "scanner '$_name' missing category in manifest"
@@ -141,10 +145,11 @@ while [ "$_i" -lt "$_n" ]; do
 
 	jq -n --arg n "$_name" --arg c "$_cat" --argjson app "$_app" --arg st "$_status" \
 		--argjson v "$_verjson" --argjson ts "$_tsjson" --argjson age "$_agejson" \
-		--argjson tgt "$_tgtjson" --argjson dg "$_digjson" '
+		--argjson tgt "$_tgtjson" --argjson dg "$_digjson" --argjson na "$_najson" '
 		{ name:$n, category:$c, applicable:$app, status:$st, version:$v,
 		  database:{ timestamp:$ts, age_days:$age },
-		  targets_scanned:$tgt, raw_report_digest:$dg }' >> "$SCAN_ND"
+		  targets_scanned:$tgt, raw_report_digest:$dg }
+		+ (if $na != null then { non_applicability:$na } else {} end)' >> "$SCAN_ND"
 	_i=$((_i + 1))
 done
 
@@ -157,6 +162,7 @@ jq -n \
 	--arg gen "$(timestamp_utc)" \
 	--slurpfile scanners "$SCAN_ND" \
 	--slurpfile findings "$FIND_ND" \
+	--argjson src "$(jq -c 'if (.source | type == "object") then .source else null end' "$MANIFEST")" \
 	--argjson texp "$(jq -r '.targets.expected // 0' "$MANIFEST")" \
 	--argjson tscan "$(jq -r '.targets.scanned // 0' "$MANIFEST")" '
 	($findings) as $f
@@ -188,7 +194,8 @@ jq -n \
 		},
 		scanners: $scanners,
 		findings: $f
-	}' > "$_tmp" || die_cfg "normalize: could not assemble summary"
+	}
+	+ (if $src != null then { source:$src } else {} end)' > "$_tmp" || die_cfg "normalize: could not assemble summary"
 
 sp_validate_summary "$_tmp" || { rm -f "$_tmp"; die_cfg "normalize: produced a non-conforming summary"; }
 mv -- "$_tmp" "$OUTPUT" || die_cfg "normalize: cannot write $OUTPUT"

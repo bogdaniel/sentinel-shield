@@ -135,6 +135,28 @@ sp_digest_ok() {
 	[ "${#_spdg}" -eq 64 ]
 }
 
+# sp_nonapplicability_complete <json> — 0 iff the compact non_applicability proof object
+# carries EVERY independent-proof field a non-applicable claim needs to be trusted:
+# detector name, detector version, detector result, inspected manifests/paths (a non-empty
+# array), and the source commit the detector inspected. The policy-approved reason and the
+# detector-report digest are validated SEPARATELY by the caller so each yields its own
+# stable violation token. An `applicable:false` claim without these is self-asserted, not
+# self-authenticating, so this FAILS CLOSED on any missing/empty field. Pass the compact
+# object as $1 (empty string => not complete).
+sp_nonapplicability_complete() {
+	command_exists jq || { log_error "sp_nonapplicability_complete: jq is required"; return 2; }
+	[ -n "${1:-}" ] || return 1
+	printf '%s' "$1" | jq -e '
+		(type == "object")
+		and (.detector | type == "string" and (length > 0))
+		and (.detector_version | type == "string" and (length > 0))
+		and (.result | type == "string" and (length > 0))
+		and (.inspected_paths | type == "array" and (length > 0)
+			and all(type == "string" and (length > 0)))
+		and (.source_commit | type == "string" and (length > 0))
+	' >/dev/null 2>&1
+}
+
 # --- policy validation -------------------------------------------------------
 # sp_validate_policy <path> — fail-closed structural conformance to
 # schemas/production-security-policy.schema.json. Missing/empty/malformed/non-conformant => non-zero.
@@ -179,6 +201,17 @@ sp_validate_policy() {
 		and (.emergency_release.require_incident_reference | type == "boolean")
 		and (.incident_response.disclosure_contact | type == "string" and (length > 0))
 		and (.incident_response.runbook | type == "string" and (length > 0))
+		and (if has("applicability") then (
+			(.applicability | type == "object")
+			and (.applicability.require_independent_proof | type == "boolean")
+			and (.applicability.reject_all_non_applicable | type == "boolean")
+			and (.applicability.always_required_categories | type == "array"
+				and all(type == "string" and (length > 0)))
+			and (.applicability.disabled_scanners | type == "array"
+				and all(type == "string" and (length > 0)))
+			and (.applicability.approved_non_applicability_reasons | type == "array"
+				and all(type == "string" and (length > 0)))
+		) else true end)
 	' "$1" >/dev/null 2>&1 || { log_error "sp_validate_policy: '$1' does not conform to production-security-policy.schema.json"; return 1; }
 	return 0
 }
