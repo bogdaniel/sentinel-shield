@@ -42,7 +42,7 @@ OUTF="$WORK/out"; ERRF="$WORK/err"
 # make_sandbox <dir> <space-separated exclusions> — populate <dir> with symlinks to the
 # real tools the library + fixtures need, OMITTING any excluded name (to simulate its
 # absence). Only tools that actually resolve on the current PATH are linked.
-BASE_TOOLS="sh dash bash sleep cat printf date basename dirname mktemp rm find wc tr mkdir chmod ps pgrep pkill kill env sed grep head tail sort ln touch jq expr id uname"
+BASE_TOOLS="sh dash bash perl sleep cat printf date basename dirname mktemp rm find wc tr mkdir chmod ps pgrep pkill kill env sed grep head tail sort ln touch jq expr id uname"
 make_sandbox() {
 	_sb="$1"; _excl=" $2 "
 	mkdir -p "$_sb"
@@ -345,13 +345,13 @@ fi
 bp_job_control_supported() { return 1; }
 export SENTINEL_SHIELD_BP_FORCE_PORTABLE=1
 
-# On Linux, setsid(1) would ESTABLISH isolation even without job control, so run these
-# unavailability cases under a sandbox PATH that ALSO excludes setsid (BASE_TOOLS carries
-# no setsid). Combined with the bp_job_control_supported override above, isolation is
-# deterministically unavailable on every platform. pgrep IS present, so the default case
-# still bounds the hang via secondary descendant enumeration.
+# perl would otherwise ESTABLISH isolation (POSIX::setsid) even without job control, so run
+# these unavailability cases under a sandbox PATH that EXCLUDES perl. Combined with the
+# bp_job_control_supported override above, process-group isolation is deterministically
+# unavailable on every platform. pgrep IS present, so the default case still bounds the
+# hang via secondary descendant enumeration.
 SBI="$WORK/sb-noiso"
-make_sandbox "$SBI" ""
+make_sandbox "$SBI" "perl"
 
 # default (no strict flag): honest degradation, still bounded (pgrep present here).
 CPF="$WORK/c_noiso"

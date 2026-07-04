@@ -285,11 +285,13 @@ bp_job_control_supported() {
 }
 
 # bp_isolation_available — 0 iff the portable path can establish process-group isolation:
-# either setsid(1) is present (new-session isolation — works on shells WITHOUT job control,
-# e.g. dash on Linux) or POSIX job control is honored (set -m — works on bash-as-sh/macOS,
-# which ships no setsid). Used by the pre-launch fail-closed gate and by _bp_portable_exec.
+# either perl is present (POSIX::setsid + exec runs the command in a NEW SESSION WITHOUT
+# forking, so it stays a WAITABLE child with pgid == pid — works on dash/Linux AND macOS,
+# unlike setsid(1) which detaches the process and unlike `set -m` which does not isolate
+# under dash) or POSIX job control is honored (`set -m`, the fallback for shells with no
+# perl). Used by the pre-launch fail-closed gate and by _bp_portable_exec.
 bp_isolation_available() {
-	command -v setsid >/dev/null 2>&1 && return 0
+	command -v perl >/dev/null 2>&1 && return 0
 	bp_job_control_supported
 }
 
@@ -337,26 +339,27 @@ _bp_portable_exec() {
 	# directed signal then reaps the COMPLETE tree. We probe support first, remember the
 	# caller's monitor-mode, and restore it once both jobs are placed so the caller's
 	# shell state is left exactly as we found it.
-	# Prefer setsid(1): it runs the command in a NEW SESSION (a new process group whose
-	# leader IS the command, pgid == pid). In a shell WITHOUT job control — notably dash on
-	# Linux CI — a backgrounded process is not a group leader, so setsid execs WITHOUT
-	# forking and $! still tracks the command. This is the containment path that works where
-	# `set -m` does NOT place background jobs in their own group. Fall back to POSIX job
-	# control (`set -m`) for shells that honor it non-interactively (bash-as-sh on macOS,
-	# which ships no setsid).
+	# PRIMARY containment = PROCESS-GROUP ISOLATION. Prefer perl: POSIX::setsid() makes the
+	# process a NEW SESSION LEADER (new process group, pgid == pid), then exec REPLACES perl
+	# with the command in place — same pid, still a DIRECT CHILD we can wait(). Because the
+	# backgrounded perl is not a process-group leader, setsid() never forks, so $! tracks the
+	# command exactly. This works on dash (Linux CI /bin/sh), where `set -m` does NOT place
+	# background jobs in their own group, AND on macOS — without setsid(1)'s detach (which
+	# would make the process unwaitable). Fall back to POSIX job control (`set -m`) only when
+	# perl is absent (bash-as-sh honors it non-interactively).
 	_bp_jc=0
-	_bp_setsid=0
+	_bp_pgrp=0
 	_bp_wasm=1
-	if command -v setsid >/dev/null 2>&1; then
-		_bp_setsid=1
+	if command -v perl >/dev/null 2>&1; then
+		_bp_pgrp=1
 	else
 		bp_job_control_supported && _bp_jc=1
 		case $- in *m*) _bp_wasm=1 ;; *) _bp_wasm=0 ;; esac
 		if [ "$_bp_jc" = 1 ]; then set -m 2>/dev/null || _bp_jc=0; fi
 	fi
 
-	if [ "$_bp_setsid" = 1 ]; then
-		setsid "$@" >"$_bp_out" 2>"$_bp_err" &
+	if [ "$_bp_pgrp" = 1 ]; then
+		perl -e 'use POSIX (); POSIX::setsid(); exec @ARGV or exit 127' "$@" >"$_bp_out" 2>"$_bp_err" &
 		_bp_cmd_pid=$!
 	else
 		"$@" >"$_bp_out" 2>"$_bp_err" &
@@ -365,18 +368,29 @@ _bp_portable_exec() {
 
 	# CONFIRM the isolation actually took: the child must be its OWN group leader and NOT
 	# share the caller's process group — otherwise a group-directed kill would strike the
-	# caller. If neither mechanism was available, or `ps` demonstrably shows the child
-	# sharing our group, DISABLE the primary group-kill and fall back to descendant
-	# enumeration.
+	# caller. The isolating child (perl POSIX::setsid) may not have created its new session
+	# in the first instants after fork, so POLL for pgid == its own pid (group leader) and
+	# != our group. Each bp_pgid_of runs `ps`, whose latency paces the loop without a
+	# sub-second sleep. If the child never leaves our group (setsid failed, or `set -m` did
+	# not isolate), DISABLE the primary group-kill and fall back to descendant enumeration.
 	_bp_iso=0
-	if [ "$_bp_setsid" = 1 ] || [ "$_bp_jc" = 1 ]; then
-		_bp_iso=1
+	if [ "$_bp_pgrp" = 1 ] || [ "$_bp_jc" = 1 ]; then
 		if bp_have_ps; then
-			_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
 			_bp_spg=$(bp_pgid_of "$$" 2>/dev/null) || _bp_spg=""
-			if [ -n "$_bp_cpg" ] && [ -n "$_bp_spg" ] && [ "$_bp_cpg" = "$_bp_spg" ]; then
-				_bp_iso=0
-			fi
+			_bp_try=0
+			while [ "$_bp_try" -lt 60 ]; do
+				_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
+				if [ -n "$_bp_cpg" ] && [ "$_bp_cpg" = "$_bp_cmd_pid" ] && [ "$_bp_cpg" != "$_bp_spg" ]; then
+					_bp_iso=1; break
+				fi
+				# Child already finished (ultra-fast command): the isolation mechanism was in
+				# force before it ran, so nothing was ever left uncontained — record honestly.
+				kill -0 "$_bp_cmd_pid" 2>/dev/null || { _bp_iso=1; break; }
+				_bp_try=$((_bp_try + 1))
+			done
+		else
+			# No `ps` to verify with; trust the requested mechanism (best effort).
+			_bp_iso=1
 		fi
 	fi
 	_BP_ISO_ESTABLISHED="$_bp_iso"
@@ -438,7 +452,7 @@ _bp_portable_exec() {
 	bp_kill_tree "$_bp_cmd_pid" KILL
 
 	rm -f "$_bp_done" 2>/dev/null || true
-	unset _bp_done _bp_jc _bp_setsid _bp_wasm _bp_iso _bp_cpg _bp_spg
+	unset _bp_done _bp_jc _bp_pgrp _bp_wasm _bp_iso _bp_cpg _bp_spg _bp_try
 }
 
 # _bp_gnu_exec <timeout> <grace> <out> <err> <flag> -- <cmd...>
@@ -504,7 +518,7 @@ bp_run() {
 	# provides process-group containment, so it is never blocked here.
 	if [ "${SENTINEL_SHIELD_BP_REQUIRE_ISOLATION:-0}" = "1" ] && bp_uses_portable && ! bp_isolation_available; then
 		BP_STATUS="isolation-unavailable"; BP_ISOLATION="none"; BP_NO_ORPHANS=0
-		log_error "bounded-process: [$_bp_category] process-group isolation unavailable (no setsid, no job control) and SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 — refusing to launch (fail closed)"
+		log_error "bounded-process: [$_bp_category] process-group isolation unavailable (no perl, no job control) and SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 — refusing to launch (fail closed)"
 		unset _bp_category _bp_to _bp_out _bp_err _bp_grace
 		return "$BP_RC_INVALID"
 	fi
