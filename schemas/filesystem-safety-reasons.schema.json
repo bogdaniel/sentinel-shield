@@ -30,6 +30,7 @@
           "FS_NOT_REGULAR",
           "FS_SPECIAL_FILE",
           "FS_UNEXPECTED_HARDLINK",
+          "FS_LINK_COUNT_UNAVAILABLE",
           "FS_GROUP_WORLD_WRITABLE",
           "FS_OWNER_MISMATCH",
           "FS_CASE_COLLISION",

@@ -61,6 +61,7 @@ FS_IS_SYMLINK
 FS_NOT_REGULAR
 FS_SPECIAL_FILE
 FS_UNEXPECTED_HARDLINK
+FS_LINK_COUNT_UNAVAILABLE
 FS_GROUP_WORLD_WRITABLE
 FS_OWNER_MISMATCH
 FS_CASE_COLLISION
@@ -202,19 +203,48 @@ fs_assert_regular() {
 # shellcheck disable=SC2012
 _fs_nlink() { ls -ldn -- "$1" 2>/dev/null | awk 'NR==1{print $2}'; }
 
-# fs_assert_single_link <path> — a metadata/managed regular file must have EXACTLY one hard
-# link; an extra link is an out-of-band alias to the same inode (an attacker keeping a handle,
-# or a planted link that mutates a file outside the trust root). FS_UNEXPECTED_HARDLINK. The
-# object must be a regular file first (checked). Degrades to success only when `ls`/`awk` cannot
-# report a count (documented) — it never fabricates a passing count.
+# fs_assert_single_link <path> [mode] — a metadata/managed regular file must have EXACTLY one
+# hard link; an extra link is an out-of-band alias to the same inode (an attacker keeping a
+# handle, or a planted link that mutates a file outside the trust root). The object must be a
+# regular file first (checked).
+#
+# HARD-LINK INSPECTION MAY BE UNAVAILABLE — `ls` may be missing/shadowed, emit malformed output,
+# or (on an unsupported platform) print a link-count field this parser cannot read. Because the
+# count is SECURITY-SENSITIVE, an undeterminable count must NEVER silently pass on a trust
+# surface. Two explicit modes govern that case:
+#   strict  (DEFAULT, and the value every security-sensitive caller MUST pass — operation locks,
+#           transaction journals, release evidence, source-ref records, security reports,
+#           authorization records): an undeterminable count FAILS CLOSED with a distinct token
+#           FS_LINK_COUNT_UNAVAILABLE. It never fabricates a passing count.
+#   advisory: an undeterminable count logs a warning to STDERR and returns 0 (best-effort probe
+#           on a non-security surface). ONLY an exact "advisory" downgrades; any other value
+#           (including a typo) is treated as strict — the safe default.
+# A DETERMINABLE count >= 2 is always rejected with FS_UNEXPECTED_HARDLINK in BOTH modes.
+# Reasons: FS_IS_SYMLINK / FS_SPECIAL_FILE / FS_NOT_REGULAR (via fs_assert_regular) /
+# FS_UNEXPECTED_HARDLINK / FS_LINK_COUNT_UNAVAILABLE.
 fs_assert_single_link() {
-	_al_r=$(fs_assert_regular "$1") || { printf '%s' "$_al_r"; unset _al_r; return 1; }
-	_al_n=$(_fs_nlink "$1")
+	_al_p="$1"
+	_al_mode="${2:-strict}"
+	_al_r=$(fs_assert_regular "$_al_p") || { printf '%s' "$_al_r"; unset _al_p _al_mode _al_r; return 1; }
+	_al_n=$(_fs_nlink "$_al_p")
 	case "$_al_n" in
-		'' ) unset _al_r _al_n; return 0 ;;                 # count unavailable: documented degrade
-		1 ) unset _al_r _al_n; return 0 ;;
-		*[!0-9]* ) unset _al_r _al_n; return 0 ;;
-		* ) printf 'FS_UNEXPECTED_HARDLINK'; unset _al_r _al_n; return 1 ;;
+		1 )
+			unset _al_p _al_mode _al_r _al_n; return 0 ;;
+		'' | 0 | *[!0-9]* )
+			# Link count could not be determined (ls missing/shadowed, empty, malformed, an
+			# impossible 0 for an existing regular file, or an unsupported-platform format).
+			if [ "$_al_mode" = "advisory" ]; then
+				if command -v log_warn >/dev/null 2>&1; then
+					log_warn "fs_assert_single_link: hard-link count unavailable for '$_al_p' (advisory mode: passing)"
+				else
+					printf '%s\n' "[sentinel-shield][warn] fs_assert_single_link: hard-link count unavailable for '$_al_p' (advisory mode: passing)" >&2
+				fi
+				unset _al_p _al_mode _al_r _al_n; return 0
+			fi
+			printf 'FS_LINK_COUNT_UNAVAILABLE'; unset _al_p _al_mode _al_r _al_n; return 1 ;;
+		* )
+			# A determinable count >= 2: an out-of-band alias to the same inode. Reject in BOTH modes.
+			printf 'FS_UNEXPECTED_HARDLINK'; unset _al_p _al_mode _al_r _al_n; return 1 ;;
 	esac
 }
 

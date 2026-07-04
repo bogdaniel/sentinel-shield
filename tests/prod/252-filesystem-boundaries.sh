@@ -119,11 +119,96 @@ r=$(fs_assert_regular "$T/.sentinel-shield/linkfile") && rc=0 || rc=$?
 T=$(mk_root); mkdir "$T/.sentinel-shield"
 LK="$T/.sentinel-shield/operation-lock.json"; printf '{"state":"active"}' > "$LK"
 ln "$LK" "$WORK/alias-to-lock"                     # a second hard link to the same inode
-r=$(fs_assert_single_link "$LK") && rc=0 || rc=$?
+# A determinable count >= 2 is rejected in STRICT mode (the value security-sensitive callers pass).
+r=$(fs_assert_single_link "$LK" strict) && rc=0 || rc=$?
 { [ "$rc" != 0 ] && [ "$r" = "FS_UNEXPECTED_HARDLINK" ]; } \
-	&& pass "(4) a hard-linked operation lock is refused (FS_UNEXPECTED_HARDLINK)" || fail "(4) hard-link lock refused (r=$r)"
+	&& pass "(4) a hard-linked operation lock is refused in strict mode (FS_UNEXPECTED_HARDLINK)" || fail "(4) hard-link lock refused (r=$r)"
+# A determinable count >= 2 is rejected in ADVISORY mode TOO — a real extra link is never a degrade.
+r=$(fs_assert_single_link "$LK" advisory) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_UNEXPECTED_HARDLINK" ]; } \
+	&& pass "(4) a hard-linked lock is refused in advisory mode too (determinable danger)" || fail "(4) advisory hard-link refused (r=$r)"
 rm -f "$WORK/alias-to-lock"
-fs_assert_single_link "$LK" && pass "(4+) a single-link lock is accepted" || fail "(4+) single-link lock accepted"
+# (4+) exactly one link -> pass in STRICT mode (the legitimate positive control).
+r=$(fs_assert_single_link "$LK" strict) && rc=0 || rc=$?
+[ "$rc" = 0 ] && pass "(4+) a single-link lock is accepted in strict mode" || fail "(4+) single-link lock accepted (rc=$rc r=$r)"
+# Default mode is STRICT: no argument behaves exactly like strict for a single-link file.
+fs_assert_single_link "$LK" && pass "(4+) default mode (no arg) accepts a single-link lock" || fail "(4+) default-mode single-link accepted"
+
+# ----------------------------------------------------------------------------
+# (4-fi) HARD-LINK INSPECTION UNAVAILABLE — fail closed in STRICT, warn/pass in ADVISORY.
+# We shadow `ls` via PATH (a fresh child sh so PATH resolution is deterministic and un-hashed;
+# awk and every other tool still resolve from the inherited PATH) with three broken variants:
+# a missing/unusable ls, a malformed line, and an unsupported-platform line whose link-count
+# field this parser cannot read. In every case the link count is UNDETERMINABLE.
+# ----------------------------------------------------------------------------
+FAKEBIN_MISSING="$WORK/fakebin-missing"; mkdir -p "$FAKEBIN_MISSING"
+# "missing"/unusable ls: emits nothing, exits non-zero -> nlink parses to "" (unavailable).
+cat > "$FAKEBIN_MISSING/ls" <<'FLS'
+#!/bin/sh
+exit 127
+FLS
+FAKEBIN_MALFORMED="$WORK/fakebin-malformed"; mkdir -p "$FAKEBIN_MALFORMED"
+# malformed output: field 2 (the nlink column this parser reads) is non-numeric.
+cat > "$FAKEBIN_MALFORMED/ls" <<'FLS'
+#!/bin/sh
+printf 'this is not a valid ls -ldn line\n'
+FLS
+FAKEBIN_UNSUPPORTED="$WORK/fakebin-unsupported"; mkdir -p "$FAKEBIN_UNSUPPORTED"
+# unsupported-platform format: a line whose 2nd field is not the link count.
+cat > "$FAKEBIN_UNSUPPORTED/ls" <<'FLS'
+#!/bin/sh
+printf -- '-rw------- ? user group 42 Jan 1 00:00 operation-lock.json\n'
+FLS
+chmod 755 "$FAKEBIN_MISSING/ls" "$FAKEBIN_MALFORMED/ls" "$FAKEBIN_UNSUPPORTED/ls"
+
+# single_link_shadow <fakebin> <mode> <path> -> prints "rc|token" from a fresh child sh whose
+# PATH resolves `ls` to the shadow (fresh process = no command-hash carry-over).
+single_link_shadow() {
+	SS_FAKEBIN="$1" SS_MODE="$2" SS_TARGET="$3" SS_COMMON="$LIB_COMMON" SS_FS="$LIB_FS" \
+	sh -c '
+		PATH="$SS_FAKEBIN:$PATH"; export PATH
+		. "$SS_COMMON"
+		. "$SS_FS"
+		_r=$(fs_assert_single_link "$SS_TARGET" "$SS_MODE") && _rc=0 || _rc=$?
+		printf "%s|%s" "$_rc" "$_r"
+	' 2>/dev/null
+}
+
+# Sanity: with the real ls, a single-link file resolves cleanly (guards against a broken harness).
+out=$(single_link_shadow "$WORK/nonexistent-fakebin" strict "$LK")
+[ "$out" = "0|" ] && pass "(4-fi) harness: real ls yields a determinable single-link pass" || fail "(4-fi) harness real-ls sanity (out='$out')"
+
+for variant in "missing:$FAKEBIN_MISSING" "malformed:$FAKEBIN_MALFORMED" "unsupported:$FAKEBIN_UNSUPPORTED"; do
+	_vlbl=${variant%%:*}; _vbin=${variant#*:}
+	# STRICT: an undeterminable count MUST fail closed with the distinct token.
+	out=$(single_link_shadow "$_vbin" strict "$LK")
+	[ "$out" = "1|FS_LINK_COUNT_UNAVAILABLE" ] \
+		&& pass "(4-fi) strict mode fails closed on $_vlbl ls (FS_LINK_COUNT_UNAVAILABLE)" \
+		|| fail "(4-fi) strict $_vlbl fails closed (out='$out')"
+	# Default (no explicit mode) is STRICT: same fail-closed outcome.
+	out=$(SS_FAKEBIN="$_vbin" SS_MODE="" SS_TARGET="$LK" SS_COMMON="$LIB_COMMON" SS_FS="$LIB_FS" \
+		sh -c 'PATH="$SS_FAKEBIN:$PATH"; export PATH; . "$SS_COMMON"; . "$SS_FS"; _r=$(fs_assert_single_link "$SS_TARGET") && _rc=0 || _rc=$?; printf "%s|%s" "$_rc" "$_r"' 2>/dev/null)
+	[ "$out" = "1|FS_LINK_COUNT_UNAVAILABLE" ] \
+		&& pass "(4-fi) DEFAULT mode fails closed on $_vlbl ls (strict is the default)" \
+		|| fail "(4-fi) default $_vlbl fails closed (out='$out')"
+	# ADVISORY: an undeterminable count warns and passes (best-effort, non-security surface).
+	out=$(single_link_shadow "$_vbin" advisory "$LK")
+	[ "$out" = "0|" ] \
+		&& pass "(4-fi) advisory mode warns/passes on $_vlbl ls" \
+		|| fail "(4-fi) advisory $_vlbl passes (out='$out')"
+done
+
+# An unknown/typo mode is treated as STRICT (safe default), never silently downgraded to advisory.
+out=$(single_link_shadow "$FAKEBIN_MISSING" bogusmode "$LK")
+[ "$out" = "1|FS_LINK_COUNT_UNAVAILABLE" ] \
+	&& pass "(4-fi) an unknown mode fails closed like strict (no silent downgrade)" \
+	|| fail "(4-fi) unknown mode fails closed (out='$out')"
+
+# The new reason token is present in the code catalog AND the schema enum.
+fs_reason_codes | grep -qx 'FS_LINK_COUNT_UNAVAILABLE' \
+	&& pass "(4-fi) fs_reason_codes lists FS_LINK_COUNT_UNAVAILABLE" || fail "(4-fi) code catalog has token"
+jq -e '.properties.reason_codes.items.enum | index("FS_LINK_COUNT_UNAVAILABLE") != null' "$REASON_SCHEMA" >/dev/null 2>&1 \
+	&& pass "(4-fi) the reason schema enumerates FS_LINK_COUNT_UNAVAILABLE" || fail "(4-fi) schema has token"
 
 # ============================================================================
 # (5) DESTINATION WORLD-WRITABLE — fs_assert_not_group_world_writable refuses (FS_GROUP_WORLD_WRITABLE).
