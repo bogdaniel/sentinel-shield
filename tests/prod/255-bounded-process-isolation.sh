@@ -222,7 +222,7 @@ fi
 # ============================================================================
 CPF="$WORK/c5"
 rc=0
-SS_CHILDPID="$CPF" bp_run generic 5 "$OUTF" "$ERRF" -- "$ORPHANER" || rc=$?
+SENTINEL_SHIELD_BP_DEBUG=1 SS_CHILDPID="$CPF" bp_run generic 5 "$OUTF" "$ERRF" -- "$ORPHANER" || rc=$?
 CH=$(cat "$CPF" 2>/dev/null || echo "")
 sleep 1
 if [ "$rc" -eq 0 ] && [ "$BP_STATUS" = success ] && [ "$BP_EXIT_CODE" = 0 ]; then

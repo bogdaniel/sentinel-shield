@@ -310,6 +310,7 @@ bp_isolation_available() {
 bp_kill_pgroup_members() {
 	_bp_kg="$1"; _bp_ks="$2"
 	bp_have_ps || { unset _bp_kg _bp_ks; return 0; }
+	[ -n "${SENTINEL_SHIELD_BP_DEBUG:-}" ] && printf 'BPDBG: enum kg=%s sig=%s members=[%s]\n' "$_bp_kg" "$_bp_ks" "$(ps -Ao pid=,pgid= 2>/dev/null | awk -v g="$_bp_kg" '$2==g{printf "%s ",$1}')" >&2
 	ps -Ao pid=,pgid= 2>/dev/null | while read -r _bp_kp _bp_kpg; do
 		[ "$_bp_kpg" = "$_bp_kg" ] || continue
 		[ "$_bp_kp" = "$$" ] && continue
@@ -461,6 +462,7 @@ _bp_portable_exec() {
 	# after its parent exited, a daemonized helper, a TERM-ignorer). When isolation is
 	# established, empty the whole group unconditionally (TERM then KILL) so NOTHING
 	# outlives the bounded command. Enumerated descendants are swept as secondary cleanup.
+	[ -n "${SENTINEL_SHIELD_BP_DEBUG:-}" ] && printf 'BPDBG: final-sweep cmd_pid=%s iso=%s pgrp=%s jc=%s cmd_pgid=%s\n' "$_bp_cmd_pid" "$_bp_iso" "${_bp_pgrp:-?}" "${_bp_jc:-?}" "$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null)" >&2
 	if [ "$_bp_iso" = 1 ]; then
 		bp_terminate "$_bp_cmd_pid" 1 TERM
 		bp_terminate "$_bp_cmd_pid" 1 KILL
