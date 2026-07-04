@@ -36,6 +36,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/release-authz.sh"
 
 VERIFY_MANIFEST="$SCRIPT_DIR/verify-release-manifest.sh"
+VALIDATE_EVIDENCE="$SCRIPT_DIR/validate-release-evidence.sh"
+# Canonical COMPLETE required release-workflow set (config/*.json). Overridable ONLY for
+# deterministic tests via SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY; production uses the shipped
+# policy. The evidence gate loads the set from here — never from a hardcoded ad hoc list.
+REQUIRED_WORKFLOWS_POLICY="${SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY:-$SCRIPT_DIR/../config/release-required-workflows.json}"
 BOUND_SECS="${RA_BOUND_SECS:-120}"
 
 usage() {
@@ -221,15 +226,17 @@ verify_candidate_impl() {
 	fi
 	_pass "scope '$CAND_SCOPE' is eligible for stage '$CAND_STAGE'"
 
-	# GATE 1 — exact default-branch source commit + required CI green (not PR-only).
+	# GATE 1 — exact source commit + the COMPLETE canonical required release-workflow set
+	# (each required workflow proven by a UNIQUE authoritative default-branch run; not PR-only,
+	# not "at least one run"). The required set is loaded from the canonical policy file.
 	if [ -z "$_ev" ] || [ ! -f "$_ev" ]; then
 		_fail "evidence: missing release-evidence artifact (required)"
 	else
-		_rc=0; ra_check_evidence_source "$_ev" "$CAND_SOURCE" || _rc=$?
+		_rc=0; ra_check_evidence_source "$_ev" "$CAND_SOURCE" "$REQUIRED_WORKFLOWS_POLICY" "$VALIDATE_EVIDENCE" || _rc=$?
 		case "$_rc" in
-			0) _pass "source commit is CI-validated on the default branch (push/workflow_dispatch success)" ;;
-			2) _fail "evidence: malformed release-evidence (fail closed)" ;;
-			*) _fail "evidence: source commit / default-branch CI check REJECTED (see reason above)" ;;
+			0) _pass "source commit passed the COMPLETE required release-workflow set on the default branch (unique authoritative runs)" ;;
+			2) _fail "evidence: malformed/unverifiable release-evidence or required-workflow policy (fail closed)" ;;
+			*) _fail "evidence: required release-workflow set INCOMPLETE / source-commit CI REJECTED (see reason above)" ;;
 		esac
 	fi
 

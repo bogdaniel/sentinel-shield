@@ -59,19 +59,65 @@ run() { RC=0; sh "$@" >/dev/null 2>&1 || RC=$?; }
 
 SRC=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 WRONG=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OTHER=cccccccccccccccccccccccccccccccccccccccc
 A_SHA=$(printf '%064d' 1)
 B_SHA=$(printf '%064d' 2)
 EMPTY="$WORK/emptyrepo"; mkdir -p "$EMPTY"
+
+# --- canonical required release-workflow policy (test fixture) ---------------
+# The evidence gate loads the COMPLETE required set from this policy (config-driven, not a
+# hardcoded list). authorize-production-release.sh honours SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY.
+POL="$WORK/req-workflows.json"
+cat > "$POL" <<'JSON'
+{
+  "version": "1.0",
+  "repository": "org/engine",
+  "approved_events": ["push", "workflow_dispatch"],
+  "required_workflows": [
+    { "workflow_name": "ci-self-test", "artifacts_required": false },
+    { "workflow_name": "ci-pipeline", "artifacts_required": true },
+    { "workflow_name": "ci-security", "artifacts_required": false }
+  ]
+}
+JSON
+SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY="$POL"
+export SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY
+
+# The shipped production policy must itself be a conformant canonical policy.
+SHIPPED_POL="$ROOT/config/release-required-workflows.json"
+if jq -e '
+	def repo: (type=="string") and test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$");
+	(.repository|repo)
+	and (.approved_events|type=="array" and (length>=1) and all(.[]; .=="push" or .=="workflow_dispatch"))
+	and (.required_workflows|type=="array" and (length>=1)
+		and all(.[]; (.workflow_name|type=="string" and (length>0)) and (.artifacts_required|type=="boolean")))
+	and ((.required_workflows|map(.workflow_name)|length) == (.required_workflows|map(.workflow_name)|unique|length))
+' "$SHIPPED_POL" >/dev/null 2>&1; then pass "shipped required-workflow policy is conformant"; else fail "shipped required-workflow policy is NOT conformant: $SHIPPED_POL"; fi
 
 # --- schemas are valid JSON --------------------------------------------------
 for _s in "$CAND_SCHEMA" "$AUTHZ_SCHEMA" "$ADV_SCHEMA"; do
 	if jq -e . "$_s" >/dev/null 2>&1; then pass "schema valid JSON: $(basename "$_s")"; else fail "schema invalid JSON: $(basename "$_s")"; fi
 done
 
-# mk_evidence <path> <engine_commit> <event|none> <result> — a release-evidence fixture.
+# mk_evidence <path> <engine_commit> <event|none> <result> — a release-evidence fixture that
+# presents the COMPLETE required set: one authoritative engine_ci run per required workflow
+# (ci-self-test, ci-pipeline[artifacts], ci-security), all on <engine_commit> with the given
+# <event>/<result>. 'none' => empty engine_ci. An artifacts_required workflow only carries a
+# verified artifact when its result is 'success' (matching the evidence semantic invariant).
 mk_evidence() {
 	if [ "$3" = none ]; then _ci='[]'; else
-		_ci=$(jq -n --arg c "$2" --arg e "$3" --arg r "$4" '[{workflow_name:"ci-self-test",repository:"org/engine",commit:$c,event:$e,workflow_run_id:12,workflow_url:"https://github.com/org/engine/actions/runs/12",result:$r,artifacts:[],artifacts_verified:false,verified_at:"2026-07-01T00:00:00Z",verification_method:"github-api"}]')
+		_ci=$(jq -nc --arg c "$2" --arg e "$3" --arg r "$4" '
+			[ {n:"ci-self-test",art:false,id:11},
+			  {n:"ci-pipeline",art:true,id:12},
+			  {n:"ci-security",art:false,id:13} ]
+			| map( . as $x | (($x.art) and ($r=="success")) as $withart
+			  | { workflow_name:$x.n, repository:"org/engine", commit:$c, event:$e,
+			      workflow_run_id:$x.id,
+			      workflow_url:("https://github.com/org/engine/actions/runs/\($x.id)"),
+			      result:$r,
+			      artifacts:(if $withart then [ {id:$x.id, name:("\($x.n)-dist"), verified:true} ] else [] end),
+			      artifacts_verified:$withart,
+			      verified_at:"2026-07-01T00:00:00Z", verification_method:"github-api" } )')
 	fi
 	jq -n --arg v 2.0.0 --arg c "$2" --argjson ci "$_ci" '
 		{version:$v,stage:"ga",release_scope:"engine-only",engine_ci:$ci,engine_commit:$c,consumer_runs:[],
@@ -166,6 +212,92 @@ EV_WRONG="$WORK/ev-wrong.json"; mk_evidence "$EV_WRONG" "$WRONG" push success
 C3="$WORK/c3.json"; mk_candidate "$C3" ga engine-only "$SRC" "$EV_WRONG" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
 run "$AUTH" verify-candidate --candidate "$C3"
 assert_eq "(3) wrong source commit -> REJECTED (exit 1)" "$RC" "1"
+
+# ============================================================================
+# COMPLETE required release-workflow set: positive + every rejected state.
+# The gate requires EXACTLY ONE authoritative default-branch run for EVERY workflow
+# in the canonical policy — never "at least one successful run".
+# mk_mut <out> <jq-program> — derive a mutated evidence file from the complete EV_OK.
+# ============================================================================
+mk_mut() { jq "$2" "$EV_OK" > "$1"; }
+
+# (S+) complete set present -> READY
+run "$AUTH" verify-candidate --candidate "$C_GA"
+assert_eq "(S+) complete required-workflow set -> READY (exit 0)" "$RC" "0"
+
+# (S1) a required workflow MISSING (only 2 of 3 present) -> REJECTED
+EV_MISS="$WORK/ev-miss.json"; mk_mut "$EV_MISS" '.engine_ci |= map(select(.workflow_name != "ci-security"))'
+CS1="$WORK/cs1.json"; mk_candidate "$CS1" ga engine-only "$SRC" "$EV_MISS" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS1"
+assert_eq "(S1) missing required workflow -> REJECTED (exit 1)" "$RC" "1"
+
+# (S2) one required workflow proven ONLY by a PR run -> REJECTED
+EV_PR1="$WORK/ev-pr1.json"; mk_mut "$EV_PR1" '.engine_ci |= map(if .workflow_name=="ci-security" then .event="pull_request" else . end)'
+CS2="$WORK/cs2.json"; mk_candidate "$CS2" ga engine-only "$SRC" "$EV_PR1" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS2"
+assert_eq "(S2) PR-only run for a required workflow -> REJECTED (exit 1)" "$RC" "1"
+
+# (S3) an UNRELATED workflow substituted for a required one -> REJECTED (required still missing)
+EV_UNREL="$WORK/ev-unrel.json"; mk_mut "$EV_UNREL" '.engine_ci |= map(if .workflow_name=="ci-security" then .workflow_name="ci-zap" else . end)'
+CS3="$WORK/cs3.json"; mk_candidate "$CS3" ga engine-only "$SRC" "$EV_UNREL" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS3"
+assert_eq "(S3) unrelated workflow cannot satisfy the set -> REJECTED (exit 1)" "$RC" "1"
+
+# (S4) DUPLICATE successful runs for one workflow (ambiguous authority) -> REJECTED
+EV_DUP="$WORK/ev-dup.json"
+mk_mut "$EV_DUP" '.engine_ci += [ (.engine_ci[] | select(.workflow_name=="ci-self-test") | .workflow_run_id=21 | .workflow_url="https://github.com/org/engine/actions/runs/21") ]'
+CS4="$WORK/cs4.json"; mk_candidate "$CS4" ga engine-only "$SRC" "$EV_DUP" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS4"
+assert_eq "(S4) duplicate authoritative runs -> REJECTED (exit 1)" "$RC" "1"
+
+# (S5) WRONG repository for a required workflow -> REJECTED
+EV_REPO="$WORK/ev-repo.json"
+mk_mut "$EV_REPO" '.engine_ci |= map(if .workflow_name=="ci-security" then .repository="org/attacker" | .workflow_url="https://github.com/org/attacker/actions/runs/13" else . end)'
+CS5="$WORK/cs5.json"; mk_candidate "$CS5" ga engine-only "$SRC" "$EV_REPO" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS5"
+assert_eq "(S5) wrong repository -> REJECTED (exit 1)" "$RC" "1"
+
+# (S6) WRONG branch (non-default-branch event, e.g. schedule) for a required workflow -> REJECTED
+EV_BRANCH="$WORK/ev-branch.json"
+mk_mut "$EV_BRANCH" '.engine_ci |= map(if .workflow_name=="ci-security" then .event="schedule" else . end)'
+CS6="$WORK/cs6.json"; mk_candidate "$CS6" ga engine-only "$SRC" "$EV_BRANCH" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS6"
+assert_eq "(S6) non-default-branch event -> REJECTED (exit 1)" "$RC" "1"
+
+# (S7) WRONG commit for a required workflow (self-inconsistent) -> REJECTED (fail closed)
+EV_WC="$WORK/ev-wc.json"
+mk_mut "$EV_WC" '.engine_ci |= map(if .workflow_name=="ci-security" then .commit="'"$OTHER"'" else . end)'
+CS7="$WORK/cs7.json"; mk_candidate "$CS7" ga engine-only "$SRC" "$EV_WC" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS7"
+assert_eq "(S7) wrong per-workflow commit -> REJECTED (exit 1)" "$RC" "1"
+
+# (S8) FAILED authoritative run -> REJECTED
+EV_FAIL="$WORK/ev-fail.json"
+mk_mut "$EV_FAIL" '.engine_ci |= map(if .workflow_name=="ci-self-test" then .result="failure" else . end)'
+CS8="$WORK/cs8.json"; mk_candidate "$CS8" ga engine-only "$SRC" "$EV_FAIL" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS8"
+assert_eq "(S8) failed authoritative run -> REJECTED (exit 1)" "$RC" "1"
+
+# (S8b) SKIPPED authoritative run -> REJECTED
+EV_SKIP="$WORK/ev-skip.json"
+mk_mut "$EV_SKIP" '.engine_ci |= map(if .workflow_name=="ci-security" then .result="skipped" else . end)'
+CS8B="$WORK/cs8b.json"; mk_candidate "$CS8B" ga engine-only "$SRC" "$EV_SKIP" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS8B"
+assert_eq "(S8b) skipped authoritative run -> REJECTED (exit 1)" "$RC" "1"
+
+# (S9) EXPECTED ARTIFACT STATE unmet: artifacts_required workflow lacks verified artifacts -> REJECTED
+EV_ART="$WORK/ev-art.json"
+mk_mut "$EV_ART" '.engine_ci |= map(if .workflow_name=="ci-pipeline" then .artifacts_verified=false | .artifacts=[] else . end)'
+CS9="$WORK/cs9.json"; mk_candidate "$CS9" ga engine-only "$SRC" "$EV_ART" "$MF_OK" "$ART_OK" "$SEC_OK" "$CMP_OK" "$ADO_OK" "$UPG_OK" "$RBK_OK"
+run "$AUTH" verify-candidate --candidate "$CS9"
+assert_eq "(S9) required-artifact state unmet -> REJECTED (exit 1)" "$RC" "1"
+
+# (S10) malformed required-workflow POLICY -> fail closed (exit 1: gate fails, not READY)
+BADPOL="$WORK/badpol.json"; printf '{ "repository":"org/engine","approved_events":["pull_request"],"required_workflows":[] }\n' > "$BADPOL"
+export SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY="$BADPOL"
+run "$AUTH" verify-candidate --candidate "$C_GA"
+assert_eq "(S10) malformed required-workflow policy -> fail closed (exit 1)" "$RC" "1"
+export SENTINEL_SHIELD_RELEASE_WORKFLOW_POLICY="$POL"
 
 # ============================================================================
 # (6) artifact digest mismatch vs manifest -> NOT READY

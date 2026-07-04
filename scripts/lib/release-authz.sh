@@ -142,14 +142,59 @@ ra_security_acceptance_ok() {
 	' "$1" >/dev/null 2>&1
 }
 
-# --- evidence source / default-branch CI gate --------------------------------
-# ra_check_evidence_source <evidence> <source_commit> — prove the candidate's source commit
-# is the CI-validated DEFAULT-BRANCH commit. Returns:
-#   0 ok   1 rejected (mismatch / PR-only proof / missing default-branch CI)   2 malformed
-# Rejection reason token is logged for stable diagnostics.
+# --- canonical required release-workflow policy ------------------------------
+# ra_required_workflows_ok <policy> — 0 iff <policy> is a well-formed CANONICAL required-
+# workflow set: a repository (owner/repo), a non-empty approved_events[] drawn ONLY from the
+# default-branch events (push|workflow_dispatch), and a non-empty required_workflows[] of
+# distinct { workflow_name:non-empty-string, artifacts_required:boolean } entries. A policy
+# that admits pull_request (or any non-default-branch event) as approved, or that repeats a
+# workflow_name, is REJECTED — release proof is default-branch only and per-workflow unique.
+# Returns 0 ok, 2 malformed/missing (fail closed).
+ra_required_workflows_ok() {
+	ra_json_ok "${1:-}" || {
+		log_error "ra_required_workflows_ok: policy '${1:-}' missing/empty/not JSON (fail closed)"
+		return 2
+	}
+	jq -e '
+		def repo: (type == "string") and test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$");
+		(.repository | repo)
+		and (.approved_events | type == "array" and (length >= 1)
+			and all(.[]; . == "push" or . == "workflow_dispatch"))
+		and (.required_workflows | type == "array" and (length >= 1)
+			and all(.[]; (.workflow_name | type == "string" and (length > 0))
+				and (.artifacts_required | type == "boolean")))
+		and ((.required_workflows | map(.workflow_name) | length)
+			== (.required_workflows | map(.workflow_name) | unique | length))
+	' "$1" >/dev/null 2>&1 || {
+		log_error "ra_required_workflows_ok: '$1' is not a conformant required-workflow policy (fail closed)"
+		return 2
+	}
+	return 0
+}
+
+# --- evidence source / COMPLETE required-workflow-set gate --------------------
+# ra_check_evidence_source <evidence> <source_commit> <policy> [validator] — prove the
+# candidate's source commit is backed by the COMPLETE canonical set of required default-branch
+# CI workflows, NOT merely "at least one successful run". All steps fail closed:
+#   1. structural + semantic integrity is delegated to the existing GitHub-backed evidence
+#      validator (scripts/validate-release-evidence.sh --offline) when its path is supplied, so
+#      this gate never re-implements a second, weaker evidence parser;
+#   2. evidence.engine_commit must equal the expected source_commit;
+#   3. the required-workflow set is loaded from the CANONICAL policy (config/*.json), NOT a
+#      hardcoded list, and for EVERY required workflow there must be EXACTLY ONE authoritative
+#      run: exact workflow_name, exact repository, exact source_commit, an approved default-
+#      branch event, a successful conclusion, and the declared artifact state.
+# REJECTS (return 1): a missing required workflow; a PR-only / non-default-branch run; an
+# unrelated workflow standing in for a required one; a wrong repository / branch(event) /
+# commit; a failed / cancelled / neutral / skipped run; and duplicate successful runs for one
+# required workflow (ambiguous authority). Per-workflow head_branch proof against the live
+# default branch remains the job of validate-release-evidence.sh --verify-github, which this
+# gate reuses rather than duplicating. Returns: 0 ok, 1 rejected, 2 malformed/unverifiable.
 ra_check_evidence_source() {
 	_rev="$1"
 	_rsrc="$2"
+	_rpol="${3:-}"
+	_rval="${4:-}"
 	ra_json_ok "$_rev" || {
 		log_error "ra_check_evidence_source: evidence '${_rev:-}' missing/empty/not JSON (fail closed)"
 		return 2
@@ -159,29 +204,69 @@ ra_check_evidence_source() {
 		return 2
 	}
 	_rsrc=$(printf '%s' "$_rsrc" | tr 'A-F' 'a-f')
+	ra_required_workflows_ok "$_rpol" || return 2
+
+	# (1) Reuse the existing evidence validator for structural + semantic integrity.
+	if [ -n "$_rval" ] && [ -f "$_rval" ]; then
+		_vrc=0
+		ra_bounded "${RA_BOUND_SECS:-120}" sh "$_rval" --file "$_rev" --offline >/dev/null || _vrc=$?
+		case "$_vrc" in
+			0) ;;
+			124) log_error "ra_check_evidence_source: evidence validation TIMED OUT (fail closed)"; return 2 ;;
+			2 | 3) log_error "ra_check_evidence_source: EVIDENCE_INVALID — validator rejected the evidence as malformed/unverifiable (exit $_vrc, fail closed)"; return 2 ;;
+			*) log_error "ra_check_evidence_source: EVIDENCE_UNMET — validator rejected the evidence (exit $_vrc)"; return 1 ;;
+		esac
+	fi
+
+	# (2) The evidence's engine_commit must equal the expected source commit.
 	_reng=$(jq -r '.engine_commit // ""' "$_rev")
 	if [ "$_reng" != "$_rsrc" ]; then
 		log_error "ra_check_evidence_source: SOURCE_COMMIT_MISMATCH — evidence engine_commit ($_reng) != expected source_commit ($_rsrc)"
 		return 1
 	fi
-	# A qualifying default-branch run: event push|workflow_dispatch, result success, on source_commit.
-	_good=$(jq -r --arg c "$_rsrc" '
-		[ (.engine_ci // [])[]
-		  | select((.event == "push" or .event == "workflow_dispatch") and .result == "success" and .commit == $c) ]
-		| length' "$_rev" 2>/dev/null)
-	case "$_good" in '' | *[!0-9]*) log_error "ra_check_evidence_source: could not evaluate engine_ci runs (fail closed)"; return 2 ;; esac
-	if [ "$_good" -ge 1 ]; then
-		return 0
+
+	# (3) EVERY required workflow must have EXACTLY ONE authoritative default-branch run.
+	_reasons=$(jq -r --arg c "$_rsrc" --slurpfile pol "$_rpol" '
+		($pol[0]) as $p
+		| ($p.repository) as $repo
+		| ($p.approved_events) as $ev
+		| (.engine_ci // []) as $ci
+		| [ $p.required_workflows[] as $w
+			| ($ci | map(select(.workflow_name == $w.workflow_name))) as $named
+			| ($named | map(. as $r | select(
+					$r.repository == $repo
+					and $r.commit == $c
+					and (($ev | index($r.event)) != null)
+					and $r.result == "success"
+					and (if $w.artifacts_required then ($r.artifacts_verified == true) else true end)
+				))) as $ok
+			| if ($ok | length) == 1 then empty
+			  elif ($ok | length) > 1 then "DUPLICATE_AUTHORITY:\($w.workflow_name) (\($ok | length) successful runs; no deterministic authority)"
+			  elif ($named | length) == 0 then "MISSING_WORKFLOW:\($w.workflow_name)"
+			  elif (($named | map(. as $r | select(($ev | index($r.event)) != null)) | length) == 0)
+			       then "NON_DEFAULT_BRANCH_EVENT:\($w.workflow_name) (events \([ $named[].event ] | unique | join(",")); default-branch push/workflow_dispatch required)"
+			  elif (($named | map(select(.repository == $repo)) | length) == 0)
+			       then "WRONG_REPOSITORY:\($w.workflow_name) (\([ $named[].repository ] | unique | join(",")) != \($repo))"
+			  elif (($named | map(select(.commit == $c)) | length) == 0)
+			       then "WRONG_COMMIT:\($w.workflow_name)"
+			  elif (($named | map(select(.result == "success")) | length) == 0)
+			       then "NOT_SUCCESSFUL:\($w.workflow_name) (\([ $named[].result ] | unique | join(",")))"
+			  elif ($w.artifacts_required and (($named | map(select(.artifacts_verified == true)) | length) == 0))
+			       then "ARTIFACT_STATE:\($w.workflow_name) (expected verified artifacts)"
+			  else "UNSATISFIED:\($w.workflow_name)" end
+		  ]
+		| unique | .[]
+	' "$_rev" 2>/dev/null) || {
+		log_error "ra_check_evidence_source: could not evaluate the required-workflow set (fail closed)"
+		return 2
+	}
+	if [ -n "$_reasons" ]; then
+		printf '%s\n' "$_reasons" | while IFS= read -r _r; do
+			[ -n "$_r" ] && log_error "ra_check_evidence_source: INCOMPLETE_RELEASE_WORKFLOW_SET — $_r"
+		done
+		return 1
 	fi
-	# Distinguish PR-only proof from a total absence of default-branch CI for a stable reason.
-	_pr=$(jq -r '[ (.engine_ci // [])[] | select(.event == "pull_request") ] | length' "$_rev" 2>/dev/null)
-	case "$_pr" in '' | *[!0-9]*) _pr=0 ;; esac
-	if [ "$_pr" -ge 1 ]; then
-		log_error "ra_check_evidence_source: PR_CI_NOT_RELEASE_PROOF — only pull_request runs are present; release proof requires default-branch (push/workflow_dispatch) success on the source commit."
-	else
-		log_error "ra_check_evidence_source: MISSING_DEFAULT_BRANCH_CI — no successful default-branch engine_ci run on the source commit."
-	fi
-	return 1
+	return 0
 }
 
 # --- waiver expiry gate ------------------------------------------------------
