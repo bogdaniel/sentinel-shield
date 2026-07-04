@@ -301,10 +301,31 @@ bp_isolation_available() {
 # always sweep enumerated descendants (pgrep) as best-effort cleanup — and the ONLY
 # mechanism when isolation was unavailable. Never signals a group when isolation is NOT
 # established (that would risk striking the caller's own group). Always best-effort.
+# bp_kill_pgroup_members <pgid> <signal> — signal EVERY process whose process-group id is
+# <pgid>, addressed BY PID. `kill -<pgid>` alone is unreliable once the group LEADER has
+# exited (observed on Linux: a group-directed signal no longer reaches surviving members of
+# an orphaned group), so we enumerate members explicitly. Never signals this shell. Called
+# only when isolation is established (the group is the command's own, never the caller's).
+# Best-effort; `ps -Ao pid=,pgid=` is portable across procps (Linux) and BSD/macOS.
+bp_kill_pgroup_members() {
+	_bp_kg="$1"; _bp_ks="$2"
+	bp_have_ps || { unset _bp_kg _bp_ks; return 0; }
+	ps -Ao pid=,pgid= 2>/dev/null | while read -r _bp_kp _bp_kpg; do
+		[ "$_bp_kpg" = "$_bp_kg" ] || continue
+		[ "$_bp_kp" = "$$" ] && continue
+		kill "-$_bp_ks" "$_bp_kp" 2>/dev/null || true
+	done
+	unset _bp_kg _bp_ks
+}
+
 bp_terminate() {
 	_bp_tp="$1"; _bp_ti="$2"; _bp_tsig="$3"
 	if [ "$_bp_ti" = 1 ]; then
+		# PRIMARY: group-directed signal (works while the leader is alive). SECONDARY: kill
+		# each group member by pid (robust when the leader has already exited — the final
+		# containment sweep after a fast-exiting parent).
 		kill "-$_bp_tsig" "-$_bp_tp" 2>/dev/null || true
+		bp_kill_pgroup_members "$_bp_tp" "$_bp_tsig"
 	fi
 	bp_kill_tree "$_bp_tp" "$_bp_tsig"
 	unset _bp_tp _bp_ti _bp_tsig
@@ -446,10 +467,11 @@ _bp_portable_exec() {
 	# established, empty the whole group unconditionally (TERM then KILL) so NOTHING
 	# outlives the bounded command. Enumerated descendants are swept as secondary cleanup.
 	if [ "$_bp_iso" = 1 ]; then
-		kill -TERM "-$_bp_cmd_pid" 2>/dev/null || true
-		kill -KILL "-$_bp_cmd_pid" 2>/dev/null || true
+		bp_terminate "$_bp_cmd_pid" 1 TERM
+		bp_terminate "$_bp_cmd_pid" 1 KILL
+	else
+		bp_kill_tree "$_bp_cmd_pid" KILL
 	fi
-	bp_kill_tree "$_bp_cmd_pid" KILL
 
 	rm -f "$_bp_done" 2>/dev/null || true
 	unset _bp_done _bp_jc _bp_pgrp _bp_wasm _bp_iso _bp_cpg _bp_spg _bp_try
