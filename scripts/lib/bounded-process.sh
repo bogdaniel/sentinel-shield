@@ -387,31 +387,26 @@ _bp_portable_exec() {
 		_bp_cmd_pid=$!
 	fi
 
-	# CONFIRM the isolation actually took: the child must be its OWN group leader and NOT
-	# share the caller's process group — otherwise a group-directed kill would strike the
-	# caller. The isolating child (perl POSIX::setsid) may not have created its new session
-	# in the first instants after fork, so POLL for pgid == its own pid (group leader) and
-	# != our group. Each bp_pgid_of runs `ps`, whose latency paces the loop without a
-	# sub-second sleep. If the child never leaves our group (setsid failed, or `set -m` did
-	# not isolate), DISABLE the primary group-kill and fall back to descendant enumeration.
+	# CONFIRM the isolation actually took. The two mechanisms need different handling:
+	#   * perl POSIX::setsid() places the command in its OWN new session/group BEFORE exec,
+	#     deterministically (verified: the timeout path group-kills the whole tree). A ps
+	#     LIVENESS probe here is unreliable — a fast-exiting leader is a ZOMBIE until we
+	#     wait() it, and on Linux ps shows a zombie no pgid while kill -0 still succeeds, so
+	#     a probe cannot tell "isolated but already exited" from "never isolated". Trust it.
+	#   * `set -m` may or may not place the child in its own group, so CONFIRM (once — set -m
+	#     isolates at fork, no race) that the child is a group leader NOT sharing ours before
+	#     enabling any group-directed kill; otherwise fall back to descendant enumeration.
 	_bp_iso=0
-	if [ "$_bp_pgrp" = 1 ] || [ "$_bp_jc" = 1 ]; then
+	if [ "$_bp_pgrp" = 1 ]; then
+		_bp_iso=1
+	elif [ "$_bp_jc" = 1 ]; then
+		_bp_iso=1
 		if bp_have_ps; then
+			_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
 			_bp_spg=$(bp_pgid_of "$$" 2>/dev/null) || _bp_spg=""
-			_bp_try=0
-			while [ "$_bp_try" -lt 60 ]; do
-				_bp_cpg=$(bp_pgid_of "$_bp_cmd_pid" 2>/dev/null) || _bp_cpg=""
-				if [ -n "$_bp_cpg" ] && [ "$_bp_cpg" = "$_bp_cmd_pid" ] && [ "$_bp_cpg" != "$_bp_spg" ]; then
-					_bp_iso=1; break
-				fi
-				# Child already finished (ultra-fast command): the isolation mechanism was in
-				# force before it ran, so nothing was ever left uncontained — record honestly.
-				kill -0 "$_bp_cmd_pid" 2>/dev/null || { _bp_iso=1; break; }
-				_bp_try=$((_bp_try + 1))
-			done
-		else
-			# No `ps` to verify with; trust the requested mechanism (best effort).
-			_bp_iso=1
+			if [ -n "$_bp_cpg" ] && [ -n "$_bp_spg" ] && [ "$_bp_cpg" = "$_bp_spg" ]; then
+				_bp_iso=0
+			fi
 		fi
 	fi
 	_BP_ISO_ESTABLISHED="$_bp_iso"
@@ -474,7 +469,7 @@ _bp_portable_exec() {
 	fi
 
 	rm -f "$_bp_done" 2>/dev/null || true
-	unset _bp_done _bp_jc _bp_pgrp _bp_wasm _bp_iso _bp_cpg _bp_spg _bp_try
+	unset _bp_done _bp_jc _bp_pgrp _bp_wasm _bp_iso _bp_cpg _bp_spg
 }
 
 # _bp_gnu_exec <timeout> <grace> <out> <err> <flag> -- <cmd...>
