@@ -238,6 +238,101 @@ RED=$(printf '%s\n' "$BENIGN" | rd_redact_stream)
 [ "$RED" = "$BENIGN" ] && pass "(FI+) a benign line passes through unchanged (no over-redaction)" || fail "(FI+) benign line altered: '$RED'"
 
 # ============================================================================
+# DELIMITER-SAFE PATH-ROOT REGISTRATION — RD_TMP_ROOTS is a NEWLINE-DELIMITED list taken VERBATIM
+# (never shell-word-split, never glob-expanded). Roots may carry spaces, '#', '[]', Unicode, or
+# backslashes; overlapping/nested roots resolve LONGEST-FIRST; duplicates dedupe; a non-absolute or
+# empty entry and the root "/" are REJECTED (fail-closed, no rule) so nothing is over-relativized.
+# A fixed non-matching RD_HOME isolates these from the tester's real $HOME.
+# ============================================================================
+rd_secret_reset
+NL='
+'
+
+# (13) macOS "Application Support" — a temp root containing a SPACE must not be word-split.
+SPACEROOT='/var/folders/ab/Application Support/T'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$SPACEROOT" rd_redact_value "cache at $SPACEROOT/session-42.tmp done")
+case "$RED" in
+	*"$SPACEROOT"*) fail "(13) a temp root with a space leaked (word-split): $RED" ;;
+	*"cache at <tmp> done"*) pass "(13) a temp root containing a space ('Application Support') is relativized (no word-split)" ;;
+	*) fail "(13) space temp root not relativized: $RED" ;;
+esac
+
+# (14) path containing '#' — the sed s#...# delimiter must be escaped, not treated as a delimiter.
+HASHROOT='/tmp/cache#1'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$HASHROOT" rd_redact_value "wrote $HASHROOT/out.log")
+case "$RED" in
+	*"$HASHROOT"*) fail "(14) a temp root with '#' leaked: $RED" ;;
+	*"wrote <tmp>"*) pass "(14) a temp root containing '#' (the sed delimiter) is escaped and relativized" ;;
+	*) fail "(14) '#' temp root not relativized: $RED" ;;
+esac
+
+# (15) path containing '[]' — must be matched as a LITERAL, never as a regex character class.
+BRKROOT='/tmp/set[a-b]x'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$BRKROOT" rd_redact_value "hit $BRKROOT/f and miss /tmp/setax/g")
+case "$RED" in
+	*"$BRKROOT"*) fail "(15) a temp root with '[]' leaked: $RED" ;;
+	*"/tmp/setax/g"*)
+		case "$RED" in
+			*"<tmp>"*) pass "(15) a temp root with '[]' is matched LITERALLY (control /tmp/setax survives; no regex-class injection)" ;;
+			*) fail "(15) bracket temp root not relativized: $RED" ;;
+		esac ;;
+	*) fail "(15) bracket temp root acted as a regex class (control consumed): $RED" ;;
+esac
+
+# (16) Unicode path — bytes preserved, root still relativized.
+UNIROOT='/tmp/café-café'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$UNIROOT" rd_redact_value "saved $UNIROOT/report.json")
+case "$RED" in
+	*"$UNIROOT"*) fail "(16) a Unicode temp root leaked: $RED" ;;
+	*"saved <tmp>"*) pass "(16) a Unicode temp root is relativized (bytes preserved, not mangled)" ;;
+	*) fail "(16) Unicode temp root not relativized: $RED" ;;
+esac
+
+# (17) NESTED target + temp roots — the longer (more specific) root wins; a broad root can't swallow
+#      a path a longer root owns.
+RED=$(RD_HOME=/no/such/home RD_TARGET_ROOT=/work/target RD_TMP_ROOTS=/work/target/tmp \
+	rd_redact_value 'tmp /work/target/tmp/x.json src /work/target/src/y.c')
+case "$RED" in
+	*"/work/target/tmp/x.json"*) fail "(17) nested temp path under target leaked: $RED" ;;
+	*"<target>/tmp"*) fail "(17) nested temp path was relativized by the SHORTER target root (not longest-first): $RED" ;;
+	*)
+		{ case "$RED" in *"<tmp>"*) true ;; *) false ;; esac; } \
+			&& { case "$RED" in *"<target>/src/y.c"*) true ;; *) false ;; esac; } \
+			&& pass "(17) nested target+temp roots resolve LONGEST-FIRST (temp -> <tmp>, other target path -> <target>)" \
+			|| fail "(17) nested target/temp not resolved longest-first: $RED" ;;
+esac
+
+# (18) DUPLICATE roots — deduped and still relativized.
+DUPROOT='/tmp/dupe'
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="$DUPROOT$NL$DUPROOT" rd_redact_value "here $DUPROOT/f.txt")
+case "$RED" in
+	*"$DUPROOT"*) fail "(18) a duplicated temp root leaked: $RED" ;;
+	*"here <tmp>"*) pass "(18) duplicate temp roots dedupe and still relativize" ;;
+	*) fail "(18) duplicate temp roots not relativized: $RED" ;;
+esac
+
+# (19) MALFORMED root list — a non-absolute entry and blank entries are rejected entry-wise; a valid
+#      root still applies, and the malformed entry is NEVER used as a replacement root.
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS="not/absolute$NL$NL/tmp/valid" \
+	rd_redact_value 'good /tmp/valid/a bad not/absolute/b')
+case "$RED" in
+	*"not/absolute/b"*)
+		case "$RED" in
+			*"<tmp>"*) pass "(19) a malformed root list (non-absolute + empty entries) is rejected entry-wise; valid roots still relativize" ;;
+			*) fail "(19) a valid root within a malformed list was not applied: $RED" ;;
+		esac ;;
+	*) fail "(19) a non-absolute entry was wrongly used as a replacement root: $RED" ;;
+esac
+
+# (20) ROOT "/" REJECTED — never accepted as a replacement root (would relativize the whole tree).
+RED=$(RD_HOME=/no/such/home RD_TMP_ROOTS='/' rd_redact_value 'leave /etc/passwd and /usr/bin/env intact')
+case "$RED" in
+	*"<tmp>"*) fail "(20) root '/' was accepted and relativized the entire path: $RED" ;;
+	*"/etc/passwd"*) pass "(20) the root '/' is REJECTED as a replacement root (no filesystem-wide relativization)" ;;
+	*) fail "(20) root '/' handling unexpected: $RED" ;;
+esac
+
+# ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
 	exit 1

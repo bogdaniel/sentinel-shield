@@ -20,6 +20,19 @@
 #      the run's --target root -> <target>, the repo root -> <repo>, temp roots -> <tmp>) and
 #      email masking.
 #
+# PATH-ROOT REGISTRATION CONTRACT (delimiter-safe)
+#   RD_TMP_ROOTS is a NEWLINE-DELIMITED list of absolute temp-root prefixes: exactly ONE root per
+#   line, taken VERBATIM (a root may contain spaces, '#', '[' ']', other glob/regex metacharacters,
+#   backslashes, or Unicode — it is NEVER word-split or glob-expanded). RD_TARGET_ROOT /
+#   RD_REPO_ROOT / RD_HOME are single absolute roots. Every root is validated FAIL-CLOSED before it
+#   becomes a replacement rule: an empty root, a non-absolute root, a root that carries a tab (which
+#   would corrupt the internal record) and the root "/" itself (which would relativize the whole
+#   filesystem) are REJECTED and simply produce no rule. A root containing a newline cannot occur —
+#   the newline is the delimiter. All surviving roots are sorted LONGEST-FIRST and de-duplicated, so
+#   a nested/overlapping root is consumed by its most specific (longest) match and a broad root can
+#   never swallow a path that a longer root owns. When RD_TMP_ROOTS is UNSET the default roots are
+#   /tmp, /var/tmp, /var/folders and $TMPDIR (when set).
+#
 # HARDENING CONTRACT
 #   * Redaction happens BEFORE persistence, not only before display: callers pipe intermediate
 #     JSON and journal writes through rd_redact_stream, so secret values never reach a file.
@@ -191,26 +204,76 @@ rd_mktemp() {
 # root path can be used safely on the LEFT of an s#...#...# without acting as a pattern.
 _rd_esc() { printf '%s' "$1" | sed 's/[][#.^$*+?(){}|\\]/\\&/g'; }
 
+# _rd_root_emit <kind> <root> — validate ONE replacement root and, if it survives, print a single
+# LONGEST-FIRST-sortable record "<rawlen><TAB><kind><TAB><escaped-root>" to STDOUT. FAILS CLOSED
+# (emits nothing) for an empty root, a root carrying a tab (would corrupt the TAB-delimited record),
+# a non-absolute root, or the root "/" (which would relativize the entire filesystem). Trailing
+# slashes are trimmed so "/foo/" and "/foo" dedupe; a root that collapses to empty is rejected.
+_rd_root_emit() {
+	_rd_ek="$1"; _rd_er="$2"
+	[ -n "$_rd_er" ] || { unset _rd_ek _rd_er; return 0; }
+	case "$_rd_er" in *"$RD_TAB"*) unset _rd_ek _rd_er; return 0 ;; esac
+	case "$_rd_er" in
+		/) unset _rd_ek _rd_er; return 0 ;;   # reject "/" as a replacement root
+		/*) : ;;                              # absolute — ok
+		*) unset _rd_ek _rd_er; return 0 ;;   # reject a non-absolute (malformed) root
+	esac
+	while : ; do
+		case "$_rd_er" in */) _rd_er="${_rd_er%/}" ;; *) break ;; esac
+	done
+	[ -n "$_rd_er" ] || { unset _rd_ek _rd_er; return 0; }
+	case "$_rd_er" in /) unset _rd_ek _rd_er; return 0 ;; esac
+	printf '%s\t%s\t%s\n' "${#_rd_er}" "$_rd_ek" "$(_rd_esc "$_rd_er")"
+	unset _rd_ek _rd_er
+}
+
+# _rd_root_records <home> — emit one _rd_root_emit record per replacement root: the target root, the
+# repo root, every RD_TMP_ROOTS entry (NEWLINE-DELIMITED, never word-split), and HOME. Consumed by
+# _rd_pattern_stage, which dedupes and sorts these LONGEST-FIRST.
+_rd_root_records() {
+	_rd_rr_home="$1"
+	_rd_root_emit target "${RD_TARGET_ROOT:-}"
+	_rd_root_emit repo "${RD_REPO_ROOT:-}"
+	if [ -n "${RD_TMP_ROOTS+x}" ]; then
+		# Newline-delimited contract: one root per line, taken verbatim (no splitting, no globbing).
+		printf '%s\n' "$RD_TMP_ROOTS" | while IFS= read -r _rd_rr_t; do
+			_rd_root_emit tmp "$_rd_rr_t"
+		done
+	else
+		for _rd_rr_d in /tmp /var/tmp /var/folders ${TMPDIR:+"$TMPDIR"}; do
+			_rd_root_emit tmp "$_rd_rr_d"
+		done
+	fi
+	_rd_root_emit home "$_rd_rr_home"
+	unset _rd_rr_home _rd_rr_t _rd_rr_d
+}
+
 # _rd_pattern_stage — read STDIN, apply STRUCTURAL (shape-based) redaction + path relativization,
 # write to STDOUT. No secret VALUE is ever compiled into these patterns — they match shapes only.
 # Path roots come from RD_TARGET_ROOT / RD_REPO_ROOT / RD_TMP_ROOTS / RD_HOME (all optional).
 _rd_pattern_stage() {
 	_rd_home="${RD_HOME:-$HOME}"
-	_rd_troot_e=""; [ -n "${RD_TARGET_ROOT:-}" ] && _rd_troot_e=$(_rd_esc "$RD_TARGET_ROOT")
-	_rd_rroot_e=""; [ -n "${RD_REPO_ROOT:-}" ] && _rd_rroot_e=$(_rd_esc "$RD_REPO_ROOT")
-	_rd_home_e=""; [ -n "$_rd_home" ] && _rd_home_e=$(_rd_esc "$_rd_home")
 
-	# Build the temp-root replacements dynamically (longest first is handled by ordering the most
-	# specific — target/repo — before the generic tmp/home roots below).
+	# Build path-relativization rules delimiter-safely: gather every replacement root as a validated
+	# record, DEDUPLICATE exact repeats, then order LONGEST-FIRST (numeric on the raw path length) so
+	# a nested/overlapping root is consumed by its most specific match and a broad root never swallows
+	# a path a longer root owns. Roots are read WITHOUT word-splitting or globbing (see the PATH-ROOT
+	# REGISTRATION CONTRACT); "/" and non-absolute/empty roots were already rejected in _rd_root_emit.
+	_rd_rules=$(_rd_root_records "$_rd_home" | awk '!seen[$0]++' | LC_ALL=C sort -t "$RD_TAB" -k1,1nr -s)
+
 	set --
-	[ -n "$_rd_troot_e" ] && set -- "$@" -e "s#${_rd_troot_e}#<target>#g"
-	[ -n "$_rd_rroot_e" ] && set -- "$@" -e "s#${_rd_rroot_e}#<repo>#g"
-	for _rd_t in ${RD_TMP_ROOTS:-/tmp /var/tmp /var/folders ${TMPDIR:-}}; do
-		[ -n "$_rd_t" ] || continue
-		_rd_te=$(_rd_esc "${_rd_t%/}")
-		set -- "$@" -e "s#${_rd_te}/[^[:space:]\"']*#<tmp>#g"
-	done
-	[ -n "$_rd_home_e" ] && set -- "$@" -e "s#${_rd_home_e}#~#g"
+	# A here-doc (not a pipe) feeds the loop so `set --` mutates THIS shell, not a subshell.
+	while IFS="$RD_TAB" read -r _rd_len _rd_kind _rd_ce; do
+		[ -n "$_rd_kind" ] || continue
+		case "$_rd_kind" in
+			target) set -- "$@" -e "s#${_rd_ce}#<target>#g" ;;
+			repo) set -- "$@" -e "s#${_rd_ce}#<repo>#g" ;;
+			home) set -- "$@" -e "s#${_rd_ce}#~#g" ;;
+			tmp) set -- "$@" -e "s#${_rd_ce}/[^[:space:]\"']*#<tmp>#g" ;;
+		esac
+	done <<RD_ROOT_RULES
+$_rd_rules
+RD_ROOT_RULES
 
 	sed -E \
 		-e "s#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]+@#\\1***REDACTED***@#g" \
@@ -236,7 +299,7 @@ _rd_pattern_stage() {
 		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH))[=:][[:space:]]*[^[:space:]\"']+/\\1=***REDACTED***/g" \
 		-e "s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/${RD_PH_EMAIL}/g" \
 		"$@"
-	unset _rd_home _rd_troot_e _rd_rroot_e _rd_home_e _rd_t _rd_te
+	unset _rd_home _rd_rules _rd_len _rd_kind _rd_ce
 }
 
 # rd_redact_stream — read STDIN, write fully-redacted STDOUT. Runs the LITERAL registry stage
