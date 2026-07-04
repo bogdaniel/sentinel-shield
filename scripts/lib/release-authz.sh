@@ -305,23 +305,128 @@ ra_no_expired_waivers() {
 }
 
 # --- artifact-digest reproducibility gate ------------------------------------
-# ra_artifacts_match_manifest <artifacts-report> <manifest> — 0 iff the set of 64-hex
-# artifact digests in the verification report EQUALS the set recorded in the manifest body.
-# Both empty is a match (engine-only releases may ship no artifacts). Any drift is a
-# DIGEST_MISMATCH (return 1). Malformed inputs fail closed (return 2).
+# ra_artifacts_match_manifest <artifacts-report> <manifest> [required-workflows-policy]
+# Fail-closed proof that the COMPLETE set of verified artifacts in the verification
+# <artifacts-report> is IDENTICAL — on full IDENTITY, not merely digest — to the artifact set
+# fingerprinted in the release <manifest> body.
+#
+# BEFORE any set comparison every artifact record on BOTH sides is validated against the
+# required identity tuple. A report record must carry: artifact_id (integer > 0), name
+# (non-empty), workflow_run_id/run_id (non-empty scalar), repository (owner/name),
+# size_in_bytes (integer >= 0), sha256 (EXACTLY 64 lowercase hex), expired == false,
+# verified == true. A manifest record must carry the shared identity: run_id, artifact_id,
+# name, sha256 (64-hex). A MALFORMED digest is REJECTED — never silently filtered out; the
+# historical bug was that malformed digests collapsed to two empty equal arrays that then
+# compared equal and spuriously PASSED. Missing identity, duplicate records, and conflicting
+# identities (the same run_id+artifact_id carrying a different name/sha256) are REJECTED. The
+# surviving report and manifest identity tuples must then match EXACTLY.
+#
+# Zero artifacts is a match ONLY when it is genuinely zero on both sides (no records present,
+# not "records present but filtered away") AND, when a required-workflow <policy> is supplied,
+# no required workflow declares artifacts_required:true — a release whose policy configures any
+# artifact-producing workflow MUST ship at least one verified artifact.
+#
+# Returns: 0 match; 1 rejected (identity/digest drift, or zero where artifacts are required);
+#          2 malformed/unverifiable input (fail closed).
 ra_artifacts_match_manifest() {
-	ra_json_ok "$1" || { log_error "ra_artifacts_match_manifest: artifacts report '${1:-}' not JSON (fail closed)"; return 2; }
-	ra_json_ok "$2" || { log_error "ra_artifacts_match_manifest: manifest '${2:-}' not JSON (fail closed)"; return 2; }
-	_ra_a=$(jq -c '[ .artifacts[]?.sha256 | select(type == "string" and test("^[0-9a-f]{64}$")) ] | unique' "$1" 2>/dev/null) || {
-		log_error "ra_artifacts_match_manifest: could not read artifact digests (fail closed)"
+	_ram_report="$1"
+	_ram_manifest="$2"
+	_ram_policy="${3:-}"
+	ra_json_ok "$_ram_report" || { log_error "ra_artifacts_match_manifest: artifacts report '${_ram_report:-}' not JSON (fail closed)"; return 2; }
+	ra_json_ok "$_ram_manifest" || { log_error "ra_artifacts_match_manifest: manifest '${_ram_manifest:-}' not JSON (fail closed)"; return 2; }
+
+	# (1) Validate + normalize the REPORT artifact identity tuples (fail closed on any
+	#     malformed record, missing identity, malformed digest, duplicate, or conflict).
+	_ram_r=$(jq -c '
+		def hex64: type == "string" and test("^[0-9a-f]{64}$");
+		def sk: (type == "number" or type == "string");
+		(.artifacts) as $a
+		| if ($a | type) != "array" then { ok:false, reasons:["REPORT_ARTIFACTS_NOT_ARRAY"], tuples:[] }
+		  else
+			[ $a[] | { run_id, artifact_id, name, sha256,
+				bad:[
+					(if (.artifact_id|type)=="number" and (.artifact_id>0) then empty else "artifact_id" end),
+					(if (.name|type)=="string" and ((.name|length)>0) then empty else "artifact_name" end),
+					(if (.run_id|sk) and ((.run_id|tostring|length)>0) then empty else "workflow_run_id" end),
+					(if (.repository|type)=="string" and (.repository|test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")) then empty else "repository" end),
+					(if (.size_in_bytes|type)=="number" and (.size_in_bytes>=0) then empty else "size" end),
+					(if (.sha256|hex64) then empty else "sha256" end),
+					(if .expired==false then empty else "expired" end),
+					(if .verified==true then empty else "verified" end)
+				] } ] as $r
+			| [ $r[] | select((.bad|length)>0) | "record["+(.artifact_id|tostring)+":"+(.bad|join("+"))+"]" ] as $mal
+			| [ $r[] | { run_id:(.run_id|tostring), artifact_id:(.artifact_id|tostring), name, sha256 } ] as $ids
+			| ($ids | group_by([.run_id,.artifact_id])) as $g
+			| [ $g[] | select(length>1) | { k:(.[0].run_id+"/"+.[0].artifact_id), d:(map({name,sha256})|unique|length) } ] as $m
+			| [ $m[] | select(.d>1) | .k ] as $conf
+			| [ $m[] | select(.d==1) | .k ] as $dup
+			| { ok: (($mal|length)==0 and ($conf|length)==0 and ($dup|length)==0),
+				reasons: ($mal + ($conf|map("CONFLICTING_IDENTITY:"+.)) + ($dup|map("DUPLICATE_RECORD:"+.))),
+				tuples: ($ids | unique) }
+		  end
+	' "$_ram_report" 2>/dev/null) || {
+		log_error "ra_artifacts_match_manifest: could not validate artifact report records (fail closed)"
 		return 2
 	}
-	_ra_m=$(jq -c '[ .body.artifact_digests[]?.sha256 | select(type == "string" and test("^[0-9a-f]{64}$")) ] | unique' "$2" 2>/dev/null) || {
-		log_error "ra_artifacts_match_manifest: could not read manifest artifact_digests (fail closed)"
+	if [ "$(printf '%s' "$_ram_r" | jq -r '.ok')" != true ]; then
+		log_error "ra_artifacts_match_manifest: REPORT artifact identity invalid — $(printf '%s' "$_ram_r" | jq -rc '.reasons') (fail closed)"
+		return 2
+	fi
+
+	# (2) Validate + normalize the MANIFEST artifact identity tuples (fail closed).
+	_ram_m=$(jq -c '
+		def hex64: type == "string" and test("^[0-9a-f]{64}$");
+		def sk: (type == "number" or type == "string");
+		(.body.artifact_digests) as $a
+		| if ($a == null) then { ok:true, reasons:[], tuples:[] }
+		  elif ($a | type) != "array" then { ok:false, reasons:["MANIFEST_ARTIFACT_DIGESTS_NOT_ARRAY"], tuples:[] }
+		  else
+			[ $a[] | { run_id, artifact_id, name, sha256,
+				bad:[
+					(if (.artifact_id|type)=="number" and (.artifact_id>0) then empty else "artifact_id" end),
+					(if (.name|type)=="string" and ((.name|length)>0) then empty else "name" end),
+					(if (.run_id|sk) and ((.run_id|tostring|length)>0) then empty else "run_id" end),
+					(if (.sha256|hex64) then empty else "sha256" end)
+				] } ] as $r
+			| [ $r[] | select((.bad|length)>0) | "digest["+(.artifact_id|tostring)+":"+(.bad|join("+"))+"]" ] as $mal
+			| [ $r[] | { run_id:(.run_id|tostring), artifact_id:(.artifact_id|tostring), name, sha256 } ] as $ids
+			| ($ids | group_by([.run_id,.artifact_id])) as $g
+			| [ $g[] | select(length>1) | { k:(.[0].run_id+"/"+.[0].artifact_id), d:(map({name,sha256})|unique|length) } ] as $m
+			| [ $m[] | select(.d>1) | .k ] as $conf
+			| [ $m[] | select(.d==1) | .k ] as $dup
+			| { ok: (($mal|length)==0 and ($conf|length)==0 and ($dup|length)==0),
+				reasons: ($mal + ($conf|map("CONFLICTING_IDENTITY:"+.)) + ($dup|map("DUPLICATE_RECORD:"+.))),
+				tuples: ($ids | unique) }
+		  end
+	' "$_ram_manifest" 2>/dev/null) || {
+		log_error "ra_artifacts_match_manifest: could not validate manifest artifact_digests (fail closed)"
 		return 2
 	}
-	if [ "$_ra_a" != "$_ra_m" ]; then
-		log_error "ra_artifacts_match_manifest: DIGEST_MISMATCH — verified artifact digests do not equal the manifest fingerprint (report=$_ra_a manifest=$_ra_m)"
+	if [ "$(printf '%s' "$_ram_m" | jq -r '.ok')" != true ]; then
+		log_error "ra_artifacts_match_manifest: MANIFEST artifact identity invalid — $(printf '%s' "$_ram_m" | jq -rc '.reasons') (fail closed)"
+		return 2
+	fi
+
+	# (3) Canonical identity sets (key-sorted, already unique).
+	_ram_rt=$(printf '%s' "$_ram_r" | jq -Sc '.tuples')
+	_ram_mt=$(printf '%s' "$_ram_m" | jq -Sc '.tuples')
+
+	# (4) Zero-artifact policy: genuinely empty on both sides is a match only when policy
+	#     (if supplied) does not require artifacts.
+	if [ "$_ram_rt" = '[]' ] && [ "$_ram_mt" = '[]' ]; then
+		if [ -n "$_ram_policy" ]; then
+			ra_json_ok "$_ram_policy" || { log_error "ra_artifacts_match_manifest: required-workflow policy '$_ram_policy' not JSON (fail closed)"; return 2; }
+			if jq -e '[ .required_workflows[]? | select(.artifacts_required == true) ] | length > 0' "$_ram_policy" >/dev/null 2>&1; then
+				log_error "ra_artifacts_match_manifest: ZERO_ARTIFACTS_NOT_PERMITTED — policy configures artifact-producing required workflow(s) but no verified artifacts were presented (fail closed)"
+				return 1
+			fi
+		fi
+		return 0
+	fi
+
+	# (5) EXACT identity-tuple set equality between report and manifest.
+	if [ "$_ram_rt" != "$_ram_mt" ]; then
+		log_error "ra_artifacts_match_manifest: DIGEST_MISMATCH — verified artifact identity set does not equal the manifest fingerprint (report=$_ram_rt manifest=$_ram_mt)"
 		return 1
 	fi
 	return 0

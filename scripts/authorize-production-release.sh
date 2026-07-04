@@ -261,7 +261,7 @@ verify_candidate_impl() {
 		if ra_gate_ok "$_av"; then _pass "artifact content verification is green (no rejected artifacts)"
 		else _fail "artifacts: verification report is not green"; fi
 		if [ -n "$_mf" ] && [ -f "$_mf" ]; then
-			_rc=0; ra_artifacts_match_manifest "$_av" "$_mf" || _rc=$?
+			_rc=0; ra_artifacts_match_manifest "$_av" "$_mf" "$REQUIRED_WORKFLOWS_POLICY" || _rc=$?
 			if [ "$_rc" = 0 ]; then _pass "artifact digests reproduce the manifest fingerprint"
 			else _fail "artifacts: digest reproducibility check REJECTED (mismatch/malformed)"; fi
 		fi
