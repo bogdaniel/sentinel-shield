@@ -97,6 +97,7 @@ ss_cleanup() {
 		echo "[sentinel-shield][warn] sync: operation failed/interrupted — rolling back snapshotted files." >&2
 		tx_rollback
 		rm -f "$LOCK" 2>/dev/null || true
+		_tx_rm "$(_tx_lockdir)"
 		[ -n "${TX_SNAP:-}" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
 		TX_ACTIVE=0
 		[ "$_rc" -eq 0 ] && _rc=4
@@ -184,7 +185,7 @@ sync_entry() { # <source> <target> <mode>
 	[ -e "$_src" ] || { echo "skip (missing in Sentinel Shield): $1"; echo skip >> "$SUM"; return; }
 	if [ ! -e "$_tgt" ]; then
 		if [ "$_mode" = "manual" ]; then echo "manual-review-needed (absent; copy if wanted): $2"; echo manual >> "$SUM"; return; fi
-		if [ "$APPLY" -eq 1 ]; then tx_snapshot "$2"; mkdir -p "$(dirname "$_tgt")"; cp "$_src" "$_tgt"; echo "created (was missing): $2"; else echo "would create (missing): $2"; fi
+		if [ "$APPLY" -eq 1 ]; then tx_install_file "$_src" "$2"; echo "created (was missing): $2"; else echo "would create (missing): $2"; fi
 		echo created >> "$SUM"; return
 	fi
 	if diff "$_src" "$_tgt" >/dev/null 2>&1; then echo "up-to-date: $2"; echo uptodate >> "$SUM"; return; fi
@@ -194,7 +195,7 @@ sync_entry() { # <source> <target> <mode>
 			echo "project-local-preserved (project owns it; NOT overwritten): $2"; echo preserved >> "$SUM" ;;
 		overwrite-if-force|sync-managed-block)
 			if [ "$APPLY" -eq 1 ] && [ "$FORCE" -eq 1 ]; then
-				tx_snapshot "$2"; cp "$_src" "$_tgt"; echo "updated (managed): $2"; echo updated >> "$SUM"
+				tx_install_file "$_src" "$2"; echo "updated (managed): $2"; echo updated >> "$SUM"
 			else
 				echo "manual-review-needed (managed drift; --apply --force to update): $2"; echo manual >> "$SUM"
 			fi ;;

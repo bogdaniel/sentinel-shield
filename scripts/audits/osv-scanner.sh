@@ -14,6 +14,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/isolated-tools.sh
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
+# shellcheck source=scripts/lib/bounded-process.sh
+. "$SCRIPT_DIR/../lib/bounded-process.sh"
+
+BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
+trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
 
 OUT="${1:-reports/raw/osv-scanner.json}"
 mkdir -p "$(dirname "$OUT")"
@@ -32,7 +37,15 @@ if ! command -v osv-scanner >/dev/null 2>&1; then
 	exit 0
 fi
 BINPATH=$(command -v osv-scanner)
-VER=$(osv-scanner --version 2>/dev/null | head -n1) || VER=""
+# BOUNDED version probe (scripts/lib/bounded-process.sh): a hung binary cannot stall the
+# wrapper. SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS overrides the version-probe cap.
+VTO=$(bp_timeout scanner-version SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS) || VTO=30
+if bp_run scanner-version "$VTO" "$BP_TMP_OUT" "$BP_TMP_ERR" -- osv-scanner --version; then
+	VER=$(head -n1 "$BP_TMP_OUT" 2>/dev/null) || VER=""
+else
+	[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "osv-scanner: version probe exceeded ${VTO}s; recording unknown version"
+	VER=""
+fi
 write_prov "local-binary" "$VER" "$BINPATH"
 osv-scanner --format json --output "$OUT" -r . || true
 exit 0

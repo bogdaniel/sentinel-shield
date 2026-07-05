@@ -402,7 +402,15 @@ BACKUP=$(mktemp -d)
 trap 'rm -rf "$BACKUP" "$EFFECTIVE"' EXIT INT TERM
 SNAP_FILES="composer.json composer.lock package.json package-lock.json pnpm-lock.yaml yarn.lock"
 for f in $SNAP_FILES; do
-	[ -f "$TARGET/$f" ] && cp "$TARGET/$f" "$BACKUP/$f"
+	if [ -f "$TARGET/$f" ]; then
+		# VERIFIED snapshot copy: capture the pre-apply state completely and confirm it byte-
+		# matches before any package manager mutates it. A failed/mismatched backup is fail-closed
+		# (a corrupt snapshot could otherwise silently prevent a faithful rollback later).
+		if ! cp "$TARGET/$f" "$BACKUP/$f" || ! cmp -s "$TARGET/$f" "$BACKUP/$f"; then
+			log_error "bootstrap: could not make a verified backup of '$f' before mutating — aborting."
+			exit 4
+		fi
+	fi
 done
 HAD_VENDOR=0; [ -d "$TARGET/vendor" ] && HAD_VENDOR=1
 HAD_NODE_MODULES=0; [ -d "$TARGET/node_modules" ] && HAD_NODE_MODULES=1

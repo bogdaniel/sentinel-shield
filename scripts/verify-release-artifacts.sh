@@ -38,6 +38,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/archive-safety.sh
 . "$SCRIPT_DIR/lib/archive-safety.sh"
+# shellcheck source=scripts/lib/redaction.sh
+. "$SCRIPT_DIR/lib/redaction.sh"
 
 usage() {
 	printf 'Usage: verify-release-artifacts.sh (--evidence <file> | --repo <owner/name> --run <id>) [--commit <40hex>] [--require-embedded-commit] [--min-files <n>] [--max-bytes <n>] [--max-entries <n>] [--workdir <dir>] [--output <path>]\n'
@@ -145,8 +147,12 @@ verify_one_artifact() {
 			_reasons="$_reasons download-failed"; _archive_safe=false
 		else
 			_sha=$(ss_sha256_file "$_zip" || printf '')
-			# Pre-extraction safety scan.
+			# Pre-extraction safety scan (path traversal, symlinks, dupes, zip-bomb) PLUS a
+			# case-fold collision scan: two entries differing only by case would silently
+			# clobber each other on a case-insensitive extraction filesystem.
 			_scan=$(archive_safety_scan "$_zip" "$MAX_BYTES" "$MAX_ENTRIES")
+			_cscan=$(archive_safety_case_scan "$_zip")
+			[ -n "$_cscan" ] && _scan=$(printf '%s\n%s' "$_scan" "$_cscan" | sed '/^$/d')
 			if [ -n "$_scan" ]; then
 				_archive_safe=false
 				# Fold each violation token into the reasons list.
@@ -165,6 +171,14 @@ verify_one_artifact() {
 						done | jq -sc .
 					)
 					_filecount=$(printf '%s' "$_files_json" | jq 'length')
+						# CONFIRMED-SECRET gate: a release artifact must NEVER carry a confirmed
+						# credential. rd_scan_paths screens the extracted tree for high-confidence
+						# secret shapes (counts only, no values) and returns non-zero on any hit —
+						# fail closed so the artifact is REJECTED before it can back a release.
+						rd_scan_paths "$_extract" >/dev/null 2>&1 && _secrc=0 || _secrc=$?
+						if [ "${_secrc:-0}" -ge 1 ]; then
+							_archive_safe=false; _reasons="$_reasons confirmed-secret-in-artifact"
+						fi
 					# Embedded commit: does any file reference the engine commit?
 					if [ -n "$COMMIT" ] && [ "$COMMIT" != unknown ]; then
 						if grep -rqIF -- "$COMMIT" "$_extract" 2>/dev/null; then _embedded_found=true; fi

@@ -78,16 +78,50 @@ text on `stderr`.
 
 ## Redaction guarantees
 
-Everything placed into the envelope is redacted before emission:
+Everything placed into the envelope is redacted **before emission** by the shared
+redaction library [`scripts/lib/redaction.sh`](../scripts/lib/redaction.sh)
+(`oc_redact` delegates to `rd_redact_stream`), so the envelope, journals, reports,
+and artifact scans share **one** redaction implementation. It applies, in order:
 
-- `$HOME` is relativized to `~`.
-- The run's `--target` root is relativized to `<target>`.
-- Common secret shapes are masked: AWS access keys, GitHub tokens, JWTs, bearer
-  tokens, and `NAME=VALUE` pairs whose `NAME` ends in
-  `_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD`/`_PASSWD`/`_PWD`.
+1. A **literal sensitive-value registry** — exact secret values a caller registers
+   (`rd_secret_add`) are removed as **literal** substrings, **longest-value-first**,
+   so a token containing regex metacharacters, `/`, `#`, `&`, backslashes, or
+   Unicode can neither inject a pattern nor break the redactor's delimiters, and
+   overlapping values collapse without leaving a fragment. The registry is **capped**
+   in count and per-value size; extremely long untrusted lines are **bounded**
+   *after* literal redaction so an embedded secret is removed before truncation.
+2. **Structural (shape-based) masking** — GitHub tokens, `Authorization` headers,
+   URL userinfo credentials, npm / Composer / registry / docker auth, JWTs, AWS
+   access keys, sensitive query parameters, SSH private-key and GnuPG paths, emails,
+   and `NAME=VALUE` pairs whose `NAME` ends in
+   `_KEY`/`_TOKEN`/`_SECRET`/`_PASSWORD`/`_PASSWD`/`_PWD`/`_AUTH`.
+3. **Path relativization** — `$HOME` → `~`, the run's `--target` root → `<target>`,
+   the repo root → `<repo>`, temp roots → `<tmp>`.
 
 The envelope therefore carries **no absolute local paths and no secret values**,
 so it is safe to log, attach to CI artifacts, or paste into an issue.
+
+Redaction happens **before persistence**, not only before display: callers pipe
+intermediate JSON and journal writes through `rd_redact_stream` so a secret value
+never reaches an intermediate file. `set -x` is disabled inside every
+secret-handling function so a shell trace can never echo a value, and
+`rd_run_isolated` runs an external tool under an **allowlisted** environment
+(`env -i` + named vars) so a child process never inherits an ambient secret. The
+full environment is never printed.
+
+### Confirmed-secret artifact gate + redaction report
+
+Before an artifact is uploaded or allowed to back a release, `rd_scan_paths`
+screens it for **high-confidence** credential shapes (GitHub tokens, AWS keys,
+JWTs, private-key blocks, npm tokens, Slack tokens, Google API keys) and **fails
+closed** (returns non-zero) if any is present. It emits a machine-readable
+**redaction report** conforming to
+[`schemas/redaction-report.schema.json`](../schemas/redaction-report.schema.json)
+that carries **counts + category names + bounded-registry metadata only — never a
+value**. `scripts/verify-release-artifacts.sh` rejects any downloaded artifact
+whose extracted tree contains a confirmed secret (`confirmed-secret-in-artifact`),
+and `ci-security.yml` runs the same fail-closed scan over the normalized security
+summary before upload.
 
 ## Reconciliation notes (backward compatibility)
 
@@ -135,6 +169,98 @@ command runs untouched and its human output and exit code are provably unchanged
 
 Conformance is covered by `tests/prod/230-output-contract.sh` (run under
 `sh scripts/self-test.sh production-readiness`).
+
+## Bounded external processes (`bounded-command-result`)
+
+Every external process the engine shells out to — `docker info` / `docker inspect`
+/ `docker image inspect`, scanner version probes and scanner execution, `gh api`,
+`git verify-tag`, package-manager version probes and installs, archive
+inspection/extraction, and external consumer validation — runs under a hard,
+bounded wall-clock timeout via [`scripts/lib/bounded-process.sh`](../scripts/lib/bounded-process.sh)
+(`bp_*` functions). This eliminates indefinite execution: a wedged Docker daemon
+or a stuck API can no longer freeze a gate.
+
+`bp_run` escalates **TERM → (bounded grace) → KILL**, reaps the whole descendant
+tree (no orphans), preserves the real exit code on normal completion, and
+classifies the outcome. `bp_result_json` emits ONE machine-readable object
+conforming to [`schemas/bounded-command-result.schema.json`](../schemas/bounded-command-result.schema.json):
+
+```json
+{
+  "schema": "bounded-command-result",
+  "command": "docker",
+  "command_category": "docker-probe",
+  "status": "timed-out",
+  "exit_code": null,
+  "signal": null,
+  "timeout_seconds": 15,
+  "duration_seconds": 15,
+  "timed_out": true,
+  "timestamp": "2026-07-04T00:00:00Z"
+}
+```
+
+`status` is one of `success | failed | timed-out | unavailable | signalled`.
+`exit_code` is `null` on `timed-out`, `unavailable`, and `signalled`; `signal`
+carries the number on `signalled`. **`command` is the executable basename only —
+command arguments are NEVER surfaced**, because they may carry credentials
+(tokens, registry auth, `--propertyfile` paths).
+
+### Configuration (safe defaults)
+
+| Category | Env override | Default (s) |
+| --- | --- | --- |
+| generic external process | `SENTINEL_SHIELD_PROCESS_TIMEOUT_SECONDS` | 120 |
+| docker probe (info/inspect) | `SENTINEL_SHIELD_DOCKER_PROBE_TIMEOUT_SECONDS` | 15 |
+| GitHub API (`gh api`) | `SENTINEL_SHIELD_GITHUB_API_TIMEOUT_SECONDS` | 60 |
+| scanner version probe | `SENTINEL_SHIELD_SCANNER_VERSION_TIMEOUT_SECONDS` | 30 |
+| scanner execution | `SENTINEL_SHIELD_SCANNER_TIMEOUT_SECONDS` | 300 |
+| git signature verify | `SENTINEL_SHIELD_GIT_VERIFY_TIMEOUT_SECONDS` | 60 |
+| package-manager probe | `SENTINEL_SHIELD_PACKAGE_PROBE_TIMEOUT_SECONDS` | 30 |
+| package install | `SENTINEL_SHIELD_PACKAGE_INSTALL_TIMEOUT_SECONDS` | 600 |
+| archive inspect/extract | `SENTINEL_SHIELD_ARCHIVE_TIMEOUT_SECONDS` | 120 |
+| consumer validation | `SENTINEL_SHIELD_CONSUMER_TIMEOUT_SECONDS` | 300 |
+
+Scanner-specific overrides are honoured too (e.g.
+`SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS`, `SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS`
+for the version probe). The kill grace is `SENTINEL_SHIELD_PROCESS_KILL_GRACE_SECONDS`
+(default 5s). The absolute upper bound is `SENTINEL_SHIELD_PROCESS_TIMEOUT_MAX_SECONDS`
+(default 86400). **Invalid timeouts fail closed**: zero, negative, non-numeric, or
+above-max values reject the invocation (return code 2) — nothing is silently coerced.
+
+When GNU `timeout`/`gtimeout` is present it is used; otherwise a portable watchdog
+(background command + once-per-second poll + `pgrep`-based tree reap) provides
+identical semantics. Set `SENTINEL_SHIELD_BP_FORCE_PORTABLE=1` to force the portable
+path (used by the test suite for deterministic escalation coverage).
+
+Conformance is covered by `tests/prod/250-bounded-processes.sh`. The timeout state
+also reaches the security audit report — see
+[security-operations.md](security-operations.md).
+
+## Health report (`scripts/health.sh`)
+
+Alongside the `--output json` envelope, the production health command emits a
+dedicated machine-readable **health report** on `stdout`
+([`schemas/health-report.schema.json`](../schemas/health-report.schema.json)): a
+rolled-up verdict (`healthy | degraded | unhealthy | unknown`) plus a per-check
+breakdown with **stable reason codes**. The process exit code encodes the
+verdict (`0`/`1`/`2`/`3`, `64` for a usage error). It is read-only and OFFLINE by
+default — the only network operation is a bounded connectivity probe gated behind
+`--check-network`. Full reason-code table and tuning knobs:
+[operations-runbook.md](operations-runbook.md).
+
+## Operational event stream (opt-in JSONL)
+
+Every long-running or mutating operation can emit a normalized, correlated
+**operational-event** stream ([`schemas/operational-event.schema.json`](../schemas/operational-event.schema.json))
+to a JSONL sink. It is strictly opt-in — enabled only when
+`SENTINEL_SHIELD_EVENTS=1` **and** `SENTINEL_SHIELD_EVENTS_FILE=<path>` are set —
+and off by default (a zero-cost no-op otherwise). Events are grouped by
+`correlation_id` (shared across an operation and the recovery it triggers) and
+split by `operation_id`, carry stable `reason_code`s, a non-reversible hashed
+target identity, and a best-effort `elapsed_ms`. See
+[operations-runbook.md](operations-runbook.md) for the model, correlation
+workflow, and validation.
 
 ## Deferred (not in this contract)
 

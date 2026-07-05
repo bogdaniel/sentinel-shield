@@ -45,6 +45,12 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# Opt-in operational-event emission (off by default). Sourced defensively; every oe_emit is a
+# no-op unless SENTINEL_SHIELD_EVENTS=1 + a sink are configured.
+if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
+  # shellcheck source=scripts/lib/operational-events.sh
+  . "$SCRIPT_DIR/lib/operational-events.sh"
+fi
 # Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
 # Sourced defensively: the envelope layer is an optional add-on, so the command
 # still works if the lib is absent (e.g. a minimal copied tree in a test fixture).
@@ -73,6 +79,36 @@ case "$TOOL_MODE" in
   ""|config-only|require-existing|bootstrap-tools) ;;
   *) log_error "doctor: invalid --tool-mode '$TOOL_MODE' (config-only|require-existing|bootstrap-tools)"; exit 2 ;;
 esac
+
+# Opt-in operational events: a start marker and a fail-safe EXIT trap that emits a terminal event
+# whose status is derived from doctor's real exit code. The trap CAPTURES $? first and RETURNS it
+# unchanged, so it can never perturb doctor's established exit-code precedence (3 > 2 > 4 > 1 > 0).
+_oe_doctor_start_ms=""
+if command -v oe_now_ms >/dev/null 2>&1; then _oe_doctor_start_ms=$(oe_now_ms); fi
+if command -v oe_emit >/dev/null 2>&1; then
+  oe_emit --command doctor --phase start --event-type start --status in-progress \
+    --reason-code doctor_begin --component doctor --target "$TARGET" \
+    ${_oe_doctor_start_ms:+--start-ms "$_oe_doctor_start_ms"} || :
+fi
+_oe_doctor_on_exit() {
+  _oe_rc=$?
+  if command -v oe_emit >/dev/null 2>&1; then
+    _oe_st=success; _oe_et=complete; _oe_sev=info; _oe_rs=doctor_healthy
+    case "$_oe_rc" in
+      0) : ;;
+      1) _oe_sev=warning; _oe_rs=doctor_degraded ;;
+      2) _oe_st=failure; _oe_et=error; _oe_sev=error; _oe_rs=doctor_config_invalid ;;
+      3) _oe_st=failure; _oe_et=error; _oe_sev=error; _oe_rs=doctor_required_tool_missing ;;
+      4) _oe_st=failure; _oe_et=error; _oe_sev=error; _oe_rs=doctor_exec_problem ;;
+      *) _oe_st=unknown; _oe_et=error; _oe_sev=warning; _oe_rs=doctor_unexpected ;;
+    esac
+    oe_emit --command doctor --phase complete --event-type "$_oe_et" --severity "$_oe_sev" \
+      --status "$_oe_st" --reason-code "$_oe_rs" --component doctor --target "$TARGET" \
+      ${_oe_doctor_start_ms:+--start-ms "$_oe_doctor_start_ms"} >/dev/null 2>&1 || :
+  fi
+  return "$_oe_rc"
+}
+trap _oe_doctor_on_exit EXIT
 
 # Control-waivers file: explicit --control-waivers wins, else the target default.
 # Validate up front via the SHARED lib (full schema + real-date + self-approval);

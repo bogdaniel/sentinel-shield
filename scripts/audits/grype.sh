@@ -20,6 +20,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/isolated-tools.sh
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
+# shellcheck source=scripts/lib/bounded-process.sh
+. "$SCRIPT_DIR/../lib/bounded-process.sh"
+
+BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
+trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
 
 OUT="${1:-reports/raw/grype.json}"
 mkdir -p "$(dirname "$OUT")"
@@ -38,17 +43,33 @@ write_prov() { # write_prov <source> <version> <binpath> <imageref> <imagedigest
 
 unavailable() { echo "[sentinel-shield] grype unavailable: $1 (no report written; collector reports unavailable)." >&2; write_prov "unresolved" "" "" "" ""; exit 0; }
 
-# Resolve executor.
+# Resolve executor. The version probe and the docker-inspect digest resolution are BOUNDED
+# (scripts/lib/bounded-process.sh): a hung binary or a wedged Docker daemon can no longer
+# stall the scan indefinitely. SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS overrides the version
+# probe cap; SENTINEL_SHIELD_DOCKER_PROBE_TIMEOUT_SECONDS the docker inspect cap.
 if command -v grype >/dev/null 2>&1; then
 	EXEC="grype"
 	_gbin=$(command -v grype)
-	_gver=$(grype version 2>/dev/null | awk '/[Vv]ersion:/{print $2; exit}') || _gver=""
+	_gvto=$(bp_timeout scanner-version SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS) || _gvto=30
+	if bp_run scanner-version "$_gvto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- grype version; then
+		_gver=$(awk '/[Vv]ersion:/{print $2; exit}' "$BP_TMP_OUT") || _gver=""
+	else
+		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: version probe exceeded ${_gvto}s; recording unknown version"
+		_gver=""
+	fi
 	write_prov "local-binary" "$_gver" "$_gbin" "" ""
 elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	EXEC="docker run --rm -v $PWD:/src -w /src $IMAGE"
 	case "$IMAGE" in
 		*@sha256:*) _gdig="sha256:${IMAGE##*@sha256:}" ;;
-		*) _gdig=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE" 2>/dev/null || true)
+		*) _gpto=$(bp_timeout docker-probe) || _gpto=15
+		   if bp_run docker-probe "$_gpto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- \
+				docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE"; then
+				_gdig=$(head -n1 "$BP_TMP_OUT" 2>/dev/null) || _gdig=""
+		   else
+				[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: docker inspect exceeded ${_gpto}s (daemon unreachable); image digest unresolved"
+				_gdig=""
+		   fi
 		   case "$_gdig" in *@sha256:*) _gdig="sha256:${_gdig##*@sha256:}" ;; *) _gdig="" ;; esac ;;
 	esac
 	write_prov "docker-image" "" "" "$IMAGE" "$_gdig"

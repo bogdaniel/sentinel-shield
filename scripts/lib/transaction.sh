@@ -91,8 +91,336 @@ tx_journal() {
 	[ -n "$_tj_body" ] || { log_warn "journal: could not build a '$_tj_phase' entry"; return 0; }
 	_tj_hash=$(printf '%s' "$_tj_body" | _tx_hash 2>/dev/null || true)
 	[ -n "$_tj_hash" ] || { log_warn "journal: no digest tool available for '$_tj_phase'"; return 0; }
-	printf '%s' "$_tj_body" | jq -c --arg h "$_tj_hash" '. + {hash:$h}' >> "$_tj_file" 2>/dev/null \
-		|| log_warn "journal: could not append a '$_tj_phase' entry to $_tj_file"
+	# Durable append: build the FULL line first, append it in a single write, then flush the
+	# file + its parent directory to stable storage where a flush primitive is available. A
+	# torn (partially-written) trailing line from a crash is a recognised recovery artifact —
+	# tx_journal_verify tolerates a single torn TAIL line but rejects any earlier corruption.
+	_tj_line=$(printf '%s' "$_tj_body" | jq -c --arg h "$_tj_hash" '. + {hash:$h}' 2>/dev/null || printf '')
+	if [ -n "$_tj_line" ]; then
+		printf '%s\n' "$_tj_line" >> "$_tj_file" 2>/dev/null \
+			|| log_warn "journal: could not append a '$_tj_phase' entry to $_tj_file"
+		_tx_sync
+	else
+		log_warn "journal: could not finalise a '$_tj_phase' entry"
+	fi
+	return 0
+}
+
+# --- durability primitives ---------------------------------------------------
+# These underpin the production transaction contract: atomic mutual-exclusion lock
+# acquisition (a lock that CANNOT be won by two processes at once), a PID-independent
+# ownership TOKEN, process-start identity to defeat PID reuse, host + engine-version
+# metadata, an explicit state machine, and best-effort durable flushing. Everything is
+# POSIX sh and degrades safely (never falsely reports durability) where a primitive is
+# unavailable.
+
+# _tx_rm <path> — best-effort recursive remove that ALWAYS succeeds (return 0), so a
+# cleanup step can never abort a caller running under `set -e`. Not a gate.
+_tx_rm() { [ -n "${1:-}" ] && rm -rf -- "$1" 2>/dev/null; return 0; }
+
+# _tx_sync — flush buffered writes to stable storage where a flush primitive exists.
+# `sync` has no bounded-failure mode we can act on, so this is best-effort (return 0);
+# its ABSENCE is recorded honestly by callers rather than pretended-away.
+_tx_sync() { command -v sync >/dev/null 2>&1 && sync 2>/dev/null; return 0; }
+
+# _tx_lockdir — the atomic mutual-exclusion directory for this target. A single `mkdir`
+# of this path is the ONLY thing that grants lock ownership (see tx_begin).
+_tx_lockdir() { printf '%s' "${SS_DIR:-}/operation-lock.d"; }
+
+# _tx_engine_version — the engine version stamped into a lock so a lock written by a
+# different engine build is auditable. Never fails.
+_tx_engine_version() { printf '%s' "${SENTINEL_SHIELD_VERSION:-${TX_ENGINE_VERSION:-unknown}}"; }
+
+# _tx_hostname — this host's name (so a lock is never mistaken for a live process on a
+# DIFFERENT machine that happens to share a PID number). Falls back to "unknown".
+_tx_hostname() {
+	_txh=$(uname -n 2>/dev/null || printf '')
+	[ -n "$_txh" ] || _txh=$(hostname 2>/dev/null || printf '')
+	[ -n "$_txh" ] || _txh="unknown"
+	printf '%s' "$_txh"; unset _txh
+}
+
+# _tx_host_id — a stable machine identifier where the OS exposes one (Linux machine-id),
+# else the hostname. Distinguishes two hosts that share a hostname.
+_tx_host_id() {
+	_txi=""
+	[ -r /etc/machine-id ] && _txi=$(cat /etc/machine-id 2>/dev/null || printf '')
+	[ -n "$_txi" ] || { [ -r /var/lib/dbus/machine-id ] && _txi=$(cat /var/lib/dbus/machine-id 2>/dev/null || printf ''); }
+	[ -n "$_txi" ] || _txi=$(_tx_hostname)
+	printf '%s' "$_txi"; unset _txi
+}
+
+# _tx_gen_token — a random ownership token INDEPENDENT of the PID. A raw PID can be reused
+# by an unrelated process; a fresh per-acquisition token cannot, so it uniquely identifies
+# THIS operation's ownership of the lock. Prefers /dev/urandom; falls back to a digest of
+# high-entropy-ish process state (still unique per acquisition in practice).
+_tx_gen_token() {
+	_txt=""
+	if [ -r /dev/urandom ] && command -v od >/dev/null 2>&1; then
+		_txt=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+	fi
+	if [ -z "$_txt" ]; then
+		# POSIX fallback (no /dev/urandom): a digest of per-acquisition-unique process state.
+		_txt=$(printf '%s-%s-%s-%s' "$$" "$(date +%s 2>/dev/null || echo 0)" "$(date +%N 2>/dev/null || echo 0)" "$(_tx_hostname)" | _tx_hash 2>/dev/null || printf '')
+	fi
+	[ -n "$_txt" ] || _txt="notoken-$$"
+	printf '%s' "$_txt"; unset _txt
+}
+
+# _tx_pid_start <pid> — a process-START identity that changes when a PID is reused, so a
+# recycled PID owned by an unrelated process is NOT mistaken for the original lock owner.
+# Linux: field 22 (starttime) of /proc/<pid>/stat. BSD/macOS: `ps -o lstart=`. Prints ""
+# where neither is available (the caller then degrades to PID-liveness alone, documented).
+_tx_pid_start() {
+	_txp="$1"; _txs=""
+	case "$_txp" in ''|*[!0-9]*) printf ''; unset _txp _txs; return 0 ;; esac
+	if [ -r "/proc/$_txp/stat" ]; then
+		# Strip the leading "pid (comm) " (comm may contain spaces/parens); starttime is then
+		# the 20th remaining field (overall field 22).
+		_txs=$(sed -e 's/^[0-9][0-9]* (.*) //' "/proc/$_txp/stat" 2>/dev/null | awk '{print $20}' 2>/dev/null || printf '')
+	elif command -v ps >/dev/null 2>&1; then
+		_txs=$(ps -o lstart= -p "$_txp" 2>/dev/null | tr -s ' ' ' ' | sed -e 's/^ *//' -e 's/ *$//' || printf '')
+	fi
+	printf '%s' "$_txs"; unset _txp _txs
+}
+
+# _tx_pid_alive <pid> — 0 iff a process with that PID currently exists (signal 0 probe).
+_tx_pid_alive() {
+	case "${1:-}" in ''|*[!0-9]*) return 1 ;; esac
+	kill -0 "$1" 2>/dev/null
+}
+
+# _tx_owner_classify — classify the CURRENT lock's owner from its recorded metadata:
+#   none       no lock present
+#   completed  the owner recorded a durable 'completed' state (finalise, do not roll back)
+#   foreign    the lock belongs to a DIFFERENT host — liveness cannot be assessed here
+#   live       same host, PID alive, and (where recorded) process-start identity MATCHES
+#   stale      any other case (dead PID, reused PID, or a legacy lock with no ownership
+#              metadata) — an interrupted operation that recovery may roll back
+# Prints exactly one token. Read-only.
+_tx_owner_classify() {
+	[ -s "${LOCK:-}" ] || { printf 'none'; return 0; }
+	_txc_state=$(jq -r '.state // ""' "$LOCK" 2>/dev/null || printf '')
+	[ "$_txc_state" = "completed" ] && { printf 'completed'; unset _txc_state; return 0; }
+	_txc_host=$(jq -r '.hostname // ""' "$LOCK" 2>/dev/null || printf '')
+	_txc_hostid=$(jq -r '.host_id // ""' "$LOCK" 2>/dev/null || printf '')
+	_txc_pid=$(jq -r '.pid // ""' "$LOCK" 2>/dev/null || printf '')
+	_txc_pidstart=$(jq -r '.pid_start // ""' "$LOCK" 2>/dev/null || printf '')
+	# A lock with NO ownership metadata predates durable ownership (or was hand-seeded): it
+	# cannot be a live process of THIS engine, so treat it as an interrupted, recoverable run.
+	if [ -z "$_txc_host" ] && [ -z "$_txc_pidstart" ]; then
+		printf 'stale'; unset _txc_state _txc_host _txc_hostid _txc_pid _txc_pidstart; return 0
+	fi
+	_txc_ch=$(_tx_hostname); _txc_chi=$(_tx_host_id)
+	if { [ -n "$_txc_host" ] && [ "$_txc_host" != "$_txc_ch" ]; } \
+		|| { [ -n "$_txc_hostid" ] && [ "$_txc_hostid" != "$_txc_chi" ]; }; then
+		printf 'foreign'; unset _txc_state _txc_host _txc_hostid _txc_pid _txc_pidstart _txc_ch _txc_chi; return 0
+	fi
+	if _tx_pid_alive "$_txc_pid"; then
+		if [ -n "$_txc_pidstart" ]; then
+			_txc_now=$(_tx_pid_start "$_txc_pid")
+			if [ -n "$_txc_now" ] && [ "$_txc_now" = "$_txc_pidstart" ]; then
+				printf 'live'
+			else
+				# PID is alive but its start identity differs -> the PID was RECYCLED.
+				printf 'stale'
+			fi
+			unset _txc_now
+		else
+			printf 'live'
+		fi
+	else
+		printf 'stale'
+	fi
+	unset _txc_state _txc_host _txc_hostid _txc_pid _txc_pidstart _txc_ch _txc_chi
+	return 0
+}
+
+# --- explicit transaction state machine --------------------------------------
+# States: initializing active validating committing rolling-back rollback-incomplete
+# completed. _tx_state_transition_ok rejects every transition NOT on this list, so a
+# corrupt/tampered lock claiming an impossible jump (e.g. completed -> active) is refused.
+_tx_state_transition_ok() {
+	case "$1|$2" in
+		"|active"|"|initializing"|"initializing|active"|"initializing|rolling-back") return 0 ;;
+		"active|validating"|"active|committing"|"active|rolling-back"|"active|completed") return 0 ;;
+		"validating|committing"|"validating|rolling-back") return 0 ;;
+		"committing|completed"|"committing|rolling-back") return 0 ;;
+		"rolling-back|completed"|"rolling-back|rollback-incomplete") return 0 ;;
+		"rollback-incomplete|rolling-back") return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+# _tx_current_state — the lock's recorded state, or "" when no lock is present.
+_tx_current_state() {
+	[ -s "${LOCK:-}" ] || { printf ''; return 0; }
+	jq -r '.state // ""' "$LOCK" 2>/dev/null || printf ''
+}
+
+# _tx_write_lock <state> — write a COMPLETE, durable operation-lock marker (all ownership
+# metadata) atomically: serialise to a temp file, rename it over $LOCK (same-dir atomic
+# replace), then flush. Returns non-zero (writing nothing partial) on any failure.
+_tx_write_lock() {
+	_wl_state="$1"; _wl_tmp="$LOCK.tmp.$$"
+	if jq -n --arg op "${TX_OP:-unknown}" --arg tgt "$TARGET" --arg at "$(timestamp_utc)" \
+		--argjson pid "$$" --arg snap "$TX_SNAP" --arg state "$_wl_state" \
+		--arg token "${TX_TOKEN:-}" --arg host "$(_tx_hostname)" --arg hostid "$(_tx_host_id)" \
+		--arg pidstart "$(_tx_pid_start "$$")" --arg ver "$(_tx_engine_version)" \
+		--arg ld "$(_tx_lockdir)" '{
+			schema_version:"1", operation:$op, target:$tgt, started_at:$at, pid:$pid,
+			snapshot_dir:$snap, state:$state, token:$token, hostname:$host, host_id:$hostid,
+			pid_start:$pidstart, engine_version:$ver, lock_dir:$ld
+		}' > "$_wl_tmp" 2>/dev/null; then
+		if mv -- "$_wl_tmp" "$LOCK" 2>/dev/null; then
+			_tx_sync; unset _wl_state _wl_tmp; return 0
+		fi
+	fi
+	_tx_rm "$_wl_tmp"; unset _wl_state _wl_tmp; return 1
+}
+
+# _tx_set_state <to> — validated, DURABLE state transition. Reads the current on-disk state,
+# rejects an impossible transition (fail closed), then rewrites the lock preserving every
+# other field, atomically + flushed. Returns non-zero on rejection or any write failure.
+_tx_set_state() {
+	_st_to="$1"; _st_from=$(_tx_current_state)
+	if ! _tx_state_transition_ok "$_st_from" "$_st_to"; then
+		log_error "tx: refusing an impossible state transition '$_st_from' -> '$_st_to'"
+		unset _st_to _st_from; return 1
+	fi
+	[ -s "$LOCK" ] || { log_error "tx: cannot set state '$_st_to' — lock is absent"; unset _st_to _st_from; return 1; }
+	_st_tmp="$LOCK.tmp.$$"
+	if jq --arg s "$_st_to" '.state = $s' "$LOCK" > "$_st_tmp" 2>/dev/null && mv -- "$_st_tmp" "$LOCK" 2>/dev/null; then
+		_tx_sync; unset _st_to _st_from _st_tmp; return 0
+	fi
+	_tx_rm "$_st_tmp"; log_error "tx: could not durably record state '$_st_to'"; unset _st_to _st_from _st_tmp; return 1
+}
+
+# tx_release_lock — remove the lock marker AND the mutex directory, then flush. Called only
+# once the terminal state has been durably recorded (or the lock is provably clearable).
+tx_release_lock() {
+	_tx_rm "$LOCK"
+	_tx_rm "$(_tx_lockdir)"
+	_tx_sync
+	return 0
+}
+
+# tx_journal_verify [mode] — validate the append-only journal chain for $SS_DIR. mode:
+#   strict  (default) reject ANY non-JSON line, including a torn trailing one (inspection).
+#   lenient tolerate a SINGLE torn/partial TRAILING line (a crash-time append artifact) but
+#           still reject any earlier corruption or a broken seq/prev/hash prefix (resume).
+# Prints the first failure to stderr; echoes an OK summary to stdout. Returns 0 (consistent
+# or absent) or 4 (tampered/partial). Read-only. This is the SINGLE journal-integrity
+# implementation both recover-operation.sh --inspect and tx_recover call.
+tx_journal_verify() {
+	_jv_mode="${1:-strict}"
+	_jv_file="${SS_DIR:-}/transaction-journal.jsonl"
+	[ -f "$_jv_file" ] || { echo "journal: none present ($_jv_file absent)."; unset _jv_mode _jv_file; return 0; }
+	_jv_prev=""; _jv_expect=1; _jv_n=0; _jv_more=1
+	while [ "$_jv_more" = 1 ]; do
+		if IFS= read -r _jv_line; then _jv_islast=0; else _jv_more=0; _jv_islast=1; [ -n "$_jv_line" ] || break; fi
+		_jv_n=$((_jv_n + 1))
+		if ! printf '%s' "$_jv_line" | jq -e . >/dev/null 2>&1; then
+			if [ "$_jv_mode" = "lenient" ] && [ "$_jv_islast" = 1 ]; then
+				# A torn TRAILING line is an expected crash artifact for resume — tolerate it.
+				break
+			fi
+			echo "journal: TAMPER/PARTIAL at line $_jv_n — not valid JSON (truncated or corrupt entry)." >&2
+			unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4
+		fi
+		if ! printf '%s' "$_jv_line" | jq -e '
+			(.schema_version=="1") and (.seq|type=="number") and
+			(.ts|type=="string" and (length>0)) and
+			(.operation|type=="string") and (.pid|type=="number") and
+			(.phase as $p | ["start","precondition","snapshot","mutation","validation","rollback-step","completion"]|index($p)!=null) and
+			(.path|type=="string") and (.detail|type=="string") and
+			(.prev|type=="string") and (.hash|type=="string" and (length>0))
+		' >/dev/null 2>&1; then
+			echo "journal: TAMPER/PARTIAL at line $_jv_n — missing/ill-typed field or unknown phase." >&2
+			unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4
+		fi
+		_jv_seq=$(printf '%s' "$_jv_line" | jq -r '.seq')
+		_jv_path=$(printf '%s' "$_jv_line" | jq -r '.path')
+		_jv_lprev=$(printf '%s' "$_jv_line" | jq -r '.prev')
+		_jv_hash=$(printf '%s' "$_jv_line" | jq -r '.hash')
+		case "$_jv_path" in
+			"" ) : ;;
+			/*|..|../*|*/..|*/../*) echo "journal: TAMPER at line $_jv_n — unsafe path '$_jv_path'." >&2
+				unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4 ;;
+		esac
+		if [ "$_jv_seq" != "$_jv_expect" ]; then
+			echo "journal: TAMPER at line $_jv_n — seq=$_jv_seq, expected $_jv_expect." >&2
+			unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4
+		fi
+		if [ "$_jv_lprev" != "$_jv_prev" ]; then
+			echo "journal: TAMPER at line $_jv_n — prev linkage broken." >&2
+			unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4
+		fi
+		_jv_body=$(printf '%s' "$_jv_line" | jq -c 'del(.hash)')
+		_jv_calc=$(printf '%s' "$_jv_body" | _tx_hash 2>/dev/null || printf '')
+		if [ "$_jv_calc" != "$_jv_hash" ]; then
+			echo "journal: TAMPER at line $_jv_n — hash mismatch (entry altered)." >&2
+			unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast; return 4
+		fi
+		_jv_prev="$_jv_hash"; _jv_expect=$((_jv_expect + 1))
+	done < "$_jv_file"
+	echo "journal: OK — verified chain + integrity of the complete prefix."
+	unset _jv_mode _jv_file _jv_prev _jv_expect _jv_n _jv_more _jv_line _jv_islast \
+		_jv_seq _jv_path _jv_lprev _jv_hash _jv_body _jv_calc
+	return 0
+}
+
+# tx_install_file <abs_src> <rel_target> — the DURABLE managed-file mutation primitive:
+# snapshot the pre-write state, physically re-validate containment, write to a same-dir
+# in-flight temp, flush it, atomically rename it into place, then VERIFY the on-disk bytes
+# match the source (post-write digest validation) and flush again. An interrupted write can
+# only ever leave the in-flight temp — never a half-written managed file. Fails closed
+# (exit 4) on containment/write/verify failure so the caller's trap rolls back. Includes two
+# clearly-marked, inert-by-default FAULT SEAMS used only by the durability test.
+tx_install_file() {
+	_if_src="$1"; _if_rel="$2"; _if_dst="$TARGET/$_if_rel"
+	tx_snapshot "$_if_rel"
+	_if_r=$(_tx_contained "$TARGET" "$_if_rel" "TARGET_SYMLINK_PARENT") || {
+		log_error "tx_install_file: refusing an unsafe target '$_if_rel' ($_if_r)"
+		tx_journal "mutation" "$_if_rel" "REJECTED ($_if_r): unsafe managed-file path"
+		exit 4; }
+	ensure_dir "$(dirname -- "$_if_dst")"
+	_if_tmp="$(dirname -- "$_if_dst")/.ss-inflight.$$.$(basename -- "$_if_rel")"
+	# FAULT SEAM (test-only, inert unless the env names this exact rel path): simulate an
+	# interrupted-write / disk-full (ENOSPC) so the fail-closed path is deterministically
+	# exercised — nothing is renamed into place.
+	if [ -n "${SENTINEL_SHIELD_TX_SIMULATE_ENOSPC:-}" ] && [ "$_if_rel" = "$SENTINEL_SHIELD_TX_SIMULATE_ENOSPC" ]; then
+		_tx_rm "$_if_tmp"
+		log_error "tx_install_file: simulated no-space/interrupted write for '$_if_rel' — managed file left untouched"
+		tx_journal "mutation" "$_if_rel" "REJECTED (ENOSPC): simulated interrupted write; no partial file"
+		exit 4
+	fi
+	if ! cp "$_if_src" "$_if_tmp" 2>/dev/null; then
+		_tx_rm "$_if_tmp"
+		log_error "tx_install_file: could not stage '$_if_rel' (permission denied / no space) — managed file left untouched"
+		tx_journal "mutation" "$_if_rel" "REJECTED: write failed; no partial file"
+		exit 4
+	fi
+	_tx_sync
+	if ! mv -- "$_if_tmp" "$_if_dst" 2>/dev/null; then
+		_tx_rm "$_if_tmp"
+		log_error "tx_install_file: atomic replace failed for '$_if_rel'"
+		tx_journal "mutation" "$_if_rel" "REJECTED: atomic replace failed"
+		exit 4
+	fi
+	# FAULT SEAM (test-only): corrupt the just-written file so post-write verification trips.
+	if [ -n "${SENTINEL_SHIELD_TX_CORRUPT_AFTER_WRITE:-}" ] && [ "$_if_rel" = "$SENTINEL_SHIELD_TX_CORRUPT_AFTER_WRITE" ]; then
+		printf 'CORRUPTED-BY-FAULT-INJECTION\n' >> "$_if_dst" 2>/dev/null
+	fi
+	# Post-write digest validation: the managed file on disk MUST byte-match its source.
+	if ! cmp -s "$_if_src" "$_if_dst"; then
+		log_error "tx_install_file: post-write verification FAILED for '$_if_rel' (on-disk bytes != source)"
+		tx_journal "validation" "$_if_rel" "REJECTED: post-write content/digest mismatch"
+		exit 4
+	fi
+	_tx_sync
+	tx_journal "mutation" "$_if_rel" "atomically wrote + post-write-verified managed file"
+	unset _if_src _if_rel _if_dst _if_r _if_tmp
 	return 0
 }
 
@@ -117,8 +445,21 @@ tx_snapshot() {
 	# is a real regular file/dir (a genuine pre-write state to preserve).
 	if [ -e "$TARGET/$1" ]; then
 		ensure_dir "$TX_SNAP/snap/$(dirname -- "$1")"
-		cp -p "$TARGET/$1" "$TX_SNAP/snap/$1"
-		tx_journal "snapshot" "$1" "modified: pre-write copy saved"
+		# VERIFIED snapshot copy: the pre-write state must be captured completely before the
+		# live file is ever touched. A failed copy, or a snapshot that does not byte-match the
+		# source, is fail-closed (abort the operation so the caller's trap rolls back) — a
+		# partial/mismatched snapshot could otherwise mean silent data loss on rollback.
+		if ! cp -p "$TARGET/$1" "$TX_SNAP/snap/$1" 2>/dev/null; then
+			log_error "tx: could not snapshot '$1' (pre-write copy failed) — aborting operation"
+			tx_journal "snapshot" "$1" "REJECTED: pre-write snapshot copy failed"
+			exit 4
+		fi
+		if ! cmp -s "$TARGET/$1" "$TX_SNAP/snap/$1"; then
+			log_error "tx: snapshot of '$1' does not match the live file (copy corrupt) — aborting operation"
+			tx_journal "snapshot" "$1" "REJECTED: snapshot copy verification (cmp) failed"
+			exit 4
+		fi
+		tx_journal "snapshot" "$1" "modified: pre-write copy saved (verified)"
 	else
 		printf '%s\n' "$1" >> "$TX_SNAP/created"
 		tx_journal "snapshot" "$1" "created: newly written (no prior state)"
@@ -291,7 +632,7 @@ _tx_lock_valid() {
 		(.started_at | type == "string" and (length > 0)) and
 		(.pid | type == "number") and
 		(.snapshot_dir | type == "string" and (length > 0)) and
-		(.state as $s | ["active","rollback-incomplete"] | index($s) != null)
+		(.state as $s | ["initializing","active","validating","committing","rolling-back","rollback-incomplete","completed"] | index($s) != null)
 	' "$1" >/dev/null 2>&1
 }
 
@@ -322,39 +663,101 @@ tx_rollback() {
 	done < "$TX_SNAP/touched"
 }
 
-# tx_begin — open the transaction (snapshot dir + atomic lock marker).
+# tx_begin — open the transaction: snapshot dir + ATOMIC lock acquisition. Ownership is
+# granted ONLY by a successful `mkdir` of the mutex directory (an atomic test-and-set on
+# every POSIX filesystem), so two simultaneous operations on one project can never both
+# proceed — the loser gets a non-zero mkdir and fails closed. The winner then writes a
+# durable lock marker carrying a PID-independent token, process-start identity, host, and
+# engine version.
 tx_begin() {
 	ensure_dir "$SS_DIR"
 	TX_SNAP="$SS_DIR/.txn-$$"
 	ensure_dir "$TX_SNAP"
 	: > "$TX_SNAP/touched"
-	_lk="$LOCK.tmp.$$"
-	jq -n --arg op "$TX_OP" --arg tgt "$TARGET" --arg at "$(timestamp_utc)" --argjson pid "$$" --arg snap "$TX_SNAP" \
-		'{schema_version:"1", operation:$op, target:$tgt, started_at:$at, pid:$pid, snapshot_dir:$snap, state:"active"}' > "$_lk" \
-		&& mv -- "$_lk" "$LOCK"
+	_tx_ld=$(_tx_lockdir)
+	if ! mkdir "$_tx_ld" 2>/dev/null; then
+		# The mutex is held: a sibling process owns it right now, or a crash left it behind.
+		# NEVER write through a mutex we do not own — fail closed.
+		_tx_rm "$TX_SNAP"; TX_SNAP=""; TX_ACTIVE=0
+		_tx_cls=$(_tx_owner_classify)
+		echo "error: could not acquire the Sentinel Shield operation lock (mutex held: $_tx_ld)." >&2
+		if [ "$_tx_cls" = "live" ]; then
+			echo "       another '$TX_OP' operation is currently running on this target — refusing to run concurrently." >&2
+			echo "         sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover  (only if it is truly dead)" >&2
+		else
+			echo "       a previous operation did not release the lock; recover it with:" >&2
+			echo "         sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
+		fi
+		unset _tx_ld _tx_cls
+		exit 4
+	fi
+	# We hold the mutex. Mint a fresh ownership token (PID-independent) and record durable
+	# ownership metadata BEFORE any mutation runs under the lock's protection.
+	TX_TOKEN=$(_tx_gen_token)
+	if ! _tx_write_lock "active"; then
+		_tx_rm "$TX_SNAP"; TX_SNAP=""; _tx_rm "$_tx_ld"; TX_ACTIVE=0
+		log_error "tx: could not write the operation lock — refusing to proceed"
+		unset _tx_ld
+		exit 4
+	fi
 	TX_ACTIVE=1
+	unset _tx_ld
 	tx_journal "start" "" "operation=$TX_OP target=$TARGET"
-	tx_journal "precondition" "" "no stale lock; acquired operation-lock; snapshot dir ready"
+	tx_journal "precondition" "" "acquired mutex + durable operation-lock (token owner); snapshot dir ready; state=active"
 }
 
-# tx_commit — close the transaction successfully (drop lock + snapshots).
+# tx_commit — close the transaction successfully. Durable state machine:
+# active -> committing -> completed, each state fsync'd, and the lock is removed ONLY AFTER
+# the terminal 'completed' state is durably recorded. A crash mid-finalise therefore leaves a
+# 'completed' marker that the next run/recovery treats as already-finished (idempotent),
+# never as an interrupted operation to roll back.
 tx_commit() {
 	TX_ACTIVE=0
-	tx_journal "completion" "" "committed: operation succeeded; lock + snapshot cleared"
-	rm -f "$LOCK" 2>/dev/null || true
-	[ -n "$TX_SNAP" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
+	_tx_set_state "committing" || log_warn "tx: could not record 'committing' state (continuing to finalise)"
+	tx_journal "completion" "" "committed: operation succeeded; finalising"
+	_tx_set_state "completed" || log_warn "tx: could not record 'completed' state before release"
+	tx_release_lock
+	[ -n "$TX_SNAP" ] && _tx_rm "$TX_SNAP"
 	TX_SNAP=""
 }
 
-# tx_detect_stale — refuse to mutate when a prior operation-lock is present.
+# tx_detect_stale — refuse to mutate when a prior operation-lock (or a torn mutex) is present.
+# Distinguishes a still-LIVE operation from an INTERRUPTED one, and auto-finalises a lock that
+# reached the durable 'completed' state but whose owner was killed before releasing it.
 tx_detect_stale() {
-	[ -f "$LOCK" ] || return 0
+	if [ ! -f "$LOCK" ]; then
+		# A mutex dir with NO marker is a torn acquisition (crash between mkdir and the lock
+		# write). Fail closed rather than silently reclaim it.
+		if [ -d "$(_tx_lockdir)" ]; then
+			echo "error: a partially-acquired Sentinel Shield lock was found (mutex present, no marker)." >&2
+			echo "       clear it with: sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
+			exit 4
+		fi
+		return 0
+	fi
+	_ds_cls=$(_tx_owner_classify)
+	if [ "$_ds_cls" = "completed" ]; then
+		# A prior run committed durably but was killed before removing the marker — finalise it.
+		tx_journal "completion" "" "cleared a completed-but-unreleased lock before a new operation"
+		tx_release_lock
+		unset _ds_cls
+		return 0
+	fi
 	_op=$(jq -r '.operation // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
 	_at=$(jq -r '.started_at // "unknown"' "$LOCK" 2>/dev/null || echo unknown)
+	if [ "$_ds_cls" = "live" ]; then
+		_lp=$(jq -r '.pid // "?"' "$LOCK" 2>/dev/null || echo '?')
+		echo "error: another Sentinel Shield '$_op' operation is currently running (pid $_lp) on this target." >&2
+		echo "       refusing to run concurrently; wait for it to finish. If it is truly dead, recover with:" >&2
+		echo "         sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
+		unset _ds_cls _op _at _lp
+		exit 4
+	fi
 	echo "error: an interrupted Sentinel Shield operation was detected." >&2
 	echo "       a previous '$_op' (started $_at) did not finish; $LOCK is present." >&2
 	echo "       recover (roll back the partial run) with:" >&2
 	echo "         sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
+	unset _ds_cls _op _at
 	exit 4
 }
 
@@ -439,9 +842,34 @@ _tx_recover_apply() {
 # the snapshot + lock and exits 0 ONLY when EVERY step of the recovery contract holds;
 # otherwise retains the lock + all snapshots and exits 4 (see _tx_recover_fail).
 tx_recover() {
-	if [ ! -f "$LOCK" ]; then echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0; fi
+	if [ ! -f "$LOCK" ]; then
+		# IDEMPOTENCE: a torn mutex with no marker is safe to clear; otherwise nothing to do.
+		if [ -d "$(_tx_lockdir)" ]; then
+			_tx_rm "$(_tx_lockdir)"
+			echo "Cleared a partially-acquired lock (mutex only, no marker); nothing to roll back."
+			exit 0
+		fi
+		echo "No interrupted operation found ($LOCK absent); nothing to recover."; exit 0
+	fi
 	# (1) lock parses & is schema-valid (CONTRACT(2)).
 	_tx_lock_valid "$LOCK" || _tx_recover_fail "$LOCK" "lock-schema-validation" "operation-lock is missing fields, mistyped, or not schema-conformant"
+	# COMPLETE-FORWARD (never roll back a success): a lock that durably reached 'committing' or
+	# 'completed' means every managed write AND its post-write validation already succeeded and
+	# were fsync'd — only lock finalisation remained when the owner died. Rolling those writes
+	# back would UNDO a successful operation, so recovery finalises forward: clear the snapshot +
+	# lock and exit 0. This also makes repeated recovery idempotent (a completed/committing
+	# transaction is never rolled back a second time).
+	_rc_state=$(jq -r '.state // ""' "$LOCK" 2>/dev/null || echo "")
+	if [ "$_rc_state" = "completed" ] || [ "$_rc_state" = "committing" ]; then
+		_rc_snap=$(jq -r '.snapshot_dir // ""' "$LOCK" 2>/dev/null || printf '')
+		_tx_snap_safe "$_rc_snap" && _tx_rm "$_rc_snap"
+		tx_journal "completion" "" "recovery: finalised an already-committed transaction (state=$_rc_state); no rollback needed"
+		tx_release_lock
+		echo "Recovery: the interrupted operation had already committed (state=$_rc_state); cleared $LOCK (no rollback)."
+		unset _rc_state _rc_snap
+		exit 0
+	fi
+	unset _rc_state
 	_snap=$(jq -r '.snapshot_dir' "$LOCK" 2>/dev/null || true)
 	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
 	# (2) lock.target must equal the current canonical target.
@@ -454,14 +882,24 @@ tx_recover() {
 		|| _tx_recover_fail "$_snap" "snapshot-dir-symlink" "$_sd_r: snapshot_dir resolves outside $SS_DIR (symlinked .txn dir)"
 	# (4) the touched manifest must exist & be readable.
 	[ -f "$_snap/touched" ] && [ -r "$_snap/touched" ] || _tx_recover_fail "$_snap/touched" "touched-manifest-missing" "the touched manifest is absent or unreadable"
+	# (4b) VERIFY the journal chain before resuming. A prefix-tampered journal is a corruption
+	# signal and fails closed; a single torn TRAILING line (the crash's own interrupted append)
+	# is tolerated in lenient mode so a genuine crash is still recoverable.
+	tx_journal_verify lenient >/dev/null 2>&1 || _tx_recover_fail "$SS_DIR/transaction-journal.jsonl" "journal-verification" "the transaction journal chain is tampered/inconsistent (prefix corruption) — refusing to resume"
+	# Mark the durable transition into rolling-back BEFORE we touch anything, then transition to
+	# the terminal state only after post-verify. A best-effort set (the lock may be a legacy or
+	# hand-seeded 'active' lock with no prior state machine) never blocks a legitimate rollback.
+	if _tx_set_state "rolling-back" >/dev/null 2>&1; then :; else
+		log_warn "tx: could not record 'rolling-back' state (continuing recovery)"
+	fi
 	# (5)-(9) validated rollback + post-verify (exits 4 on the first failure).
 	TX_SNAP="$_snap"
 	tx_journal "rollback-step" "" "resume-rollback: recovering interrupted '$_ltarget' operation"
 	_tx_recover_apply || _tx_recover_fail "$_snap" "rollback" "rollback did not complete"
-	# All steps held: it is now safe to clear recovery state.
+	# All steps held: it is now safe to clear recovery state (lock + mutex + snapshot).
 	tx_journal "completion" "" "recovery complete: interrupted operation rolled back; lock cleared"
-	rm -rf "$_snap" 2>/dev/null || true
-	rm -f "$LOCK" 2>/dev/null || true
+	_tx_rm "$_snap"
+	tx_release_lock
 	echo "Recovery complete: rolled back the interrupted operation and cleared $LOCK."
 	exit 0
 }

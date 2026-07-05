@@ -97,6 +97,7 @@ ss_cleanup() {
 		log_warn "migrate: operation failed/interrupted — rolling back the installation record."
 		tx_rollback
 		rm -f "$LOCK" 2>/dev/null || true
+		_tx_rm "$(_tx_lockdir)"
 		[ -n "${TX_SNAP:-}" ] && rm -rf "$TX_SNAP" 2>/dev/null || true
 		TX_ACTIVE=0
 		[ "$_rc" -eq 0 ] && _rc=4
