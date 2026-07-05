@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/recovery-inspection.schema.json",
+  "title": "Sentinel Shield recovery inspection report",
+  "description": "Machine-readable output of `scripts/recover-operation.sh --target <dir> --inspect --format json`. A READ-ONLY snapshot of the interrupted-operation state a consuming project is in, computed with the SAME library validators the real recovery path uses (so the report can never disagree with what recovery would do). Exit code accompanies it: 0 when the journal is consistent, 4 when it is tampered/partial. Contains NO secrets and NO repo-local absolute paths beyond the caller-supplied target.",
+  "type": "object",
+  "required": [
+    "schema",
+    "target",
+    "state",
+    "lock_owner",
+    "journal_valid",
+    "safe_to_resume",
+    "safe_to_rollback",
+    "required_manual_actions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "recovery-inspection",
+      "description": "Fixed discriminator for this report shape."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical consuming-project directory that was inspected."
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "The operation-lock's recorded state-machine position, or null when no lock is present."
+    },
+    "lock_owner": {
+      "type": ["object", "null"],
+      "description": "Ownership of the current lock, or null when no (schema-valid) lock is present.",
+      "required": ["pid", "token", "hostname"],
+      "additionalProperties": false,
+      "properties": {
+        "pid": {
+          "type": ["integer", "null"],
+          "description": "Owning PID recorded in the lock (null when absent)."
+        },
+        "token": {
+          "type": ["string", "null"],
+          "description": "PID-independent ownership token (null for a legacy lock without one)."
+        },
+        "hostname": {
+          "type": ["string", "null"],
+          "description": "Host that acquired the lock (null for a legacy lock without one)."
+        }
+      }
+    },
+    "journal_valid": {
+      "type": "boolean",
+      "description": "True when the append-only transaction journal chain verifies strictly (no non-JSON/partial line, no missing/ill-typed field, no unsafe path, intact seq+prev+hash). Absent journal counts as valid."
+    },
+    "safe_to_resume": {
+      "type": "boolean",
+      "description": "True when `--resume-rollback` is expected to exit 0: either the lock is already 'completed' (clearing only), or a rollback is safe AND the journal is intact enough to resume (a torn trailing line is tolerated)."
+    },
+    "safe_to_rollback": {
+      "type": "boolean",
+      "description": "True when an interrupted operation can be rolled back safely: schema-valid lock, target match, contained+present snapshot dir, and a present touched manifest. False for a completed lock (nothing to roll back) or any missing precondition."
+    },
+    "required_manual_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-actionable blockers that prevent a fully-automatic safe recovery. Empty when recovery can proceed unattended."
+    }
+  }
+}

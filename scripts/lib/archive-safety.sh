@@ -21,9 +21,38 @@ if [ "${__SENTINEL_SHIELD_ARCHIVE_SAFETY_LOADED:-}" = "1" ]; then
 fi
 __SENTINEL_SHIELD_ARCHIVE_SAFETY_LOADED=1
 
+# Pull in the filesystem-safety primitives (fs_casefold_collisions) so a case-fold collision in
+# an archive listing is detected with the SAME logic every other mutation surface uses. __as_dir
+# resolves THIS library's directory so the source works regardless of the caller's SCRIPT_DIR.
+if [ "${__SENTINEL_SHIELD_FS_SAFETY_LOADED:-}" != "1" ]; then
+	__as_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)
+	if [ -n "${SCRIPT_DIR:-}" ] && [ -f "$SCRIPT_DIR/lib/filesystem-safety.sh" ]; then
+		. "$SCRIPT_DIR/lib/filesystem-safety.sh"
+	elif [ -f "$__as_dir/filesystem-safety.sh" ]; then
+		. "$__as_dir/filesystem-safety.sh"
+	fi
+fi
+
 # archive_safety_tools_ok — true when the required unzip toolchain is present.
 archive_safety_tools_ok() {
 	command_exists zipinfo && command_exists unzip
+}
+
+# archive_safety_case_scan <zip> — emit a reason token for every archive entry that collides
+# with another entry ONLY after case-folding (e.g. README and readme). On a case-INSENSITIVE
+# extraction filesystem one such entry silently clobbers the other, defeating the duplicate-path
+# and inventory checks. Emits one token per colliding entry to STDOUT; nothing when unique.
+#   case-collision:<entry>
+# Always returns 0 (the caller gates on whether output was produced), matching archive_safety_scan.
+archive_safety_case_scan() {
+	_ac_zip="$1"
+	{ [ -f "$_ac_zip" ] && zipinfo -1 "$_ac_zip" >/dev/null 2>&1; } || { printf 'unreadable-archive\n'; unset _ac_zip; return 0; }
+	command -v fs_casefold_collisions >/dev/null 2>&1 || { unset _ac_zip; return 0; }
+	zipinfo -1 "$_ac_zip" 2>/dev/null | sed '/^$/d' | fs_casefold_collisions | sed '/^$/d' | while IFS= read -r _ac_e; do
+		printf 'case-collision:%s\n' "$_ac_e"
+	done
+	unset _ac_zip
+	return 0
 }
 
 # archive_safety_scan <zip> <max_bytes> <max_entries>

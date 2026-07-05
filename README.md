@@ -38,9 +38,11 @@ This repository is not a demo. It is intended for use in real production project
 > [`docs/enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md). **How evidence works** →
 > [`docs/evidence-platform.md`](docs/evidence-platform.md) +
 > [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`).
-> **Stuck?** `sh scripts/doctor.sh` (preflight) · `sh scripts/health.sh` (compatibility gate) ·
-> `sh scripts/support-bundle.sh` (safe diagnostics) · `sh scripts/maturity-report.sh` (tool status) ·
-> [`docs/troubleshooting.md`](docs/troubleshooting.md).
+> **Stuck?** `sh scripts/doctor.sh` (preflight) · `sh scripts/support-bundle.sh` (safe diagnostics) ·
+> `sh scripts/health.sh` (operational health verdict; `--policy` runs the compatibility gate) ·
+> `sh scripts/maturity-report.sh` (tool status) ·
+> [`docs/troubleshooting.md`](docs/troubleshooting.md) · [`docs/operations-runbook.md`](docs/operations-runbook.md)
+> (production health + opt-in JSONL operational events).
 > **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
 > **Install with an AI agent (optional path)** → [`docs/ai-assisted-install.md`](docs/ai-assisted-install.md)
 > plus the copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
