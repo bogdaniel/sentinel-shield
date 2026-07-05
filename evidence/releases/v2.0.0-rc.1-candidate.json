@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "version": "2.0.0-rc.1",
+  "stage": "rc",
+  "release_scope": "engine-only",
+  "source_commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+  "tag": "v2.0.0-rc.1",
+  "artifacts": {
+    "evidence": "evidence/releases/v2.0.0-rc.1.json",
+    "manifest": "evidence/manifests/v2.0.0-rc.1.manifest.json",
+    "artifact_verification": "evidence/releases/v2.0.0-rc.1-artifacts.json",
+    "upgrade_validation": "/tmp/rc1-upgrade.json"
+  },
+  "docs": {
+    "limitations": "docs/v2.0.0-rc.1-known-limitations.md",
+    "support_policy": "docs/support-policy.md",
+    "incident_response": "docs/security-incident-response.md"
+  }
+}
