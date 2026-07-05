@@ -46,7 +46,7 @@ jobs:
 
       - name: Shell syntax (compatibility scripts)
         run: |
-          for f in scripts/health.sh scripts/lib/compatibility-policy.sh tests/prod/260-compatibility-policy.sh; do
+          for f in scripts/health.sh scripts/lib/compatibility-policy.sh scripts/report-compatibility-matrix.sh tests/prod/260-compatibility-policy.sh; do
             sh -n "$f" || exit 1
           done
 
@@ -57,6 +57,20 @@ jobs:
 
       - name: Compatibility policy + gate contract (BLOCKING)
         run: sh tests/prod/260-compatibility-policy.sh
+
+      - name: Generate compatibility-matrix report (release evidence)
+        run: |
+          mkdir -p reports
+          sh scripts/report-compatibility-matrix.sh \
+            --source-commit "${GITHUB_SHA}" \
+            --output reports/compatibility-matrix.json
+
+      - name: Upload compatibility-matrix artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentinel-shield-compatibility-matrix
+          path: reports/compatibility-matrix.json
+          if-no-files-found: error
 
   # --------------------------------------------------------------------------
   # (2) REPRESENTATIVE pairwise matrix on every PR/push. Each row injects a synthetic
