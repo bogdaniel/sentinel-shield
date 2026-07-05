@@ -22,7 +22,9 @@
     },
     "generator": {
       "type": "string",
-      "enum": ["report-adopter-usability"],
+      "enum": [
+        "report-adopter-usability"
+      ],
       "description": "Which reporter produced the scorecard."
     },
     "generated_at": {
@@ -46,26 +48,48 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["scenario", "harness", "result", "steps_total", "steps_failed", "budget_seconds"],
+        "required": [
+          "scenario",
+          "harness",
+          "result",
+          "steps_total",
+          "steps_failed",
+          "budget_seconds"
+        ],
         "properties": {
           "scenario": {
             "type": "string",
             "minLength": 1,
             "description": "Scenario id (from the session's scenario field, else its harness)."
           },
-          "harness": { "type": "string", "minLength": 1 },
+          "harness": {
+            "type": "string",
+            "minLength": 1
+          },
           "source": {
             "type": "string",
             "description": "Redacted basename of the session file this summary came from."
           },
           "result": {
             "type": "string",
-            "enum": ["pass", "fail"],
+            "enum": [
+              "pass",
+              "fail"
+            ],
             "description": "The session's own result."
           },
-          "steps_total": { "type": "integer", "minimum": 0 },
-          "steps_failed": { "type": "integer", "minimum": 0 },
-          "steps_skipped": { "type": "integer", "minimum": 0 },
+          "steps_total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "steps_failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "steps_skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
           "budget_seconds": {
             "type": "number",
             "description": "The per-step budget applied to this scenario."
@@ -84,21 +108,37 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["scenario", "reason"],
+        "required": [
+          "scenario",
+          "reason"
+        ],
         "properties": {
-          "scenario": { "type": "string", "minLength": 1 },
-          "reason": { "type": "string", "minLength": 1 }
+          "scenario": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "criteria": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 8,
       "description": "The fixed set of BLOCKING adopter-scorecard criteria, each evaluated across every session.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title", "blocking", "status", "offenders", "reproduction"],
+        "required": [
+          "id",
+          "title",
+          "blocking",
+          "status",
+          "offenders",
+          "reproduction"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -114,14 +154,20 @@
             ],
             "description": "Stable criterion id."
           },
-          "title": { "type": "string", "minLength": 1 },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
           "blocking": {
             "const": true,
             "description": "Every scorecard criterion is blocking. Fixed true."
           },
           "status": {
             "type": "string",
-            "enum": ["pass", "fail"],
+            "enum": [
+              "pass",
+              "fail"
+            ],
             "description": "pass only when NO offender was found across all evaluated sessions."
           },
           "offenders": {
@@ -130,11 +176,22 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["scenario", "detail"],
+              "required": [
+                "scenario",
+                "detail"
+              ],
               "properties": {
-                "scenario": { "type": "string", "minLength": 1 },
-                "step": { "type": "string" },
-                "detail": { "type": "string", "minLength": 1 }
+                "scenario": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "step": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           },
@@ -144,23 +201,48 @@
             "description": "A copy-pasteable command that reproduces this criterion's verdict from the session evidence."
           }
         }
-      }
+      },
+      "maxItems": 8
     },
     "totals": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scenarios", "sessions_passed", "sessions_failed", "criteria_passed", "criteria_failed"],
+      "required": [
+        "scenarios",
+        "sessions_passed",
+        "sessions_failed",
+        "criteria_passed",
+        "criteria_failed"
+      ],
       "properties": {
-        "scenarios": { "type": "integer", "minimum": 1 },
-        "sessions_passed": { "type": "integer", "minimum": 0 },
-        "sessions_failed": { "type": "integer", "minimum": 0 },
-        "criteria_passed": { "type": "integer", "minimum": 0 },
-        "criteria_failed": { "type": "integer", "minimum": 0 }
+        "scenarios": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sessions_passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sessions_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "criteria_passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "criteria_failed": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "result": {
       "type": "string",
-      "enum": ["pass", "fail"],
+      "enum": [
+        "pass",
+        "fail"
+      ],
       "description": "Overall production-readiness verdict: pass only when EVERY blocking criterion passed across EVERY evaluated session and at least one session was evaluated."
     }
   }

@@ -134,7 +134,15 @@ cp_classify_version() {
 	_supcount=$(jq -r --arg c "$2" '((.components[$c].supported_majors) // []) | length' "$1" 2>/dev/null)
 	case "$_supcount" in ''|*[!0-9]*) _supcount=0 ;; esac
 	if [ "$_supcount" -gt 0 ]; then
-		if cp__majors_contains "$1" "$2" supported_majors "$_maj"; then printf 'supported'; return 0; fi
+		if cp__majors_contains "$1" "$2" supported_majors "$_maj"; then
+			# A supported MAJOR may still carry a minimum WITHIN that major (e.g. major 8
+			# supported, minimum 8.1). Enforce it before passing, else 8.0 would slip through.
+			_minv=$(jq -r --arg c "$2" '.components[$c].minimum // ""' "$1" 2>/dev/null)
+			if [ -n "$_minv" ] && [ "$_minv" != "null" ] && [ "$(cp_cmp_version "$_v" "$_minv")" = "-1" ]; then
+				printf 'below-minimum'; return 0
+			fi
+			printf 'supported'; return 0
+		fi
 		_minmaj=$(jq -r --arg c "$2" '((.components[$c].supported_majors) // []) | min' "$1" 2>/dev/null)
 		case "$_minmaj" in ''|*[!0-9]*) _minmaj=0 ;; esac
 		if [ "$_maj" -lt "$_minmaj" ]; then printf 'below-minimum'; else printf 'unsupported'; fi
@@ -222,8 +230,12 @@ cp__eval_docker() {
 	fi
 	if [ -n "${CP_ENV_DOCKER_VERSION:-}" ]; then
 		cp__eval_version "$1" "$2" docker "$CP_ENV_DOCKER_VERSION" 0
+	elif [ "$_prof" = required ]; then
+		# Required Docker whose version cannot be determined cannot prove the configured
+		# minimum — fail closed rather than pass an unverifiable required component.
+		cp__fail docker "required by this operation/profile but its version could not be determined — cannot prove the configured minimum (status=unverifiable; suite=$(cp_suite "$1" docker))"
 	else
-		cp__ok docker "present (version undetermined)"
+		cp__ok docker "present (version undetermined; optional profile)"
 	fi
 }
 
@@ -332,7 +344,16 @@ cp_detect_shell() {
 # nothing if the tool is absent / errors / the output has no version. Bounded.
 cp_detect_tool_version() {
 	command_exists "$1" || return 0
-	_out=$(cp_bounded 5 "$1" --version 2>/dev/null) || return 0
+	# cp_bounded runs inside $(), a SUBSHELL — any CP_PROBE_TIMEOUT it sets there is lost. Its
+	# EXIT CODE does propagate through $(), so detect the timeout (124) here and raise the flag
+	# in THIS shell, otherwise a wedged probe would never surface as the caller's exit 4.
+	_out=$(cp_bounded 5 "$1" --version 2>/dev/null); _brc=$?
+	if [ "$_brc" = 124 ]; then
+		# shellcheck disable=SC2034
+		CP_PROBE_TIMEOUT=1
+		return 0
+	fi
+	[ "$_brc" -eq 0 ] || return 0
 	_pv=$(cp_parse_version "$_out") || return 0
 	printf '%s' "$_pv"
 }

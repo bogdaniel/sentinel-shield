@@ -266,16 +266,19 @@ jobs:
             --out-md integration/production-readiness-report.md
 
       - name: Independent review of the emitted report (UNTRUSTED evidence, ci-gate profile)
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        # Runs on pull_request too: a PR report is validated as PR evidence (identity /
+        # freshness / summary), not skipped. --expected-event asserts the report's own event.
         env:
           SHA: ${{ github.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_EVENT: ${{ github.event_name }}
         run: |
           sh scripts/run-production-readiness.sh review \
             --report integration/production-readiness-report.json \
             --expected-commit "$SHA" \
             --expected-workflow ci-production-readiness \
             --expected-default-branch "$DEFAULT_BRANCH" \
+            --expected-event "$GH_EVENT" \
             --profile ci-gate \
             --max-age-seconds 3600
 

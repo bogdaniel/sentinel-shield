@@ -465,7 +465,7 @@ ra_validate_authorization() {
 		return 2
 	}
 	jq -e '
-		def isodt: (type == "string") and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+		def isodt: (type == "string") and test("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$");
 		(.schema_version == "1")
 		and (.version | type == "string" and (length > 0))
 		and (.stage | . == "beta" or . == "rc" or . == "ga")

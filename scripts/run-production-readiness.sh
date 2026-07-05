@@ -200,6 +200,15 @@ pr_validate_report() {
 		and (.version_recommendation | type == "object")
 		and (.version_recommendation.version | . == "v2.0.0-beta.3" or . == "v2.0.0-rc.1" or . == "v2.0.0")
 		and (.version_recommendation.rationale | type == "string" and (length > 0))
+		and (.changed_files | type | . == "null" or . == "array")
+		and (.scanners     | type | . == "null" or . == "array")
+		and (.artifacts    | type | . == "null" or . == "array")
+		and (.limitations   | type | . == "null" or . == "object")
+		and (.compatibility | type | . == "null" or . == "object")
+		and (.adopter       | type | . == "null" or . == "object")
+		and (.security      | type | . == "null" or . == "object")
+		and (.evidence      | type | . == "null" or . == "object")
+		and (.tag_policy    | type | . == "null" or . == "object")
 	' "$1" >/dev/null 2>&1 || { log_error "pr_validate_report: '$1' does not conform to production-readiness-report.schema.json"; return 2; }
 	return 0
 }
@@ -458,9 +467,13 @@ if [ "$MODE" = review ]; then
 		if [ "$_lim_ok" = yes ]; then _pass "published limitations documented; framework live-validation not claimed"
 		else _fail "LIMITATIONS_UNDECLARED — limitations not documented, or framework live-validation is (wrongly) claimed"; fi
 
-		# (17) ARTIFACT OWNERSHIP + CONTENT — every listed artifact must be owned + content-verified.
+		# (17) ARTIFACT OWNERSHIP + CONTENT — every listed artifact must be owned + content-verified,
+		# and (like scanner evidence) the release profile requires at least one: an empty list must
+		# not vacuously pass.
+		_nart=$(jq -r '(.artifacts // []) | length' "$REPORT")
 		_bad_art=$(jq -r '[ .artifacts[]? | select((.ownership_ok != true) or ((.content_verified // false) != true) or ((.sha256 // "") | test("^[0-9a-f]{64}$") | not)) | .name ] | join(",")' "$REPORT")
-		if [ -z "$_bad_art" ]; then _pass "all listed artifacts are owned + content-verified with a 64-hex digest"
+		if [ "$_nart" -lt 1 ]; then _fail "ARTIFACT_EVIDENCE_MISSING — release profile requires at least one owned + content-verified artifact"
+		elif [ -z "$_bad_art" ]; then _pass "all listed artifacts are owned + content-verified with a 64-hex digest ($_nart artifact(s))"
 		else _fail "ARTIFACT_UNVERIFIED — artifact(s) not owned/content-verified/digested: $_bad_art"; fi
 	fi
 
@@ -565,7 +578,7 @@ while [ "$_i" -lt "$_n" ]; do
 		log_info "run: gate '$_gid' — executing (bounded ${BOUND_SECS}s)"
 		_ec=0
 		( cd "$RR" && ra_bounded "$BOUND_SECS" sh -c "$_gcmd" ) >/dev/null 2>&1 || _ec=$?
-		if [ "$_ec" = 124 ]; then _status="timeout"; _any_timeout=1
+		if [ "$_ec" = 124 ]; then _status="timeout"; if [ "$_greq" = true ]; then _any_timeout=1; fi
 		elif [ "$_ec" = 0 ]; then _status="pass"
 		else _status="fail"; fi
 	fi

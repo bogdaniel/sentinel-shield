@@ -96,7 +96,12 @@ ss_run() {
 	_of="$1"; shift
 	(
 		exec </dev/null
-		env -i PATH="$PATH" HOME="${HOME:-/tmp}" TMPDIR="${TMPDIR:-/tmp}" "$@"
+		# Proxy variables (when set) MUST survive env -i, else the proxy-configured scenario
+		# would silently run with no proxy and prove nothing.
+		env -i PATH="$PATH" HOME="${HOME:-/tmp}" TMPDIR="${TMPDIR:-/tmp}" \
+			${http_proxy:+http_proxy="$http_proxy"} ${https_proxy:+https_proxy="$https_proxy"} ${no_proxy:+no_proxy="$no_proxy"} \
+			${HTTP_PROXY:+HTTP_PROXY="$HTTP_PROXY"} ${HTTPS_PROXY:+HTTPS_PROXY="$HTTPS_PROXY"} ${NO_PROXY:+NO_PROXY="$NO_PROXY"} \
+			"$@"
 	) >"$_of" 2>&1 &
 	_pid=$!
 	(
@@ -221,8 +226,13 @@ flow_pipeline() {
 # does not, by itself, fail the scenario. Prints pass|fail.
 verify_result() {
 	_bad=$(jq -s '[.[] | select(.status=="fail" and (.step|test("^inject-failure")|not))] | length' "$STEPS")
+	_injtotal=$(jq -s '[.[] | select(.step|test("^inject-failure"))] | length' "$STEPS")
+	_injfailed=$(jq -s '[.[] | select((.step|test("^inject-failure")) and .status=="fail")] | length' "$STEPS")
 	_injbad=$(jq -s '[.[] | select(.step|test("^inject-failure")) | select((.message//"")=="" or (.next_action//"")=="")] | length' "$STEPS")
-	if [ "$_bad" = 0 ] && [ "$_injbad" = 0 ]; then echo pass; else echo fail; fi
+	# pass iff: no non-injected mandatory step failed; every injected failure carried a
+	# message + next_action; AND every inject-failure step ACTUALLY failed (an injected
+	# command that unexpectedly exits 0 — status != fail — is a broken test, not a pass).
+	if [ "$_bad" = 0 ] && [ "$_injbad" = 0 ] && [ "$_injfailed" = "$_injtotal" ]; then echo pass; else echo fail; fi
 }
 
 # ======================================================================
@@ -255,6 +265,13 @@ scn_clean_linux() {
 scn_minimal_posix() {
 	scenario_begin minimal-posix
 	CUR_TARGET="$WORK/minimal"; mkdir -p "$CUR_TARGET"
+	# Restrict PATH to ONLY the directories holding the engine's core tools, proving the flow
+	# needs no other PATH entries (the advertised minimal-POSIX environment). ss_run reads the
+	# ambient PATH, so this constrains every step below. Saved/restored around the scenario.
+	_mp_saved="$PATH"
+	_mp=$(for _t in sh jq git awk sed grep; do _p=$(command -v "$_t" 2>/dev/null) && dirname -- "$_p"; done | sort -u | tr '\n' ':')
+	_mp="${_mp%:}"
+	[ -n "$_mp" ] && { PATH="$_mp"; export PATH; }
 	flow_install || :
 	# INJECT: doctor against a non-existent target => invalid invocation (rc 2), then recover.
 	_missing="$WORK/minimal-absent"
@@ -263,6 +280,7 @@ scn_minimal_posix() {
 	record inject-failure "sh scripts/doctor.sh --target <target>-absent" "$_rc" "$(elapsed_since "$_t0")" fail \
 		"doctor refused a non-existent target (rc=$_rc)" "point --target at an installed project directory, then re-run doctor"
 	flow_doctor
+	PATH="$_mp_saved"; export PATH; unset _mp_saved _mp
 	emit_session minimal-posix '{"required":false,"performed":true,"restored":true,"method":"re-run doctor against the installed target"}' "$(verify_result)"
 }
 

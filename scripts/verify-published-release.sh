@@ -148,6 +148,11 @@ if [ "$MODE" = verify-github-release ]; then
 	if [ "$_draft" = false ]; then _pass "release is published (draft=false)"
 	else _fail "RELEASE_IS_DRAFT — a draft release is not a published release"; fi
 
+	# Reject an unknown --stage so a typo cannot silently skip the GA prerelease rule below.
+	case "$STAGE" in
+		beta|rc|ga|'') ;;
+		*) log_error "verify-github-release: invalid --stage '$STAGE' (beta|rc|ga)"; exit 2 ;;
+	esac
 	if [ "$STAGE" = ga ]; then
 		_pre=$(printf '%s' "$_meta" | jq -r 'if (.prerelease // false) then "true" else "false" end')
 		if [ "$_pre" = false ]; then _pass "GA release is not a prerelease"

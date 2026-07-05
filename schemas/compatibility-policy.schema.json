@@ -54,55 +54,116 @@
         "composer"
       ],
       "properties": {
-        "os": { "$ref": "#/$defs/enumComponent" },
-        "arch": { "$ref": "#/$defs/enumComponent" },
-        "shell": { "$ref": "#/$defs/enumComponent" },
-        "git": { "$ref": "#/$defs/versionComponent" },
-        "jq": { "$ref": "#/$defs/versionComponent" },
-        "docker": { "$ref": "#/$defs/versionComponent" },
-        "php": { "$ref": "#/$defs/versionComponent" },
-        "node": { "$ref": "#/$defs/versionComponent" },
-        "npm": { "$ref": "#/$defs/versionComponent" },
-        "pnpm": { "$ref": "#/$defs/versionComponent" },
-        "yarn": { "$ref": "#/$defs/versionComponent" },
-        "composer": { "$ref": "#/$defs/versionComponent" }
+        "os": {
+          "$ref": "#/$defs/enumComponent"
+        },
+        "arch": {
+          "$ref": "#/$defs/enumComponent"
+        },
+        "shell": {
+          "$ref": "#/$defs/enumComponent"
+        },
+        "git": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "jq": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "docker": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "php": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "node": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "npm": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "pnpm": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "yarn": {
+          "$ref": "#/$defs/versionComponent"
+        },
+        "composer": {
+          "$ref": "#/$defs/versionComponent"
+        }
       }
     },
     "filesystem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["case_sensitivity", "assumptions", "validation_suite"],
+      "required": [
+        "case_sensitivity",
+        "assumptions",
+        "validation_suite",
+        "symlinks"
+      ],
       "properties": {
         "case_sensitivity": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["expected", "case_insensitive_action", "reason"],
+          "required": [
+            "expected",
+            "case_insensitive_action",
+            "reason"
+          ],
           "properties": {
-            "expected": { "type": "string", "enum": ["sensitive", "insensitive"] },
+            "expected": {
+              "type": "string",
+              "enum": [
+                "sensitive",
+                "insensitive"
+              ]
+            },
             "case_insensitive_action": {
               "type": "string",
-              "enum": ["warn", "fail"],
+              "enum": [
+                "warn",
+                "fail"
+              ],
               "description": "What health/doctor do when the host filesystem is case-insensitive. 'warn' = degraded (exit 1); 'fail' = unsupported (exit 3)."
             },
-            "reason": { "type": "string", "minLength": 1 },
-            "note": { "type": "string" }
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "note": {
+              "type": "string"
+            }
           }
         },
         "symlinks": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["required", "reason"],
+          "required": [
+            "required",
+            "reason"
+          ],
           "properties": {
-            "required": { "type": "boolean" },
-            "reason": { "type": "string", "minLength": 1 }
+            "required": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "assumptions": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         },
-        "validation_suite": { "type": "string", "minLength": 1 }
+        "validation_suite": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "network": {
@@ -117,27 +178,45 @@
       "properties": {
         "online_only_operations": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         },
         "offline_supported_operations": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         },
-        "expected_failure_reason": { "type": "string", "minLength": 1 },
-        "validation_suite": { "type": "string", "minLength": 1 }
+        "expected_failure_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_suite": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "required_tools": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "minItems": 1,
       "description": "Tools that MUST be present for the engine to run at all (POSIX sh, git, jq)."
     },
     "optional_tools": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "description": "Tools required only for specific stacks/profiles (docker, php, node, package managers, composer, shellcheck, curl, tar)."
     },
     "runner_images": {
@@ -152,12 +231,40 @@
         "validation_suite"
       ],
       "properties": {
-        "supported": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
-        "tested": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
-        "unsupported": { "type": "array", "items": { "type": "string" } },
-        "deprecation_policy": { "type": "string", "minLength": 1 },
-        "expected_failure_reason": { "type": "string", "minLength": 1 },
-        "validation_suite": { "type": "string", "minLength": 1 }
+        "supported": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "tested": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deprecation_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_failure_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_suite": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   },
@@ -176,14 +283,46 @@
         "validation_suite"
       ],
       "properties": {
-        "kind": { "const": "enum" },
-        "mandatory": { "type": "boolean" },
-        "supported": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
-        "tested": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
-        "unsupported": { "type": "array", "items": { "type": "string" } },
-        "deprecation_policy": { "type": "string", "minLength": 1 },
-        "expected_failure_reason": { "type": "string", "minLength": 1 },
-        "validation_suite": { "type": "string", "minLength": 1 }
+        "kind": {
+          "const": "enum"
+        },
+        "mandatory": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "tested": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "deprecation_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_failure_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_suite": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "versionComponent": {
@@ -200,9 +339,16 @@
         "validation_suite"
       ],
       "properties": {
-        "kind": { "const": "version" },
-        "mandatory": { "type": "boolean" },
-        "optional": { "type": "boolean", "description": "Present only for components (e.g. docker) that are enabled per-profile rather than always required." },
+        "kind": {
+          "const": "version"
+        },
+        "mandatory": {
+          "type": "boolean"
+        },
+        "optional": {
+          "type": "boolean",
+          "description": "Present only for components (e.g. docker) that are enabled per-profile rather than always required."
+        },
         "minimum": {
           "type": "string",
           "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
@@ -210,23 +356,34 @@
         },
         "supported_majors": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 0 },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
           "description": "When present, support is decided by MAJOR version: a major in this set is supported; a major below the smallest is below-minimum; any other major is unsupported. Used for package managers (npm 8-11, pnpm 8-10, yarn 1-4) and single-major runtimes (php 8, composer 2)."
         },
         "unsupported_majors": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 0 },
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
           "description": "Majors that are explicitly unsupported (redundant with the supported_majors logic but documents intent)."
         },
         "tested": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1,
           "description": "Versions actually exercised by CI matrices."
         },
         "unsupported": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Human-readable unsupported ranges (e.g. '<8.1', '7.x')."
         },
         "required_absent_reason": {
@@ -234,9 +391,18 @@
           "minLength": 1,
           "description": "Stable reason code used when this component is REQUIRED by an operation/profile but absent (e.g. docker required by a container-backed action)."
         },
-        "deprecation_policy": { "type": "string", "minLength": 1 },
-        "expected_failure_reason": { "type": "string", "minLength": 1 },
-        "validation_suite": { "type": "string", "minLength": 1 }
+        "deprecation_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_failure_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_suite": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   }

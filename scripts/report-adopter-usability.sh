@@ -262,14 +262,17 @@ SCORECARD=$(jq -n \
 	      criteria_passed: $cpass,
 	      criteria_failed: $cfail
 	    },
-	    result: (if $cfail==0 then "pass" else "fail" end)
+	    result: (if ($n >= 1
+	                 and $cfail == 0
+	                 and ([ $S[] | select(.result=="fail") ] | length) == 0)
+	             then "pass" else "fail" end)
 	  }
 	')
 
 # --- redaction guard: refuse to emit a scorecard that leaks a secret/abs path ----
 # Scan every string EXCEPT the criteria[].reproduction filters, which legitimately
 # embed path-root tokens as jq regex alternations (they are documentation, not evidence).
-if printf '%s' "$SCORECARD" | jq -e '(del(.criteria[].reproduction)) | [.. | strings] | any(test("/Users/|/home/[A-Za-z0-9]|/root/|/private/var|/var/folders|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}"))' >/dev/null 2>&1; then
+if printf '%s' "$SCORECARD" | jq -e '(del(.criteria[].reproduction)) | [.. | strings] | any(test("/Users/|/home/[A-Za-z0-9]|/root/|/private/var|/var/folders|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|(KEY|TOKEN|SECRET|PASSWORD|PASSWD)[=:][ \t]*[A-Za-z0-9/+]"))' >/dev/null 2>&1; then
 	printf 'FAIL: refusing to emit scorecard — it would leak a secret shape or absolute local path\n' >&2
 	exit 3
 fi

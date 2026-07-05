@@ -194,7 +194,18 @@ verify_candidate_impl() {
 	CAND_SCOPE=$(jq -r '.release_scope' "$CANDIDATE")
 	CAND_SOURCE=$(jq -r '.source_commit' "$CANDIDATE")
 	CAND_TAG=$(jq -r '.tag' "$CANDIDATE")
-	[ -n "$SOURCE_COMMIT" ] && CAND_SOURCE=$(printf '%s' "$SOURCE_COMMIT" | tr 'A-F' 'a-f')
+	# --source-commit is an EXPECTED-identity assertion, never an override: if the caller
+	# supplies one it must equal the descriptor's .source_commit, else fail closed (a
+	# descriptor for commit A must never be verified/authorized as commit B).
+	if [ -n "$SOURCE_COMMIT" ]; then
+		_expect_src=$(printf '%s' "$SOURCE_COMMIT" | tr 'A-F' 'a-f')
+		_desc_src=$(printf '%s' "$CAND_SOURCE" | tr 'A-F' 'a-f')
+		if [ "$_expect_src" != "$_desc_src" ]; then
+			log_error "verify-candidate: --source-commit ($_expect_src) does not match descriptor .source_commit ($_desc_src) — refusing (fail closed)"
+			return 2
+		fi
+		CAND_SOURCE="$_desc_src"
+	fi
 
 	_ev=$(resolve_path "$(jq -r '.artifacts.evidence // ""' "$CANDIDATE")")
 	_mf=$(resolve_path "$(jq -r '.artifacts.manifest // ""' "$CANDIDATE")")
@@ -366,15 +377,30 @@ fi
 if [ "$MODE" = print-tag-commands ]; then
 	[ -n "$CANDIDATE" ] && [ -f "$CANDIDATE" ] || { log_error "print-tag-commands: --candidate <descriptor> is required"; exit 2; }
 	[ -n "$AUTHORIZATION" ] && [ -f "$AUTHORIZATION" ] || { log_error "print-tag-commands: an --authorization <record> is required to print executable publish commands (fail closed)"; exit 2; }
-	ra_validate_candidate "$CANDIDATE" || exit 2
+	# FULL governance binding before emitting executable publish commands: re-verify the
+	# candidate is READY (this recomputes CAND_MANIFEST_HASH) and require the authorization
+	# record to BIND completely (candidate_hash, stage/scope, expiry, self-approval, interactive
+	# token) — the SAME gate as `authorize`. A weaker version/tag/source compare could print
+	# publish commands for a record `authorize` would reject.
+	_rc=0; verify_candidate_impl >/dev/null || _rc=$?
+	[ "$_rc" = 0 ] || { log_error "print-tag-commands: candidate is not READY (verify-candidate exit $_rc) — refusing (fail closed)"; exit "$_rc"; }
+	[ -n "$CAND_MANIFEST_HASH" ] || { log_error "print-tag-commands: candidate manifest hash unresolved — cannot bind authorization (fail closed)"; exit 2; }
 	ra_validate_authorization "$AUTHORIZATION" || exit 2
-	_v=$(jq -r '.version' "$CANDIDATE"); _s=$(jq -r '.stage' "$CANDIDATE"); _sc=$(jq -r '.release_scope' "$CANDIDATE")
-	_c=$(jq -r '.source_commit' "$CANDIDATE"); _tag=$(jq -r '.tag' "$CANDIDATE")
-	_ar=$(jq -r '.tag' "$AUTHORIZATION")
-	if [ "$_ar" != "$_tag" ] || [ "$(jq -r '.version' "$AUTHORIZATION")" != "$_v" ] || [ "$(jq -r '.source_commit' "$AUTHORIZATION")" != "$_c" ]; then
-		log_error "print-tag-commands: authorization record does not match the candidate (version/tag/source) — refusing (fail closed)"
+	if ! ra_authorization_binds "$AUTHORIZATION" "$CAND_VERSION" "$CAND_STAGE" "$CAND_SCOPE" "$CAND_SOURCE" "$CAND_TAG" "$CAND_MANIFEST_HASH" "$(ra_today_utc)" "$CONFIRM_TOKEN"; then
+		log_error "print-tag-commands: authorization record REJECTED (governance) — refusing to print publish commands (fail closed)"
 		exit 1
 	fi
+	_v="$CAND_VERSION"; _s="$CAND_STAGE"; _sc="$CAND_SCOPE"; _c="$CAND_SOURCE"; _tag="$CAND_TAG"
+	# INJECTION GUARD: _v/_tag/_c are interpolated into copy/paste shell commands below. Refuse
+	# anything outside a safe release/tag/commit charset so a crafted descriptor cannot emit a
+	# command substitution or break quoting.
+	case "$_c" in ''|*[!0-9a-f]*) log_error "print-tag-commands: .source_commit is not a lowercase 40-hex commit — refusing (fail closed)"; exit 2 ;; esac
+	[ "${#_c}" -eq 40 ] || { log_error "print-tag-commands: .source_commit is not 40 hex chars — refusing (fail closed)"; exit 2; }
+	for _x in "$_v" "$_tag"; do
+		case "$_x" in
+			''|*[!A-Za-z0-9._+/-]*) log_error "print-tag-commands: refusing unsafe version/tag '$_x' (allowed: A-Za-z0-9 . _ + / -)"; exit 2 ;;
+		esac
+	done
 	cat <<EOF
 # Sentinel Shield — MANUAL publish commands for $_v ($_s, scope=$_sc)
 # These are the ONLY steps that publish. This tool does NOT run them. Each is destructive and
