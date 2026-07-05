@@ -397,10 +397,13 @@ scn_proxy() {
 	_t0=$(date +%s); _rc=0
 	ss_run "$WORK/out" sh "$REPO_ROOT/scripts/run-local-pipeline.sh" --profile node --target "$CUR_TARGET" --stage bogus || _rc=$?
 	record inject-failure "sh scripts/run-local-pipeline.sh --profile node --target <target> --stage bogus" "$_rc" "$(elapsed_since "$_t0")" fail \
-		"unknown stage rejected under a black-hole proxy (rc=$_rc) — no network was attempted" "re-run with a documented stage (--stage pr)"
+		"unknown stage rejected under a black-hole proxy (rc=$_rc) — no network was attempted" "re-run the OFFLINE flow (doctor) against the installed target"
+	# RECOVER with a genuinely OFFLINE operation (doctor). The full 'pr' pipeline runs scanners
+	# that fetch vulnerability databases — a real NETWORK operation, so it must not be used to
+	# prove offline recovery under a black-hole proxy. doctor is offline and deterministic.
 	_t0=$(date +%s); _rc=0
-	ss_run "$WORK/out" sh "$REPO_ROOT/scripts/run-local-pipeline.sh" --profile node --target "$CUR_TARGET" --stage pr || _rc=$?
-	case "$_rc" in 0|1|3) record recover "sh scripts/run-local-pipeline.sh --profile node --target <target> --stage pr" "$_rc" "$(elapsed_since "$_t0")" ok "offline flow recovered with the proxy still set" "" ;; *) record recover "sh scripts/run-local-pipeline.sh --profile node --target <target> --stage pr" "$_rc" "$(elapsed_since "$_t0")" fail "recovery failed (rc=$_rc)" "provision scanners and re-run" ;; esac
+	ss_run "$WORK/out" sh "$REPO_ROOT/scripts/doctor.sh" --target "$CUR_TARGET" || _rc=$?
+	case "$_rc" in 0|3) record recover "sh scripts/doctor.sh --target <target>" "$_rc" "$(elapsed_since "$_t0")" ok "offline flow (doctor) recovered with the black-hole proxy still set — no network attempted" "" ;; *) record recover "sh scripts/doctor.sh --target <target>" "$_rc" "$(elapsed_since "$_t0")" fail "offline recovery failed under a black-hole proxy (rc=$_rc)" "the offline flow must not require the network" ;; esac
 	unset http_proxy https_proxy
 	emit_session proxy-configured '{"required":false,"performed":true,"restored":true,"method":"re-run offline flow; proxy is not consulted"}' "$(verify_result)"
 }
