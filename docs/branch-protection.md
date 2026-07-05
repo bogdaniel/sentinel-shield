@@ -87,7 +87,7 @@ filenames) when configuring required checks. This table mirrors
 |----------------------|-------------------|
 | `ci-self-test`       | `full-self-test`, `syntax`, `lifecycle`, `fallback-policy`, `negative-policy`, `workflow-sanity` (all `always-required`) |
 | `ci-pipeline`        | `prepare` (`applicability-detector`); `php-quality`, `node-quality`, `docker-security` (`conditional-heavy`); `security-scan`, `build-security-summary`, `release-gate` (`always-required`) |
-| `ci-security`        | `detect-deps` (`applicability-detector`); `semgrep`, `gitleaks`, `trivy-fs`, `security-summary` (`always-required`); `osv-scanner`, `sbom` (`conditional-heavy`) |
+| `ci-security`        | `detect-deps` (`applicability-detector`); `semgrep`, `gitleaks`, `trivy-fs`, `security-summary`, `security-acceptance` (`always-required`); `osv-scanner`, `sbom`, `security-acceptance-live` (`conditional-heavy`) |
 | `ci-workflow-lint`   | `workflow-lint`, `workflow-runtime-audit`, `governance-audits` (all `always-required`) |
 | `ci-codeql`          | `detect` (`applicability-detector`), `analyze` (`conditional-heavy`) |
 | `ci-php`             | `detect` (`applicability-detector`), `php` (`conditional-heavy`) |

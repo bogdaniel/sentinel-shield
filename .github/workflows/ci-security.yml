@@ -295,3 +295,96 @@ jobs:
           sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/security-policy.sh; sp_validate_policy config/production-security-policy.json'
       - name: Production security acceptance + incident-response contract (BLOCKING)
         run: sh tests/prod/261-production-security.sh
+
+  # Production security ACCEPTANCE (LIVE). Runs every REQUIRED scanner over the tree, builds
+  # the scanner manifest, normalizes it, and runs the fail-closed acceptance gate — producing
+  # the security-acceptance.json artifact the release-authorization consumes (GATE 4). Each
+  # scanner writes native JSON to reports/raw/<name>.json; build-scanner-manifest recomputes
+  # applicability the same way the gate does, so the manifest can never disagree with it.
+  security-acceptance-live:
+    # Release evidence is collected from default-branch push runs (Phase 2), so this heavy
+    # 6-scanner job runs on push / schedule / manual dispatch — not on every PR. PR-time scanner
+    # coverage is provided by the security-summary job above.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Prepare raw dir
+        run: mkdir -p reports/raw
+
+      - name: Semgrep (JSON → reports/raw/semgrep.json)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
+            semgrep --json --output /src/reports/raw/semgrep.json --config /src/semgrep/app || true
+          [ -s reports/raw/semgrep.json ] || echo '{"results":[]}' > reports/raw/semgrep.json
+
+      - name: Gitleaks (JSON → reports/raw/gitleaks.json)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+          [ -s reports/raw/gitleaks.json ] || echo '[]' > reports/raw/gitleaks.json
+
+      - name: Trivy (JSON → reports/raw/trivy.json)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+        continue-on-error: true
+
+      - name: OSV-Scanner (JSON → reports/raw/osv-scanner.json)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src \
+            ghcr.io/google/osv-scanner:latest scan source --recursive --format json /src \
+            > reports/raw/osv-scanner.json 2>/dev/null || true
+          [ -s reports/raw/osv-scanner.json ] || echo '{"results":[]}' > reports/raw/osv-scanner.json
+
+      - name: Grype (JSON → reports/raw/grype.json)
+        run: |
+          docker run --rm -v "$PWD:/src" anchore/grype:latest dir:/src -o json \
+            > reports/raw/grype.json 2>/dev/null || true
+          [ -s reports/raw/grype.json ] || echo '{"matches":[]}' > reports/raw/grype.json
+
+      - name: actionlint (JSON → reports/raw/actionlint.json)
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -format '{{json .}}' \
+            > reports/raw/actionlint.json 2>/dev/null || true
+          [ -s reports/raw/actionlint.json ] || echo '[]' > reports/raw/actionlint.json
+
+      - name: Build scanner manifest → normalize → enforce (BLOCKING acceptance)
+        run: |
+          sh scripts/build-scanner-manifest.sh \
+            --raw-dir reports/raw --workspace "$PWD" \
+            --source-commit "${GITHUB_SHA}" --output reports/scanner-manifest.json
+          sh scripts/normalize-security-summary.sh \
+            --manifest reports/scanner-manifest.json \
+            --output reports/security-summary.normalized.json
+          sh scripts/enforce-security-policy.sh \
+            --summary reports/security-summary.normalized.json \
+            --source-commit "${GITHUB_SHA}" --workspace "$PWD" \
+            --output reports/security-acceptance.json
+
+      - name: Fail-closed credential scan of the acceptance report
+        run: |
+          sh -eu -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/redaction.sh; rd_scan_paths reports/security-acceptance.json'
+
+      - name: Upload security acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentinel-shield-security-acceptance
+          path: |
+            reports/security-acceptance.json
+            reports/scanner-manifest.json
+          retention-days: 90
+          if-no-files-found: error
