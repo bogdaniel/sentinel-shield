@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/release-authorization.schema.json",
+  "title": "Sentinel Shield production release authorization record",
+  "description": "A version-controlled, two-person, time-boxed record that AUTHORIZES publishing a specific release CANDIDATE (identified by its reproducible manifest hash) at a given stage/scope. Consumed by scripts/authorize-production-release.sh. The authorization is NOT a publish action: the tool never creates a tag or GitHub Release; it emits a decision and prints the exact operator commands. Publishing still requires an explicit destructive flag AND this authorization token per repo policy. The record must match the candidate's version, stage, release_scope, source_commit, tag and candidate_hash, be unexpired, and be approved by a DIFFERENT person than the requester. Contains NO secrets, tokens as plaintext credentials, or key paths — the authorization.token is an opaque, non-credential correlation handle (e.g. a signed-commit id or an interactive-confirmation nonce).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "version",
+    "stage",
+    "release_scope",
+    "source_commit",
+    "tag",
+    "candidate_hash",
+    "authorization",
+    "created_at",
+    "expires_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1",
+      "description": "Schema version. Only \"1\" is supported; consumers fail closed on anything else."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Release version label being authorized, e.g. '2.0.0'. Must equal the candidate version."
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["beta", "rc", "ga"],
+      "description": "Release stage being authorized. Production authorization applies to beta|rc|ga (alpha is never a production release). Must equal the candidate stage."
+    },
+    "release_scope": {
+      "type": "string",
+      "enum": ["engine-only", "framework-validated", "full-platform"],
+      "description": "Governance track being authorized. Must equal the candidate release_scope. NOTE: only 'engine-only' can be authorized to GA by this tool; 'framework-validated'/'full-platform' GA remains BLOCKED because the engine cannot prove framework live-validation."
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The exact default-branch source commit whose CI proves the candidate. Must equal the candidate source_commit and the evidence engine_commit."
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The tag name that will be published for this release, e.g. 'v2.0.0'. Must equal the candidate tag."
+    },
+    "candidate_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The reproducibility.hash of the release manifest (schemas/release-manifest.schema.json) that this record authorizes. Binds the authorization to an exact, reproducible release fingerprint: if the candidate content changes, its hash changes and this record no longer applies (fail closed)."
+    },
+    "authorization": {
+      "type": "object",
+      "required": ["method", "token", "requested_by", "approved_by"],
+      "additionalProperties": false,
+      "description": "Who authorized the release and how. method 'signed' means an out-of-band signed approval (token is the signed object/commit id); method 'interactive' means a human confirmed at a TTY (token is the confirmation nonce that must be re-supplied via --confirm-token). Either way requested_by != approved_by.",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["interactive", "signed"],
+          "description": "Authorization mechanism per repo policy."
+        },
+        "token": {
+          "type": "string",
+          "minLength": 8,
+          "description": "Opaque, NON-credential correlation handle for the authorization (signed object id or interactive nonce). Never a password, API token, or key path."
+        },
+        "requested_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "GitHub login of the requester."
+        },
+        "approved_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "GitHub login of the approver. MUST differ from requested_by (self-approval is forbidden); enforced by authorize-production-release.sh."
+        }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$",
+      "description": "ISO-8601 UTC timestamp (YYYY-MM-DDTHH:MM:SSZ) the authorization was created."
+    },
+    "expires_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$",
+      "description": "ISO-8601 UTC timestamp (YYYY-MM-DDTHH:MM:SSZ). The authorization only applies while expires_at is in the future; an expired record is rejected (fail closed)."
+    }
+  },
+  "$comment": "Cross-field rules enforced by scripts/authorize-production-release.sh and not expressible in plain JSON Schema: version/stage/release_scope/source_commit/tag/candidate_hash must equal the verified candidate; authorization.requested_by != authorization.approved_by; expires_at must be in the future; interactive method requires --confirm-token to equal authorization.token."
+}

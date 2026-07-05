@@ -90,3 +90,27 @@ sh scripts/sync-baseline.sh --target "$T"          # expect up-to-date / preserv
 ```
 `sh scripts/self-test.sh fixtures` automates this offline. To promote a tool from
 supported→proven, run it in a real consumer CI (e.g. zenchron-tools) and record the run.
+
+## Production release authorization tooling (MACRO-TASK 4)
+
+The release stages `beta|rc|ga` are enforced end-to-end by two fail-closed, read-only tools.
+They **never** create, move, or delete a tag or GitHub Release — publishing stays a deliberate
+manual step requiring an explicit destructive command **and** a valid authorization token.
+
+- `scripts/authorize-production-release.sh` — `prepare` a candidate descriptor
+  ([`release-candidate.schema.json`](../schemas/release-candidate.schema.json)); `verify-candidate`
+  (re-derives every GA gate from the referenced artifacts, fail closed); `authorize` (verify +
+  a two-person, time-boxed, manifest-hash-bound record —
+  [`release-authorization.schema.json`](../schemas/release-authorization.schema.json)); and
+  `print-tag-commands` (emits the exact manual publish sequence). `declare-superseded` and
+  `rollback-advisory` produce a [`rollback-advisory.schema.json`](../schemas/rollback-advisory.schema.json)
+  document — see [`rollback-policy.md`](rollback-policy.md).
+- `scripts/verify-published-release.sh` — `verify-tag` (the tag peels to the CI-proven source
+  commit and carries a good signature; a moved/mis-targeted or unsigned tag is rejected),
+  `verify-github-release` (published, not a draft; GA not a prerelease), and `smoke` (published
+  artifact digests still reproduce the manifest fingerprint).
+
+**Engine-only GA only.** `framework-validated`/`full-platform` GA is **BLOCKED** by
+`verify-candidate` because the engine cannot prove framework live-validation. Full operator
+steps: [`production-release-runbook.md`](production-release-runbook.md). Covered by
+`tests/prod/262-production-release.sh`.

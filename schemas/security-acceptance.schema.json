@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/security-acceptance.schema.json",
+  "title": "Sentinel Shield security acceptance report",
+  "description": "Machine-readable proof produced by scripts/enforce-security-policy.sh. It records, for one evaluation: every required scanner and whether it executed; scanner version + database freshness; target applicability + coverage; raw report digest; normalized finding counts; waiver matching; the regression-baseline comparison; and the final gate decision. It carries NO secrets, tokens, or repo-local absolute paths. Validated fail-closed by sp_validate_acceptance (jq).",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "policy_version", "decision", "exit_code", "scanners", "coverage", "findings", "waivers", "regression", "violations"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "policy_version": { "type": "string", "minLength": 1 },
+    "decision": { "enum": ["accepted", "accepted-emergency", "rejected", "error"] },
+    "exit_code": { "type": "integer", "enum": [0, 1, 2, 4] },
+    "scanners": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "category", "applicable", "executed", "status", "fresh"],
+        "additionalProperties": true,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "applicable": { "type": "boolean" },
+          "executed": { "type": "boolean" },
+          "status": { "enum": ["success", "error", "stale", "not-applicable", "missing", "zero-targets", "no-digest", "malformed"] },
+          "version": { "type": ["string", "null"] },
+          "database_age_days": { "type": ["integer", "null"] },
+          "fresh": { "type": "boolean" },
+          "targets_scanned": { "type": ["integer", "null"], "minimum": 0 },
+          "raw_report_digest": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["expected", "scanned", "ratio"],
+      "properties": {
+        "expected": { "type": "integer", "minimum": 0 },
+        "scanned": { "type": "integer", "minimum": 0 },
+        "ratio": { "type": "number", "minimum": 0 }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "required": ["total", "blocking", "waived"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "blocking": { "type": "integer", "minimum": 0 },
+        "waived": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "waivers": {
+      "type": "object",
+      "required": ["applied", "rejected"],
+      "properties": {
+        "applied": { "type": "array", "items": { "type": "object" } },
+        "rejected": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "regression": {
+      "type": "object",
+      "required": ["baseline_present", "coverage_regression", "unexplained_finding_drop"],
+      "properties": {
+        "baseline_present": { "type": "boolean" },
+        "coverage_regression": { "type": "boolean" },
+        "unexplained_finding_drop": { "type": "boolean" },
+        "baseline_coverage_ratio": { "type": ["number", "null"] },
+        "baseline_finding_total": { "type": ["integer", "null"] }
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category", "reason"],
+        "additionalProperties": true,
+        "properties": {
+          "category": { "type": "string", "minLength": 1 },
+          "severity": { "type": ["string", "null"] },
+          "scanner": { "type": ["string", "null"] },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

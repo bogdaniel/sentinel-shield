@@ -18,7 +18,12 @@
 #   exit 3  -> profile-REQUIRED tool(s) / one-of group(s) absent under an enforced tool-mode.
 #   exit 4  -> execution/evidence problem: a STALE operation-lock, or present-but-invalid
 #              local-pipeline / CI evidence.
-# Precedence when several apply: 3 > 2 > 4 > 1 > 0.
+#   exit 5  -> INCOMPATIBLE host environment: the host is on an unsupported OS / CPU architecture
+#              / shell, or a present MANDATORY tool (git, jq) is below its supported minimum, per
+#              config/compatibility-policy.json. Only DEFINITE incompatibilities gate here (a
+#              live-detected value that is merely unrecognised warns); scripts/health.sh is the
+#              strict fail-closed compatibility gate.
+# Precedence when several apply: 5 > 3 > 2 > 4 > 1 > 0.
 #
 # Usage: sh scripts/doctor.sh [--target <dir>] [--profile <name>]... [--tool-mode <mode>]
 #                             [--control-waivers <path>] [--quiet]
@@ -41,6 +46,8 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/compatibility-policy.sh
+. "$SCRIPT_DIR/lib/compatibility-policy.sh"
 # shellcheck source=scripts/lib/control-waivers.sh
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
@@ -138,6 +145,7 @@ WAIVED_COUNT=0
 DEGRADED=0        # non-blocking production warnings -> exit 1
 CONFIG_INVALID=0  # invalid configuration -> exit 2
 EXEC_PROBLEM=0    # execution/evidence problem -> exit 4
+COMPAT_INCOMPAT=0 # incompatible host environment -> exit 5
 ok()   { [ "$QUIET" = 1 ] || printf '  ok    %s\n' "$*"; }
 warn() { WARN=$((WARN+1)); printf '  WARN  %s\n' "$*"; }
 # degraded: a production WARN that is non-blocking but should gate exit 1.
@@ -351,6 +359,32 @@ for _ev in "$SS_DIR/last-local-pipeline.json" "$SS_DIR/last-ci.json"; do
   fi
 done
 
+# (8) host compatibility vs config/compatibility-policy.json. This is a SUPPORTABILITY read of the
+#     host (not the target): OS / CPU arch / shell + present mandatory tool versions are classified
+#     against the canonical support matrix. doctor is NON-STRICT — only a DEFINITE incompatibility
+#     (an explicitly-unsupported value, or a below-minimum PRESENT mandatory tool) gates (exit 5);
+#     an unrecognised live-detected value only WARNs so doctor stays stable across hosts. Run
+#     scripts/health.sh for the strict, fail-closed compatibility gate.
+echo "[compatibility] (host environment vs config/compatibility-policy.json)"
+CP_POLICY="$REPO_ROOT/config/compatibility-policy.json"
+if ! command_exists jq; then
+  warn "jq absent — cannot evaluate the compatibility policy"
+elif [ ! -f "$CP_POLICY" ]; then
+  warn "no compatibility policy at $CP_POLICY — cannot classify host environment"
+elif ! cp_validate_policy "$CP_POLICY" >/dev/null 2>&1; then
+  cfgfail "compatibility policy present but INVALID: $CP_POLICY (does not conform to schemas/compatibility-policy.schema.json)"
+else
+  CP_QUIET="$QUIET"
+  cp_detect_into_env
+  cp_evaluate "$CP_POLICY" 0
+  # Fold the compat counters into doctor's contract: any hard incompatibility -> exit 5;
+  # compat warnings count toward the plain-WARN summary (they never raise DEGRADED/exit 1).
+  WARN=$((WARN + CP_WARN))
+  if [ "$CP_FAIL" -gt 0 ]; then
+    COMPAT_INCOMPAT=1
+  fi
+fi
+
 echo "[profile tool-policy] (Policy | Installed | Configured | Executed; enforces required tools)"
 REQ_FAIL=0
 REQUIRED_MISSING=""
@@ -470,8 +504,13 @@ echo "----"
 [ "$WAIVED_COUNT" -gt 0 ] && echo "doctor: $WAIVED_COUNT active control-waiver(s) — see WAIVED lines above (file: $WAIVERS_FILE)"
 if [ "$WARN" -eq 0 ]; then echo "doctor: no warnings"; else echo "doctor: $WARN warning(s) — see WARN lines above"; fi
 echo "Next: docs/troubleshooting.md ; share diagnostics safely with scripts/support-bundle.sh"
-# Exit precedence: 3 > 2 > 4 > 1 > 0 (see header). Required-tool gating is checked FIRST so
-# the established exit-3 behavior is never masked by a new config/exec/degraded condition.
+# Exit precedence: 5 > 3 > 2 > 4 > 1 > 0 (see header). An INCOMPATIBLE host is the most
+# fundamental condition (nothing else is trustworthy on an unsupported platform), so it is
+# checked FIRST; required-tool gating (exit 3) retains its established precedence below it.
+if [ "$COMPAT_INCOMPAT" -eq 1 ]; then
+  echo "doctor: INCOMPATIBLE host environment — see [compatibility] FAIL line(s) above (exit 5)"
+  exit 5
+fi
 if [ "$REQ_FAIL" -eq 1 ]; then
   echo "doctor: profile-REQUIRED tool(s) missing — see FAIL line above (exit 3)"
   exit 3

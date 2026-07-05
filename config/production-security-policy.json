@@ -1,0 +1,101 @@
+{
+  "schema_version": "1",
+  "policy_version": "1.0.0",
+  "updated": "2026-07-04",
+  "description": "Canonical production security acceptance and incident-response policy. Consumed by scripts/enforce-security-policy.sh (which produces a security-acceptance report) and validated structurally by scripts/lib/security-policy.sh (jq, not ajv). It carries NO secrets, tokens, or repo-local absolute paths.",
+  "blocking_severities": ["critical", "high"],
+  "waivable_severities": ["high", "medium", "low"],
+  "emergency_waivable_severities": ["critical", "high", "medium", "low"],
+  "never_waivable_categories": ["leaked_secrets"],
+  "fix_available_handling": {
+    "high_with_fix": "block",
+    "high_without_fix": "block-unless-accepted-risk",
+    "critical_with_fix": "block",
+    "critical_without_fix": "block-unless-emergency"
+  },
+  "categories": {
+    "source_vulnerabilities": { "blocking": true, "reason": "SOURCE_VULN_BLOCKING" },
+    "dependency_vulnerabilities": { "blocking": true, "reason": "DEPENDENCY_VULN_BLOCKING" },
+    "leaked_secrets": { "blocking": true, "reason": "SECRET_LEAK_BLOCKING" },
+    "workflow_vulnerabilities": { "blocking": true, "reason": "WORKFLOW_VULN_BLOCKING" },
+    "container_findings": { "blocking": true, "reason": "CONTAINER_FINDING_BLOCKING" },
+    "license_violations": { "blocking": true, "reason": "LICENSE_POLICY_BLOCKING" }
+  },
+  "required_scanners": [
+    { "name": "semgrep", "category": "source_vulnerabilities", "applies_when": "always", "max_database_age_days": null },
+    { "name": "gitleaks", "category": "leaked_secrets", "applies_when": "always", "max_database_age_days": null },
+    { "name": "osv-scanner", "category": "dependency_vulnerabilities", "applies_when": "manifest_present", "max_database_age_days": 7 },
+    { "name": "grype", "category": "dependency_vulnerabilities", "applies_when": "manifest_present", "max_database_age_days": 7 },
+    { "name": "trivy", "category": "container_findings", "applies_when": "dockerfile_present", "max_database_age_days": 7 },
+    { "name": "actionlint", "category": "workflow_vulnerabilities", "applies_when": "workflows_present", "max_database_age_days": null }
+  ],
+  "scanner_freshness": {
+    "max_database_age_days": 7,
+    "stale_action": "block",
+    "unverifiable_age_action": "block",
+    "reason": "SCANNER_DB_STALE"
+  },
+  "scanner_execution": {
+    "failure_action": "block",
+    "zero_targets_action": "block",
+    "malformed_report_action": "fail-closed",
+    "missing_applicable_scanner_action": "block",
+    "missing_raw_digest_action": "block",
+    "reason": "SCANNER_EXECUTION_INVALID"
+  },
+  "applicability": {
+    "require_independent_proof": true,
+    "reject_all_non_applicable": true,
+    "always_required_categories": ["leaked_secrets", "source_vulnerabilities", "container_findings", "workflow_vulnerabilities"],
+    "disabled_scanners": [],
+    "approved_non_applicability_reasons": [
+      "no-dependency-manifests",
+      "no-lockfiles",
+      "no-container-image",
+      "no-dockerfile",
+      "no-workflows",
+      "no-source-code"
+    ],
+    "reason": "NON_APPLICABLE_UNPROVEN"
+  },
+  "provenance": {
+    "require_signed_for": ["release"],
+    "unsigned_action": "block",
+    "unverifiable_action": "block",
+    "reason": "PROVENANCE_UNVERIFIABLE"
+  },
+  "waivers": {
+    "max_lifetime_days": 90,
+    "mandatory_owner": true,
+    "mandatory_approver": true,
+    "require_issue_reference": true,
+    "require_review_approval": true,
+    "prohibit_blanket_suppression": true,
+    "prohibited_scopes": ["scanner", "package", "all"],
+    "reason": "WAIVER_INVALID"
+  },
+  "regression_baseline": {
+    "enabled": true,
+    "unexplained_finding_drop_action": "block",
+    "coverage_reduction_action": "block",
+    "min_coverage_ratio": 1.0,
+    "reason": "SECURITY_REGRESSION"
+  },
+  "emergency_release": {
+    "allowed": true,
+    "max_lifetime_days": 3,
+    "mandatory_owner": true,
+    "mandatory_approver": true,
+    "require_incident_reference": true,
+    "require_followup_issue": true,
+    "reason": "EMERGENCY_RELEASE"
+  },
+  "incident_response": {
+    "disclosure_contact": "security-disclosure@REDACTED",
+    "acknowledge_within_hours": 24,
+    "triage_within_hours": 72,
+    "public_disclosure_policy": "coordinated",
+    "runbook": "docs/security-incident-response.md",
+    "reason": "INCIDENT_RESPONSE"
+  }
+}

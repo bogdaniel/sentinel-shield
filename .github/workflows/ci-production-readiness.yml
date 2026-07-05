@@ -1,0 +1,295 @@
+# Sentinel Shield — production-readiness candidate gate + independent evidence review.
+#
+# The aggregate BLOCKING gate for the engine-only v2 production-readiness candidate. It wires,
+# as SEPARATE fail-closed jobs, every acceptance surface the release depends on: shell syntax,
+# shellcheck, actionlint + zizmor, JSON-schema structural validation, the self-test matrix, all
+# prod tests, the adopter scenarios, consumer validation, security acceptance, the release
+# authorization negative+positive cases, the archive/artifact adversarial suites, and evidence +
+# manifest reproducibility. A final `production-readiness` job runs the local orchestrator
+# (scripts/run-production-readiness.sh run) to emit the machine + human report, then INDEPENDENTLY
+# reviews that report as UNTRUSTED evidence (review --profile ci-gate) against the run's own
+# GitHub identity (commit / workflow / default branch / event) — so a fabricated or mismatched
+# report fails the job.
+#
+# Every step fails CLOSED: no continue-on-error, no advisory-only gates, no `|| true`. Third-party
+# actions and container images are pinned by immutable full commit SHA / digest
+# (docs/github-actions-security.md). Framework live-validation (Laravel/Symfony) is OUT OF SCOPE
+# and is never claimed here; the report title states engine-only.
+name: ci-production-readiness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-production-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Static: shell syntax (sh -n) + shellcheck at the repo's -x -S error gate over
+  # every shell script, including the new orchestrator and its test.
+  static-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Shell syntax (sh -n, all scripts + prod tests)
+        run: |
+          for f in scripts/*.sh scripts/lib/*.sh scripts/audits/*.sh scripts/collectors/*.sh scripts/runners/*.sh tests/prod/*.sh; do
+            sh -n "$f" || exit 1
+          done
+
+      - name: Ensure shellcheck
+        run: command -v shellcheck >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y shellcheck)
+
+      - name: shellcheck (-x -S error, all scripts + prod tests)
+        run: |
+          for f in scripts/*.sh scripts/lib/*.sh scripts/audits/*.sh scripts/collectors/*.sh scripts/runners/*.sh tests/prod/*.sh; do
+            shellcheck -x -S error -s sh "$f" || exit 1
+          done
+
+  # --------------------------------------------------------------------------
+  # Workflow linting: actionlint (digest-pinned container) + zizmor (SHA-pinned action).
+  workflow-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: actionlint (digest-pinned container)
+        run: |
+          docker run --rm -e SHELLCHECK_OPTS="--severity=error" \
+            -v "${{ github.workspace }}:/repo" -w /repo \
+            rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 \
+            -color \
+            .github/workflows/*.yml templates/workflows/*.yml
+
+      - name: zizmor (CI security audit)
+        uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
+        with:
+          version: "1.26.1"
+          inputs: ".github/workflows/ templates/workflows/"
+          advanced-security: false
+          annotations: true
+
+  # --------------------------------------------------------------------------
+  # Schema validation: every schemas/*.json must be valid JSON AND self-describe with the
+  # 2020-12 dialect. The production-readiness-report schema is additionally exercised by the
+  # 263 test (structural conformance of emitted reports).
+  schema-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Validate every schema is well-formed JSON with a $schema dialect
+        run: |
+          rc=0
+          for s in schemas/*.json; do
+            jq -e . "$s" >/dev/null 2>&1 || { echo "invalid JSON: $s"; rc=1; continue; }
+            jq -e 'has("$schema") and has("$id") and has("type")' "$s" >/dev/null 2>&1 \
+              || { echo "schema missing \$schema/\$id/type: $s"; rc=1; }
+          done
+          exit "$rc"
+
+  # --------------------------------------------------------------------------
+  # Self-test matrix + every prod test (single source of truth: scripts/self-test.sh).
+  self-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: self-test.sh all (BLOCKING)
+        run: sh scripts/self-test.sh all
+
+      - name: All prod tests (BLOCKING)
+        run: sh scripts/self-test.sh production-readiness
+
+  # --------------------------------------------------------------------------
+  # Adopter scenarios + consumer validation.
+  adopter-and-consumers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: External-adopter multi-environment suite + scorecard (BLOCKING)
+        run: sh tests/adopter/adopter-scenarios.sh --out-dir "$GITHUB_WORKSPACE/adopter-out" --keep
+
+      - name: Consumer validation (node/react/php-library) (BLOCKING)
+        run: sh tests/prod/201-node-consumers.sh
+
+      - name: Upload adopter session reports + scorecard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-shield-adopter-out
+          path: adopter-out
+          retention-days: 14
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  # Security acceptance + release authorization (negative + positive) + archive/artifact
+  # adversarial suites + evidence/manifest reproducibility.
+  acceptance-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Production security acceptance (BLOCKING)
+        run: sh tests/prod/261-production-security.sh
+
+      - name: Release authorization — negative + positive cases (BLOCKING)
+        run: sh tests/prod/262-production-release.sh
+
+      - name: Artifact verification + archive-safety adversarial suite (BLOCKING)
+        run: sh tests/prod/241-artifact-verification.sh
+
+      - name: Release manifest reproducibility (BLOCKING)
+        run: sh tests/prod/242-release-manifest.sh
+
+      - name: Evidence collection + semantic binding (BLOCKING)
+        run: |
+          sh tests/prod/240-evidence-collection.sh
+          sh tests/prod/92-release-binding.sh
+
+  # --------------------------------------------------------------------------
+  # Aggregate: run the local orchestrator to emit the production-readiness report, then
+  # INDEPENDENTLY review it as UNTRUSTED evidence against this run's own GitHub identity.
+  # ci-gate profile proves exactly what CI can prove (identity, gate results, freshness, tag
+  # policy, changed files, engine-only title); the release-profile evidence (compat/adopter/
+  # security/artifacts/soak) is filled at integration time and reviewed on the release track.
+  production-readiness:
+    needs:
+      - static-shell
+      - workflow-lint
+      - schema-validation
+      - self-tests
+      - adopter-and-consumers
+      - acceptance-and-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq + shellcheck
+        run: |
+          command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+          command -v shellcheck >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y shellcheck)
+
+      - name: Compute changed-file inventory (merge base .. HEAD)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then BASE="${{ github.event.before }}"; fi
+          if [ -n "$BASE" ] && git cat-file -e "$BASE" 2>/dev/null; then
+            git diff --name-only "$BASE"...HEAD > changed-files.txt || git diff --name-only HEAD~1...HEAD > changed-files.txt
+          else
+            git diff --name-only HEAD~1...HEAD > changed-files.txt 2>/dev/null || git ls-files > changed-files.txt
+          fi
+          echo "changed files:"; cat changed-files.txt
+
+      - name: Run production-readiness orchestrator (emit report)
+        env:
+          # The upstream jobs are the authoritative gates; here we only need a bounded, fast
+          # plan that re-proves the shell/schema/report-shape surface and produces the report.
+          GH_EVENT: ${{ github.event_name }}
+          # Route context values through env (never expand ${{ }} inside run:) to avoid
+          # template injection — consistent with GH_EVENT above.
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          cat > /tmp/pr-plan.json <<'PLAN'
+          [
+            { "id": "shell-syntax", "required": true,
+              "cmd": "for f in scripts/*.sh scripts/lib/*.sh scripts/audits/*.sh tests/prod/*.sh; do sh -n \"$f\" || exit 1; done" },
+            { "id": "shellcheck", "required": true, "skip_if_missing": "shellcheck",
+              "cmd": "shellcheck -x -S error -s sh scripts/run-production-readiness.sh tests/prod/263-production-readiness.sh" },
+            { "id": "schema-validation", "required": true,
+              "cmd": "for s in schemas/*.json; do jq -e . \"$s\" >/dev/null || exit 1; done" },
+            { "id": "production-readiness-selftest", "required": true,
+              "cmd": "sh tests/prod/263-production-readiness.sh" }
+          ]
+          PLAN
+          EV="$GH_EVENT"
+          case "$EV" in push|workflow_dispatch|pull_request) ;; *) EV="unknown" ;; esac
+          sh scripts/run-production-readiness.sh run \
+            --plan /tmp/pr-plan.json \
+            --changed-files changed-files.txt \
+            --source-commit "$SHA" \
+            --workflow ci-production-readiness \
+            --event "$EV" \
+            --default-branch "$DEFAULT_BRANCH" \
+            --out-json integration/production-readiness-report.json \
+            --out-md integration/production-readiness-report.md
+
+      - name: Independent review of the emitted report (UNTRUSTED evidence, ci-gate profile)
+        # Runs on pull_request too: a PR report is validated as PR evidence (identity /
+        # freshness / summary), not skipped. --expected-event asserts the report's own event.
+        env:
+          SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_EVENT: ${{ github.event_name }}
+        run: |
+          sh scripts/run-production-readiness.sh review \
+            --report integration/production-readiness-report.json \
+            --expected-commit "$SHA" \
+            --expected-workflow ci-production-readiness \
+            --expected-default-branch "$DEFAULT_BRANCH" \
+            --expected-event "$GH_EVENT" \
+            --profile ci-gate \
+            --max-age-seconds 3600
+
+      - name: Version-decision helper (advisory print)
+        run: sh scripts/run-production-readiness.sh version-decision --report integration/production-readiness-report.json
+
+      - name: Upload production-readiness report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-shield-production-readiness-report
+          path: integration/production-readiness-report.*
+          retention-days: 14
+          if-no-files-found: error

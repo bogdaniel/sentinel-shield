@@ -260,3 +260,21 @@ is `partial` — **a structural `partial` is never proof of a consumer run.** It
 pre-flight, not the `evidence/releases/<version>.json` `consumer_runs[]` entry a real green CI
 run produces. See [`php-library-validation.md`](php-library-validation.md) for the per-gate
 breakdown.
+
+## External-adopter validation (complementary usability evidence)
+
+Separate from the five framework-validated consumer runs above, Sentinel Shield proves the
+**first-time adopter experience** with a reproducible multi-environment suite
+([`tests/adopter/adopter-scenarios.sh`](../tests/adopter/adopter-scenarios.sh)) and a
+release-blocking **usability scorecard**
+([`scripts/report-adopter-usability.sh`](../scripts/report-adopter-usability.sh), schema
+[`adopter-scorecard.schema.json`](../schemas/adopter-scorecard.schema.json)). Each isolated
+scenario (clean, minimal POSIX, managed-file conflict, read-only, interrupted+recovery,
+proxy, offline) acquires an immutable source ref, verifies identity, dry-runs before apply,
+runs doctor + the local pipeline, **injects an understandable failure, recovers**, and emits
+a schema-valid session — then the scorecard yields one pass/fail against eight blocking
+criteria (undocumented prerequisites, unexplained failures, unrecoverable mutations,
+safe next actions, bounded durations, file attribution, recovery-restores-state, and
+no-secrets/no-absolute-paths). This is **adopter-usability** evidence and is **not** a
+substitute for the framework-validated `consumer_runs[]` CI evidence defined above.
+See [`external-adopter-validation.md`](external-adopter-validation.md).

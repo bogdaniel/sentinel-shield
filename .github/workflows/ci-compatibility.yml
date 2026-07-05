@@ -1,0 +1,190 @@
+# Sentinel Shield — production compatibility & support-matrix enforcement.
+#
+# Proves the canonical compatibility policy (config/compatibility-policy.json) and its
+# fail-closed gate (scripts/health.sh) behave identically and deterministically across the
+# supported runner images, and that unsupported configurations FAIL with stable diagnostics
+# rather than incidental command errors. Every step fails CLOSED: a non-green deterministic
+# suite, or an unexpected health exit code, fails the job. No advisory-only / continue-on-error
+# steps. Third-party actions are pinned by immutable full commit SHA
+# (docs/github-actions-security.md). Cost is bounded: a single blocking unit job, a small
+# REPRESENTATIVE pairwise matrix on every PR/push, and the FULL runner-image matrix only on a
+# schedule / manual dispatch.
+name: ci-compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  schedule:
+    # Nightly full matrix (UTC). Keeps the supported-runner-image list honest as GitHub
+    # rotates images, without paying the full cost on every PR.
+    - cron: '27 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # (1) Deterministic, network-free policy + gate contract. BLOCKING on every event.
+  compat-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Shell syntax (compatibility scripts)
+        run: |
+          for f in scripts/health.sh scripts/lib/compatibility-policy.sh tests/prod/260-compatibility-policy.sh; do
+            sh -n "$f" || exit 1
+          done
+
+      - name: Policy conforms to its schema (structural)
+        run: |
+          jq -e . config/compatibility-policy.json >/dev/null
+          jq -e . schemas/compatibility-policy.schema.json >/dev/null
+
+      - name: Compatibility policy + gate contract (BLOCKING)
+        run: sh tests/prod/260-compatibility-policy.sh
+
+  # --------------------------------------------------------------------------
+  # (2) REPRESENTATIVE pairwise matrix on every PR/push. Each row injects a synthetic
+  #     environment via SENTINEL_SHIELD_COMPAT_* and asserts the gate's exact exit code —
+  #     deterministic, network-free, no extra toolchain actions needed. Bounded (<=6 rows).
+  compat-representative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Supported low / high corners (pairwise coverage of os x shell x pm x runtime).
+          - name: linux-min
+            os_id: linux
+            arch: x86_64
+            shell: sh
+            node: '18.0'
+            npm: '8.0'
+            php: '8.1'
+            expect_rc: '0'
+          - name: macos-high
+            os_id: macos
+            arch: arm64
+            shell: zsh
+            node: '22.11'
+            npm: '11.0'
+            php: '8.4'
+            expect_rc: '0'
+          # Unsupported corners must FAIL closed (exit 3).
+          - name: unsupported-shell
+            os_id: linux
+            arch: x86_64
+            shell: fish
+            node: '20.11'
+            npm: '10.9'
+            php: '8.2'
+            expect_rc: '3'
+          - name: unsupported-arch
+            os_id: linux
+            arch: s390x
+            shell: bash
+            node: '20.11'
+            npm: '10.9'
+            php: '8.2'
+            expect_rc: '3'
+          - name: unsupported-node
+            os_id: linux
+            arch: x86_64
+            shell: bash
+            node: '16.20'
+            npm: '10.9'
+            php: '8.2'
+            expect_rc: '3'
+          - name: unsupported-npm-major
+            os_id: linux
+            arch: x86_64
+            shell: bash
+            node: '20.11'
+            npm: '7.9'
+            php: '8.2'
+            expect_rc: '3'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Assert gate exit code for '${{ matrix.name }}'
+        env:
+          SENTINEL_SHIELD_COMPAT_OS: ${{ matrix.os_id }}
+          SENTINEL_SHIELD_COMPAT_ARCH: ${{ matrix.arch }}
+          SENTINEL_SHIELD_COMPAT_SHELL: ${{ matrix.shell }}
+          SENTINEL_SHIELD_COMPAT_NODE_VERSION: ${{ matrix.node }}
+          SENTINEL_SHIELD_COMPAT_NPM_VERSION: ${{ matrix.npm }}
+          SENTINEL_SHIELD_COMPAT_PHP_VERSION: ${{ matrix.php }}
+          SENTINEL_SHIELD_COMPAT_FS_CASE: sensitive
+          EXPECT_RC: ${{ matrix.expect_rc }}
+        run: |
+          rc=0
+          sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
+          echo "gate exit=$rc expected=$EXPECT_RC"
+          if [ "$rc" != "$EXPECT_RC" ]; then
+            echo "COMPAT MISMATCH: '${{ matrix.name }}' expected exit $EXPECT_RC but got $rc"
+            exit 1
+          fi
+
+  # --------------------------------------------------------------------------
+  # (3) FULL runner-image matrix. Scheduled / manual only (bounded cost). Runs the gate
+  #     LIVE against the real image plus the deterministic suite, proving each SUPPORTED
+  #     image is on a supported OS/arch/shell/toolchain. A live gate result of 0 (supported)
+  #     or 1 (degraded, e.g. macOS case-insensitive FS) is acceptable; >=2 fails the job.
+  compat-full-matrix:
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-14
+          - macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            if command -v brew >/dev/null 2>&1; then brew install jq; else sudo apt-get update && sudo apt-get install -y jq; fi
+          fi
+
+      - name: Deterministic policy + gate contract (BLOCKING)
+        run: sh tests/prod/260-compatibility-policy.sh
+
+      - name: Live compatibility gate on ${{ matrix.image }} (supported or degraded only)
+        run: |
+          rc=0
+          sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
+          echo "live gate exit=$rc on ${{ matrix.image }}"
+          if [ "$rc" -ge 2 ]; then
+            echo "runner image ${{ matrix.image }} is UNSUPPORTED/unverifiable (gate exit $rc) — see FAIL lines above"
+            exit 1
+          fi

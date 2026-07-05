@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/rollback-advisory.schema.json",
+  "title": "Sentinel Shield rollback / superseding-release advisory",
+  "description": "The machine-readable record emitted by `authorize-production-release.sh rollback-advisory` and `declare-superseded`. It NEVER represents a tag deletion or a tag move: a Sentinel Shield rollback publishes a SUPERSEDING fixed release, marks the affected versions, and gives consumers explicit rollback/upgrade guidance. Released tags are immutable — an advisory records the remediation, it does not mutate history. Contains NO secrets.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "advisory_id",
+    "kind",
+    "generated_at",
+    "affected_versions",
+    "action",
+    "consumer_guidance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1" },
+    "advisory_id": { "type": "string", "minLength": 1, "description": "Stable advisory identifier, e.g. 'SSA-2026-001'." },
+    "kind": {
+      "type": "string",
+      "enum": ["superseded", "rollback"],
+      "description": "'superseded' when a fixed superseding release replaces an affected one; 'rollback' when the advisory recommends consumers move back to a known-good prior version pending a fix."
+    },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "title": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string", "minLength": 1, "description": "Why the affected versions are being superseded / rolled back." },
+    "affected_versions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The released versions this advisory marks as affected. Their tags are NOT deleted or moved.",
+      "items": {
+        "type": "object",
+        "required": ["version", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "version": { "type": "string", "minLength": 1 },
+          "tag": { "type": "string", "minLength": 1 },
+          "status": {
+            "type": "string",
+            "enum": ["superseded", "yanked-advisory", "affected"],
+            "description": "'superseded' — replaced by superseding_version; 'yanked-advisory' — advised against but still present (never actually deleted); 'affected' — impacted, remediation pending."
+          }
+        }
+      }
+    },
+    "superseding_version": { "type": "string", "minLength": 1, "description": "The fixed release that replaces the affected versions (required when kind == 'superseded')." },
+    "superseding_tag": { "type": "string", "minLength": 1 },
+    "rollback_to": { "type": "string", "minLength": 1, "description": "Known-good prior version consumers should pin to (used when kind == 'rollback')." },
+    "action": {
+      "type": "string",
+      "enum": ["publish-superseding-release", "recommend-rollback"],
+      "description": "The remediation action. NEVER 'delete-tag' or 'move-tag' — those are refused by the tool."
+    },
+    "consumer_guidance": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Ordered, copy-pasteable steps for consumers (e.g. how to upgrade to the superseding release or pin to the rollback target)."
+    },
+    "references": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Links to the incident, the superseding release notes, and the security advisory."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "superseded" } } },
+      "then": { "required": ["superseding_version"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "rollback" } } },
+      "then": { "required": ["rollback_to"] }
+    }
+  ]
+}

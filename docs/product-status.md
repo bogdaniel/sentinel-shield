@@ -40,6 +40,19 @@ tracked work, not a gap being hidden. See [`v2-release-scope.md`](v2-release-sco
 | PHP-library profile | yes | yes | yes | **no** | yes | supported | `tests/fixtures/projects/php-library` |
 | Node/React profile | yes | yes | yes | **no** | yes | supported | `tests/fixtures/projects/node-react`, `tests/e2e` |
 | Combined (php+node) profile | yes | yes | yes | **no** | yes | supported | `tests/e2e/laravel-react-docker` |
+| External-adopter multi-environment validation + usability scorecard | yes | yes | yes | **no** | yes | proven (engine) | `tests/adopter/adopter-scenarios.sh`, `scripts/report-adopter-usability.sh`, `tests/prod/244-adopter-scorecard.sh`, CI `ci-adopter-validation.yml` |
+
+**External-adopter validation program.** The single black-box session has been superseded by
+a reproducible **multi-environment** adopter suite (clean, minimal-POSIX, managed-file
+conflict, read-only, interrupted+recovery, proxy, offline), each producing a schema-valid
+session ([`adopter-session.schema.json`](../schemas/adopter-session.schema.json)) and folded
+into a release-blocking **usability scorecard**
+([`adopter-scorecard.schema.json`](../schemas/adopter-scorecard.schema.json)) with eight
+fail-closed criteria. Deterministic positive/negative/failure-injection coverage lives in
+[`tests/prod/244-adopter-scorecard.sh`](../tests/prod/244-adopter-scorecard.sh). This is
+**engine/adopter-usability** evidence — it is **not** a claim of live third-party production
+adoption, which remains `no` for every profile this cycle. See
+[`external-adopter-validation.md`](external-adopter-validation.md).
 
 ### v2.0.0-beta.2 consumer-validation matrix (draft increment)
 

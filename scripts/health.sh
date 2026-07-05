@@ -36,8 +36,15 @@
 #   3  unknown    at least one check could not be determined (and nothing worse)
 #   64 usage      invalid invocation (distinct from any health verdict)
 #
+# This command has TWO modes. WITHOUT --policy it runs the operational health REPORT described
+# above. WITH --policy it runs the strict host-compatibility GATE (see COMPATIBILITY GATE below),
+# which classifies THIS environment against config/compatibility-policy.json and has its OWN
+# canonical exit codes (0 supported / 1 degraded / 2 invalid / 3 unsupported / 4 probe timeout).
+#
 # Usage: sh scripts/health.sh [--target <dir>] [--check-network] [--format json|text]
 #                             [--report <path>] [--quiet]
+#        sh scripts/health.sh --policy <path> [--docker required|optional] [--require-network]
+#                             [--quiet] [--output json]
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
@@ -57,8 +64,72 @@ if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
 	# shellcheck source=scripts/lib/operational-events.sh
 	. "$SCRIPT_DIR/lib/operational-events.sh"
 fi
+# Compatibility-policy + output-contract libs back the --policy GATE mode below; source
+# defensively so the operational health REPORT still works in a minimal copied tree.
+if [ -f "$SCRIPT_DIR/lib/compatibility-policy.sh" ]; then
+	# shellcheck source=scripts/lib/compatibility-policy.sh
+	. "$SCRIPT_DIR/lib/compatibility-policy.sh"
+fi
+if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
+	# shellcheck source=scripts/lib/output-contract.sh
+	. "$SCRIPT_DIR/lib/output-contract.sh"
+fi
 
 EX_USAGE=64
+
+# =============================================================================================
+# COMPATIBILITY GATE (mode: `health.sh --policy <path> ...`)
+# ---------------------------------------------------------------------------------------------
+# One health.sh serves TWO contracts. With --policy it runs the STRICT, fail-closed host
+# compatibility gate (classify THIS environment against config/compatibility-policy.json) that
+# ci-compatibility.yml and tests/prod/260 invoke; without it, the operational health REPORT
+# below runs. The gate keeps its OWN canonical exit codes, distinct from the report's:
+#   0 supported | 1 degraded (warnings) | 2 invalid config/invocation | 3 UNSUPPORTED | 4 probe timeout
+# Precedence: 2 > 4 > 3 > 1 > 0.
+_health_compat_gate() {
+	# --output json is handled by the output-contract envelope (exits when requested).
+	if command -v oc_intercept >/dev/null 2>&1; then oc_intercept "health" "$0" "$@"; fi
+	command -v cp_validate_policy >/dev/null 2>&1 || { log_error "health: compatibility-policy library unavailable"; exit 2; }
+	_hcg_repo=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+	POLICY="$_hcg_repo/config/compatibility-policy.json"
+	DOCKER_MODE="optional"; REQUIRE_NETWORK=0; QUIET=0
+	while [ $# -gt 0 ]; do case "$1" in
+		--policy) POLICY="${2:?--policy requires a value}"; shift 2 ;;
+		--docker) DOCKER_MODE="${2:?--docker requires a value}"; shift 2 ;;
+		--require-network) REQUIRE_NETWORK=1; shift ;;
+		--quiet) QUIET=1; shift ;;
+		-h|--help)
+			echo "Usage: health.sh --policy <path> [--docker required|optional] [--require-network] [--quiet] [--output json]"; exit 0 ;;
+		*) log_error "health: unknown argument: $1"; exit 2 ;;
+	esac; done
+	case "$DOCKER_MODE" in required|optional) ;; *) log_error "health: invalid --docker '$DOCKER_MODE' (required|optional)"; exit 2 ;; esac
+	command_exists jq || { log_error "health: jq is required to evaluate the compatibility policy (install jq)"; exit 2; }
+	cp_validate_policy "$POLICY" || { log_error "health: compatibility policy invalid or missing: $POLICY"; exit 2; }
+	echo "Sentinel Shield health — compatibility gate (policy: $(basename -- "$POLICY"), version $(jq -r '.policy_version' "$POLICY"))"
+	echo "[compatibility]"
+	# These globals are consumed by the sourced compatibility-policy.sh in THIS shell.
+	# shellcheck disable=SC2034
+	CP_ENV_DOCKER_PROFILE="$DOCKER_MODE"
+	# shellcheck disable=SC2034
+	CP_QUIET="$QUIET"
+	# shellcheck disable=SC2034
+	if [ "$REQUIRE_NETWORK" = 1 ]; then CP_ENV_ONLINE_ONLY=yes; else CP_ENV_ONLINE_ONLY=no; fi
+	CP_PROBE_TIMEOUT=0
+	cp_detect_into_env
+	cp_evaluate "$POLICY" 1
+	echo "----"
+	if [ "$CP_PROBE_TIMEOUT" = 1 ]; then echo "health: a bounded version probe timed out — environment UNVERIFIABLE (exit 4)"; exit 4; fi
+	if [ "$CP_FAIL" -gt 0 ]; then echo "health: $CP_FAIL unsupported/incompatible component(s) — see FAIL line(s) above (exit 3)"; exit 3; fi
+	if [ "$CP_WARN" -gt 0 ]; then echo "health: $CP_WARN warning(s) — supported but degraded (exit 1)"; exit 1; fi
+	echo "health: environment supported (all components within policy)"
+	exit 0
+}
+
+# Dispatch to the compatibility GATE when --policy is present (it exits); otherwise fall through
+# to the operational health REPORT.
+for _ha in "$@"; do
+	[ "$_ha" = "--policy" ] && _health_compat_gate "$@"
+done
 
 # --- tunables (env-overridable) ---------------------------------------------------------------
 : "${SENTINEL_SHIELD_HEALTH_DISK_MIN_KB:=51200}"          # minimum free KB (default 50 MiB).

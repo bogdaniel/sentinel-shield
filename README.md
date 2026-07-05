@@ -39,7 +39,8 @@ This repository is not a demo. It is intended for use in real production project
 > [`docs/evidence-platform.md`](docs/evidence-platform.md) +
 > [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`).
 > **Stuck?** `sh scripts/doctor.sh` (preflight) · `sh scripts/support-bundle.sh` (safe diagnostics) ·
-> `sh scripts/health.sh` (operational health verdict) · `sh scripts/maturity-report.sh` (tool status) ·
+> `sh scripts/health.sh` (operational health verdict; `--policy` runs the compatibility gate) ·
+> `sh scripts/maturity-report.sh` (tool status) ·
 > [`docs/troubleshooting.md`](docs/troubleshooting.md) · [`docs/operations-runbook.md`](docs/operations-runbook.md)
 > (production health + opt-in JSONL operational events).
 > **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
@@ -80,6 +81,25 @@ Sentinel Shield can be used in three ways:
 | Docker / Compose | Supported | [`profiles/docker`](profiles/docker) |
 | GitHub Actions | Supported | [`docs/github-actions-security.md`](docs/github-actions-security.md) |
 | Infrastructure / server security | Partial (OPA, Trivy) | [`policies/opa`](policies/opa) |
+
+### Platform & toolchain compatibility
+
+The OS, CPU architecture, shell, and tool versions the **engine** runs on are declared once in the
+machine-readable [`config/compatibility-policy.json`](config/compatibility-policy.json) (rendered in
+[`docs/compatibility.md`](docs/compatibility.md); lifecycle in
+[`docs/support-policy.md`](docs/support-policy.md)). Prove a host/runner is supported with the
+fail-closed gate:
+
+```sh
+sh scripts/health.sh                     # exit 0 supported · 1 degraded · 3 unsupported · 2 bad policy · 4 probe timeout
+sh scripts/health.sh --docker required   # a container-backed action: fail closed if Docker is absent
+sh scripts/health.sh --require-network    # an online-only op: fail closed if the host is offline
+```
+
+Supported at a glance: Linux/macOS/Windows-via-POSIX · `x86_64`/`arm64` · POSIX shells (`sh`, `bash`,
+`dash`, `zsh`, …) · Git ≥ 2.20 · jq ≥ 1.6 · PHP 8.1–8.4 · Node 18/20/22 LTS · npm 8–11 · pnpm 8–10 ·
+Yarn 1–4 · Composer 2.2+ · Docker 20.10+ (per-profile). Unsupported configurations FAIL with a stable
+`reason=<CODE>` diagnostic, never an incidental command error.
 
 ---
 

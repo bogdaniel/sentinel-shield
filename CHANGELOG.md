@@ -54,6 +54,23 @@ artifact / tag identifiers are pending the release commit. See
   guards, reproducible release manifest (`scripts/generate-release-manifest.sh` +
   `scripts/verify-release-manifest.sh`), finite two-commit finalization
   (`scripts/finalize-release-evidence.sh`). Signing/attestation deferred.
+- **Production-readiness candidate + independent evidence review.**
+  `scripts/run-production-readiness.sh` orchestrates every local engine-only gate (shell
+  syntax, shellcheck, actionlint, schema validation, self-tests, all prod tests, adopter
+  scenarios, consumer validation, security acceptance, release-authorization negative+positive,
+  archive/artifact adversarial, evidence+manifest reproducibility) into one bounded,
+  fail-closed report (`schemas/production-readiness-report.schema.json`) — a hung gate yields a
+  DISTINCT exit code 4. Its `review` mode treats the generated report as **UNTRUSTED** evidence
+  and independently re-derives source commit, changed-file inventory, test applicability,
+  skipped/failed required jobs, workflow identity, default branch, event type, artifact
+  ownership + content, report freshness, scanner health, compatibility coverage, adopter score,
+  release limitations, and tag-target policy (profiles `ci-gate` / `release`). A
+  `version-decision` helper recommends `v2.0.0-beta.3` (material blockers), `v2.0.0-rc.1`
+  (behavior complete, soak/evidence remains), or `v2.0.0` (all engine-only GA criteria pass) —
+  titled engine-only until the framework tracks are independently validated. Wired into the new
+  `ci-production-readiness` workflow (SHA-pinned) and covered by
+  `tests/prod/263-production-readiness.sh` (positive / negative / failure-injection). The
+  new workflow's jobs are registered in `config/required-checks.json`.
 
 ### Hardening (production readiness)
 - **Safe acquisition (destructive-cleanup guard).** `acquire-sentinel-shield.sh` validates
