@@ -47,6 +47,7 @@
       "description": "One bounded-command-result (schemas/bounded-command-result.schema.json) per BOUNDED docker probe performed while resolving image digests. A timed-out probe surfaces here as status=\"timed-out\" so a hung daemon is visible in the machine report instead of hiding behind a silently-empty digest. Optional; present since report version 1.1.",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["schema", "command", "command_category", "status", "timeout_seconds"],
         "properties": {
           "schema": { "const": "bounded-command-result" },
@@ -61,7 +62,8 @@
           "isolation": { "type": "string", "enum": ["process-group", "none"] },
           "descendant_cleanup": { "type": "string", "enum": ["complete", "process-group-only", "descendant-enumeration", "none"] },
           "timeout_status": { "type": "string", "enum": ["timed-out", "within-timeout"] },
-          "no_orphans": { "type": "boolean" }
+          "no_orphans": { "type": "boolean" },
+          "timestamp": { "type": "string" }
         }
       }
     }

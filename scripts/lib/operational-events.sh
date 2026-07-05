@@ -289,8 +289,12 @@ oe_emit() {
 	if [ -n "$_oe_next" ]; then
 		if command -v rd_redact_stream >/dev/null 2>&1; then
 			_oe_next=$(printf '%s' "$_oe_next" | rd_redact_stream 2>/dev/null || printf '')
+			_oe_next_json=$(printf '%s' "$_oe_next" | jq -Rs '.')
+		else
+			# Fail closed: without the redactor we cannot guarantee this free-text field
+			# carries no secret/path, so we drop the content rather than emit it raw.
+			_oe_next_json='"[redaction-unavailable]"'
 		fi
-		_oe_next_json=$(printf '%s' "$_oe_next" | jq -Rs '.')
 	else
 		_oe_next_json='null'
 	fi

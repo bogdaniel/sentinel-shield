@@ -23,24 +23,24 @@
 #   the command category are ever surfaced.
 #
 # EXECUTION MODEL
-#   * When GNU `timeout` (or `gtimeout`) is present it is used (it handles process
-#     groups natively — it launches the command in a NEW process group and signals the
-#     whole group), UNLESS SENTINEL_SHIELD_BP_FORCE_PORTABLE=1.
-#   * Otherwise a PORTABLE watchdog is used. PRIMARY containment is PROCESS-GROUP
-#     isolation, NOT descendant enumeration: the command is launched under POSIX job
-#     control (`set -m`), which makes it a process-group LEADER (pgid == pid). On
-#     timeout the watchdog signals the COMPLETE process group (kill -TERM -PGID, then a
-#     bounded grace, then kill -KILL -PGID). This reaps children that fork, double-fork,
-#     reparent to init, or ignore individual TERMs — anything that stays in the group.
-#     Descendant enumeration (pgrep -P) is used ONLY as SECONDARY, best-effort cleanup.
-#     On EVERY completion path a final group sweep guarantees no member outlives the
-#     bounded command (e.g. a child that keeps running after its parent exits).
-#   * PLATFORM CLASSIFICATION: process-group isolation is available wherever POSIX job
-#     control is honored by /bin/sh (Linux dash/bash, macOS bash-as-sh, BSD sh). Where
-#     `set -m` is NOT honored (a stripped shell without job control), isolation is
-#     UNAVAILABLE; the wrapper then reports isolation="none", NEVER claims no_orphans,
-#     and — if SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 (production-required operations) —
-#     FAILS CLOSED rather than launch an uncontainable process.
+#   * PRIMARY (whenever perl is available): a PORTABLE watchdog runs the command via
+#     `perl -e 'POSIX::setsid(); exec @ARGV'`, placing it in its OWN new session/process
+#     group (pgid == pid) WITHOUT forking, so it stays a WAITABLE direct child. On timeout
+#     the watchdog signals the COMPLETE group (kill -TERM/-KILL -PGID) AND — because a
+#     group-directed kill is unreliable once the group leader has exited — reaps each group
+#     member by pid (bp_kill_pgroup_members). A final sweep on EVERY completion path
+#     guarantees no member outlives the bounded command (e.g. a child still running after a
+#     fast-exiting parent). Descendant enumeration (pgrep -P) is SECONDARY, best-effort.
+#   * FALLBACK when perl is ABSENT: GNU `timeout`/`gtimeout` if present (native process-group
+#     containment — but it only group-kills on TIMEOUT, so it can leak a child that outlives a
+#     successful parent), else POSIX job control (`set -m`), which isolates only on shells that
+#     honor it non-interactively (bash-as-sh; NOT dash). SENTINEL_SHIELD_BP_FORCE_PORTABLE=1
+#     forces the portable path for deterministic testing.
+#   * PLATFORM CLASSIFICATION: process-group isolation is GUARANTEED wherever perl is present
+#     (POSIX::setsid). The runtime verifies the child's pgid and, if isolation did not take,
+#     reports isolation="none", NEVER claims no_orphans, and — if
+#     SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 (production-required operations) — FAILS CLOSED
+#     BEFORE launch rather than run an uncontainable process.
 #
 # OUTPUT CONTRACT (bp_result_json, schemas/bounded-command-result.schema.json)
 #   { schema, command, command_category, status, exit_code, signal,
@@ -284,15 +284,17 @@ bp_job_control_supported() {
 	( set -m 2>/dev/null; case $- in *m*) exit 0 ;; *) exit 1 ;; esac )
 }
 
-# bp_isolation_available — 0 iff the portable path can establish process-group isolation:
-# either perl is present (POSIX::setsid + exec runs the command in a NEW SESSION WITHOUT
-# forking, so it stays a WAITABLE child with pgid == pid — works on dash/Linux AND macOS,
-# unlike setsid(1) which detaches the process and unlike `set -m` which does not isolate
-# under dash) or POSIX job control is honored (`set -m`, the fallback for shells with no
-# perl). Used by the pre-launch fail-closed gate and by _bp_portable_exec.
+# bp_isolation_available — 0 iff process-group isolation can be GUARANTEED *before* launch.
+# ONLY perl qualifies: POSIX::setsid() isolates deterministically. `set -m` is deliberately
+# NOT accepted here — its support probe (bp_job_control_supported) passes on dash, yet dash
+# does not place background jobs in their own group, so the runtime pgid-confirm in
+# _bp_portable_exec can still downgrade to iso=none AFTER the command has launched. Trusting
+# job control would let SENTINEL_SHIELD_BP_REQUIRE_ISOLATION=1 pass the gate and launch an
+# uncontainable process. Requiring perl keeps the fail-closed gate honest (a bash-only host
+# without perl loses the REQUIRE_ISOLATION capability — the safe direction). The set -m path
+# still runs as a best-effort fallback inside _bp_portable_exec for non-REQUIRE calls.
 bp_isolation_available() {
-	command -v perl >/dev/null 2>&1 && return 0
-	bp_job_control_supported
+	command -v perl >/dev/null 2>&1
 }
 
 # bp_terminate <leader_pid> <isolated 0|1> <signal> — deliver <signal> to the command.

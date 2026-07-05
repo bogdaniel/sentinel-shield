@@ -41,7 +41,7 @@ Every one of these fails **closed**: the operation refuses and surfaces a **stab
 | Physical parent containment (no symlinked component, no `..`/absolute) | `fs_contained` | `FS_SYMLINK_COMPONENT`, `FS_ESCAPES_ROOT`, `FS_INVALID_PATH` |
 | No-follow expectation (lstat guard — POSIX has no `O_NOFOLLOW`) | `fs_assert_not_symlink` | `FS_IS_SYMLINK` |
 | Regular-file-only (reject device/FIFO/socket/dir) | `fs_assert_regular`, `fs_assert_no_special` | `FS_NOT_REGULAR`, `FS_SPECIAL_FILE`, `FS_IS_SYMLINK` |
-| No unexpected hard link on sensitive files | `fs_assert_single_link` | `FS_UNEXPECTED_HARDLINK` |
+| No unexpected hard link on sensitive files | `fs_assert_single_link` | `FS_UNEXPECTED_HARDLINK`, `FS_LINK_COUNT_UNAVAILABLE` |
 | Not group/world-writable metadata | `fs_assert_not_group_world_writable` | `FS_GROUP_WORLD_WRITABLE` |
 | Owner consistency (where portable) | `fs_assert_owner` | `FS_OWNER_MISMATCH` |
 | Restrictive default perms; preserved exec bit | `fs_apply_secret_mode`, `fs_apply_file_mode`, `fs_preserve_exec` | `FS_MODE_FAILED` |

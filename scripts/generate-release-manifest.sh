@@ -69,9 +69,29 @@ fi
 # written THROUGH a symlink or onto a device/FIFO/socket — a swapped --output could redirect
 # release evidence outside the repository or block on a special file. Fail closed BEFORE any work.
 if [ -n "$OUTPUT" ]; then
+	# Guard the FULL destination path, not just the leaf: a symlinked PARENT directory would
+	# otherwise redirect the write outside the repo. fs_canonical_root rejects a symlinked
+	# (or non-dir) parent; the leaf checks reject a symlinked / special-file destination.
+	_od=$(fs_canonical_root "$(dirname -- "$OUTPUT")") || { log_error "refusing to write the manifest to '$OUTPUT' ($_od): parent directory is a symlink or not a directory"; exit 2; }
 	_od=$(fs_assert_not_symlink "$OUTPUT") || { log_error "refusing to write the manifest to '$OUTPUT' ($_od): destination is a symlink"; exit 2; }
 	_od=$(fs_assert_no_special "$OUTPUT") || { log_error "refusing to write the manifest to '$OUTPUT' ($_od): destination is a device/FIFO/socket"; exit 2; }
 fi
+
+# _emit_output <content> — print to stdout, or (with --output) write ATOMICALLY via
+# fs_atomic_replace, which re-canonicalises the parent dir and refuses any symlink component
+# at write time (defence in depth against a TOCTOU swap after the checks above).
+_emit_output() {
+	if [ -z "$OUTPUT" ]; then printf '%s\n' "$1"; return 0; fi
+	_eo_tmp=$(mktemp 2>/dev/null) || { log_error "manifest: cannot create a temporary file"; exit 2; }
+	printf '%s\n' "$1" > "$_eo_tmp"
+	if ! _eo_err=$(fs_atomic_replace "$_eo_tmp" "$OUTPUT"); then
+		rm -f -- "$_eo_tmp" 2>/dev/null
+		log_error "refusing to write the manifest to '$OUTPUT' ($_eo_err): unsafe destination path"
+		exit 2
+	fi
+	rm -f -- "$_eo_tmp" 2>/dev/null
+	unset _eo_tmp _eo_err
+}
 
 # --- resolve core identity ---------------------------------------------------
 VERSION=$(jq -r '.version // ""' "$EVIDENCE")
@@ -188,7 +208,7 @@ HASH=$(printf '%s' "$CANON" | ss_sha256_stdin)
 
 if [ "$BODY_ONLY" = 1 ]; then
 	# The canonical body is the exact string that is hashed.
-	if [ -n "$OUTPUT" ]; then printf '%s\n' "$CANON" > "$OUTPUT"; else printf '%s\n' "$CANON"; fi
+	_emit_output "$CANON"
 	exit 0
 fi
 
@@ -200,6 +220,6 @@ MANIFEST=$(jq -n \
 	  body: $body,
 	  reproducibility: { hash_algorithm: "sha256", canonicalization: "jq -S -c over .body", hash: $hash } }')
 
-if [ -n "$OUTPUT" ]; then printf '%s\n' "$MANIFEST" > "$OUTPUT"; else printf '%s\n' "$MANIFEST"; fi
+_emit_output "$MANIFEST"
 log_info "release manifest generated (body sha256=$HASH)"
 exit 0

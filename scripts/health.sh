@@ -89,8 +89,9 @@ command_exists jq || { log_error "health: jq is required"; exit "$EX_USAGE"; }
 case "$FORMAT" in json|text) ;; *) log_error "health: invalid --format '$FORMAT' (json|text)"; exit "$EX_USAGE" ;; esac
 [ -d "$TARGET" ] || { log_error "health: target not a directory: $TARGET"; exit "$EX_USAGE"; }
 
-# Canonicalize the target so the redacted identity + df/writability act on the real path.
-TARGET=$(CDPATH= cd -- "$TARGET" 2>/dev/null && pwd) || { log_error "health: cannot resolve target"; exit "$EX_USAGE"; }
+# Canonicalize the target PHYSICALLY (pwd -P resolves symlink components) so the redacted
+# identity + df/writability act on the REAL path, not a symlinked alias.
+TARGET=$(CDPATH= cd -- "$TARGET" 2>/dev/null && pwd -P) || { log_error "health: cannot resolve target"; exit "$EX_USAGE"; }
 SS_DIR="$TARGET/.sentinel-shield"
 export SS_DIR
 
@@ -164,8 +165,6 @@ _h_check_operation() {
 		return 0
 	fi
 	_o_state=$(jq -r '.state // "unknown"' "$_o_lock" 2>/dev/null) || _o_state="unknown"
-	_o_host=$(jq -r '.hostname // ""' "$_o_lock" 2>/dev/null) || _o_host=""
-	_o_pid=$(jq -r '.pid // ""' "$_o_lock" 2>/dev/null) || _o_pid=""
 	case "$_o_state" in
 		rollback-incomplete)
 			_h_record operation_state unhealthy operation_incomplete "a prior rollback did not complete (state=rollback-incomplete)"
@@ -174,21 +173,25 @@ _h_check_operation() {
 			_h_record operation_state degraded operation_completed_unreleased "a completed operation left its lock behind (benign; next run clears it)"
 			;;
 		initializing|active|validating|committing|rolling-back)
-			_o_cur=$(_tx_hostname 2>/dev/null || printf '')
-			if [ -n "$_o_host" ] && [ -n "$_o_cur" ] && [ "$_o_host" != "$_o_cur" ]; then
-				_h_record operation_state unhealthy operation_stale "lock owned by a different host (cannot be live locally); state=$_o_state"
-			elif [ -n "$_o_pid" ] && printf '%s' "$_o_pid" | grep -Eq '^[0-9]+$' && kill -0 "$_o_pid" 2>/dev/null; then
-				_h_record operation_state degraded operation_in_progress "an operation appears to be running now (state=$_o_state)"
-			else
-				_h_record operation_state unhealthy operation_stale "an interrupted operation left a stale lock (state=$_o_state)"
-			fi
-			unset _o_cur
+			# Reuse the transaction subsystem's owner classifier (defeats PID reuse via
+			# pid_start) rather than a hand-rolled hostname + kill -0 check that would
+			# misread a recycled PID as a live operation.
+			LOCK="$_o_lock"
+			case "$(_tx_owner_classify)" in
+				live)
+					_h_record operation_state degraded operation_in_progress "an operation appears to be running now (state=$_o_state)" ;;
+				foreign)
+					_h_record operation_state unhealthy operation_stale "lock owned by a different host (cannot be live locally); state=$_o_state" ;;
+				*)
+					_h_record operation_state unhealthy operation_stale "an interrupted operation left a stale lock (state=$_o_state)" ;;
+			esac
+			unset LOCK
 			;;
 		*)
 			_h_record operation_state unknown operation_state_unknown "operation lock has an unrecognized state"
 			;;
 	esac
-	unset _o_lock _o_mutex _o_state _o_host _o_pid
+	unset _o_lock _o_mutex _o_state
 }
 
 # =============================================================================================
@@ -493,11 +496,17 @@ _h_check_network() {
 	fi
 	# The probe is overridable so it can be exercised deterministically and offline in tests. The
 	# default performs a read-only ref listing against the configured URL (no clone, no write).
-	_n_probe="${SENTINEL_SHIELD_HEALTH_NET_PROBE:-git ls-remote --quiet --exit-code \"$SENTINEL_SHIELD_HEALTH_GITHUB_URL\" HEAD}"
 	_n_out=$(mktemp 2>/dev/null || mktemp -t sshealthno)
 	_n_err=$(mktemp 2>/dev/null || mktemp -t sshealthne)
 	_n_rc=0
-	bp_run network "$SENTINEL_SHIELD_HEALTH_NET_TIMEOUT" "$_n_out" "$_n_err" -- sh -c "$_n_probe" || _n_rc=$?
+	if [ -n "${SENTINEL_SHIELD_HEALTH_NET_PROBE:-}" ]; then
+		# Operator-supplied probe is an explicit shell command (their responsibility).
+		bp_run network "$SENTINEL_SHIELD_HEALTH_NET_TIMEOUT" "$_n_out" "$_n_err" -- sh -c "$SENTINEL_SHIELD_HEALTH_NET_PROBE" || _n_rc=$?
+	else
+		# Default: pass the URL as a DISTINCT argv element (no `sh -c`), so a URL carrying
+		# shell metacharacters cannot inject a command.
+		bp_run network "$SENTINEL_SHIELD_HEALTH_NET_TIMEOUT" "$_n_out" "$_n_err" -- git ls-remote --quiet --exit-code "$SENTINEL_SHIELD_HEALTH_GITHUB_URL" HEAD || _n_rc=$?
+	fi
 	rm -f -- "$_n_out" "$_n_err" 2>/dev/null || :
 	if [ "$_n_rc" -eq 0 ]; then
 		_h_record github_connectivity healthy network_ok "required GitHub endpoint reachable"
@@ -508,7 +517,7 @@ _h_check_network() {
 	else
 		_h_record github_connectivity unhealthy network_unreachable "required GitHub endpoint not reachable (probe rc=$_n_rc)"
 	fi
-	unset _n_probe _n_out _n_err _n_rc
+	unset _n_out _n_err _n_rc
 }
 
 # --- run all checks ---------------------------------------------------------------------------

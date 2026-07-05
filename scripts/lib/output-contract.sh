@@ -69,8 +69,10 @@ oc_redact() {
 	RD_TARGET_ROOT="${OC_TARGET_ROOT:-}"
 	export RD_HOME RD_TARGET_ROOT
 	if command -v rd_redact_stream >/dev/null 2>&1; then
+		# Propagate the redactor's status: a failed redaction must NOT report success
+		# (fail closed — the caller decides, it is never silently swallowed).
 		rd_redact_stream
-		return 0
+		return
 	fi
 	# Fallback (redaction library unavailable): the prior self-contained masker. Fail-safe, never
 	# fail-open — it still strips paths + common secret shapes.
