@@ -10,6 +10,11 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # Manual trigger so the heavy, non-PR security-acceptance-live job can be run on demand
+  # (e.g. to (re)produce the release security-acceptance artifact without a code push).
+  # NOTE: GitHub reads workflow_dispatch config from the DEFAULT branch, so this only
+  # becomes dispatchable once merged to master.
+  workflow_dispatch:
 
 permissions:
   contents: read
