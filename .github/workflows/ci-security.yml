@@ -352,6 +352,9 @@ jobs:
           format: json
           output: reports/raw/trivy.json
           severity: CRITICAL,HIGH,MEDIUM
+          # Pin the DB cache dir so the freshness step below reads the SAME metadata.json
+          # the action just wrote (the action's default is $GITHUB_WORKSPACE/.cache/trivy).
+          cache-dir: ${{ github.workspace }}/.cache/trivy
         continue-on-error: true
 
       - name: Validate Trivy report (fail closed on scanner failure)
@@ -412,10 +415,11 @@ jobs:
           # grype embeds its DB build time in the scan report descriptor (.descriptor.db.built).
           grype_ver=$(jq -r '.descriptor.version // empty' reports/raw/grype.json 2>/dev/null || true)
           grype_built=$(jq -r '.descriptor.db.built // empty' reports/raw/grype.json 2>/dev/null || true)
-          # trivy writes its DB metadata (UpdatedAt) to the runner cache during the scan.
-          trivy_meta="$HOME/.cache/trivy/db/metadata.json"
+          # trivy writes its DB metadata (UpdatedAt) into the action's cache dir during the scan
+          # (pinned above to $GITHUB_WORKSPACE/.cache/trivy) — read from that same path.
+          trivy_meta="${GITHUB_WORKSPACE:-$PWD}/.cache/trivy/db/metadata.json"
           trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
-          trivy_ver=$(docker run --rm aquasec/trivy:latest --version -f json 2>/dev/null | jq -r '.Version // empty' 2>/dev/null || true)
+          trivy_ver=$(docker run --rm aquasec/trivy:latest version --format json 2>/dev/null | jq -r '.Version // empty' 2>/dev/null || true)
           osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:latest --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
           # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness is the
           # scan instant — recorded explicitly here as evidence, not defaulted inside the tool.
