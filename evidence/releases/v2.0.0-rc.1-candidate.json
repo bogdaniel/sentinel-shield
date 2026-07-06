@@ -3,13 +3,17 @@
   "version": "2.0.0-rc.1",
   "stage": "rc",
   "release_scope": "engine-only",
-  "source_commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+  "source_commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
   "tag": "v2.0.0-rc.1",
   "artifacts": {
     "evidence": "evidence/releases/v2.0.0-rc.1.json",
     "manifest": "evidence/manifests/v2.0.0-rc.1.manifest.json",
     "artifact_verification": "evidence/releases/v2.0.0-rc.1-artifacts.json",
-    "upgrade_validation": "/tmp/rc1-upgrade.json"
+    "security_acceptance": "evidence/releases/v2.0.0-rc.1-security-acceptance.json",
+    "compatibility_matrix": "evidence/releases/v2.0.0-rc.1-compatibility-matrix.json",
+    "adopter_scorecard": "evidence/releases/v2.0.0-rc.1-adopter-scorecard.json",
+    "upgrade_validation": "evidence/releases/v2.0.0-rc.1-upgrade-validation.json",
+    "rollback_validation": "evidence/releases/v2.0.0-rc.1-rollback-validation.json"
   },
   "docs": {
     "limitations": "docs/v2.0.0-rc.1-known-limitations.md",

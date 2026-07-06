@@ -1,0 +1,205 @@
+{
+  "schema_version": "1",
+  "generator": "report-adopter-usability",
+  "generated_at": "2026-07-06T22:34:54Z",
+  "budget_seconds_default": 60,
+  "sessions_evaluated": 7,
+  "scenarios": [
+    {
+      "scenario": "clean-linux",
+      "harness": "adopter-scenarios",
+      "source": "clean-linux.session.json",
+      "result": "pass",
+      "steps_total": 6,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": false,
+        "performed": true,
+        "restored": true,
+        "method": "re-run with a documented --stage"
+      }
+    },
+    {
+      "scenario": "interrupted-recovery",
+      "harness": "adopter-scenarios",
+      "source": "interrupted-recovery.session.json",
+      "result": "pass",
+      "steps_total": 3,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": true,
+        "performed": true,
+        "restored": true,
+        "method": "restore journal snapshot; recover-operation --inspect re-verifies"
+      }
+    },
+    {
+      "scenario": "managed-file-conflict",
+      "harness": "adopter-scenarios",
+      "source": "managed-file-conflict.session.json",
+      "result": "pass",
+      "steps_total": 3,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": true,
+        "performed": true,
+        "restored": true,
+        "method": "install --apply --force restores managed baseline"
+      }
+    },
+    {
+      "scenario": "minimal-posix",
+      "harness": "adopter-scenarios",
+      "source": "minimal-posix.session.json",
+      "result": "pass",
+      "steps_total": 3,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": false,
+        "performed": true,
+        "restored": true,
+        "method": "re-run doctor against the installed target"
+      }
+    },
+    {
+      "scenario": "offline-restricted",
+      "harness": "adopter-scenarios",
+      "source": "offline-restricted.session.json",
+      "result": "pass",
+      "steps_total": 2,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": true,
+        "performed": true,
+        "restored": true,
+        "method": "documented --repository <path> offline acquire + --verify"
+      }
+    },
+    {
+      "scenario": "proxy-configured",
+      "harness": "adopter-scenarios",
+      "source": "proxy-configured.session.json",
+      "result": "pass",
+      "steps_total": 4,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": false,
+        "performed": true,
+        "restored": true,
+        "method": "re-run offline flow; proxy is not consulted"
+      }
+    },
+    {
+      "scenario": "read-only-project",
+      "harness": "adopter-scenarios",
+      "source": "read-only-project.session.json",
+      "result": "pass",
+      "steps_total": 2,
+      "steps_failed": 1,
+      "steps_skipped": 0,
+      "budget_seconds": 60,
+      "recovery": {
+        "required": true,
+        "performed": true,
+        "restored": true,
+        "method": "restore write permission + re-run install --apply"
+      }
+    }
+  ],
+  "skipped_scenarios": [
+    {
+      "scenario": "update-from-beta.1",
+      "reason": "requires the published v2.0.0-beta.1 ref over the network; not runnable offline"
+    },
+    {
+      "scenario": "uninstall",
+      "reason": "no engine uninstall command is published; rollback is covered by the recovery scenarios"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "undocumented-prerequisites",
+      "title": "Zero undocumented prerequisites or interactive prompts",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|select(.unexpected_prompt==true or ([.steps[]|select(.status==\"skip\" and ((.message//\"\")==\"\"))]|length>0))|(.scenario//.harness)]' <sessions>/*.session.json"
+    },
+    {
+      "id": "unexplained-failures",
+      "title": "Zero unexplained failures",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|.scenario as $s|.steps[]|select(.status==\"fail\" and ((.message//\"\")==\"\"))]' <sessions>/*.session.json"
+    },
+    {
+      "id": "unrecoverable-mutations",
+      "title": "Zero unrecoverable mutations",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|select((.recovery.required==true) and (.recovery.restored!=true))|(.scenario//.harness)]' <sessions>/*.session.json"
+    },
+    {
+      "id": "errors-have-next-actions",
+      "title": "All errors include safe next actions",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|.steps[]|select(.status==\"fail\" and ((.next_action//\"\")==\"\"))]' <sessions>/*.session.json"
+    },
+    {
+      "id": "bounded-durations",
+      "title": "All mandatory flows within bounded durations",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s --argjson b 60 '[.[]|(.budget_seconds // $b) as $bs|.steps[]|select(.elapsed_seconds!=null and .elapsed_seconds>$bs)]' <sessions>/*.session.json"
+    },
+    {
+      "id": "files-attributable",
+      "title": "All generated files attributable",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|.steps[]|(.generated_files//[])[]|select((startswith(\"<target>\") or startswith(\"<workspace>\") or startswith(\"<engine-src>\") or startswith(\"~\"))|not)]' <sessions>/*.session.json"
+    },
+    {
+      "id": "recovery-restores-state",
+      "title": "All recovery operations restore expected state",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|select((.recovery.performed==true) and (.recovery.restored!=true))|(.scenario//.harness)]' <sessions>/*.session.json"
+    },
+    {
+      "id": "no-secrets-no-abs-paths",
+      "title": "No secrets and no absolute local paths recorded",
+      "blocking": true,
+      "status": "pass",
+      "offenders": [],
+      "reproduction": "jq -s '[.[]|[..|strings]|.[]|select(test(\"/Users/|/home/|/root/|/private/var|/var/folders\"))]' <sessions>/*.session.json"
+    }
+  ],
+  "totals": {
+    "scenarios": 7,
+    "sessions_passed": 7,
+    "sessions_failed": 0,
+    "criteria_passed": 8,
+    "criteria_failed": 0
+  },
+  "result": "pass"
+}

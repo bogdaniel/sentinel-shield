@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "metadata": {
-    "generated_at": "2026-07-05T16:18:35Z",
+    "generated_at": "2026-07-06T22:47:48Z",
     "generator": "generate-release-manifest.sh"
   },
   "body": {
@@ -33,6 +33,10 @@
       {
         "source": ".github/workflows/ci-compatibility.yml",
         "uses": "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
+      },
+      {
+        "source": ".github/workflows/ci-compatibility.yml",
+        "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
       },
       {
         "source": ".github/workflows/ci-docker.yml",
@@ -229,88 +233,100 @@
     ],
     "artifact_digests": [
       {
-        "artifact_id": 8092511224,
-        "name": "sentinel-shield-adopter-validation",
-        "run_id": 28743340013,
-        "sha256": "185dc7c66b63080c469c34fc9d23e75ea2a5fb43890b038e87fdac7b82cefb47"
-      },
-      {
-        "artifact_id": 8092511460,
+        "artifact_id": 8123299502,
         "name": "sentinel-shield-adopter-out",
-        "run_id": 28743340018,
-        "sha256": "415e8349a2f81a8dc967c0e9ab67939d1b2b4a6b6e7d1432fe63db0a31514f70"
+        "run_id": 28827885648,
+        "sha256": "91b3f7f794215ca7c9e593f53852e7f2ab7f961369c3268e9d35e294f6b05382"
       },
       {
-        "artifact_id": 8092572440,
+        "artifact_id": 8123442822,
         "name": "sentinel-shield-production-readiness-report",
-        "run_id": 28743340018,
-        "sha256": "4e249803bdb2e6f649015eaf7d30ef37148ba1d583b4815e91c81df80477ceb7"
+        "run_id": 28827885648,
+        "sha256": "1c1d7a83765614c3048d3f01a343876adf1ae207125ad80ebd1abd81abc03ff6"
       },
       {
-        "artifact_id": 8092507826,
-        "name": "sentinel-shield-self-test-reports",
-        "run_id": 28743340042,
-        "sha256": "58944528665e0c4e4db7b9e6a23fd052621fbd2b816945f149f5848d919b1b11"
+        "artifact_id": 8123299995,
+        "name": "sentinel-shield-raw-security",
+        "run_id": 28827885649,
+        "sha256": "345dce764a2aa372a92ba3b100655654368159cb33cbee319d50d78add4f087e"
       },
       {
-        "artifact_id": 8092512072,
+        "artifact_id": 8123300263,
+        "name": "sentinel-shield-security-summary",
+        "run_id": 28827885649,
+        "sha256": "44156eb29583ea19cae25d79dafa6bda29bad312255a82587617f7df6765ddbe"
+      },
+      {
+        "artifact_id": 8123316440,
+        "name": "sentinel-shield-security-acceptance",
+        "run_id": 28827885649,
+        "sha256": "0090e718992aedf533975e96d0807da439041acb742b3de614200e5306fb88d0"
+      },
+      {
+        "artifact_id": 8123305093,
         "name": "sentinel-shield-security-scan.spdx.json",
-        "run_id": 28743340046,
-        "sha256": "52bda69682b06f0799013b0ca6fe462c74b0d74d916d213dfc8dd8ec9f9d4dd5"
+        "run_id": 28827885654,
+        "sha256": "73783dc9f9653e5fe4d64ba1702e788aef5ad25c27576b00a2ba0edb226789a3"
       },
       {
-        "artifact_id": 8092512148,
+        "artifact_id": 8123305379,
         "name": "sentinel-shield-raw-security",
-        "run_id": 28743340046,
-        "sha256": "751af52fb21f85af250d694e45007068d1c8abc465ad4f35a631f07fbf8c2010"
+        "run_id": 28827885654,
+        "sha256": "5cc6bcb3e3853543c30a547578c268b5856fb81f7e127b3746fa7a6bd0d3a75b"
       },
       {
-        "artifact_id": 8092512215,
+        "artifact_id": 8123305645,
         "name": "sentinel-shield-sbom",
-        "run_id": 28743340046,
-        "sha256": "fefe45cfa56312fd6623e3de759e3aa468016a467d22a50d11b4beb2d862d4db"
+        "run_id": 28827885654,
+        "sha256": "61b0c3cebb50be0385b083979ef4c549f44af50a2d2631af3acdd21c2c34c4a6"
       },
       {
-        "artifact_id": 8092513347,
+        "artifact_id": 8123309443,
         "name": "sentinel-shield-security-summary",
-        "run_id": 28743340046,
-        "sha256": "e5f9a41294582c9775e4bdd72ad751575a0a4c18da372cf53f075a33321593d1"
+        "run_id": 28827885654,
+        "sha256": "c6411bd7f3e5eb5b9813188b37a8783cc76082225a24e43bd5d0b1ee08496147"
       },
       {
-        "artifact_id": 8092513429,
+        "artifact_id": 8123309746,
         "name": "sentinel-shield-raw-security-merged",
-        "run_id": 28743340046,
-        "sha256": "5cbbb87b301027a5e6adff6aa5ff39468c254a210f77ac7162e4de48c430fd25"
+        "run_id": 28827885654,
+        "sha256": "7c7e4423f06a84db4fd15317b31b3860876b05038feef1931a5c7e49bf16cb9a"
       },
       {
-        "artifact_id": 8092514599,
+        "artifact_id": 8123313324,
         "name": "sentinel-shield-gate-resolution",
-        "run_id": 28743340046,
-        "sha256": "9ba799c7c664aa85b0aaf60e29c4005f8d43c8606a7de9411e78379910b0a15e"
+        "run_id": 28827885654,
+        "sha256": "97f802b135060adfc262139e980537a2fc66b38f025282a57eaba14095ce17f3"
       },
       {
-        "artifact_id": 8092514665,
+        "artifact_id": 8123313572,
         "name": "sentinel-shield-enforcement",
-        "run_id": 28743340046,
-        "sha256": "d0d14049345a7fc6a53caafe7244b222d17cadeb42183306a53a6cc930e669ec"
+        "run_id": 28827885654,
+        "sha256": "c758c215f52906a61821029bfcbb4abbdd3bc5ad9e061bafb24e197fc8558928"
       },
       {
-        "artifact_id": 8092514724,
+        "artifact_id": 8123313766,
         "name": "sentinel-shield-release-evidence",
-        "run_id": 28743340046,
-        "sha256": "d50db1376b8d568f28743764c37619baadefe7f7d0e0623c1c48d7fc1713e9f4"
+        "run_id": 28827885654,
+        "sha256": "f882966479be67cc0c2fe9eb9335800fcd3e845ea5071fc11238627e5dbe1d7e"
       },
       {
-        "artifact_id": 8092510963,
-        "name": "sentinel-shield-raw-security",
-        "run_id": 28743340067,
-        "sha256": "a03367175513de25229d11ef4fb1adab6c5f2da08e50cc33f79f14bc006b5309"
+        "artifact_id": 8123292896,
+        "name": "sentinel-shield-compatibility-matrix",
+        "run_id": 28827885655,
+        "sha256": "99bd854d0bbfa04957f92b8c83ffc8d2bde1816dc61582db2aee6b3524f83c28"
       },
       {
-        "artifact_id": 8092511033,
-        "name": "sentinel-shield-security-summary",
-        "run_id": 28743340067,
-        "sha256": "4ded1ab85e7de461a25f9c5a9b0e0f116eb693ca0600560994833c78aa4422db"
+        "artifact_id": 8123300052,
+        "name": "sentinel-shield-adopter-validation",
+        "run_id": 28827885656,
+        "sha256": "ed7459b27726ef97fe2a4ae4052bef81480911cc5805771597f7874fafc7f0d1"
+      },
+      {
+        "artifact_id": 8123292871,
+        "name": "sentinel-shield-self-test-reports",
+        "run_id": 28827885695,
+        "sha256": "62a8b35ed031a559b8d443f3a49d7103066053b8c86c179a0e56e98b629e6988"
       }
     ],
     "profile_policy_digests": [
@@ -451,7 +467,7 @@
       },
       {
         "path": "schemas/required-checks.schema.json",
-        "sha256": "538ff9d57a76592dd5a1203fb97cfb7ca02062edf8e3bf3f2dab875b4573fd1a"
+        "sha256": "7c2d322cf94b9a6826a2906f1a25febd3d0e2f87fc615b3fd8d4c8cac77310fe"
       },
       {
         "path": "schemas/rollback-advisory.schema.json",
@@ -486,64 +502,64 @@
         "sha256": "d66b52f23276655e5dc47a46278cabfee0adfc1d2d564553ad66c7999b49c72b"
       }
     ],
-    "source_commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+    "source_commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
     "stage": "rc",
-    "tag_target": "fd3501b2718f8cef898bc7b8516c438502465b46",
+    "tag_target": "13be630a64d044e0ffca8850e3424c2f0799aebf",
     "tool_versions": {
       "gh": "gh version 2.95.0 (2026-06-17)",
       "jq": "jq-1.8.2",
       "yq": "yq (https://github.com/mikefarah/yq/) version v4.53.3"
     },
-    "tree_hash": "dc31ac8e767480febbd521bf438040a0d9e88bdd",
+    "tree_hash": "7d641591c56453792e86aa5d4d73cac38038833e",
     "version": "2.0.0-rc.1",
     "workflow_runs": [
       {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
         "result": "success",
-        "run_id": 28743340004,
-        "workflow_name": "ci-workflow-lint"
-      },
-      {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
-        "result": "success",
-        "run_id": 28743340013,
-        "workflow_name": "ci-adopter-validation"
-      },
-      {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
-        "result": "success",
-        "run_id": 28743340018,
+        "run_id": 28827885648,
         "workflow_name": "ci-production-readiness"
       },
       {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
         "result": "success",
-        "run_id": 28743340042,
-        "workflow_name": "ci-self-test"
-      },
-      {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
-        "result": "success",
-        "run_id": 28743340046,
-        "workflow_name": "ci-pipeline"
-      },
-      {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
-        "result": "success",
-        "run_id": 28743340067,
+        "run_id": 28827885649,
         "workflow_name": "ci-security"
       },
       {
-        "commit": "fd3501b2718f8cef898bc7b8516c438502465b46",
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
         "result": "success",
-        "run_id": 28743340070,
+        "run_id": 28827885654,
+        "workflow_name": "ci-pipeline"
+      },
+      {
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+        "result": "success",
+        "run_id": 28827885655,
         "workflow_name": "ci-compatibility"
+      },
+      {
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+        "result": "success",
+        "run_id": 28827885656,
+        "workflow_name": "ci-adopter-validation"
+      },
+      {
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+        "result": "success",
+        "run_id": 28827885684,
+        "workflow_name": "ci-workflow-lint"
+      },
+      {
+        "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+        "result": "success",
+        "run_id": 28827885695,
+        "workflow_name": "ci-self-test"
       }
     ]
   },
   "reproducibility": {
     "hash_algorithm": "sha256",
     "canonicalization": "jq -S -c over .body",
-    "hash": "25e2440c69fa0ba41af9ac05dedcccf02e8821de112127b7e2488ccda86ba61f"
+    "hash": "6786a9c8d29f41285d03ad266b4ad7afc55d6fe6c8960b3aad3c15ef6098d630"
   }
 }
