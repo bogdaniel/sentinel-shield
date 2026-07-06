@@ -23,15 +23,14 @@
 #
 # Usage:
 #   build-scanner-manifest.sh --raw-dir <dir> --workspace <dir> --source-commit <40hex>
-#       [--policy <path>] [--scanner-meta <file>] [--now <iso8601>] [--output <path>]
+#       [--policy <path>] [--scanner-meta <file>] [--output <path>]
 #
 #   --scanner-meta <file>  optional JSON: { "<scanner>": { "version": "..",
-#                          "database_timestamp": "<iso8601>" }, ... }. CI passes real scanner
-#                          versions and DB timestamps here; absent entries fall back to a null
-#                          version and (for db-backed scanners) --now.
-#   --now <iso8601>        reference timestamp for db-backed scanners without an explicit
-#                          database_timestamp (default: current UTC). Kept explicit so a run is
-#                          reproducible and testable.
+#                          "database_timestamp": "<iso8601>" }, ... }. CI passes REAL scanner
+#                          versions and DB timestamps here. An absent version stays null; an
+#                          absent database_timestamp for a db-backed scanner stays null and the
+#                          acceptance gate then blocks fail-closed on unverifiable freshness —
+#                          this script never fabricates a freshness it cannot prove.
 #
 # Exit: 0 manifest written; 2 invalid invocation / malformed policy or raw report.
 set -eu
@@ -44,7 +43,6 @@ RAW_DIR=""
 WORKSPACE=""
 SOURCE_COMMIT=""
 SCANNER_META=""
-NOW=""
 OUTPUT=""
 
 while [ $# -gt 0 ]; do
@@ -54,10 +52,9 @@ while [ $# -gt 0 ]; do
 		--source-commit) SOURCE_COMMIT="${2:?--source-commit requires a value}"; shift 2 ;;
 		--policy) POLICY="${2:?--policy requires a value}"; shift 2 ;;
 		--scanner-meta) SCANNER_META="${2:?--scanner-meta requires a value}"; shift 2 ;;
-		--now) NOW="${2:?--now requires a value}"; shift 2 ;;
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
 		-h | --help)
-			echo "Usage: build-scanner-manifest.sh --raw-dir <dir> --workspace <dir> --source-commit <40hex> [--policy <path>] [--scanner-meta <file>] [--now <iso8601>] [--output <path>]"
+			echo "Usage: build-scanner-manifest.sh --raw-dir <dir> --workspace <dir> --source-commit <40hex> [--policy <path>] [--scanner-meta <file>] [--output <path>]"
 			exit 0 ;;
 		*) log_error "build-scanner-manifest: unknown argument: $1"; exit 2 ;;
 	esac
@@ -68,11 +65,16 @@ command_exists jq || { log_error "jq is required but was not found"; exit 2; }
 [ -n "$WORKSPACE" ] && [ -d "$WORKSPACE" ] || { log_error "--workspace missing or not a directory"; exit 2; }
 [ -f "$POLICY" ] || { log_error "policy not found: $POLICY"; exit 2; }
 printf '%s' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$' || { log_error "--source-commit must be 40 lowercase hex"; exit 2; }
-jq -e '.required_scanners | type == "array"' "$POLICY" >/dev/null 2>&1 || { log_error "malformed policy (fail closed)"; exit 2; }
+jq -e '
+	.required_scanners
+	| (type == "array") and (length > 0)
+	  and all(.[]; (.name | type == "string" and (length > 0))
+	              and (.category | type == "string" and (length > 0))
+	              and (.applies_when | type == "string" and (length > 0)))
+' "$POLICY" >/dev/null 2>&1 || { log_error "malformed policy: every required_scanners entry needs a non-empty name, category and applies_when (fail closed)"; exit 2; }
 if [ -n "$SCANNER_META" ]; then
 	[ -f "$SCANNER_META" ] && jq -e 'type=="object"' "$SCANNER_META" >/dev/null 2>&1 || { log_error "--scanner-meta not a JSON object"; exit 2; }
 fi
-[ -n "$NOW" ] || NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # recompute_applicable <applies_when> — mirror scripts/enforce-security-policy.sh so a manifest
 # never contradicts the acceptance gate's own independent recompute.
@@ -107,8 +109,11 @@ count_targets() {
 		always) find "$WORKSPACE" -maxdepth 6 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
 			\( -name '*.sh' -o -name '*.php' -o -name '*.js' -o -name '*.ts' -o -name '*.py' \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
 		manifest_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
-			\( -name composer.json -o -name composer.lock -o -name package.json -o -name package-lock.json \
-			   -o -name yarn.lock -o -name pnpm-lock.yaml -o -name go.mod -o -name requirements.txt \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
+			\( -name package.json -o -name package-lock.json -o -name yarn.lock -o -name pnpm-lock.yaml \
+			   -o -name composer.json -o -name composer.lock -o -name go.mod -o -name go.sum \
+			   -o -name requirements.txt -o -name Pipfile -o -name pyproject.toml -o -name poetry.lock \
+			   -o -name Cargo.toml -o -name Cargo.lock -o -name pom.xml -o -name build.gradle -o -name Gemfile \) \
+			-print 2>/dev/null | wc -l | tr -d ' ' ;;
 		dockerfile_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
 			\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name Containerfile \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
 		workflows_present) find "$WORKSPACE/.github/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
@@ -129,7 +134,7 @@ extract_findings() {
 		gitleaks) jq -c --arg s "$_sc" --arg c "$_cat" 'if type=="array" then . else (.findings // []) end | [.[]? | {id:((.RuleID // .Description // "secret")|tostring), scanner:$s, category:$c, severity:"critical", fix_available:false, reference:((.RuleID // "")|tostring)}]' "$_rf" ;;
 		trivy) jq -c --arg s "$_sc" --arg c "$_cat" '[.Results[]?.Vulnerabilities[]? | {id:.VulnerabilityID, scanner:$s, category:$c, severity:((.Severity // "UNKNOWN")|ascii_downcase|if .=="unknown" then "medium" else . end), fix_available:(((.FixedVersion // "")|length)>0), reference:(.PrimaryURL // .VulnerabilityID)}]' "$_rf" ;;
 		osv-scanner) jq -c --arg s "$_sc" --arg c "$_cat" '[.results[]?.packages[]?.vulnerabilities[]? | {id:.id, scanner:$s, category:$c, severity:(((.database_specific.severity // .severity[0]?.type // "MEDIUM")|tostring|ascii_downcase) as $x | if ($x|test("crit")) then "critical" elif ($x|test("high")) then "high" elif ($x|test("low")) then "low" else "medium" end), fix_available:false, reference:.id}]' "$_rf" ;;
-		grype) jq -c --arg s "$_sc" --arg c "$_cat" '[.matches[]? | {id:.vulnerability.id, scanner:$s, category:$c, severity:((.vulnerability.severity // "Medium")|ascii_downcase|if (.=="negligible" or .=="unknown") then "low" else . end), fix_available:((.vulnerability.fix.state // "")=="fixed"), reference:(.vulnerability.dataSource // .vulnerability.id)}]' "$_rf" ;;
+		grype) jq -c --arg s "$_sc" --arg c "$_cat" '[.matches[]? | {id:.vulnerability.id, scanner:$s, category:$c, severity:((.vulnerability.severity // "Medium")|ascii_downcase|if .=="negligible" then "low" elif .=="unknown" then "medium" else . end), fix_available:((.vulnerability.fix.state // "")=="fixed"), reference:(.vulnerability.dataSource // .vulnerability.id)}]' "$_rf" ;;
 		actionlint) jq -c --arg s "$_sc" --arg c "$_cat" 'if type=="array" then . else [] end | [.[]? | {id:((.message // "workflow-issue")|.[0:80]), scanner:$s, category:$c, severity:"medium", fix_available:false, reference:((.filepath // "")|tostring)}]' "$_rf" ;;
 		*) printf '[]' ;;
 	esac
@@ -145,16 +150,16 @@ while [ "$_i" -lt "$_n" ]; do
 	_name=$(jq -r --argjson i "$_i" '.required_scanners[$i].name' "$POLICY")
 	_cat=$(jq -r --argjson i "$_i" '.required_scanners[$i].category' "$POLICY")
 	_when=$(jq -r --argjson i "$_i" '.required_scanners[$i].applies_when' "$POLICY")
-	_cap=$(jq -r --argjson i "$_i" '.required_scanners[$i].max_database_age_days // "null"' "$POLICY")
 	_raw="$RAW_DIR/$_name.json"
 
+	# version + DB timestamp come ONLY from real --scanner-meta evidence. A db-backed scanner
+	# left without a database_timestamp stays null so the acceptance gate blocks fail-closed on
+	# unverifiable freshness — never fabricate a "fresh at scan time" the scanner did not prove.
 	_ver=null; _dbts=null
 	if [ -n "$SCANNER_META" ]; then
 		_v=$(jq -r --arg n "$_name" '.[$n].version // ""' "$SCANNER_META"); [ -n "$_v" ] && _ver="\"$_v\""
 		_t=$(jq -r --arg n "$_name" '.[$n].database_timestamp // ""' "$SCANNER_META"); [ -n "$_t" ] && _dbts="\"$_t\""
 	fi
-	# db-backed scanner without an explicit DB timestamp: fall back to --now (fresh at scan time).
-	if [ "$_cap" != "null" ] && [ "$_dbts" = "null" ]; then _dbts="\"$NOW\""; fi
 
 	_appl=$(recompute_applicable "$_when")
 	if [ "$_appl" = "yes" ]; then
@@ -167,15 +172,18 @@ while [ "$_i" -lt "$_n" ]; do
 			  database_timestamp:$ts, raw_report:$raw, targets_scanned:$tgt, findings:$f }' >> "$SCAN_ND"
 	else
 		# Non-applicable: a complete, commit-bound, digest-backed proof with an approved reason.
+		# inspected_paths mirrors the paths recompute_applicable/count_targets probe for THIS
+		# applies_when, so the proof documents exactly what was searched (and found absent).
 		_reason="no-dependency-manifests"
+		_inspected='["package.json","package-lock.json","yarn.lock","pnpm-lock.yaml","composer.json","composer.lock","go.mod","go.sum","requirements.txt","Pipfile","pyproject.toml","poetry.lock","Cargo.toml","Cargo.lock","pom.xml","build.gradle","Gemfile"]'
 		case "$_when" in
-			dockerfile_present) _reason="no-dockerfile" ;;
-			workflows_present) _reason="no-workflows" ;;
+			dockerfile_present) _reason="no-dockerfile"; _inspected='["Dockerfile","Dockerfile.*","*.Dockerfile","Containerfile"]' ;;
+			workflows_present) _reason="no-workflows"; _inspected='[".github/workflows"]' ;;
 			manifest_present) _reason="no-dependency-manifests" ;;
 		esac
 		_proofbody=$(jq -nc --arg d "sentinel-applicability-detector" --arg dv "1.0.0" \
-			--arg wh "$_when" --arg sc "$SOURCE_COMMIT" --arg rsn "$_reason" \
-			'{detector:$d, detector_version:$dv, result:"not-applicable", applies_when:$wh, inspected_paths:["package.json","composer.json","Dockerfile",".github/workflows"], source_commit:$sc, reason:$rsn}')
+			--arg wh "$_when" --arg sc "$SOURCE_COMMIT" --arg rsn "$_reason" --argjson insp "$_inspected" \
+			'{detector:$d, detector_version:$dv, result:"not-applicable", applies_when:$wh, inspected_paths:$insp, source_commit:$sc, reason:$rsn}')
 		_digest="sha256:$(printf '%s' "$_proofbody" | ss_sha256_stdin 2>/dev/null || printf '%s' "$_proofbody" | shasum -a 256 | awk '{print $1}')"
 		jq -nc --arg n "$_name" --arg c "$_cat" --argjson v "$_ver" \
 			--argjson proof "$_proofbody" --arg dg "$_digest" '

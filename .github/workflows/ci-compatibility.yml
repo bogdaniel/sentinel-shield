@@ -58,11 +58,28 @@ jobs:
       - name: Compatibility policy + gate contract (BLOCKING)
         run: sh tests/prod/260-compatibility-policy.sh
 
-      - name: Generate compatibility-matrix report (release evidence)
+      - name: Independent host-coverage probe (compatibility gate)
         run: |
           mkdir -p reports
+          # The live compatibility gate independently verifies THIS runner against the policy.
+          # A pass (exit < 2 = supported/degraded) proves every mandatory component is present,
+          # so it becomes the coverage evidence; a hard fail (>= 2) leaves coverage empty and the
+          # matrix report then fails closed rather than trivially passing on the policy alone.
+          rc=0
+          sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
+          echo "compatibility gate exit=$rc on $(uname -s)/$(uname -m)"
+          if [ "$rc" -lt 2 ]; then
+            jq -c '[.components | to_entries[] | select(.value.mandatory == true) | .key]' \
+              config/compatibility-policy.json > reports/compat-coverage.json
+          else
+            echo '[]' > reports/compat-coverage.json
+          fi
+
+      - name: Generate compatibility-matrix report (release evidence)
+        run: |
           sh scripts/report-compatibility-matrix.sh \
             --source-commit "${GITHUB_SHA}" \
+            --coverage reports/compat-coverage.json \
             --output reports/compatibility-matrix.json
 
       - name: Upload compatibility-matrix artifact
