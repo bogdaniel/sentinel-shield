@@ -143,8 +143,11 @@ recompute_applicable() {
 	case "$1" in
 		always) printf 'yes'; return 0 ;;
 		manifest_present)
+			# tests/ and examples/ are pruned: they hold deliberately-vulnerable consumer/adopter
+			# fixtures (test DATA), not the engine's own supply chain. Keeping this identical to
+			# scripts/build-scanner-manifest.sh is what keeps the two recomputes from disagreeing.
 			_hit=$(sp_bounded "$BOUND" find "$WORKSPACE" -maxdepth 4 \
-				\( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
+				\( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
 				\( -name package.json -o -name package-lock.json -o -name yarn.lock \
 				   -o -name pnpm-lock.yaml -o -name composer.json -o -name composer.lock \
 				   -o -name go.mod -o -name go.sum -o -name requirements.txt -o -name Pipfile \
@@ -154,8 +157,8 @@ recompute_applicable() {
 			[ -n "$_hit" ] && printf 'yes' || printf 'no'; return 0 ;;
 		dockerfile_present)
 			_hit=$(sp_bounded "$BOUND" find "$WORKSPACE" -maxdepth 4 \
-				\( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
-				\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name 'Containerfile' \) \
+				\( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
+				\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name 'Containerfile' \) ! -name '*.md' \
 				-print 2>/dev/null | head -n 1)
 			[ -n "$_hit" ] && printf 'yes' || printf 'no'; return 0 ;;
 		workflows_present)

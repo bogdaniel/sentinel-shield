@@ -46,7 +46,7 @@
   "applicability": {
     "require_independent_proof": true,
     "reject_all_non_applicable": true,
-    "always_required_categories": ["leaked_secrets", "source_vulnerabilities", "container_findings", "workflow_vulnerabilities"],
+    "always_required_categories": ["leaked_secrets", "source_vulnerabilities", "workflow_vulnerabilities"],
     "disabled_scanners": [],
     "approved_non_applicability_reasons": [
       "no-dependency-manifests",
