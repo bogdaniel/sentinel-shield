@@ -30,7 +30,12 @@ fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 # --- POSITIVE: upgrade + rollback each produce a real, green, gate-shaped report ----------
 for kind in upgrade rollback; do
 	_out="$WORK/$kind.json"; _rc=0
-	sh "$GEN" --kind "$kind" --source-commit "$SC" --from 2.0.0-beta.1 --to 2.0.0-rc.1 --output "$_out" >/dev/null 2>&1 || _rc=$?
+	# only upgrade consults plan-upgrade, so only it takes --from/--to.
+	if [ "$kind" = "upgrade" ]; then
+		sh "$GEN" --kind "$kind" --source-commit "$SC" --from 2.0.0-beta.1 --to 2.0.0-rc.1 --output "$_out" >/dev/null 2>&1 || _rc=$?
+	else
+		sh "$GEN" --kind "$kind" --source-commit "$SC" --output "$_out" >/dev/null 2>&1 || _rc=$?
+	fi
 	if [ "$_rc" = 0 ]; then pass "$kind: generator exits 0"; else fail "$kind: generator exited $_rc"; fi
 	if [ -s "$_out" ]; then
 		[ "$(jq -r '.result' "$_out" 2>/dev/null)" = "pass" ] && pass "$kind: result=pass" || fail "$kind: result != pass"
