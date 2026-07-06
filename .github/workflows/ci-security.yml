@@ -295,3 +295,169 @@ jobs:
           sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/security-policy.sh; sp_validate_policy config/production-security-policy.json'
       - name: Production security acceptance + incident-response contract (BLOCKING)
         run: sh tests/prod/261-production-security.sh
+
+  # Production security ACCEPTANCE (LIVE). Runs every REQUIRED scanner over the tree, builds
+  # the scanner manifest, normalizes it, and runs the fail-closed acceptance gate — producing
+  # the security-acceptance.json artifact the release-authorization consumes (GATE 4). Each
+  # scanner writes native JSON to reports/raw/<name>.json; build-scanner-manifest recomputes
+  # applicability the same way the gate does, so the manifest can never disagree with it.
+  security-acceptance-live:
+    # Release evidence is collected from default-branch push runs (Phase 2), so this heavy
+    # 6-scanner job runs on push / schedule / manual dispatch — not on every PR. PR-time scanner
+    # coverage is provided by the security-summary job above.
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Gitleaks scans git history by default; a shallow clone would miss secrets in
+          # older commits, so fetch the full history for the live secret scan.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: command -v jq >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y jq)
+
+      - name: Prepare raw dir
+        run: mkdir -p reports/raw
+
+      # Each scanner step below runs its scanner tolerating a findings exit code, then REQUIRES a
+      # valid JSON report of the expected shape. A crashed/absent scanner leaves no valid report
+      # and FAILS the job — a required scanner outage must never be laundered into a clean "no
+      # findings" acceptance artifact. Empty output is only canonicalized for tools that emit
+      # nothing on a clean run (osv-scanner, actionlint), and only when their exit code proves the
+      # run succeeded — never as an unconditional fallback that masks a failure.
+      - name: Semgrep (JSON → reports/raw/semgrep.json)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
+            semgrep --json --output /src/reports/raw/semgrep.json --config /src/semgrep/app || true
+          jq -e '.results | type == "array"' reports/raw/semgrep.json >/dev/null 2>&1 \
+            || { echo "semgrep produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
+
+      - name: Gitleaks (JSON → reports/raw/gitleaks.json)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+          jq -e 'type == "array"' reports/raw/gitleaks.json >/dev/null 2>&1 \
+            || { echo "gitleaks produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
+
+      - name: Trivy (JSON → reports/raw/trivy.json)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/raw/trivy.json
+          severity: CRITICAL,HIGH,MEDIUM
+          # Pin the DB cache dir so the freshness step below reads the SAME metadata.json
+          # the action just wrote (the action's default is $GITHUB_WORKSPACE/.cache/trivy).
+          cache-dir: ${{ github.workspace }}/.cache/trivy
+        continue-on-error: true
+
+      - name: Validate Trivy report (fail closed on scanner failure)
+        run: |
+          jq -e '.SchemaVersion != null' reports/raw/trivy.json >/dev/null 2>&1 \
+            || { echo "trivy produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
+
+      - name: OSV-Scanner (JSON → reports/raw/osv-scanner.json)
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/src" -w /src \
+            ghcr.io/google/osv-scanner:latest scan source --recursive --format json /src \
+            > reports/raw/osv-scanner.json 2> reports/raw/osv-scanner.err
+          rc=$?
+          set -e
+          # osv-scanner: 0 = no vulns, 1 = vulns found; anything else is a genuine failure.
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            echo "osv-scanner failed (exit $rc):"; cat reports/raw/osv-scanner.err || true; exit 1
+          fi
+          [ -s reports/raw/osv-scanner.json ] || echo '{"results":[]}' > reports/raw/osv-scanner.json
+          jq -e '.results | type == "array"' reports/raw/osv-scanner.json >/dev/null 2>&1 \
+            || { echo "osv-scanner report is not valid JSON — scanner failure (fail closed)"; exit 1; }
+
+      - name: Grype (JSON → reports/raw/grype.json)
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/src" anchore/grype:latest dir:/src -o json \
+            > reports/raw/grype.json 2> reports/raw/grype.err
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "grype failed (exit $rc):"; cat reports/raw/grype.err || true; exit 1
+          fi
+          jq -e '.matches | type == "array"' reports/raw/grype.json >/dev/null 2>&1 \
+            || { echo "grype produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
+
+      - name: actionlint (JSON → reports/raw/actionlint.json)
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -format '{{json .}}' \
+            > reports/raw/actionlint.json 2> reports/raw/actionlint.err
+          rc=$?
+          set -e
+          # actionlint: 0 = no issues (emits nothing), 1 = issues found; else a genuine failure.
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+            echo "actionlint failed (exit $rc):"; cat reports/raw/actionlint.err || true; exit 1
+          fi
+          [ -s reports/raw/actionlint.json ] || echo '[]' > reports/raw/actionlint.json
+          jq -e 'type == "array"' reports/raw/actionlint.json >/dev/null 2>&1 \
+            || { echo "actionlint report is not valid JSON — scanner failure (fail closed)"; exit 1; }
+
+      - name: Capture scanner versions + DB freshness (freshness evidence)
+        run: |
+          # Real scanner versions + vulnerability-DB timestamps for the db-backed scanners
+          # (osv-scanner/grype/trivy). build-scanner-manifest records these verbatim; a db-backed
+          # scanner left without a real timestamp keeps a null freshness and the acceptance gate
+          # blocks fail-closed — this workflow never fabricates a freshness it cannot source.
+          # grype embeds its DB build time in the scan report descriptor (.descriptor.db.built).
+          grype_ver=$(jq -r '.descriptor.version // empty' reports/raw/grype.json 2>/dev/null || true)
+          grype_built=$(jq -r '.descriptor.db.built // empty' reports/raw/grype.json 2>/dev/null || true)
+          # trivy writes its DB metadata (UpdatedAt) into the action's cache dir during the scan
+          # (pinned above to $GITHUB_WORKSPACE/.cache/trivy) — read from that same path.
+          trivy_meta="${GITHUB_WORKSPACE:-$PWD}/.cache/trivy/db/metadata.json"
+          trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
+          trivy_ver=$(docker run --rm aquasec/trivy:latest version --format json 2>/dev/null | jq -r '.Version // empty' 2>/dev/null || true)
+          osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:latest --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
+          # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness is the
+          # scan instant — recorded explicitly here as evidence, not defaulted inside the tool.
+          osv_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n \
+            --arg gv "$grype_ver" --arg gb "$grype_built" \
+            --arg tv "$trivy_ver" --arg tu "$trivy_updated" \
+            --arg ov "$osv_ver" --arg ots "$osv_ts" '
+            def meta($v; $ts): (if $v != "" then {version:$v} else {} end)
+                             + (if $ts != "" then {database_timestamp:$ts} else {} end);
+            { grype: meta($gv; $gb), trivy: meta($tv; $tu), "osv-scanner": meta($ov; $ots) }
+          ' > reports/scanner-meta.json
+          cat reports/scanner-meta.json
+
+      - name: Build scanner manifest → normalize → enforce (BLOCKING acceptance)
+        run: |
+          sh scripts/build-scanner-manifest.sh \
+            --raw-dir reports/raw --workspace "$PWD" \
+            --scanner-meta reports/scanner-meta.json \
+            --source-commit "${GITHUB_SHA}" --output reports/scanner-manifest.json
+          sh scripts/normalize-security-summary.sh \
+            --manifest reports/scanner-manifest.json \
+            --output reports/security-summary.normalized.json
+          sh scripts/enforce-security-policy.sh \
+            --summary reports/security-summary.normalized.json \
+            --source-commit "${GITHUB_SHA}" --workspace "$PWD" \
+            --output reports/security-acceptance.json
+
+      - name: Fail-closed credential scan of the acceptance report
+        run: |
+          sh -eu -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/redaction.sh; rd_scan_paths reports/security-acceptance.json'
+
+      - name: Upload security acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentinel-shield-security-acceptance
+          path: |
+            reports/security-acceptance.json
+            reports/scanner-manifest.json
+          retention-days: 90
+          if-no-files-found: error

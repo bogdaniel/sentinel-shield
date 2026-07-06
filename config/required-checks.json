@@ -40,7 +40,8 @@
         { "name": "trivy-fs", "classification": "always-required" },
         { "name": "sbom", "classification": "conditional-heavy" },
         { "name": "security-summary", "classification": "always-required" },
-        { "name": "security-acceptance", "classification": "always-required" }
+        { "name": "security-acceptance", "classification": "always-required" },
+        { "name": "security-acceptance-live", "classification": "default-branch-only" }
       ]
     },
     "ci-workflow-lint.yml": {

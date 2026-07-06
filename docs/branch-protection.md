@@ -39,6 +39,7 @@ requiring) it is explicit:
 | `conditional-heavy` | Heavy job gated behind a detector (`needs`/`if`); may legitimately skip, so do NOT require it by itself. |
 | `scheduled-only` | Runs only via `schedule`/`workflow_dispatch`; never on ordinary PRs. Do NOT require. |
 | `release-only` | Runs only on release refs (tags/dispatch); not on ordinary PRs. Do NOT require for PR merges. |
+| `default-branch-only` | Runs on default-branch `push` but is skipped on PRs by an event guard (`if: github.event_name != 'pull_request'`), not a detector; never runs on a PR, so do NOT require for PR merges. |
 
 ## Recommended required checks for `master`
 
@@ -87,7 +88,7 @@ filenames) when configuring required checks. This table mirrors
 |----------------------|-------------------|
 | `ci-self-test`       | `full-self-test`, `syntax`, `lifecycle`, `fallback-policy`, `negative-policy`, `workflow-sanity` (all `always-required`) |
 | `ci-pipeline`        | `prepare` (`applicability-detector`); `php-quality`, `node-quality`, `docker-security` (`conditional-heavy`); `security-scan`, `build-security-summary`, `release-gate` (`always-required`) |
-| `ci-security`        | `detect-deps` (`applicability-detector`); `semgrep`, `gitleaks`, `trivy-fs`, `security-summary` (`always-required`); `osv-scanner`, `sbom` (`conditional-heavy`) |
+| `ci-security`        | `detect-deps` (`applicability-detector`); `semgrep`, `gitleaks`, `trivy-fs`, `security-summary`, `security-acceptance` (`always-required`); `osv-scanner`, `sbom` (`conditional-heavy`); `security-acceptance-live` (`default-branch-only`) |
 | `ci-workflow-lint`   | `workflow-lint`, `workflow-runtime-audit`, `governance-audits` (all `always-required`) |
 | `ci-codeql`          | `detect` (`applicability-detector`), `analyze` (`conditional-heavy`) |
 | `ci-php`             | `detect` (`applicability-detector`), `php` (`conditional-heavy`) |

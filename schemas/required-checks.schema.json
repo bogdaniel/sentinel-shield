@@ -42,7 +42,8 @@
                     "applicability-detector",
                     "conditional-heavy",
                     "scheduled-only",
-                    "release-only"
+                    "release-only",
+                    "default-branch-only"
                   ]
                 }
               }
