@@ -100,7 +100,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
 
       - name: Upload PHP raw reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-raw-security-php
           path: reports/raw/*.json
@@ -147,7 +147,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
 
       - name: Upload Node raw reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-raw-security-node
           path: reports/raw/*.json
@@ -203,7 +203,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Docker raw reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-raw-security-docker
           path: reports/raw/*.json
@@ -287,7 +287,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload generic raw reports
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-raw-security
           path: reports/raw/*.json
@@ -295,7 +295,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-sbom
           path: reports/sbom.spdx.json
@@ -347,7 +347,7 @@ jobs:
             --workflow "${GITHUB_WORKFLOW}"
 
       - name: Upload security summary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-security-summary
           path: reports/security-summary.json
@@ -355,7 +355,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload merged raw artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-raw-security-merged
           path: reports/raw/*.json
@@ -441,7 +441,7 @@ jobs:
 
       - name: Upload gate resolution
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-gate-resolution
           path: |
@@ -453,7 +453,7 @@ jobs:
 
       - name: Upload enforcement
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-enforcement
           path: |
@@ -464,7 +464,7 @@ jobs:
 
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sentinel-shield-release-evidence
           path: reports/release-evidence.md
