@@ -39,7 +39,7 @@ requiring) it is explicit:
 | `conditional-heavy` | Heavy job gated behind a detector (`needs`/`if`); may legitimately skip, so do NOT require it by itself. |
 | `scheduled-only` | Runs only via `schedule`/`workflow_dispatch`; never on ordinary PRs. Do NOT require. |
 | `release-only` | Runs only on release refs (tags/dispatch); not on ordinary PRs. Do NOT require for PR merges. |
-| `default-branch-only` | Runs on default-branch `push` but is skipped on PRs by an event guard (`if: github.event_name != 'pull_request'`), not a detector; never runs on a PR, so do NOT require for PR merges. |
+| `default-branch-only` | Runs on default-branch `push` (and manual `workflow_dispatch`) but is skipped on PRs by an event guard (`if: github.event_name != 'pull_request'`), not a detector; never runs on a PR, so do NOT require for PR merges. |
 
 ## Recommended required checks for `master`
 

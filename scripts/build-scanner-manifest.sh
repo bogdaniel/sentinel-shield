@@ -78,11 +78,14 @@ fi
 
 # recompute_applicable <applies_when> — mirror scripts/enforce-security-policy.sh so a manifest
 # never contradicts the acceptance gate's own independent recompute.
+# tests/ and examples/ are pruned: they hold DELIBERATELY-VULNERABLE consumer/adopter fixtures,
+# which are the engine's test DATA, not its own supply chain — scanning them for the engine's
+# acceptance is a category error (the engine ships no production deps or container image).
 recompute_applicable() {
 	case "$1" in
 		always) printf 'yes'; return 0 ;;
 		manifest_present)
-			_h=$(find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
+			_h=$(find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
 				\( -name package.json -o -name package-lock.json -o -name yarn.lock -o -name pnpm-lock.yaml \
 				   -o -name composer.json -o -name composer.lock -o -name go.mod -o -name go.sum \
 				   -o -name requirements.txt -o -name Pipfile -o -name pyproject.toml -o -name poetry.lock \
@@ -90,8 +93,8 @@ recompute_applicable() {
 				-print 2>/dev/null | head -n 1)
 			[ -n "$_h" ] && printf 'yes' || printf 'no' ;;
 		dockerfile_present)
-			_h=$(find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
-				\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name 'Containerfile' \) \
+			_h=$(find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
+				\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name 'Containerfile' \) ! -name '*.md' \
 				-print 2>/dev/null | head -n 1)
 			[ -n "$_h" ] && printf 'yes' || printf 'no' ;;
 		workflows_present)
@@ -108,14 +111,14 @@ count_targets() {
 	case "$1" in
 		always) find "$WORKSPACE" -maxdepth 6 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
 			\( -name '*.sh' -o -name '*.php' -o -name '*.js' -o -name '*.ts' -o -name '*.py' \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
-		manifest_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
+		manifest_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
 			\( -name package.json -o -name package-lock.json -o -name yarn.lock -o -name pnpm-lock.yaml \
 			   -o -name composer.json -o -name composer.lock -o -name go.mod -o -name go.sum \
 			   -o -name requirements.txt -o -name Pipfile -o -name pyproject.toml -o -name poetry.lock \
 			   -o -name Cargo.toml -o -name Cargo.lock -o -name pom.xml -o -name build.gradle -o -name Gemfile \) \
 			-print 2>/dev/null | wc -l | tr -d ' ' ;;
-		dockerfile_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git \) -prune -o -type f \
-			\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name Containerfile \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
+		dockerfile_present) find "$WORKSPACE" -maxdepth 4 \( -name node_modules -o -name vendor -o -name .git -o -name tests -o -name examples \) -prune -o -type f \
+			\( -name Dockerfile -o -name 'Dockerfile.*' -o -name '*.Dockerfile' -o -name Containerfile \) ! -name '*.md' -print 2>/dev/null | wc -l | tr -d ' ' ;;
 		workflows_present) find "$WORKSPACE/.github/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print 2>/dev/null | wc -l | tr -d ' ' ;;
 		*) printf '0' ;;
 	esac
