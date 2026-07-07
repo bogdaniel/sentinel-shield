@@ -94,7 +94,7 @@ jobs:
         # Works when a prior job in THIS run produced the summary (needs: topology).
         # Best-effort: a standalone tag run has no such artifact, and the fallback
         # policy below fails baseline/strict/regulated accordingly.
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: sentinel-shield-security-summary
           path: reports
@@ -105,7 +105,7 @@ jobs:
         # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Provide them
         # so finding-scope accepted-risks match; without them the gate fails closed.
         # Best-effort: a standalone run may have no such artifact.
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
