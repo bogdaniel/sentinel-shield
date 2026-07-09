@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "version": "2.0.1",
+  "stage": "ga",
+  "release_scope": "engine-only",
+  "source_commit": "32812ed43289104af61b0eb2fc20c784ca2b72c1",
+  "tag": "v2.0.1",
+  "artifacts": {
+    "evidence": "./v2.0.1-ga.json",
+    "manifest": "../manifests/v2.0.1-ga.manifest.json",
+    "artifact_verification": "./v2.0.1-ga-artifacts.json",
+    "security_acceptance": "./v2.0.1-ga-security-acceptance.json",
+    "compatibility_matrix": "./v2.0.1-ga-compatibility-matrix.json",
+    "adopter_scorecard": "./v2.0.1-ga-adopter-scorecard.json",
+    "upgrade_validation": "./v2.0.1-ga-upgrade-validation.json",
+    "rollback_validation": "./v2.0.1-ga-rollback-validation.json"
+  },
+  "docs": {
+    "limitations": "../../docs/v2.0.1-known-limitations.md",
+    "support_policy": "../../docs/support-policy.md",
+    "incident_response": "../../docs/security-incident-response.md"
+  }
+}
