@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "kind": "release-authorization-waiver",
+  "version": "2.0.1",
+  "stage": "ga",
+  "release_scope": "engine-only",
+  "source_commit": "32812ed43289104af61b0eb2fc20c784ca2b72c1",
+  "tag": "v2.0.1",
+  "candidate_hash": "8b7079a9aa8842c595306701ae7c7ca42098f4dc01e90b7df297c53c3936e4c7",
+  "control_waived": "two-person-authorization",
+  "waived": true,
+  "waived_by": "release-owner",
+  "waived_on": "2026-07-09",
+  "published_on": "2026-07-09",
+  "tag_signed": true,
+  "tag_signature_method": "ssh",
+  "rationale": "The enforced governed-authorization control requires distinct requested_by and approved_by GitHub logins (self-approval refused). Sentinel Shield currently has a single admin/collaborator (bogdaniel) and no second human login, so the two-person identity control is structurally unsatisfiable and must not be met by fabricating a second identity or misusing an automation account. The release owner explicitly waived ONLY the two-person identity control for this specific candidate; the SSH-signed tag at the CI-proven source commit was created and pushed by the owner directly. See docs/release-authorization-policy.md.",
+  "scope_of_waiver": "two-person requested_by != approved_by identity control ONLY; no other release gate is waived",
+  "gates_still_enforced": {
+    "tool": "authorize-production-release.sh verify-candidate",
+    "result": "READY",
+    "verified": [
+      "source-commit CI (7 required workflows, event=push)",
+      "artifact content + digest reproducibility",
+      "manifest self-consistency",
+      "security acceptance",
+      "compatibility matrix",
+      "adopter scorecard",
+      "upgrade validation",
+      "rollback validation",
+      "published limitations / support / incident-response docs"
+    ],
+    "blocked": ["framework-validated GA", "full-platform GA"]
+  }
+}

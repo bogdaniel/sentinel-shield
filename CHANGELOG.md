@@ -2,10 +2,12 @@
 
 All notable changes to Sentinel Shield are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). History began at `v0.1.0`
-and reached the **stable v1.x line** (`v1.9.2`, still supported). **`v2.0.0` is published
-as an engine-only production release** (2026-07-09, marked latest, tag target `13be630`) —
-engine-only scope: **not** framework-validated and **not** a full-platform GA claim
-(Laravel/Symfony are engine- and fixture-tested only, not live-validated in real consumer
+and reached the **stable v1.x line** (`v1.9.2`, still supported). **`v2.0.1` is the latest
+published release** — an engine-only maintenance release (2026-07-09, marked latest, tag
+target `32812ed`) that refreshes the `v2.0.0` engine-only production release (tag target
+`13be630`, still an intact release) with no executable engine change. Engine-only scope:
+**not** framework-validated and **not** a full-platform GA claim (Laravel/Symfony are
+engine- and fixture-tested only, not live-validated in real consumer
 repositories). See [`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
@@ -20,8 +22,12 @@ are documentation reconciliation (PR #37) and SHA-pinned workflow-action upgrade
 infrastructure only. Evidence re-derived against source commit `32812ed` (7 required
 workflows green, event=push); `verify-candidate` for `stage=ga scope=engine-only` → **READY**,
 `framework-validated` / `full-platform` → **BLOCKED**. **Excluded:** Laravel/Symfony
-live-consumer validation (framework-validated / full-platform GA is not claimed). Not yet
-tagged or published. See [`docs/v2.0.1-release-notes.md`](docs/v2.0.1-release-notes.md) and
+live-consumer validation (framework-validated / full-platform GA is not claimed). Published
+2026-07-09 as an SSH-signed tag at `32812ed`, marked latest. Published under a documented
+**sole-maintainer authorization** deviation: the enforced two-person `requested_by ≠
+approved_by` control cannot be satisfied by a single admin, so it was waived by the release
+owner (see [`docs/release-authorization-policy.md`](docs/release-authorization-policy.md)).
+See [`docs/v2.0.1-release-notes.md`](docs/v2.0.1-release-notes.md) and
 [`docs/v2.0.1-known-limitations.md`](docs/v2.0.1-known-limitations.md).
 
 ## [2.0.0] — Engine-Only Production Release — 2026-07-09
