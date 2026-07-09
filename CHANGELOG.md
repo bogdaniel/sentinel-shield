@@ -2,13 +2,25 @@
 
 All notable changes to Sentinel Shield are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). History began at `v0.1.0`
-and reached the **stable v1.x line** (latest published tag `v1.9.2`), which remains the
-latest stable, supported release. The **v2.0.0 line is in beta**: `v2.0.0-beta.1` is
-**published as a GitHub pre-release** (engine-only scope) — a pre-release, not stable and
-not the latest release — superseding the earlier `v2.0.0-alpha.1` candidate. See
-[`docs/product-status.md`](docs/product-status.md)
+and reached the **stable v1.x line** (`v1.9.2`, still supported). **`v2.0.0` is published
+as an engine-only production release** (2026-07-09, marked latest, tag target `13be630`) —
+engine-only scope: **not** framework-validated and **not** a full-platform GA claim
+(Laravel/Symfony are engine- and fixture-tested only, not live-validated in real consumer
+repositories). See [`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
+
+## [2.0.0] — Engine-Only Production Release — 2026-07-09
+
+Published GitHub release (marked latest), engine commit `13be630`, evidence merged by PR #36.
+Engine, installer, recovery, security controls, release-governance tooling, standalone
+PHP-library and Node/React consumer harnesses, and black-box adopter validation passed the
+engine-only production gates. **Excluded:** Laravel/Symfony live-consumer validation and
+independent external-adopter validation (framework-validated / full-platform GA is not
+claimed). RC→GA source is unchanged executable code (evidence/docs metadata only); the RC
+soak was explicitly waived by the release owner (`evidence/releases/v2.0.0-soak-waiver.json`).
+See [`docs/v2.0.0-release-notes.md`](docs/v2.0.0-release-notes.md) and
+[`docs/v2.0.0-known-limitations.md`](docs/v2.0.0-known-limitations.md).
 
 ## [Unreleased]
 

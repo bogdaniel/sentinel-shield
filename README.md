@@ -13,11 +13,12 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status.** Stable product line: **v1.x** (latest tag `v1.9.2`) — still the latest
-> stable, supported release. Current development line: **v2.0.0 beta** — `v2.0.0-beta.1` is
-> **published as a GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1`
-> candidate; it is a pre-release, **not** stable, **not** the latest release, and **not**
-> framework-validated. `master` carries post-v2-beta production-readiness work. STABLE surfaces follow
+> **Release status.** Current line: **v2.0.0 — engine-only production release**, published
+> and marked **latest** (`v2.0.0`, 2026-07-09, tag target `13be630`). The prior **v1.x** line
+> (`v1.9.2`) remains supported. v2.0.0 is an **engine-only** production release: it is **not**
+> framework-validated and does **not** claim full-platform GA — **Laravel and Symfony are
+> supported by profiles, fixtures and engine tests but are not independently live-validated in
+> real consumer repositories.** STABLE surfaces follow
 > **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6). The v2 line is
 > scoped **engine-only** — a reusable-engine/baseline release, **not** a claim of framework-specific
 > production proof. **Laravel and Symfony are supported by profiles, fixtures and engine tests but
