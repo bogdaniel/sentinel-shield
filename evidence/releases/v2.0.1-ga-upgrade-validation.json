@@ -1,0 +1,43 @@
+{
+  "schema_version": "1",
+  "report": "upgrade-validation",
+  "kind": "upgrade",
+  "source_commit": "32812ed43289104af61b0eb2fc20c784ca2b72c1",
+  "from": "2.0.0",
+  "to": "2.0.1",
+  "checks": [
+    {
+      "name": "install --apply succeeds",
+      "status": "pass",
+      "detail": "profile=laravel-react-docker"
+    },
+    {
+      "name": "install creates the managed workflow",
+      "status": "pass",
+      "detail": ".github/workflows/sentinel-shield.yml"
+    },
+    {
+      "name": "sync --apply --force succeeds (the upgrade op)",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "sync reconciles managed drift",
+      "status": "pass",
+      "detail": "managed workflow rewritten"
+    },
+    {
+      "name": "upgrade preserves project-owned accepted-risks.json",
+      "status": "pass",
+      "detail": "KEEPME survives sync"
+    },
+    {
+      "name": "plan-upgrade 2.0.0 -> 2.0.1 succeeds",
+      "status": "pass",
+      "detail": "read-only upgrade plan"
+    }
+  ],
+  "complete": true,
+  "failure_count": 0,
+  "result": "pass"
+}

@@ -10,6 +10,20 @@ repositories). See [`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
 
+## [2.0.1] — Engine-Only Maintenance Release — 2026-07-09
+
+Maintenance release candidate refreshing post-`v2.0.0` release evidence. **No executable
+engine change** over `v2.0.0`: the only differences from the v2.0.0 evidence merge (`c9013b5`)
+are documentation reconciliation (PR #37) and SHA-pinned workflow-action upgrades
+(`actions/upload-artifact` 4→7 #6, `actions/checkout` 4→7 #7, `actions/setup-node` 4→6 #8,
+`github/codeql-action/autobuild` 3→4 #34, `actions/download-artifact` 4→8 #35) — CI
+infrastructure only. Evidence re-derived against source commit `32812ed` (7 required
+workflows green, event=push); `verify-candidate` for `stage=ga scope=engine-only` → **READY**,
+`framework-validated` / `full-platform` → **BLOCKED**. **Excluded:** Laravel/Symfony
+live-consumer validation (framework-validated / full-platform GA is not claimed). Not yet
+tagged or published. See [`docs/v2.0.1-release-notes.md`](docs/v2.0.1-release-notes.md) and
+[`docs/v2.0.1-known-limitations.md`](docs/v2.0.1-known-limitations.md).
+
 ## [2.0.0] — Engine-Only Production Release — 2026-07-09
 
 Published GitHub release (marked latest), engine commit `13be630`, evidence merged by PR #36.
