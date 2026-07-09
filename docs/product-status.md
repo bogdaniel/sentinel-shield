@@ -8,9 +8,10 @@ It is deliberately conservative: a capability is only `proven` if there is cited
 
 | Field | Value |
 | --- | --- |
-| Latest release | **v2.0.0** — engine-only production release, **published and marked latest** (2026-07-09, tag target `13be630`, evidence PR #36); **not** framework-validated, **not** full-platform GA |
+| Latest release | **v2.0.1** — engine-only maintenance release, **published and marked latest** (2026-07-09, tag target `32812ed`, evidence PR #39); refreshes v2.0.0 evidence after docs reconciliation + workflow-action upgrades, **no executable engine change**; **not** framework-validated, **not** full-platform GA |
+| Prior production release | **v2.0.0** — engine-only production release (2026-07-09, tag target `13be630`, evidence PR #36); superseded as latest by v2.0.1 |
 | Prior stable line | **v1.x** (`v1.9.2`) — still supported |
-| Current default branch (`master`) | post-v2.0.0 maintenance (Dependabot workflow upgrades merged) |
+| Current default branch (`master`) | post-v2.0.1 (v2.0.1 evidence bundle merged, PR #39) |
 | Released scope | **engine-only** (see [`v2-release-scope.md`](v2-release-scope.md)) |
 | Laravel & Symfony | **supported by profiles, fixtures and engine tests; NOT independently live-validated in real consumer repositories** |
 | Release scope | engine and reusable-baseline release; **not** a claim of framework-specific production proof |
