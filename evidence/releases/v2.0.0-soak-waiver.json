@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "kind": "release-soak-waiver",
+  "version": "2.0.0",
+  "stage": "ga",
+  "release_scope": "engine-only",
+  "source_commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+  "soak_complete": false,
+  "waived": true,
+  "waived_by": "release-owner",
+  "waived_on": "2026-07-09",
+  "recommended_soak_days": 7,
+  "rc_published_on": "2026-07-08",
+  "rc_tag": "v2.0.0-rc.1",
+  "rationale": "The GA release source (13be630) is the SAME executable commit v2.0.0-rc.1 was cut from; the RC->GA diff is evidence/docs metadata only, so no executable change ships past the RC. Equivalent beta/RC/production-readiness evidence already exists. The RC soak is a recommendation, not a technical gate: authorize-production-release.sh verify-candidate (the authorization gate) carries no soak gate and is independently READY. soak_complete stays false because the observation window did not elapse; this waiver is the explicit, recorded release-owner override.",
+  "authorization_gate": {
+    "tool": "authorize-production-release.sh verify-candidate",
+    "result": "READY",
+    "has_soak_gate": false
+  }
+}
