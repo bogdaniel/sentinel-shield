@@ -69,6 +69,9 @@ scanner binary run is part of the engine's own release gate** — by design.
 
 | Version | Stage | Published Release page |
 | --- | --- | --- |
+| `v2.0.1` | ga (engine-only maintenance, **latest**) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.1> |
+| `v2.0.0` | ga (engine-only production, prior) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0> |
+| `v2.0.0-rc.1` | rc (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-rc.1> |
 | `v2.0.0-beta.1` | beta (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-beta.1> |
 
 ## How to validate a tag

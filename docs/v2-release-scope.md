@@ -96,9 +96,11 @@ Enforcement is implemented by three scripts and the recorded evidence:
 - `scripts/check-release-readiness.sh` — checks readiness for the target stage under
   the active scope.
 
-For this cycle the engine's green default-branch CI is recorded in
-`evidence/releases/v2.0.0-beta.1.json` under `engine_ci[]` and is GitHub-verified via
-`validate-release-evidence.sh --verify-github`.
+For the current release the engine's green default-branch CI is recorded in
+`evidence/releases/v2.0.1-ga.json` under `engine_ci[]` and is GitHub-verified via
+`validate-release-evidence.sh --verify-github`. The earlier
+`evidence/releases/v2.0.0-beta.1.json` bundle is retained as historical pre-release
+evidence only.
 
 ## Release-commit binding model (avoiding circular self-reference)
 
