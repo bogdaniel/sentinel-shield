@@ -1,15 +1,17 @@
 # Sentinel Shield — Documentation Hub
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest stable,
-> supported release. Current development line **v2.0.0 beta** — `v2.0.0-beta.1` **published as a GitHub
-> pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; a pre-release, **not**
-> stable, **not** the latest release. The v2 line is
-> scoped **engine-only** ([`v2-release-scope.md`](v2-release-scope.md)) — a reusable-engine/baseline
-> release, **not** a claim of framework-specific production proof. **Laravel and Symfony are supported
-> by profiles, fixtures and engine tests but are not independently live-validated in real consumer
-> repositories.** Single source of truth for maturity: [`product-status.md`](product-status.md).
-> v2 release notes: [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) · branch protection:
-> [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
+> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
+> on 2026-07-09 at tag target `32812ed`. It refreshes the **`v2.0.0`** engine-only production release
+> evidence after documentation reconciliation and workflow-action upgrades, with **no executable
+> engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
+> is **no longer the latest** overall release. The v2 line is scoped **engine-only**
+> ([`v2-release-scope.md`](v2-release-scope.md)) — a reusable-engine/baseline release, **not** a claim
+> of framework-specific production proof. **Laravel and Symfony are supported by profiles, fixtures and
+> engine tests but are not independently live-validated in real consumer repositories.**
+> **Framework-validated and full-platform GA are not claimed.** Single source of truth for maturity:
+> [`product-status.md`](product-status.md). v2 release notes:
+> [`v2.0.1-release-notes.md`](v2.0.1-release-notes.md), [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) ·
+> branch protection: [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
 > [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md).
 >
 > The canonical map of Sentinel Shield's docs. If a new team can't adopt from here without asking the

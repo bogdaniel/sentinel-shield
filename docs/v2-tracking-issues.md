@@ -23,19 +23,21 @@ framework-validated release can be claimed. They are not won't-fix.
 
 **Context:**
 v2 documentation and version references must be reconciled with reality.
-`v2.0.0-beta.1` is published as a GitHub pre-release (engine-only scope), superseding
-the `v2.0.0-alpha.1` candidate; it is a pre-release, not stable and not the latest
-release. The latest stable, supported tag remains `v1.9.2`. Docs must not imply a
-stable, framework-validated v2.
+The latest published release is **`v2.0.1`** — an engine-only maintenance release
+(2026-07-09, tag target `32812ed`) refreshing the **`v2.0.0`** engine-only production
+release (tag target `13be630`) with no executable engine change. The **v1.x** line
+(latest `v1.9.2`) remains a supported prior stable line but is no longer the latest
+overall release. `v2.0.0-beta.1` / `v2.0.0-alpha.1` are historical pre-release
+milestones. Docs must not imply a stable, framework-validated v2.
 
 **Acceptance criteria:**
-- [ ] All docs distinguish "pre-release" from "stable" for v2 artifacts.
-- [ ] Version references agree with the actual tag state (`v2.0.0-beta.1` pre-release; `v1.9.2` latest stable).
-- [ ] Release-scope wording (engine-only vs framework-validated vs full-platform) is consistent across docs.
+- [x] All docs distinguish "pre-release" from published for v2 artifacts.
+- [x] Version references agree with the actual tag state (`v2.0.1` latest, tag `32812ed`; `v2.0.0` prior production release; `v1.9.2` supported prior stable line).
+- [x] Release-scope wording (engine-only vs framework-validated vs full-platform) is consistent across docs.
 
-**Current status:** Largely addressed — see `docs/v2-merge-commit-ci-evidence.md`
-and the evidence files under `evidence/releases/`. Residual follow-up: keep
-version wording in sync as candidates progress.
+**Current status:** Addressed for the published `v2.0.1` release — canonical status is
+[`docs/product-status.md`](product-status.md); entry docs reconciled against it. Residual
+follow-up: keep version wording in sync as future candidates progress.
 
 ---
 
@@ -223,16 +225,24 @@ framework-validated release.
 
 **Labels:** `validation`, `usability`, `v2`
 
+**Status flags:** **not planned** · **not a release blocker**
+
 **Context:**
-Beyond automated tests, an external adopter should be able to install and
-operate the engine using only the published documentation, to surface usability
-gaps not caught by fixtures.
+Beyond automated tests, an external adopter could install and operate the engine
+using only the published documentation, to surface usability gaps not caught by
+fixtures.
 
-**Acceptance criteria:**
-- [ ] An external adopter completes install and a core flow using docs only.
-- [ ] Usability friction and doc gaps are recorded and triaged.
+**Scope decision (post-v2.0.1):** Independent external adopter validation is **not
+planned** for the current roadmap. The project does **not** claim independent external
+adoption or external-production validation. Controlled adopter harnesses
+(`tests/adopter/`) and deterministic tests remain **engine/adopter-harness evidence
+only**, not external-adopter proof. This item is **not** a framework-validation blocker
+and does **not** gate any release. It is documented as a deliberate decision, not
+pretended-complete.
 
-**Current status:** Open. Not covered by the deterministic fixture suite.
+**Current status:** **Not planned.** Deterministic adopter-harness coverage exists
+(`tests/adopter/adopter-scenarios.sh`, usability scorecard); genuine third-party
+external-adopter validation is out of scope for the current roadmap.
 
 ---
 
