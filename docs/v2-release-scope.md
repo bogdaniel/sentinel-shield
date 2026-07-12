@@ -1,11 +1,12 @@
 # v2 Release Scope (engine-only)
 
-This document states precisely what the v2.0.0 work proves and what it does
-not prove. It applies to the current development line: **`v2.0.0-beta.1` is published
-as a GitHub pre-release** (engine-only scope), superseding the earlier `v2.0.0-alpha.1`
-candidate — a pre-release, **not** stable and **not** the latest release. The latest
-stable, supported line remains v1.x (latest published tag `v1.9.2`). The default branch
-is currently doing post-v2-beta production-readiness work.
+This document states precisely what the v2 engine-only work proves and what it does
+not prove. The latest release is **`v2.0.1`** — an engine-only maintenance release
+published 2026-07-09 at tag target `32812ed`, refreshing the **`v2.0.0`** engine-only
+production release evidence (tag target `13be630`) with **no executable engine change**.
+The **v1.x** line (latest published tag `v1.9.2`) remains a supported prior stable line
+but is no longer the latest overall release. The `v2.0.0-beta.1` / `v2.0.0-alpha.1`
+references elsewhere are historical pre-release milestones on the path to `v2.0.0`.
 
 The release cycle described here runs under the `engine-only` release scope. Under
 this scope the release is a **production-oriented engine** with
@@ -95,9 +96,11 @@ Enforcement is implemented by three scripts and the recorded evidence:
 - `scripts/check-release-readiness.sh` — checks readiness for the target stage under
   the active scope.
 
-For this cycle the engine's green default-branch CI is recorded in
-`evidence/releases/v2.0.0-beta.1.json` under `engine_ci[]` and is GitHub-verified via
-`validate-release-evidence.sh --verify-github`.
+For the current release the engine's green default-branch CI is recorded in
+`evidence/releases/v2.0.1-ga.json` under `engine_ci[]` and is GitHub-verified via
+`validate-release-evidence.sh --verify-github`. The earlier
+`evidence/releases/v2.0.0-beta.1.json` bundle is retained as historical pre-release
+evidence only.
 
 ## Release-commit binding model (avoiding circular self-reference)
 

@@ -1,12 +1,14 @@
 # Roadmap (v0.1.16)
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest stable,
-> supported release; current development line **v2.0.0 beta** — `v2.0.0-beta.1` **published as a
-> GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; a pre-release,
-> **not** stable, **not** the latest release. The v2 line is scoped
-> **engine-only**; **Laravel and Symfony are supported by profiles, fixtures and engine tests but are
-> not independently live-validated in real consumer repositories.** Canonical status:
-> [`product-status.md`](product-status.md); v2 scope: [`v2-release-scope.md`](v2-release-scope.md).
+> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
+> on 2026-07-09 at tag target `32812ed`. It refreshes the **`v2.0.0`** engine-only production release
+> evidence after documentation reconciliation and workflow-action upgrades, with **no executable
+> engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
+> is **no longer the latest** overall release. The v2 line is scoped **engine-only**; **Laravel and
+> Symfony are supported by profiles, fixtures and engine tests but are not independently live-validated
+> in real consumer repositories.** **Framework-validated and full-platform GA are not claimed.**
+> Canonical status: [`product-status.md`](product-status.md); v2 scope:
+> [`v2-release-scope.md`](v2-release-scope.md).
 > The `v0.1.16` in this title reflects its authoring era; version references below are historical.
 
 Organized around **product maturity**, not tool accumulation. Sentinel Shield will not add more

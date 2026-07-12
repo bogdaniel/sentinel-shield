@@ -13,9 +13,11 @@ This repository is not a demo. It is intended for use in real production project
 
 ## 1. Purpose
 
-> **Release status.** Current line: **v2.0.0 — engine-only production release**, published
-> and marked **latest** (`v2.0.0`, 2026-07-09, tag target `13be630`). The prior **v1.x** line
-> (`v1.9.2`) remains supported. v2.0.0 is an **engine-only** production release: it is **not**
+> **Release status.** Latest release: **`v2.0.1` — engine-only maintenance release**, published
+> and marked **latest** (2026-07-09, tag target `32812ed`). It refreshes the **`v2.0.0`** engine-only
+> production release evidence (tag target `13be630`, still an intact release) after documentation
+> reconciliation and workflow-action upgrades, with **no executable engine change**. The prior **v1.x**
+> line (`v1.9.2`) remains a supported prior stable line. v2 is an **engine-only** release: it is **not**
 > framework-validated and does **not** claim full-platform GA — **Laravel and Symfony are
 > supported by profiles, fixtures and engine tests but are not independently live-validated in
 > real consumer repositories.** STABLE surfaces follow

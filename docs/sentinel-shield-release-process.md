@@ -1,9 +1,11 @@
 # Sentinel Shield Release Process (v0.1.16)
 
-> **Canonical status.** Stable line **v1.x** (latest `v1.9.2`, published) — still the latest
-> stable, supported release; current development line **v2.0.0 beta** — `v2.0.0-beta.1`
-> **published as a GitHub pre-release** (engine-only scope), superseding the `v2.0.0-alpha.1`
-> candidate; a pre-release, not stable and not the latest release. Canonical status:
+> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
+> on 2026-07-09 at tag target `32812ed`, refreshing the **`v2.0.0`** engine-only production release
+> evidence with **no executable engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a
+> supported prior stable line but is **no longer the latest** overall release. **Framework-validated
+> and full-platform GA are not claimed.** The `v2.0.0-beta.1` / `v2.0.0-alpha.1` references below are
+> historical pre-release milestones, retained as accurate release history. Canonical status:
 > [`product-status.md`](product-status.md).
 
 ## Release scope model (v2) — SELECTED: scoped release track
@@ -67,6 +69,9 @@ scanner binary run is part of the engine's own release gate** — by design.
 
 | Version | Stage | Published Release page |
 | --- | --- | --- |
+| `v2.0.1` | ga (engine-only maintenance, **latest**) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.1> |
+| `v2.0.0` | ga (engine-only production, prior) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0> |
+| `v2.0.0-rc.1` | rc (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-rc.1> |
 | `v2.0.0-beta.1` | beta (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-beta.1> |
 
 ## How to validate a tag
