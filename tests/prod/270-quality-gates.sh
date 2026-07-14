@@ -178,6 +178,62 @@ if [ "$(jq -r '.evaluated_gates[] | select(.key=="coverage_threshold_violations"
 	pass "enforcer(report-only): quality gate visible but skipped (non-blocking)"
 else fail "enforcer report-only should skip quality gates"; fi
 
+# every blocking quality gate exercised: complexity + duplication block in strict, dead-code
+# only in regulated. Build a summary with all three nonzero.
+q_base=$(jq -nc '{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0, medium_vulnerabilities:0,
+	architecture_violations:0, type_errors:0, test_failures:0, unsafe_docker:0, unsafe_github_actions:0,
+	missing_sbom:false, missing_release_evidence:false, expired_exceptions:0}')
+jq -n --argjson b "$q_base" '{version:"1.0", generated_at:"2026-07-14T00:00:00Z",
+	summary: ($b + {complexity_violations:1, duplication_violations:2, dead_code_violations:3}),
+	evidence:{sbom:{present:true}, release_evidence:{present:true}}}' > "$WORK/q3.json"
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3s" --format json >/dev/null 2>&1 || rc=$?
+ej="$WORK/enf-q3s/sentinel-shield-enforcement.json"
+if [ "$rc" -eq 1 ] \
+	&& [ "$(jq -r '.failed_gates | index("complexity_violations")' "$ej")" != "null" ] \
+	&& [ "$(jq -r '.failed_gates | index("duplication_violations")' "$ej")" != "null" ] \
+	&& [ "$(jq -r '.failed_gates | index("dead_code_violations")' "$ej")" = "null" ]; then
+	pass "enforcer(strict): complexity + duplication block; dead-code skipped"
+else fail "enforcer strict complexity/duplication/dead-code wrong: $(jq -c .failed_gates "$ej")"; fi
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3r" --format json >/dev/null 2>&1 || rc=$?
+ej="$WORK/enf-q3r/sentinel-shield-enforcement.json"
+if [ "$rc" -eq 1 ] \
+	&& [ "$(jq -r '.failed_gates | index("complexity_violations")' "$ej")" != "null" ] \
+	&& [ "$(jq -r '.failed_gates | index("duplication_violations")' "$ej")" != "null" ] \
+	&& [ "$(jq -r '.failed_gates | index("dead_code_violations")' "$ej")" != "null" ]; then
+	pass "enforcer(regulated): complexity + duplication + dead-code all block"
+else fail "enforcer regulated complexity/duplication/dead-code wrong: $(jq -c .failed_gates "$ej")"; fi
+
+# missing_coverage_evidence (unit): true summary blocks strict; skipped in report-only.
+jq -n --argjson b "$q_base" '{version:"1.0", generated_at:"2026-07-14T00:00:00Z",
+	summary: ($b + {missing_coverage_evidence:true}),
+	evidence:{sbom:{present:true}, release_evidence:{present:true}}}' > "$WORK/mce.json"
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mce" --format json >/dev/null 2>&1 || rc=$?
+ej="$WORK/enf-mce/sentinel-shield-enforcement.json"
+[ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("missing_coverage_evidence")' "$ej")" != "null" ] \
+	&& pass "enforcer(strict): missing_coverage_evidence=true blocks (absent coverage fails)" \
+	|| fail "enforcer strict missing_coverage_evidence not failing: $(jq -c .failed_gates "$ej")"
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-ro/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mcero" --format json >/dev/null 2>&1 || rc=$?
+[ "$(jq -r '.evaluated_gates[] | select(.key=="missing_coverage_evidence") | .result' "$WORK/enf-mcero/sentinel-shield-enforcement.json")" = "skipped" ] \
+	&& pass "enforcer(report-only): missing_coverage_evidence skipped" || fail "missing_coverage_evidence should skip in report-only"
+
+# missing_coverage_evidence (integration): a profile with an applicable coverage tool but NO
+# coverage report -> builder sets it true; adding a coverage report clears it.
+if command -v php >/dev/null 2>&1; then
+	MT="$WORK/covproj"; mkdir -p "$MT/reports/raw"
+	printf '{"name":"x/y"}\n' > "$MT/composer.json"
+	( cd "$MT" && sh "$BUILD" --profile laravel --target "$MT" --raw-dir "$MT/reports/raw" --output "$MT/reports/security-summary.json" ) >/dev/null 2>&1
+	[ "$(jq -r '.summary.missing_coverage_evidence' "$MT/reports/security-summary.json")" = "true" ] \
+		&& pass "builder: missing_coverage_evidence=true when applicable coverage report absent" \
+		|| fail "builder should flag missing coverage evidence"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"branch_percent":90,"violations":0,"regression":false}' > "$MT/reports/raw/php-coverage.json"
+	( cd "$MT" && sh "$BUILD" --profile laravel --target "$MT" --raw-dir "$MT/reports/raw" --output "$MT/reports/security-summary.json" ) >/dev/null 2>&1
+	[ "$(jq -r '.summary.missing_coverage_evidence' "$MT/reports/security-summary.json")" = "false" ] \
+		&& pass "builder: missing_coverage_evidence=false once coverage report present" \
+		|| fail "builder should clear missing coverage evidence when report present"
+else
+	fail "builder missing_coverage_evidence integration: php REQUIRED but not available"
+fi
+
 # --- (6) quality-policy loader fails closed on malformed ----------------------
 cat > "$WORK/qp-harness.sh" <<EOF
 set -eu
@@ -189,11 +245,28 @@ EOF
 printf 'quality:\n  coverage:\n    line_min: notanumber\n' > "$WORK/bad-policy.yaml"
 rc=0; sh "$WORK/qp-harness.sh" "$WORK/bad-policy.yaml" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && pass "quality-policy: malformed threshold fails closed (exit 2)" || fail "quality-policy malformed should exit 2, got $rc"
+# stricter numeric validation: each of these must fail closed (finite, in-range only).
+_qpbad=0
+for _v in '1.2.3' '...' '101' '-1' 'NaN'; do
+	printf 'quality:\n  coverage:\n    line_min: %s\n' "$_v" > "$WORK/qpb.yaml"
+	rc=0; sh "$WORK/qp-harness.sh" "$WORK/qpb.yaml" >/dev/null 2>&1 || rc=$?
+	[ "$rc" -eq 2 ] || { _qpbad=1; echo "  (line_min='$_v' got exit $rc, expected 2)"; }
+done
+[ "$_qpbad" -eq 0 ] && pass "quality-policy: rejects 1.2.3 / ... / 101 / -1 / NaN (exit 2)" || fail "quality-policy accepted a malformed numeric"
+# complexity must be an integer >= 1
+printf 'quality:\n  complexity:\n    max_cyclomatic_complexity: 10.5\n' > "$WORK/qpc.yaml"
+rc=0; sh "$WORK/qp-harness.sh" "$WORK/qpc.yaml" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] && pass "quality-policy: non-integer complexity threshold fails closed" || fail "quality-policy complexity non-integer should exit 2"
+# valid edge values accepted (0 and 100)
+printf 'quality:\n  coverage:\n    line_min: 0\n    branch_min: 100\n' > "$WORK/qpok.yaml"
+rc=0; sh "$WORK/qp-harness.sh" "$WORK/qpok.yaml" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && pass "quality-policy: valid edge thresholds (0, 100) accepted" || fail "quality-policy rejected valid edges"
 # absent policy is fine (defaults)
 rc=0; out=$(sh "$WORK/qp-harness.sh" "$WORK/none.yaml" 2>/dev/null) || rc=$?
 [ "$rc" -eq 0 ] && [ "$out" = "line=80" ] && pass "quality-policy: absent policy uses defaults" || fail "quality-policy absent should default (rc=$rc out=$out)"
 
-# --- (7) coverage adapters ----------------------------------------------------
+# --- (7) coverage adapters (node + php MANDATORY — a missing runtime is a FAIL, not a
+#         silent pass; CI runners provide both, so the core coverage adapters are exercised) --
 if command -v node >/dev/null 2>&1; then
 	A="$ROOT/scripts/adapters/istanbul-summary-to-coverage-json.mjs"
 	echo '{"total":{"lines":{"total":100,"covered":78,"pct":78},"branches":{"total":40,"covered":30,"pct":75},"functions":{"total":10,"covered":9,"pct":90}}}' > "$WORK/cov-sum.json"
@@ -204,8 +277,21 @@ if command -v node >/dev/null 2>&1; then
 	else fail "istanbul adapter wrong: $(echo "$o" | jq -c '{line_percent,violations,regression}')"; fi
 	rc=0; echo 'bad' > "$WORK/badcov.json"; node "$A" "$WORK/badcov.json" >/dev/null 2>&1 || rc=$?
 	[ "$rc" -eq 2 ] && pass "istanbul adapter: invalid input -> exit 2" || fail "istanbul adapter invalid got $rc"
+	# hardening: out-of-range/bad-bool thresholds fail closed (never silently disable a gate)
+	rc=0; node "$A" "$WORK/cov-sum.json" --line-min 101 >/dev/null 2>&1 || rc=$?; _e1=$rc
+	rc=0; node "$A" "$WORK/cov-sum.json" --line-min -1 >/dev/null 2>&1 || rc=$?; _e2=$rc
+	rc=0; node "$A" "$WORK/cov-sum.json" --fail-on-decrease maybe >/dev/null 2>&1 || rc=$?; _e3=$rc
+	{ [ "$_e1" -eq 2 ] && [ "$_e2" -eq 2 ] && [ "$_e3" -eq 2 ]; } && pass "istanbul adapter: out-of-range/bad-bool options exit 2" || fail "istanbul adapter option validation ($_e1/$_e2/$_e3)"
+	# hardening: malformed metric object (present but non-numeric) exits 2
+	echo '{"total":{"lines":{"pct":95}}}' > "$WORK/malmetric.json"
+	rc=0; node "$A" "$WORK/malmetric.json" >/dev/null 2>&1 || rc=$?
+	[ "$rc" -eq 2 ] && pass "istanbul adapter: malformed metric object exits 2" || fail "istanbul adapter malformed metric got $rc"
+	# hardening: explicitly-configured baseline that is missing/malformed fails closed
+	rc=0; node "$A" "$WORK/cov-sum.json" --baseline "$WORK/nobase.json" --fail-on-decrease true >/dev/null 2>&1 || rc=$?; _b1=$rc
+	echo 'not json' > "$WORK/badbase.json"; rc=0; node "$A" "$WORK/cov-sum.json" --baseline "$WORK/badbase.json" >/dev/null 2>&1 || rc=$?; _b2=$rc
+	{ [ "$_b1" -eq 2 ] && [ "$_b2" -eq 2 ]; } && pass "istanbul adapter: invalid configured baseline fails closed (exit 2)" || fail "istanbul adapter baseline not fail-closed ($_b1/$_b2)"
 else
-	pass "istanbul adapter: SKIPPED (node not available)"
+	fail "istanbul adapter: node REQUIRED but not available (core coverage adapter cannot be verified)"
 fi
 
 if command -v php >/dev/null 2>&1; then
@@ -226,8 +312,13 @@ EOF
 EOF
 	o=$(php "$A" "$WORK/clover2.xml" --line-min 80 --branch-min 60 2>/dev/null)
 	[ "$(echo "$o" | jq '.violations')" = "0" ] && pass "clover adapter: unmeasured branch metric not falsely failed" || fail "clover adapter false branch violation"
+	# hardening: out-of-range/bad-bool options + invalid configured baseline fail closed
+	rc=0; php "$A" "$WORK/clover.xml" --line-min 101 >/dev/null 2>&1 || rc=$?; _p1=$rc
+	rc=0; php "$A" "$WORK/clover.xml" --fail-on-decrease nope >/dev/null 2>&1 || rc=$?; _p2=$rc
+	rc=0; php "$A" "$WORK/clover.xml" --baseline "$WORK/nobase.json" --fail-on-decrease true >/dev/null 2>&1 || rc=$?; _p3=$rc
+	{ [ "$_p1" -eq 2 ] && [ "$_p2" -eq 2 ] && [ "$_p3" -eq 2 ]; } && pass "clover adapter: bad options + invalid baseline fail closed (exit 2)" || fail "clover adapter validation ($_p1/$_p2/$_p3)"
 else
-	pass "clover adapter: SKIPPED (php not available)"
+	fail "clover adapter: php REQUIRED but not available (core coverage adapter cannot be verified)"
 fi
 
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

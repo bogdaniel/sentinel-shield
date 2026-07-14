@@ -28,6 +28,22 @@ function fail(string $msg): void {
     exit(2);
 }
 
+// num01 — a finite number in 0..100, or exit 2 (invalid thresholds never silently disable a gate).
+function num01(string $flag, string $raw): float {
+    if (!is_numeric($raw)) fail("$flag must be a finite number in 0..100, got '$raw'");
+    $n = (float) $raw;
+    if (!is_finite($n) || $n < 0 || $n > 100) fail("$flag must be a finite number in 0..100, got '$raw'");
+    return $n;
+}
+// bool_arg — a recognized boolean, or exit 2 (an unrecognized value never becomes a silent false).
+function bool_arg(string $flag, string $raw): bool {
+    $s = strtolower($raw);
+    if (in_array($s, ['1', 'true', 'yes', 'on'], true)) return true;
+    if (in_array($s, ['0', 'false', 'no', 'off'], true)) return false;
+    fail("$flag must be a boolean, got '$raw'");
+    return false; // unreachable (fail exits); keeps the return type total.
+}
+
 $args = array_slice($argv, 1);
 if (count($args) < 1) {
     fwrite(STDERR, "Usage: php clover-to-coverage-json.php <clover.xml|-> [--line-min N] [--branch-min N] [--method-min N] [--class-min N] [--baseline <file>] [--fail-on-decrease true|false] [--output <path>]\n");
@@ -45,12 +61,12 @@ for ($i = 1; $i < count($args); $i++) {
     $needsVal = in_array($a, ['--line-min', '--branch-min', '--method-min', '--class-min', '--baseline', '--fail-on-decrease', '--output'], true);
     if ($needsVal && !isset($args[$i + 1])) fail("$a requires a value");
     switch ($a) {
-        case '--line-min':   $thr['line_min']   = (float) $args[++$i]; break;
-        case '--branch-min': $thr['branch_min'] = (float) $args[++$i]; break;
-        case '--method-min': $thr['method_min'] = (float) $args[++$i]; break;
-        case '--class-min':  $thr['class_min']  = (float) $args[++$i]; break;
+        case '--line-min':   $thr['line_min']   = num01('--line-min', $args[++$i]); break;
+        case '--branch-min': $thr['branch_min'] = num01('--branch-min', $args[++$i]); break;
+        case '--method-min': $thr['method_min'] = num01('--method-min', $args[++$i]); break;
+        case '--class-min':  $thr['class_min']  = num01('--class-min', $args[++$i]); break;
         case '--baseline':   $baselineFile = $args[++$i]; break;
-        case '--fail-on-decrease': $failOnDecrease = in_array(strtolower($args[++$i]), ['1', 'true', 'yes', 'on'], true); break;
+        case '--fail-on-decrease': $failOnDecrease = bool_arg('--fail-on-decrease', $args[++$i]); break;
         case '--output':     $output = $args[++$i]; break;
         default: fail("unknown argument: $a");
     }
@@ -99,20 +115,26 @@ if ($brM && $thr['branch_min'] > 0 && $branchPct < $thr['branch_min']) $violatio
 if ($mM && $thr['method_min'] > 0 && $methodPct < $thr['method_min']) $violations++;
 if ($cM && $thr['class_min'] > 0 && $classPct < $thr['class_min']) $violations++;
 
-// Regression vs baseline (line/branch), only when fail_on_decrease and a baseline exists.
+// Regression vs baseline. An EXPLICITLY configured baseline must be valid: a readable JSON
+// object with at least one finite line_percent/branch_percent — otherwise exit 2 (fail closed).
+// A broken baseline must not silently bypass the regression gate with fail_on_decrease enabled.
 $regression = false;
 $baselineOut = null;
-if ($baselineFile !== '' && is_file($baselineFile)) {
-    $bRaw = file_get_contents($baselineFile);
-    $b = json_decode((string) $bRaw, true);
-    if (is_array($b)) {
-        $bLine = isset($b['line_percent']) ? (float) $b['line_percent'] : null;
-        $bBranch = isset($b['branch_percent']) ? (float) $b['branch_percent'] : null;
-        $baselineOut = ['line_percent' => $bLine, 'branch_percent' => $bBranch];
-        if ($failOnDecrease) {
-            if ($bLine !== null && $lineM && $linePct < $bLine) $regression = true;
-            if ($bBranch !== null && $brM && $branchPct < $bBranch) $regression = true;
-        }
+if ($baselineFile !== '') {
+    if (!is_file($baselineFile)) fail("--baseline file not found: $baselineFile");
+    $b = json_decode((string) file_get_contents($baselineFile), true);
+    if (!is_array($b)) fail('--baseline is not a valid JSON object');
+    $hasLine = array_key_exists('line_percent', $b);
+    $hasBranch = array_key_exists('branch_percent', $b);
+    if ($hasLine && !is_numeric($b['line_percent'])) fail('--baseline line_percent must be numeric');
+    if ($hasBranch && !is_numeric($b['branch_percent'])) fail('--baseline branch_percent must be numeric');
+    if (!$hasLine && !$hasBranch) fail('--baseline must contain a finite line_percent and/or branch_percent');
+    $bLine = $hasLine ? (float) $b['line_percent'] : null;
+    $bBranch = $hasBranch ? (float) $b['branch_percent'] : null;
+    $baselineOut = ['line_percent' => $bLine, 'branch_percent' => $bBranch];
+    if ($failOnDecrease) {
+        if ($bLine !== null && $lineM && $linePct < $bLine) $regression = true;
+        if ($bBranch !== null && $brM && $branchPct < $bBranch) $regression = true;
     }
 }
 

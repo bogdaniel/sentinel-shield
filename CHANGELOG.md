@@ -22,10 +22,18 @@ backward-compatible; **no release, tag, or runtime release evidence is produced 
 
 - **New gates** (resolver + enforcer): `coverage_threshold_violations`, `coverage_regression`,
   `mutation_score_violations`, `complexity_violations`, `duplication_violations`,
-  `dead_code_violations`. Emitted as `SENTINEL_SHIELD_FAIL_ON_*` and overridable via
-  `gates.fail_on`. Mode defaults: strict blocks coverage threshold/regression + complexity +
-  duplication; regulated additionally blocks mutation + dead-code; report-only/baseline keep all
-  new gates non-blocking. Existing mode defaults are unchanged.
+  `dead_code_violations`, and the boolean `missing_coverage_evidence`. Emitted as
+  `SENTINEL_SHIELD_FAIL_ON_*` and overridable via `gates.fail_on`. Mode defaults: strict blocks
+  coverage threshold/regression + complexity + duplication + missing-coverage-evidence; regulated
+  additionally blocks mutation + dead-code; report-only/baseline keep all new gates non-blocking.
+  Existing mode defaults are unchanged. `missing_coverage_evidence` (set by the builder when a
+  profile declares an APPLICABLE coverage tool that produced no report) makes strict/regulated fail
+  on ABSENT coverage, not only on bad coverage.
+- **Fail-closed hardening**: the coverage adapters reject out-of-range/non-boolean options and
+  malformed metric objects (exit 2) and fail closed when an explicitly configured regression
+  baseline is missing/malformed; the quality-policy loader validates thresholds as finite,
+  in-range numbers (percentages 0..100, complexity integer ≥ 1) and rejects `1.2.3`/`...`/`101`/
+  `-1`/`NaN`; the PHPMD/knip runners require a recognized report shape (no fake-clean 0 from `{}`).
 - **Schema** (`schemas/security-summary.schema.json`): additive optional summary keys — the six
   gate counters above plus informational `coverage_line_percent`, `coverage_branch_percent`,
   `coverage_method_percent`, `coverage_class_percent`, `mutation_score_percent`, `complexity_max`,

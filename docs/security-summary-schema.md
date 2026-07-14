@@ -39,7 +39,12 @@ A missing `summary` key is an **error** (exit 2), never a silent zero.
 
 ## Summary key meanings
 
-All keys are required. Integer keys are non-negative counts; two are booleans.
+The **legacy** keys below are required (a missing one is an error, never a silent zero); integer
+keys are non-negative counts and two are booleans. Keys added later — the `third_party_*` channel
+(v0.1.5+), the `v0.1.12+` enterprise counters, and the **v2.1 engineering-quality keys** (see the
+subsection below) — are **optional/additive**: a missing one reads as `0` (or `false` for the
+boolean gate), so older summaries stay valid. The enforcer validates exactly the required legacy
+keys and treats every optional key as absent→0.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -78,6 +83,7 @@ counters; nine are informational numbers that never gate directly:
 | `complexity_violations` | integer | Functions/methods over the complexity threshold. |
 | `duplication_violations` | integer | Duplicated-code percentage over the threshold. |
 | `dead_code_violations` | integer | Unused exports/files/symbols over policy. |
+| `missing_coverage_evidence` | boolean | `true` when an APPLICABLE coverage tool produced no valid report (emitted only with `--profile`; absent reads as `false`). Lets strict/regulated fail on ABSENT coverage. |
 | `coverage_line_percent` / `coverage_branch_percent` / `coverage_method_percent` / `coverage_class_percent` | number | Informational coverage percentages. |
 | `mutation_score_percent` | number | Informational mutation score indicator. |
 | `complexity_max` / `complexity_average` | number | Informational complexity metrics. |

@@ -38,6 +38,7 @@ and, for the recommended/optional policies used by default, does not block.
 | `complexity_violations` | Functions/methods over the complexity threshold. |
 | `duplication_violations` | Duplicated-code percentage over the threshold. |
 | `dead_code_violations` | Unused exports/files/symbols over policy. |
+| `missing_coverage_evidence` | (boolean) An applicable coverage tool produced **no** valid report — strict/regulated fail on ABSENT coverage, not only on bad coverage. |
 
 Informational metrics also travel in the summary (never gate directly): `coverage_line_percent`,
 `coverage_branch_percent`, `coverage_method_percent`, `coverage_class_percent`,
@@ -54,6 +55,7 @@ Informational metrics also travel in the summary (never gate directly): `coverag
 | `complexity_violations` | false | false | **true** | **true** |
 | `duplication_violations` | false | false | **true** | **true** |
 | `dead_code_violations` | false | false | false | **true** |
+| `missing_coverage_evidence` | false | false | **true** | **true** |
 
 - **report-only** — collect and report quality metrics; nothing new blocks.
 - **baseline** — quality metrics are visible but non-blocking (existing test/type/architecture/
@@ -85,6 +87,16 @@ Existing gate defaults (`test_failures`, `style_violations`, `type_errors`,
 **Coverage driver:** PHP coverage needs Xdebug or PCOV; JS needs a coverage-capable reporter
 (Istanbul `json-summary`). When the driver/reporter is absent the runner leaves the report
 **absent** (status `unavailable`) — it never writes a fake-clean 0.
+
+**Strict/regulated require coverage to actually run.** Because the coverage tools are
+`recommended`, an absent coverage report would otherwise leave the violation/regression counters at
+`0` and let strict pass with *no coverage at all*. To prevent that, `build-security-summary.sh --profile`
+sets `missing_coverage_evidence: true` whenever the profile declares an **applicable** coverage tool
+(`php-coverage`/`js-coverage`) that produced no valid report. In strict/regulated that boolean gate
+fails the build — so "no coverage evidence" is a real failure, not a silent pass. In combined
+profiles each applicable stack must produce its own coverage report. (The gate only has teeth when
+the summary is built with `--profile`; a profile-less/older summary omits the key, which reads as
+`false` for back-compat.)
 
 ## How coverage regression works
 

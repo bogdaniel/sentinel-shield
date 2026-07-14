@@ -28,6 +28,20 @@ function fail(msg) {
   process.exit(2);
 }
 
+// num01 — a finite number in 0..100, or exit 2 (invalid thresholds never silently disable a gate).
+function num01(flag, raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 100) fail(`${flag} must be a finite number in 0..100, got '${raw}'`);
+  return n;
+}
+// boolArg — a recognized boolean, or exit 2 (an unrecognized value never becomes a silent false).
+function boolArg(flag, raw) {
+  const s = String(raw).toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(s)) return true;
+  if (['0', 'false', 'no', 'off'].includes(s)) return false;
+  fail(`${flag} must be a boolean, got '${raw}'`);
+}
+
 const argv = process.argv.slice(2);
 if (argv.length < 1) {
   process.stderr.write('Usage: node istanbul-summary-to-coverage-json.mjs <coverage-summary.json|-> [--line-min N] [--branch-min N] [--method-min N] [--class-min N] [--baseline <file>] [--fail-on-decrease true|false] [--output <path>]\n');
@@ -45,12 +59,12 @@ for (let i = 1; i < argv.length; i++) {
   const withVal = ['--line-min', '--branch-min', '--method-min', '--class-min', '--baseline', '--fail-on-decrease', '--output'];
   if (withVal.includes(a) && i + 1 >= argv.length) fail(`${a} requires a value`);
   switch (a) {
-    case '--line-min': thr.line_min = Number(argv[++i]); break;
-    case '--branch-min': thr.branch_min = Number(argv[++i]); break;
-    case '--method-min': thr.method_min = Number(argv[++i]); break;
-    case '--class-min': thr.class_min = Number(argv[++i]); break;
+    case '--line-min': thr.line_min = num01(a, argv[++i]); break;
+    case '--branch-min': thr.branch_min = num01(a, argv[++i]); break;
+    case '--method-min': thr.method_min = num01(a, argv[++i]); break;
+    case '--class-min': thr.class_min = num01(a, argv[++i]); break;
     case '--baseline': baselineFile = argv[++i]; break;
-    case '--fail-on-decrease': failOnDecrease = ['1', 'true', 'yes', 'on'].includes(String(argv[++i]).toLowerCase()); break;
+    case '--fail-on-decrease': failOnDecrease = boolArg(a, argv[++i]); break;
     case '--output': output = argv[++i]; break;
     default: fail(`unknown argument: ${a}`);
   }
@@ -73,13 +87,16 @@ try {
 const total = data && data.total;
 if (!total || typeof total !== 'object') fail('unrecognized coverage-summary JSON (expected .total)');
 
-// measured(metric): [pct, measured] — Istanbul sets total:0 when nothing to cover.
+// measured(metric): [pct, measured] — Istanbul sets total:0 when nothing to cover. An ABSENT
+// metric object (metric not reported) is "not measured"; a PRESENT but malformed metric object
+// (non-numeric total/pct) is a hard error (exit 2), never silently coerced to 0.
 function measured(m) {
-  if (!m || typeof m !== 'object') return [0, false];
-  const denom = typeof m.total === 'number' ? m.total : null;
-  const pct = typeof m.pct === 'number' ? m.pct : 0;
-  if (denom === 0) return [0, false];
-  return [pct, true];
+  if (m === undefined || m === null) return [0, false];
+  if (typeof m !== 'object' || !Number.isFinite(m.total) || !Number.isFinite(m.pct)) {
+    fail('coverage metric requires numeric total and pct');
+  }
+  if (m.total === 0) return [0, false];
+  return [m.pct, true];
 }
 const [linePct, lineM] = measured(total.lines);
 const [branchPct, brM] = measured(total.branches);
@@ -92,21 +109,32 @@ if (brM && thr.branch_min > 0 && branchPct < thr.branch_min) violations++;
 if (mM && thr.method_min > 0 && methodPct < thr.method_min) violations++;
 if (cM && thr.class_min > 0 && classPct < thr.class_min) violations++;
 
+// An EXPLICITLY configured baseline must be valid: a readable JSON object with at least one
+// finite line_percent/branch_percent. Otherwise exit 2 — a broken baseline must not silently
+// bypass the regression gate (fail closed), especially with fail_on_decrease enabled.
 let regression = false;
 let baselineOut = null;
-if (baselineFile && existsSync(baselineFile)) {
+if (baselineFile) {
+  if (!existsSync(baselineFile)) fail(`--baseline file not found: ${baselineFile}`);
+  let b;
   try {
-    const b = JSON.parse(readFileSync(baselineFile, 'utf8'));
-    if (b && typeof b === 'object') {
-      const bLine = typeof b.line_percent === 'number' ? b.line_percent : null;
-      const bBranch = typeof b.branch_percent === 'number' ? b.branch_percent : null;
-      baselineOut = { line_percent: bLine, branch_percent: bBranch };
-      if (failOnDecrease) {
-        if (bLine !== null && lineM && linePct < bLine) regression = true;
-        if (bBranch !== null && brM && branchPct < bBranch) regression = true;
-      }
-    }
-  } catch { /* a malformed baseline is treated as "no baseline" (never a fake regression). */ }
+    b = JSON.parse(readFileSync(baselineFile, 'utf8'));
+  } catch (e) {
+    fail(`--baseline is not valid JSON: ${e.message}`);
+  }
+  if (!b || typeof b !== 'object' || Array.isArray(b)) fail('--baseline must be a JSON object');
+  const hasLine = b.line_percent !== undefined;
+  const hasBranch = b.branch_percent !== undefined;
+  if (hasLine && !Number.isFinite(b.line_percent)) fail('--baseline line_percent must be a finite number');
+  if (hasBranch && !Number.isFinite(b.branch_percent)) fail('--baseline branch_percent must be a finite number');
+  if (!hasLine && !hasBranch) fail('--baseline must contain a finite line_percent and/or branch_percent');
+  const bLine = hasLine ? b.line_percent : null;
+  const bBranch = hasBranch ? b.branch_percent : null;
+  baselineOut = { line_percent: bLine, branch_percent: bBranch };
+  if (failOnDecrease) {
+    if (bLine !== null && lineM && linePct < bLine) regression = true;
+    if (bBranch !== null && brM && branchPct < bBranch) regression = true;
+  }
 }
 
 const result = {

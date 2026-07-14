@@ -82,7 +82,10 @@
     "composer-audit.json",
     "gitleaks.json",
     "semgrep.json",
-    "deptrac.json"
+    "deptrac.json",
+    "php-coverage.json",
+    "php-complexity.json",
+    "php-duplication.json"
   ],
   "tools": {
     "php-syntax": {

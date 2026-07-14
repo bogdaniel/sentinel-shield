@@ -69,7 +69,9 @@
     "typescript.json",
     "eslint.json",
     "gitleaks.json",
-    "semgrep.json"
+    "semgrep.json",
+    "js-coverage.json",
+    "js-duplication.json"
   ],
   "tool_policy_version": 2,
   "tools": {

@@ -38,12 +38,14 @@ if [ -x node_modules/.bin/knip ]; then
 	log_info "knip: node_modules/.bin/knip --reporter json"
 	_json="$_dir/knip.json"
 	node_modules/.bin/knip --reporter json >"$_json" 2>"$_err" || true
-	# Sum knip issue counts across the common categories (version-tolerant).
+	# Require the knip JSON shape (.files array + .issues array), then sum EVERY issue
+	# category (exports/types/dependencies/devDependencies/unlisted/duplicates/enumMembers/…)
+	# so no dead-code category is undercounted. An unrecognized shape yields empty -> absent.
 	COUNT=$(jq -r '
-		if type=="object" then
-			((.files // []) | length)
-			+ ([ (.issues // [])[]? | ((.exports // {}) | length) + ((.types // {}) | length)
-				+ ((.dependencies // []) | length) + ((.unlisted // {}) | length) ] | add // 0)
+		if (type=="object" and (.files|type)=="array" and (.issues|type)=="array") then
+			(.files | length)
+			+ ([ .issues[] | to_entries[] | select(.key != "file")
+				| (.value | if type=="array" then length elif type=="object" then length else 0 end) ] | add // 0)
 		else empty end' "$_json" 2>/dev/null || true)
 elif [ -x node_modules/.bin/ts-prune ] || command_exists ts-prune; then
 	_TP="ts-prune"; [ -x node_modules/.bin/ts-prune ] && _TP="node_modules/.bin/ts-prune"

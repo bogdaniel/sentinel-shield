@@ -467,6 +467,20 @@ eval_unsafe_docker() {
 	fi
 }
 
+# Boolean gate: fails when summary.<key> == true and the flag is enabled. Absent key reads
+# as false (no trigger). Used by missing_coverage_evidence (no evidence.present sidecar).
+eval_bool_gate() {
+	_key=$1
+	_flag=$(gate_flag "$_key")
+	_v=$(jqr ".summary.$_key")   # true|false|null
+	_trig=false; [ "$_v" = "true" ] && _trig=true
+	if [ "$_flag" = "true" ]; then
+		if [ "$_trig" = "true" ]; then add_eval "$_key" true "$_trig" fail; else add_eval "$_key" true "$_trig" pass; fi
+	else
+		add_eval "$_key" false "$_trig" skipped
+	fi
+}
+
 # Evidence/boolean gate: fails when summary flag is true OR evidence present==false.
 eval_missing_gate() {
 	_key=$1            # missing_sbom | missing_release_evidence
@@ -532,6 +546,12 @@ done
 for _qck in $QUALITY_COUNT_KEYS; do
 	eval_count_gate "$_qck"
 done
+
+# missing_coverage_evidence (v2.1) — a boolean quality gate: the builder (run with --profile)
+# sets summary.missing_coverage_evidence=true when an APPLICABLE coverage tool produced no valid
+# report, so strict/regulated fail on ABSENT coverage (not only on bad coverage). Absent key
+# (older/non-profile summary) reads as false, preserving back-compat.
+eval_bool_gate "missing_coverage_evidence"
 
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
 # When the summary carries per-tool policy data (build-security-summary.sh --profile),

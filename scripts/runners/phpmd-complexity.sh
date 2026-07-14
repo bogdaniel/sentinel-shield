@@ -56,8 +56,10 @@ log_info "phpmd-complexity: $BIN $PATHS json codesize"
 # PHPMD exits non-zero when violations are found — that is a FINDING, not a runner failure.
 "$BIN" "$PATHS" json codesize >"$_json" 2>"$_err" || true
 
-if ! jq -e 'type=="object"' "$_json" >/dev/null 2>&1; then
-	log_warn "phpmd-complexity: no valid JSON report produced; leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_err."
+# Require the PHPMD report SHAPE (a .files array), not merely "an object": a bare `{}` or an
+# unrelated JSON blob must not normalize to a clean 0. A genuine clean run emits {"files":[]}.
+if ! jq -e '(.files | type) == "array"' "$_json" >/dev/null 2>&1; then
+	log_warn "phpmd-complexity: no valid PHPMD JSON report (missing .files array); leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_err."
 	exit 0
 fi
 

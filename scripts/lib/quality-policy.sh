@@ -74,18 +74,37 @@ qp_load() {
 	_qp_validate
 }
 
+# _qp_check_num <key> <value> <min> <max> <int:0|1> — exit 2 unless value is a finite,
+# unsigned decimal (or integer when int=1) within [min,max]. Rejects 1.2.3, ..., -1, 101,
+# NaN, empty, and a stray dot — the char-class check alone was too loose.
+_qp_check_num() {
+	awk -v v="$2" -v min="$3" -v max="$4" -v isint="$5" 'BEGIN{
+		if (v !~ /^[0-9]+(\.[0-9]+)?$/) exit 1
+		x = v + 0
+		if (x < min || x > max) exit 1
+		if (isint == 1 && v ~ /\./) exit 1
+		exit 0
+	}' </dev/null 2>/dev/null || {
+		if [ "$5" = "1" ]; then log_error "quality-policy: $1 must be an integer in $3..$4, got '$2'"
+		else log_error "quality-policy: $1 must be a finite number in $3..$4, got '$2'"; fi
+		exit 2
+	}
+}
+
 # _qp_validate — exit 2 when a present, known numeric/boolean field is malformed.
 _qp_validate() {
 	[ "$QP_PRESENT" -eq 1 ] || return 0
+	# Percentages / scores: finite number in 0..100.
 	for _k in quality.coverage.line_min quality.coverage.branch_min \
 		quality.coverage.method_min quality.coverage.class_min \
-		quality.mutation.min_score quality.complexity.max_cyclomatic_complexity \
-		quality.complexity.max_cognitive_complexity quality.duplication.max_percentage; do
+		quality.mutation.min_score quality.duplication.max_percentage; do
 		_v=$(qp_get "$_k") || true
-		[ -n "$_v" ] || continue
-		case "$_v" in
-			'' | '.' | *[!0-9.]*) log_error "quality-policy: $_k must be numeric, got '$_v'"; exit 2 ;;
-		esac
+		[ -n "$_v" ] && _qp_check_num "$_k" "$_v" 0 100 0
+	done
+	# Complexity thresholds: integer >= 1.
+	for _k in quality.complexity.max_cyclomatic_complexity quality.complexity.max_cognitive_complexity; do
+		_v=$(qp_get "$_k") || true
+		[ -n "$_v" ] && _qp_check_num "$_k" "$_v" 1 100000 1
 	done
 	for _k in quality.coverage.enabled quality.coverage.fail_on_decrease \
 		quality.mutation.enabled quality.complexity.enabled \

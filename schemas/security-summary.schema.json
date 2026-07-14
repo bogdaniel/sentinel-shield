@@ -93,7 +93,8 @@
         "complexity_max": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Maximum complexity observed (aggregate = maximum across applicable stacks). Optional." },
         "complexity_average": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional." },
         "duplication_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Duplicated-code percent (aggregate = maximum across applicable stacks). Optional." },
-        "dead_code_count": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Count of dead-code items (summed across applicable stacks). Optional." }
+        "dead_code_count": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Count of dead-code items (summed across applicable stacks). Optional." },
+        "missing_coverage_evidence": { "type": "boolean", "description": "v2.1+ engineering-quality gate (boolean). True when an APPLICABLE coverage tool produced no valid report — so strict/regulated fail on ABSENT coverage, not only on bad coverage. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive." }
       }
     },
     "tools": {

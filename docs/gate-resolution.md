@@ -125,6 +125,7 @@ mutation_score_violations
 complexity_violations
 duplication_violations
 dead_code_violations
+missing_coverage_evidence
 ```
 
 Mode defaults (blocks the build?):
@@ -137,10 +138,14 @@ Mode defaults (blocks the build?):
 | complexity_violations | ❌ | ❌ | ✅ | ✅ |
 | duplication_violations | ❌ | ❌ | ✅ | ✅ |
 | dead_code_violations | ❌ | ❌ | ❌ | ✅ |
+| missing_coverage_evidence | ❌ | ❌ | ✅ | ✅ |
 
 ✅ = the gate blocks the build. ❌ = report-only (does not block). `report-only` and `baseline` keep all
-six non-blocking; `strict` adds coverage threshold/regression, complexity, and duplication; `regulated`
-adds mutation and dead-code (the slow/noisy signals) on top.
+six non-blocking; `strict` adds coverage threshold/regression, complexity, duplication, and
+`missing_coverage_evidence`; `regulated` adds mutation and dead-code (the slow/noisy signals) on top.
+`missing_coverage_evidence` is a boolean gate the builder (`--profile`) raises when an APPLICABLE
+coverage tool produced no report, so strict/regulated fail on ABSENT coverage (not only on bad
+coverage), and are additive to the resolver.
 
 Overrides follow the **same precedence and reporting** as every other gate: a `gates.fail_on.<key>`
 value in `.sentinel-shield/profile.yaml` overrides its mode default and is reported explicitly. An

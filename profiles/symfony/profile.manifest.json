@@ -110,7 +110,10 @@
     "tests.json",
     "composer-audit.json",
     "gitleaks.json",
-    "semgrep.json"
+    "semgrep.json",
+    "php-coverage.json",
+    "php-complexity.json",
+    "php-duplication.json"
   ],
   "tool_policy_version": 2,
   "tools": {

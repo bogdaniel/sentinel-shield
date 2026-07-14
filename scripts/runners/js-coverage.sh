@@ -62,6 +62,11 @@ for _s in test:coverage coverage; do
 	if jq -e --arg s "$_s" '.scripts[$s] // empty' package.json >/dev/null 2>&1; then COV_SCRIPT="$_s"; break; fi
 done
 
+# Create the report dir BEFORE running coverage: the run-log redirection below writes into
+# it, and a missing dir would abort the coverage run (masked by `|| true`) and silently fall
+# back to a stale/absent summary.
+ensure_dir "$(dirname "$OUTPUT")"
+
 # Run the coverage script when we can (best-effort; findings are the signal, not the rc).
 if [ -n "$COV_SCRIPT" ] && [ -n "$PM" ] && command_exists "$PM"; then
 	log_info "js-coverage: $PM run $COV_SCRIPT"
@@ -78,7 +83,6 @@ if [ ! -s "$SUMMARY" ]; then
 	exit 0
 fi
 
-ensure_dir "$(dirname "$OUTPUT")"
 _err="$(dirname "$OUTPUT")/js-coverage.stderr.log"
 
 set -- "$SUMMARY" \

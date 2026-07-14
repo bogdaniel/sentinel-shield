@@ -330,6 +330,7 @@ ONEOF_ECHO='{}'
 REQ_FAIL=0
 CFG_FAIL=0
 EXE_FAIL=0
+MISSING_COV=false   # v2.1: an applicable coverage tool produced no valid report (profile-aware)
 if [ -n "$PROFILE_NAME" ]; then
 	HAVE_POLICY=1
 	RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
@@ -482,6 +483,18 @@ EOF
 	done
 	REQ_FAIL=$((REQ_FAIL + _unsat))
 
+	# missing_coverage_evidence (v2.1): an APPLICABLE coverage tool that produced no valid report
+	# means strict/regulated has NO coverage evidence (so the gate can fail on ABSENT coverage, not
+	# only on bad coverage). Emit-name matches /coverage/ (coverage, php_coverage, js_coverage).
+	# "unknown" applicability counts as applicable (fail closed). A present report (status
+	# pass/findings) is evidence and never counts as missing.
+	MISSING_COV=$(printf '%s' "$POLICY_TOOLS" | jq -r '
+		[ to_entries[]
+		  | select(.key | test("coverage"))
+		  | select((.value.applicability // "unknown") != "not-applicable")
+		  | select((.value.status // "") | IN("unavailable","not-configured","execution-error")) ] | length
+		| if . > 0 then "true" else "false" end')
+
 	# Merge policy objects onto the collector tool reports (policy fields win; the
 	# unavailable/etc. status overwrites any collector "unavailable"); detail kept.
 	TOOLSOBJ=$(jq -n --argjson base "$TOOLSOBJ" --argjson pol "$POLICY_TOOLS" '$base * $pol')
@@ -521,14 +534,15 @@ jq -n \
 	--arg sbom_path "$SBOM_PATH" --arg rel_path "$RELEASE_PATH" \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
-	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" '
+	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
+	--argjson misscov "$MISSING_COV" '
 	{
 		version: $version,
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
 		summary: ($counts + { missing_sbom: $ms, missing_release_evidence: $mr, expired_exceptions: $ee }
-			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef } else {} end)),
+			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
 		evidence: {

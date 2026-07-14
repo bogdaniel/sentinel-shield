@@ -249,21 +249,30 @@ way.
 The engineering-quality family adds tool keys that fold into a **separate counter channel** from
 security (never mixed into `*_vulnerabilities`). They obey the same policy/state machine above:
 
+Tool keys are stack-scoped (`php-*` on PHP profiles, `js-*` on JS profiles) so a combined profile
+carries both without collision:
+
 | Tool key | Typical policy | Runner | → gate key |
 | --- | --- | --- | --- |
-| `php-coverage` / `js-coverage` | `recommended` (coverage is the mandatory quality signal) | `php-coverage.sh` / `js-coverage.sh` (+ `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression` |
-| `mutation` (Infection/Stryker) | `optional` (slow) | `infection.sh` / `stryker.sh` | `mutation_score_violations` |
-| `complexity` (PHPMD) | `optional` | `phpmd-complexity.sh` | `complexity_violations` |
-| `duplication` (PHPCPD/jscpd) | `optional` | `phpcpd.sh` / `jscpd.sh` | `duplication_violations` |
-| `dead-code` (knip) | `optional` | `knip.sh` | `dead_code_violations` |
+| `php-coverage` / `js-coverage` | `recommended` (coverage is the mandatory quality signal) | `php-coverage.sh` / `js-coverage.sh` (+ `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression`, `missing_coverage_evidence` |
+| `php-complexity` / `js-complexity` | `recommended` (PHP, PHPMD) / `optional` (JS, external) | `phpmd-complexity.sh` | `complexity_violations` |
+| `php-duplication` / `js-duplication` | `recommended` | `phpcpd.sh` / `jscpd.sh` | `duplication_violations` |
+| `php-mutation` / `js-mutation` | `optional` (slow) | `infection.sh` / `stryker.sh` | `mutation_score_violations` |
+| `php-dead-code` / `js-dead-code` | `optional` | `knip.sh` (JS) / external (PHP) | `dead_code_violations` |
 
 Numeric thresholds and the coverage baseline live in `.sentinel-shield/quality-policy.yaml` (schema
 `schemas/quality-policy.schema.json`, template `templates/quality-policy.example.yaml`); an **absent**
 policy falls back to documented defaults, a **malformed** one fails closed (exit 2). Absent quality
-tools stay `unavailable` (never a fake-clean 0), and — being `recommended`/`optional` by default — do
-not block. Combined profiles (`laravel`, `symfony`, `php-library`, `node`, `react` composed via
-`extends`) declare **both** the PHP and JS coverage stacks so a combined profile aggregates them
-(violations SUM, percentages MINIMUM, regression = 1 if any stack regressed).
+tools stay `unavailable` (never a fake-clean 0); when the profile declares an APPLICABLE coverage tool
+whose report is absent, the builder sets `missing_coverage_evidence` so strict/regulated fail on
+ABSENT coverage (not only on bad coverage).
+
+**Stack scoping:** the single-stack base profiles declare only their own stack —
+`laravel`/`symfony`/`php-library` carry the `php-*` quality tools, `node`/`react` carry the `js-*`
+tools. Only genuinely composed profiles (`node-react`, `laravel-react-docker`, `hardened-enterprise`,
+which compose the bases via `extends`) declare **both** stacks; there a combined profile aggregates
+them (violations SUM, percentages MINIMUM, regression = 1 if any stack regressed) without one stack
+satisfying the other's coverage.
 
 ---
 
