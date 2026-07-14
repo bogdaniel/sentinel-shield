@@ -104,6 +104,35 @@ TypeScript and ESLint normalization (including the conservative ESLint
 severity mapping) is documented in
 [`node-react-normalization.md`](node-react-normalization.md).
 
+### Engineering-quality collectors (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+Five additional collectors map coverage/mutation/complexity/duplication/dead-code raw reports into the
+engineering-quality summary keys. These are a **separate counter channel** from security — they are
+never mixed into `*_vulnerabilities` or any other security key:
+
+| Collector | Reads (via runners/adapters) | → summary key(s) |
+| --- | --- | --- |
+| `coverage` | `reports/raw/php-coverage.json` / `js-coverage.json` (from `php-coverage.sh` / `js-coverage.sh` + `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression` (+ informational `coverage_*_percent`) |
+| `mutation` | `reports/raw/*` from `infection.sh` (PHP) / `stryker.sh` (JS) | `mutation_score_violations` (+ `mutation_score_percent`) |
+| `complexity` | `reports/raw/*` from `phpmd-complexity.sh` (+ optional external JS complexity) | `complexity_violations` (+ `complexity_max`/`complexity_average`) |
+| `duplication` | `reports/raw/*` from `phpcpd.sh` (PHP) / `jscpd.sh` (JS) | `duplication_violations` (+ `duplication_percent`) |
+| `dead_code` | `reports/raw/*` from `knip.sh` (JS; PHP optional/external) | `dead_code_violations` (+ `dead_code_count`) |
+
+Each runner leaves its report **absent** when its tool is not installed (recorded `unavailable`, never
+a fake-clean 0); missing quality keys resolve to 0. Coverage is the mandatory quality signal; mutation,
+complexity, duplication, and dead-code are optional. Deptrac remains `architecture_violations`,
+PHPStan/Psalm remain `type_errors`, and Pint/PHP-CS-Fixer remain `style_violations` — none move into
+the quality channel.
+
+**Combined-profile aggregation.** In combined profiles (e.g. `laravel-react-docker`) PHP and JS
+coverage are independent (`php-coverage.json` and `js-coverage.json` never overwrite each other) and
+the builder aggregates them: `coverage_threshold_violations` is the **sum** of per-stack violations,
+the `coverage_*_percent` informational metrics take the **minimum** across applicable stacks (the
+weakest-covered stack drives the gate), and `coverage_regression` is **1 if any** stack regressed.
+
 > Severity→bucket mappings are first-pass and **conservative**. They will need
 > tuning per project (e.g. how you treat Semgrep `INFO`, or composer `low`). These
 > are starting points, not a claim of perfect coverage. Output formats also vary by

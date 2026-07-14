@@ -500,6 +500,102 @@
         "main": true,
         "scheduled": false
       }
+    },
+    "php-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "executable": [
+        "vendor/bin/pest",
+        "vendor/bin/phpunit"
+      ],
+      "runner": "scripts/runners/php-coverage.sh",
+      "report": "reports/raw/php-coverage.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-complexity": {
+      "policy": "recommended",
+      "category": "complexity",
+      "packages": [
+        {
+          "name": "phpmd/phpmd",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpmd",
+        "phpmd"
+      ],
+      "runner": "scripts/runners/phpmd-complexity.sh",
+      "report": "reports/raw/php-complexity.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-duplication": {
+      "policy": "recommended",
+      "category": "duplication",
+      "packages": [
+        {
+          "name": "sebastian/phpcpd",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpcpd",
+        "phpcpd"
+      ],
+      "runner": "scripts/runners/phpcpd.sh",
+      "report": "reports/raw/php-duplication.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-mutation": {
+      "policy": "optional",
+      "category": "mutation",
+      "packages": [
+        {
+          "name": "infection/infection",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/infection",
+        "infection"
+      ],
+      "runner": "scripts/runners/infection.sh",
+      "report": "reports/raw/php-mutation.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "php-dead-code": {
+      "policy": "optional",
+      "category": "dead-code",
+      "report": "reports/raw/php-dead-code.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
     }
   }
 }

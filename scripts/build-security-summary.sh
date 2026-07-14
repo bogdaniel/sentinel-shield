@@ -133,7 +133,22 @@ nuclei|nuclei.json|nuclei.sh|nuclei
 ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_review
 kuzushi|kuzushi.json|kuzushi.sh|kuzushi
 dependency-policy|dependency-policy.json|dependency-policy.sh|dependency_policy
-architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests'
+architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests
+coverage|coverage.json|coverage.sh|coverage
+php-coverage|php-coverage.json|coverage.sh|php_coverage
+js-coverage|js-coverage.json|coverage.sh|js_coverage
+mutation|mutation.json|mutation.sh|mutation
+php-mutation|php-mutation.json|mutation.sh|php_mutation
+js-mutation|js-mutation.json|mutation.sh|js_mutation
+complexity|complexity.json|complexity.sh|complexity
+php-complexity|php-complexity.json|complexity.sh|php_complexity
+js-complexity|js-complexity.json|complexity.sh|js_complexity
+duplication|duplication.json|duplication.sh|duplication
+php-duplication|php-duplication.json|duplication.sh|php_duplication
+js-duplication|js-duplication.json|duplication.sh|js_duplication
+dead-code|dead-code.json|dead-code.sh|dead_code
+php-dead-code|php-dead-code.json|dead-code.sh|php_dead_code
+js-dead-code|js-dead-code.json|dead-code.sh|js_dead_code'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -268,7 +283,16 @@ fi
 # --- merge -------------------------------------------------------------------
 ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 
+# Merge rules by key class:
+#   - count keys (default): SUM across collectors (so PHP + JS coverage violations add).
+#   - informational MIN keys (percentages): the weakest stack drives the gate, so take the
+#     minimum across applicable stacks (docs/engineering-quality-gates.md coverage aggregation).
+#   - informational MAX keys (worst-observed): take the maximum across stacks.
+#   - coverage_regression is a boolean-ish flag: clamp the summed count to 0/1 (1 = ANY stack
+#     regressed).
 COUNTS=$(printf '%s' "$ARR" | jq '
+	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent"];
+	def maxs: ["complexity_max","complexity_average","duplication_percent"];
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
@@ -277,9 +301,21 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 third_party_obfuscation:0, third_party_network_behavior:0,
 		 style_violations:0, php_syntax_errors:0, dependency_policy_violations:0,
 		 iac_violations:0, dast_findings:0, container_image_violations:0,
-		 repository_health_warnings:0, ai_review_findings:0};
-		reduce ($c.summary | keys_unsorted[]) as $k (.; .[$k] = ((.[$k] // 0) + ($c.summary[$k] // 0)))
-	)')
+		 repository_health_warnings:0, ai_review_findings:0,
+		 coverage_threshold_violations:0, coverage_regression:0,
+		 mutation_score_violations:0, complexity_violations:0,
+		 duplication_violations:0, dead_code_violations:0};
+		reduce ($c.summary | keys_unsorted[]) as $k (.;
+			($c.summary[$k]) as $v
+			| if (mins | index($k)) then
+				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | min) end)
+			  elif (maxs | index($k)) then
+				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | max) end)
+			  else
+				.[$k] = ((.[$k] // 0) + ($v // 0))
+			  end)
+	)
+	| .coverage_regression = ([.coverage_regression, 1] | min)')
 
 TOOLSOBJ=$(printf '%s' "$ARR" | jq 'reduce .[] as $c ({}; .[$c.tool] = $c.tool_report)')
 

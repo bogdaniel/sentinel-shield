@@ -107,6 +107,51 @@ them non-blocking except strict (install-script + network) and regulated (all).
 
 ---
 
+## Engineering quality gates (v2.1)
+
+> **Unreleased, additive engine capability.** These six gate keys are **not** part of `v2.0.1`/`v2.0.0`
+> and are **not** a new release claim (latest release remains `v2.0.1`, engine-only). They are additive
+> to the resolver: existing gates and their mode defaults above are **unchanged**, and consumers may
+> ignore them entirely. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family is a **separate counter channel** from security (the two are never
+folded together). The resolver emits these alongside the canonical keys, uppercased and prefixed
+`SENTINEL_SHIELD_FAIL_ON_` (e.g. `SENTINEL_SHIELD_FAIL_ON_COVERAGE_THRESHOLD_VIOLATIONS`):
+
+```txt
+coverage_threshold_violations
+coverage_regression
+mutation_score_violations
+complexity_violations
+duplication_violations
+dead_code_violations
+```
+
+Mode defaults (blocks the build?):
+
+| Gate | report-only | baseline | strict | regulated |
+| --- | --- | --- | --- | --- |
+| coverage_threshold_violations | ❌ | ❌ | ✅ | ✅ |
+| coverage_regression | ❌ | ❌ | ✅ | ✅ |
+| mutation_score_violations | ❌ | ❌ | ❌ | ✅ |
+| complexity_violations | ❌ | ❌ | ✅ | ✅ |
+| duplication_violations | ❌ | ❌ | ✅ | ✅ |
+| dead_code_violations | ❌ | ❌ | ❌ | ✅ |
+
+✅ = the gate blocks the build. ❌ = report-only (does not block). `report-only` and `baseline` keep all
+six non-blocking; `strict` adds coverage threshold/regression, complexity, and duplication; `regulated`
+adds mutation and dead-code (the slow/noisy signals) on top.
+
+Overrides follow the **same precedence and reporting** as every other gate: a `gates.fail_on.<key>`
+value in `.sentinel-shield/profile.yaml` overrides its mode default and is reported explicitly. An
+**invalid (non-boolean) override value fails closed (exit 2)**, exactly like the canonical keys. Quality
+gates are **not** accepted-risk-suppressible — to stop blocking on one, set its `fail_on` flag to
+`false` or drop to a lower mode. Numeric thresholds (and the coverage baseline) live in
+`.sentinel-shield/quality-policy.yaml`; a malformed policy file fails closed (exit 2), an absent one
+falls back to documented defaults. Missing quality summary keys are treated as `0` (additive/optional).
+
+---
+
 ## Override precedence
 
 Resolution order is strict and explicit:

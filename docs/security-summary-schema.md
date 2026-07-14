@@ -60,6 +60,34 @@ All keys are required. Integer keys are non-negative counts; two are booleans.
 | `third_party_obfuscation` | integer | (v0.1.5+, optional) Third-party obfuscation indicators. |
 | `third_party_network_behavior` | integer | (v0.1.5+, optional) Third-party env-read / outbound-network indicators. |
 
+### Engineering-quality summary keys (v2.1, optional/additive)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family adds **optional** summary keys. They are a **separate counter channel**
+from security (never folded into `*_vulnerabilities`), are additive to the schema, and are missing→`0`
+by convention, so **old summaries remain valid** and producers need not emit them. Six are gate
+counters; nine are informational numbers that never gate directly:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `coverage_threshold_violations` | integer | Coverage thresholds breached (line/branch/method/class). |
+| `coverage_regression` | integer | `1` when coverage dropped vs the recorded baseline for any stack. |
+| `mutation_score_violations` | integer | Mutation score (MSI) below the configured minimum. |
+| `complexity_violations` | integer | Functions/methods over the complexity threshold. |
+| `duplication_violations` | integer | Duplicated-code percentage over the threshold. |
+| `dead_code_violations` | integer | Unused exports/files/symbols over policy. |
+| `coverage_line_percent` / `coverage_branch_percent` / `coverage_method_percent` / `coverage_class_percent` | number | Informational coverage percentages. |
+| `mutation_score_percent` | number | Informational mutation score indicator. |
+| `complexity_max` / `complexity_average` | number | Informational complexity metrics. |
+| `duplication_percent` | number | Informational duplicated-code percentage. |
+| `dead_code_count` | integer | Informational count of dead-code items. |
+
+The six gate counters map to `SENTINEL_SHIELD_FAIL_ON_<UPPERCASE>` flags exactly like the keys below
+(each fails when its count `> 0` and its resolved flag is `true`); the nine informational metrics are
+for reporting/triage only and are **not** gated. Quality gates are **not** accepted-risk-suppressible.
+
 ---
 
 ## How flags map to summary keys

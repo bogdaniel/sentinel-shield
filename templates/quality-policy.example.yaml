@@ -1,0 +1,38 @@
+# Sentinel Shield — quality policy (thresholds for the engineering-quality gates).
+#
+# Copy to .sentinel-shield/quality-policy.yaml and tune. This file holds THRESHOLDS
+# only; whether a gate BLOCKS the build is decided by the adoption mode + gates.fail_on
+# in .sentinel-shield/profile.yaml (see docs/engineering-quality-gates.md).
+#
+# Canonical format only: 2-space indentation, no tabs, no YAML anchors/aliases/flow
+# collections/block scalars (install mikefarah yq v4 if you need those). A present-but-
+# malformed policy fails the runners closed (exit 2) — it is never silently ignored.
+#
+# All keys are optional; a runner uses the documented built-in default when a key is
+# absent. `enabled: false` means "do not run / do not threshold this tool".
+
+quality:
+  coverage:
+    enabled: true
+    line_min: 80          # fail when line coverage < 80%
+    branch_min: 60        # fail when branch coverage < 60%
+    method_min: 0         # 0 disables the method/function threshold
+    class_min: 0          # 0 disables the class threshold
+    fail_on_decrease: true
+    baseline_file: reports/quality/coverage-baseline.json
+
+  mutation:
+    enabled: false        # Infection / StrykerJS are slow — opt in for regulated pipelines
+    min_score: 70         # fail when the mutation score (MSI) < 70%
+
+  complexity:
+    enabled: true
+    max_cyclomatic_complexity: 10
+    max_cognitive_complexity: 15
+
+  duplication:
+    enabled: true
+    max_percentage: 5     # fail when duplicated-code % > 5
+
+  dead_code:
+    enabled: false        # opt in once a dead-code tool (knip / ts-prune / PHPStan) is wired

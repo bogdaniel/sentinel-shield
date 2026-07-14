@@ -91,6 +91,15 @@ third-party production adopter — which is **false for everything** this cycle.
 > as cited evidence for the v1 line. They are accurate for v1.x and are **not** superseded, but the
 > canonical current status is the table above.
 
+### Engineering quality gates (v2.1) — unreleased, additive engine capability
+
+An **engineering-quality** gate family (coverage, coverage regression, mutation, complexity,
+duplication, dead code) is implemented and tested as an **additive** engine capability, in a **separate
+counter channel** from security. It is **NOT part of a release**: it is **not** in `v2.0.1` or `v2.0.0`
+and makes **no** new release claim — the latest release remains **`v2.0.1`** (engine-only), and this
+row does **not** change the canonical release status above. It is not framework live-validated. Full
+reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
 ## Maturity vocabulary (canonical)
 
 | Label | Meaning |

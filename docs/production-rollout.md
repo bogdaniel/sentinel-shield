@@ -60,6 +60,14 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 | **strict** | + `medium_vulnerabilities`, `missing_sbom`, style_violations, iac_violations, container_image_violations, and the higher-confidence third-party signals — whole codebase, not just new code | A clean run is achievable on demand; medium/style triaged or accept-risked; pre-flight ([`strict-mode-readiness.md`](strict-mode-readiness.md)) passes. **Opt-in.** |
 | **regulated** | + release-evidence, scorecard, the noisier third-party signals | A compliance regime requires auditable evidence per release; pre-flight ([`regulated-mode-readiness.md`](regulated-mode-readiness.md)) passes. **Opt-in.** |
 
+> **Engineering quality gates (v2.1) — unreleased, additive engine capability.** A separate
+> engineering-quality counter channel (coverage, coverage regression, mutation, complexity,
+> duplication, dead code) follows the **same promotion path** as the modes above: non-blocking in
+> report-only/baseline, `strict` adds coverage threshold/regression + complexity + duplication, and
+> `regulated` adds mutation + dead-code. It is **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim (latest release remains `v2.0.1`); adopt it report-only-first via
+> `.sentinel-shield/quality-policy.yaml`. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
 Concrete triggers:
 - **Stay in report-only longer** for legacy repos with a large finding backlog — that is a legitimate
   state, not a failure.

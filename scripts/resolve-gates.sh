@@ -28,7 +28,7 @@ die_cfg() {
 }
 
 # Canonical fail_on keys, in stable output order.
-FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
+FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations"
 
 VALID_MODES="report-only baseline strict regulated"
 
@@ -231,7 +231,9 @@ default_for() {
 				| third_party_suspicious_code | third_party_install_script_risk \
 				| third_party_obfuscation | third_party_network_behavior \
 				| style_violations | iac_violations | dast_findings \
-				| container_image_violations | repository_health_warnings | ai_review_findings) printf 'false' ;;
+				| container_image_violations | repository_health_warnings | ai_review_findings \
+				| coverage_threshold_violations | coverage_regression | mutation_score_violations \
+				| complexity_violations | duplication_violations | dead_code_violations) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;
@@ -241,7 +243,8 @@ default_for() {
 				# IaC, and container-image checks (fall through to *). DAST + repo-health
 				# remain regulated-only; AI review is never gating by default.
 				missing_release_evidence | third_party_suspicious_code | third_party_obfuscation \
-				| dast_findings | repository_health_warnings | ai_review_findings) printf 'false' ;;
+				| dast_findings | repository_health_warnings | ai_review_findings \
+				| mutation_score_violations | dead_code_violations) printf 'false' ;;
 				*) printf 'true' ;;
 			esac
 			;;

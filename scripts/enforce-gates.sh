@@ -62,6 +62,18 @@ THIRD_PARTY_KEYS="third_party_suspicious_code third_party_install_script_risk th
 # suppressible and is unaffected.
 ENTERPRISE_COUNT_KEYS="php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
 
+# Engineering-quality count gates (v2.1). Evaluated like count gates; optional (an
+# older summary that omits them reads as 0, not a config error). Mode defaults gate
+# these (see resolve-gates.sh): strict blocks coverage threshold/regression + complexity +
+# duplication; regulated adds mutation + dead-code. These are a SEPARATE channel from
+# security counters — quality findings are never folded into vulnerability counts, and
+# vice-versa. NOT suppressible by accepted-risk (loud and visible by design); disable via
+# an explicit gates.fail_on override or a lower mode.
+QUALITY_COUNT_KEYS="coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations"
+
+# Informational quality metrics surfaced in the enforcement report (never gate directly).
+QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count"
+
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
 SUMMARY="reports/security-summary.json"
@@ -514,6 +526,13 @@ for _eck in $ENTERPRISE_COUNT_KEYS; do
 	eval_count_gate "$_eck"
 done
 
+# Engineering-quality count gates (v2.1). Evaluated like count gates; optional. NOT
+# suppressible (they are absent from SUPPRESSIBLE_GATES, so is_gate_suppressed is always
+# false for them) — a quality regression is loud by design.
+for _qck in $QUALITY_COUNT_KEYS; do
+	eval_count_gate "$_qck"
+done
+
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
 # When the summary carries per-tool policy data (build-security-summary.sh --profile),
 # enforce required-tool availability/configuration MECHANICALLY, in a channel SEPARATE
@@ -809,6 +828,24 @@ write_markdown() {
 			printf -- '| %s | %s |\n' "$k" "$_tv"
 		done
 		printf -- '| tool status | %s |\n\n' "$(jqr '.tools.third_party_semgrep.status')"
+
+		printf '## Engineering quality gates\n\n'
+		printf -- '> Separate channel from security and architecture. Quality findings are\n'
+		printf -- '> never folded into vulnerability counts. Mode defaults: strict blocks\n'
+		printf -- '> coverage threshold/regression + complexity + duplication; regulated adds\n'
+		printf -- '> mutation + dead-code. See docs/engineering-quality-gates.md.\n\n'
+		printf -- '| Gate | Count |\n| --- | --- |\n'
+		for k in $QUALITY_COUNT_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv=0 ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+		printf -- '| Metric | Value |\n| --- | --- |\n'
+		for k in $QUALITY_INFO_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
 
 		if [ "$HAS_POLICY" = "1" ]; then
 			printf '## Required-tool policy (controls)\n\n'

@@ -241,6 +241,32 @@ waiver** — it does **not** suppress findings (use accepted-risks for finding g
 and is never auto-applied. Non-suppressible secrets scanners cannot be waived this
 way.
 
+## 4a. Engineering-quality tool policies (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family adds tool keys that fold into a **separate counter channel** from
+security (never mixed into `*_vulnerabilities`). They obey the same policy/state machine above:
+
+| Tool key | Typical policy | Runner | → gate key |
+| --- | --- | --- | --- |
+| `php-coverage` / `js-coverage` | `recommended` (coverage is the mandatory quality signal) | `php-coverage.sh` / `js-coverage.sh` (+ `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression` |
+| `mutation` (Infection/Stryker) | `optional` (slow) | `infection.sh` / `stryker.sh` | `mutation_score_violations` |
+| `complexity` (PHPMD) | `optional` | `phpmd-complexity.sh` | `complexity_violations` |
+| `duplication` (PHPCPD/jscpd) | `optional` | `phpcpd.sh` / `jscpd.sh` | `duplication_violations` |
+| `dead-code` (knip) | `optional` | `knip.sh` | `dead_code_violations` |
+
+Numeric thresholds and the coverage baseline live in `.sentinel-shield/quality-policy.yaml` (schema
+`schemas/quality-policy.schema.json`, template `templates/quality-policy.example.yaml`); an **absent**
+policy falls back to documented defaults, a **malformed** one fails closed (exit 2). Absent quality
+tools stay `unavailable` (never a fake-clean 0), and — being `recommended`/`optional` by default — do
+not block. Combined profiles (`laravel`, `symfony`, `php-library`, `node`, `react` composed via
+`extends`) declare **both** the PHP and JS coverage stacks so a combined profile aggregates them
+(violations SUM, percentages MINIMUM, regression = 1 if any stack regressed).
+
+---
+
 ## 5. Control-waivers (`.sentinel-shield/control-waivers.json`)
 
 A control-waiver lets a **required** tool/control be temporarily absent without

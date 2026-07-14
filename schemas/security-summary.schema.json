@@ -78,7 +78,22 @@
         "ai_review_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional." },
         "required_tool_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Count of required-tool/control failures: required tools that are unavailable / not-configured / execution-error / disabled, plus unsatisfied one-of groups. Emitted only when build-security-summary.sh ran with --profile. NEVER folded into vulnerability counters." },
         "tool_configuration_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is not-configured or disabled." },
-        "tool_execution_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is execution-error (executable present but no/invalid report)." }
+        "tool_execution_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is execution-error (executable present but no/invalid report)." },
+        "coverage_threshold_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of coverage thresholds breached (line/branch/method/class), summed across applicable stacks. Optional/additive; absent reads as 0. Separate channel from security counters." },
+        "coverage_regression": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. 1 when coverage decreased vs the recorded baseline for ANY applicable stack (0 otherwise). Optional/additive; absent reads as 0." },
+        "mutation_score_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of mutation-score minimums breached. Optional/additive; absent reads as 0." },
+        "complexity_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of complexity threshold violations. Optional/additive; absent reads as 0." },
+        "duplication_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of duplication threshold violations. Optional/additive; absent reads as 0." },
+        "dead_code_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of dead-code findings that breach policy. Optional/additive; absent reads as 0." },
+        "coverage_line_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Line coverage percent (aggregate = minimum across applicable stacks — the weakest stack drives the gate). Optional." },
+        "coverage_branch_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Branch coverage percent (aggregate = minimum across applicable stacks). Optional." },
+        "coverage_method_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Method/function coverage percent (aggregate = minimum across applicable stacks). Optional." },
+        "coverage_class_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Class coverage percent (aggregate = minimum across applicable stacks). Optional." },
+        "mutation_score_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Mutation score percent (aggregate = minimum across applicable stacks). Optional." },
+        "complexity_max": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Maximum complexity observed (aggregate = maximum across applicable stacks). Optional." },
+        "complexity_average": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional." },
+        "duplication_percent": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Duplicated-code percent (aggregate = maximum across applicable stacks). Optional." },
+        "dead_code_count": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Count of dead-code items (summed across applicable stacks). Optional." }
       }
     },
     "tools": {

@@ -1,0 +1,12 @@
+{
+  "tool": "coverage",
+  "status": "pass",
+  "line_percent": 82.4,
+  "branch_percent": 61.2,
+  "method_percent": 0,
+  "class_percent": 0,
+  "thresholds": { "line_min": 80, "branch_min": 60, "method_min": 0, "class_min": 0 },
+  "violations": 0,
+  "regression": false,
+  "baseline": { "line_percent": 81.0, "branch_percent": 60.0 }
+}

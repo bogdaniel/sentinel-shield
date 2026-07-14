@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/quality-policy.schema.json",
+  "title": "Sentinel Shield quality policy",
+  "description": "Project thresholds for the engineering-quality runners (coverage / mutation / complexity / duplication / dead-code), read from .sentinel-shield/quality-policy.yaml by scripts/lib/quality-policy.sh. Gate ENABLE/DISABLE lives in the profile's gates.fail_on (resolved by scripts/resolve-gates.sh); THIS file holds the numeric thresholds and baseline pointers. All keys optional/additive; a runner falls back to documented built-in defaults when a key is absent. When the file is present but malformed the runners fail closed (exit 2). Canonical form is a YAML rendering of this object under the top-level 'quality' key.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "quality": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "coverage": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "line_min": { "type": "number", "minimum": 0, "maximum": 100 },
+            "branch_min": { "type": "number", "minimum": 0, "maximum": 100 },
+            "method_min": { "type": "number", "minimum": 0, "maximum": 100 },
+            "class_min": { "type": "number", "minimum": 0, "maximum": 100 },
+            "fail_on_decrease": { "type": "boolean" },
+            "baseline_file": { "type": "string", "minLength": 1 }
+          }
+        },
+        "mutation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "min_score": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "complexity": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "max_cyclomatic_complexity": { "type": "integer", "minimum": 1 },
+            "max_cognitive_complexity": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "duplication": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "max_percentage": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "dead_code": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -39,6 +39,17 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | dependency-policy.json | audits/dependency-policy.sh | `{count,violations[]}` | dependency-policy.sh | dependency_policy_violations | unavailable | exit 2 | feature-completion |
 | architecture-tests.json | runners/architecture-tests.sh | `{violations:N}` | architecture-tests.sh | architecture_violations | unavailable | exit 2 | feature-completion |
 | kuzushi.json | Kuzushi | `{findings:[…]}` | kuzushi.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
+| coverage.json (php-/js-coverage.json) | php-coverage.sh / js-coverage.sh | `{line_percent,violations,regression}` | coverage.sh | coverage_threshold_violations / coverage_regression | unavailable | exit 2 | 270-quality-gates |
+| mutation.json (php-/js-mutation.json) | infection.sh / stryker.sh | `{score_percent,violations}` | mutation.sh | mutation_score_violations | unavailable | exit 2 | 270-quality-gates |
+| complexity.json (php-/js-complexity.json) | phpmd-complexity.sh | `{max_complexity,violations}` | complexity.sh | complexity_violations | unavailable | exit 2 | 270-quality-gates |
+| duplication.json (php-/js-duplication.json) | phpcpd.sh / jscpd.sh | `{duplication_percent,violations}` | duplication.sh | duplication_violations | unavailable | exit 2 | 270-quality-gates |
+| dead-code.json (php-/js-dead-code.json) | knip.sh / external | `{dead_code_count,violations}` | dead-code.sh | dead_code_violations | unavailable | exit 2 | 270-quality-gates |
+
+Engineering-quality raw reports (v2.1) are a **separate channel** from security. In combined
+profiles the per-stack aliases (`php-coverage.json`, `js-coverage.json`, …) both feed the same
+summary counter: violations SUM across stacks, coverage percentages take the MINIMUM (the weakest
+stack drives the gate), and `coverage_regression` is 1 if ANY stack regressed. See
+[`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 All collectors are exercised by `scripts/self-test.sh` (`scanner-matrix` for v0.1.12 tools,
 named suites for the mature core). Severity fidelity caveats: see production-readiness-audit.md.

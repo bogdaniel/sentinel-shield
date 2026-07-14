@@ -1,0 +1,49 @@
+#!/bin/sh
+# Sentinel Shield collector — dead code (normalized JSON).
+#   .violations (or .dead_code_count) -> dead_code_violations
+#   .dead_code_count                  -> informational dead_code_count
+# Canonical raw shape:
+#   { "tool":"dead-code", "status":"pass", "dead_code_count":0, "violations":0 }
+set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=scripts/lib/sentinel-shield-common.sh
+. "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+
+TOOL="dead-code"
+INPUT="reports/raw/dead-code.json"
+
+usage() {
+	cat <<'EOF'
+Usage: dead-code.sh [--input <path>] [--tool-name <name>]
+Emit a Sentinel Shield collector object (stdout) for a normalized dead-code report.
+Maps .violations (or .dead_code_count) -> dead_code_violations; .dead_code_count ->
+informational dead_code_count.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--input) INPUT="${2:?--input requires a value}"; shift 2 ;;
+		--tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		-h | --help) usage; exit 0 ;;
+		*) usage >&2; log_error "unknown argument: $1"; exit 2 ;;
+	esac
+done
+
+ss_collector_guard "$TOOL" "$INPUT"
+
+RS=$(jq -r '.status // "pass"' "$INPUT")
+case "$RS" in
+	unavailable | not-configured | execution-error)
+		ss_emit_collector "$TOOL" "$RS" "$(jq -n --arg s "$RS" '{status:$s, findings:0}')" '{}'
+		exit 0 ;;
+esac
+
+DCC=$(jq '((.dead_code_count // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+# .violations wins when present+numeric; otherwise fall back to the dead-code count.
+V=$(jq --argjson dcc "$DCC" 'if (.violations|type)=="number" then (.violations|floor) else $dcc end' "$INPUT")
+if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
+
+OV=$(jq -n --argjson v "$V" --argjson dcc "$DCC" '{dead_code_violations:$v, dead_code_count:$dcc}')
+REPORT=$(jq -n --arg s "$STATUS" --argjson v "$V" --argjson dcc "$DCC" '{status:$s, findings:$v, dead_code_count:$dcc}')
+ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

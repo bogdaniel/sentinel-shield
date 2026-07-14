@@ -12,6 +12,52 @@ repositories). See [`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
 
+## [Unreleased]
+
+### Added — Engineering Quality Gates (v2.1)
+
+First-class **engineering-quality** gate family, extending Sentinel Shield from a security/
+release-gate baseline into a broader engineering-governance baseline. Fully additive and
+backward-compatible; **no release, tag, or runtime release evidence is produced by this change.**
+
+- **New gates** (resolver + enforcer): `coverage_threshold_violations`, `coverage_regression`,
+  `mutation_score_violations`, `complexity_violations`, `duplication_violations`,
+  `dead_code_violations`. Emitted as `SENTINEL_SHIELD_FAIL_ON_*` and overridable via
+  `gates.fail_on`. Mode defaults: strict blocks coverage threshold/regression + complexity +
+  duplication; regulated additionally blocks mutation + dead-code; report-only/baseline keep all
+  new gates non-blocking. Existing mode defaults are unchanged.
+- **Schema** (`schemas/security-summary.schema.json`): additive optional summary keys — the six
+  gate counters above plus informational `coverage_line_percent`, `coverage_branch_percent`,
+  `coverage_method_percent`, `coverage_class_percent`, `mutation_score_percent`, `complexity_max`,
+  `complexity_average`, `duplication_percent`, `dead_code_count`. Existing required keys, key
+  names, and exit-code semantics are unchanged; old summaries still validate.
+- **Collectors** (`scripts/collectors/`): `coverage`, `mutation`, `complexity`, `duplication`,
+  `dead-code` — same missing→`unavailable`/invalid→exit-2 contract as every other collector.
+- **Builder** (`scripts/build-security-summary.sh`): quality counters merge as a separate channel
+  (never mixed with vulnerability counters). Combined-profile coverage aggregation — violations
+  SUM across stacks, coverage percentages take the MINIMUM (weakest stack drives the gate),
+  `coverage_regression` is 1 if any stack regressed. Per-stack `php-*`/`js-*` report aliases keep
+  distinct tool visibility; a missing quality report is `unavailable`, never fake-clean.
+- **Coverage support**: PHP Clover (`scripts/adapters/clover-to-coverage-json.php` +
+  `scripts/runners/php-coverage.sh`) and JS Istanbul
+  (`scripts/adapters/istanbul-summary-to-coverage-json.mjs` + `scripts/runners/js-coverage.sh`),
+  with threshold + baseline-regression evaluation from the quality policy.
+- **Additional runners** (optional/recommended by policy): `infection.sh`, `phpmd-complexity.sh`,
+  `phpcpd.sh` (PHP); `stryker.sh`, `jscpd.sh`, `knip.sh` (JS/TS). All leave the report absent when
+  their tool is unavailable.
+- **Quality policy**: `.sentinel-shield/quality-policy.yaml` (loader `scripts/lib/quality-policy.sh`,
+  schema `schemas/quality-policy.schema.json`, template `templates/quality-policy.example.yaml`) —
+  thresholds/baselines for the runners. Fails closed (exit 2) when present-but-malformed; an absent
+  policy uses documented defaults.
+- **Profiles**: coverage/complexity/duplication (recommended) and mutation/dead-code (optional)
+  wired into `laravel`, `symfony`, `php-library`, `node`, `react`; combined profiles
+  (`node-react`, `laravel-react-docker`, `hardened-enterprise`) compose both stacks via `extends`
+  without one stack satisfying the other's coverage.
+- **Docs**: new `docs/engineering-quality-gates.md`; updated raw-report and schema references.
+- **Tests**: `tests/prod/270-quality-gates.sh` covers resolver defaults/overrides, all five
+  collectors, builder aggregation, enforcer enable/disable/strict/regulated, quality-policy
+  fail-closed, and the Istanbul/Clover adapters.
+
 ## [2.0.1] — Engine-Only Maintenance Release — 2026-07-09
 
 Maintenance release candidate refreshing post-`v2.0.0` release evidence. **No executable
