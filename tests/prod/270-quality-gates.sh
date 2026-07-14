@@ -321,4 +321,157 @@ else
 	fail "clover adapter: php REQUIRED but not available (core coverage adapter cannot be verified)"
 fi
 
+# --- (8) §2 collectors -------------------------------------------------------
+DC="$WORK/dc"; mkdir -p "$DC"
+echo '{"tool":"diff-coverage","status":"findings","changed_lines_coverage_percent":60,"threshold":80,"violations":1}' > "$DC/dcv.json"
+o=$(sh "$COLL/diff-coverage.sh" --input "$DC/dcv.json")
+[ "$(echo "$o" | jq '.summary.changed_lines_coverage_violations')" = "1" ] && [ "$(echo "$o" | jq '.summary.changed_lines_coverage_percent')" = "60" ] \
+	&& pass "diff-coverage collector maps violations + percent" || fail "diff-coverage collector wrong"
+echo '{"tool":"source-size","status":"findings","large_file_violations":2,"large_function_violations":1,"max_file_lines":900,"max_function_lines":150}' > "$DC/ss.json"
+o=$(sh "$COLL/source-size.sh" --input "$DC/ss.json")
+[ "$(echo "$o" | jq '.summary.large_file_violations')" = "2" ] && [ "$(echo "$o" | jq '.summary.max_file_lines')" = "900" ] \
+	&& pass "source-size collector maps violations + max lines" || fail "source-size collector wrong"
+
+# --- (9) resolver mode defaults for the §2 gates -----------------------------
+gv() { awk -F= -v k="SENTINEL_SHIELD_FAIL_ON_$2" '$1==k{print $2;exit}' "$1"; }
+for m in report-only baseline strict regulated; do
+	od="$WORK/m2-$m"; sh "$RESOLVE" --mode "$m" --output-dir "$od" --format env >/dev/null 2>&1
+	e="$od/sentinel-shield-gates.env"; ok=1
+	case "$m" in
+		report-only)
+			[ "$(gv "$e" FOCUSED_TEST_VIOLATIONS)" = "true" ] || ok=0
+			for g in CHANGED_LINES_COVERAGE_VIOLATIONS MISSING_TEST_EVIDENCE EMPTY_TEST_SUITE SKIPPED_TESTS SKIPPED_TEST_MARKER_VIOLATIONS DEBUG_CODE_VIOLATIONS LARGE_FILE_VIOLATIONS LARGE_FUNCTION_VIOLATIONS; do [ "$(gv "$e" "$g")" = "false" ] || ok=0; done ;;
+		baseline)
+			for g in CHANGED_LINES_COVERAGE_VIOLATIONS MISSING_TEST_EVIDENCE EMPTY_TEST_SUITE FOCUSED_TEST_VIOLATIONS DEBUG_CODE_VIOLATIONS; do [ "$(gv "$e" "$g")" = "true" ] || ok=0; done
+			for g in SKIPPED_TESTS SKIPPED_TEST_MARKER_VIOLATIONS LARGE_FILE_VIOLATIONS LARGE_FUNCTION_VIOLATIONS; do [ "$(gv "$e" "$g")" = "false" ] || ok=0; done ;;
+		strict)
+			for g in CHANGED_LINES_COVERAGE_VIOLATIONS MISSING_TEST_EVIDENCE EMPTY_TEST_SUITE FOCUSED_TEST_VIOLATIONS DEBUG_CODE_VIOLATIONS SKIPPED_TEST_MARKER_VIOLATIONS LARGE_FILE_VIOLATIONS LARGE_FUNCTION_VIOLATIONS; do [ "$(gv "$e" "$g")" = "true" ] || ok=0; done
+			[ "$(gv "$e" SKIPPED_TESTS)" = "false" ] || ok=0 ;;
+		regulated)
+			for g in CHANGED_LINES_COVERAGE_VIOLATIONS MISSING_TEST_EVIDENCE EMPTY_TEST_SUITE FOCUSED_TEST_VIOLATIONS DEBUG_CODE_VIOLATIONS SKIPPED_TEST_MARKER_VIOLATIONS LARGE_FILE_VIOLATIONS LARGE_FUNCTION_VIOLATIONS SKIPPED_TESTS; do [ "$(gv "$e" "$g")" = "true" ] || ok=0; done ;;
+	esac
+	[ "$ok" -eq 1 ] && pass "resolver($m): §2 gate defaults correct" || fail "resolver($m): §2 gate defaults wrong"
+done
+
+# --- (10) enforcer §2 failure paths ------------------------------------------
+qsum() { jq -n --argjson b "$q_base" --argjson o "$2" '{version:"1.0",generated_at:"2026-07-14T00:00:00Z",summary:($b+$o),evidence:{sbom:{present:true},release_evidence:{present:true}}}' > "$1"; }
+_q2ov=$(jq -nc '{changed_lines_coverage_violations:1, debug_code_violations:2, focused_test_violations:1, missing_test_evidence:true, empty_test_suite:true, skipped_test_marker_violations:1, large_file_violations:1, large_function_violations:1, skipped_tests:2}')
+qsum "$WORK/q2.json" "$_q2ov"
+# baseline: changed/debug/focused/missing_test/empty block; skipped_marker/large/skipped_tests do NOT
+sh "$RESOLVE" --mode baseline --output-dir "$WORK/e2b" --format env >/dev/null 2>&1
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2b/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2b" --format json >/dev/null 2>&1 || rc=$?
+ej="$WORK/e2b/sentinel-shield-enforcement.json"; ok=1
+for g in changed_lines_coverage_violations debug_code_violations focused_test_violations missing_test_evidence empty_test_suite; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" != "null" ] || ok=0; done
+for g in skipped_test_marker_violations large_file_violations skipped_tests; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" = "null" ] || ok=0; done
+{ [ "$rc" -eq 1 ] && [ "$ok" -eq 1 ]; } && pass "enforcer(baseline): §2 baseline gates block; strict/regulated-only gates skip" || fail "enforcer baseline §2 wrong: $(jq -c .failed_gates "$ej")"
+# strict adds large_file/large_function/skipped_marker; skipped_tests still off
+sh "$RESOLVE" --mode strict --output-dir "$WORK/e2s" --format env >/dev/null 2>&1
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2s/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2s" --format json >/dev/null 2>&1 || rc=$?
+ej="$WORK/e2s/sentinel-shield-enforcement.json"; ok=1
+for g in large_file_violations large_function_violations skipped_test_marker_violations; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" != "null" ] || ok=0; done
+[ "$(jq -r '.failed_gates|index("skipped_tests")' "$ej")" = "null" ] || ok=0
+{ [ "$rc" -eq 1 ] && [ "$ok" -eq 1 ]; } && pass "enforcer(strict): §2 maintainability + skip-marker block; skipped_tests off" || fail "enforcer strict §2 wrong: $(jq -c .failed_gates "$ej")"
+# regulated adds skipped_tests
+sh "$RESOLVE" --mode regulated --output-dir "$WORK/e2r" --format env >/dev/null 2>&1
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2r/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2r" --format json >/dev/null 2>&1 || rc=$?
+[ "$(jq -r '.failed_gates|index("skipped_tests")' "$WORK/e2r/sentinel-shield-enforcement.json")" != "null" ] \
+	&& pass "enforcer(regulated): skipped_tests blocks" || fail "enforcer regulated skipped_tests not blocking"
+
+# --- (11) builder §2 integration (profile-aware test evidence + diff aggregation) ----
+if command -v php >/dev/null 2>&1; then
+	P="$WORK/p11"; PR="$P/reports/raw"; mkdir -p "$PR"; printf '{"name":"x/y"}\n' > "$P/composer.json"
+	# no tests.json -> missing_test_evidence true
+	( cd "$P" && sh "$BUILD" --profile laravel --target "$P" --raw-dir "$PR" --output "$P/s.json" ) >/dev/null 2>&1
+	[ "$(jq -r '.summary.missing_test_evidence' "$P/s.json")" = "true" ] && pass "builder: missing_test_evidence true when no test report" || fail "builder missing_test_evidence should be true"
+	# empty suite
+	echo '{"failures":0,"errors":0,"tests":0,"skipped":0}' > "$PR/tests.json"
+	( cd "$P" && sh "$BUILD" --profile laravel --target "$P" --raw-dir "$PR" --output "$P/s.json" ) >/dev/null 2>&1
+	if [ "$(jq -r '.summary.missing_test_evidence' "$P/s.json")" = "false" ] && [ "$(jq -r '.summary.empty_test_suite' "$P/s.json")" = "true" ]; then
+		pass "builder: empty_test_suite true when report present with 0 tests"
+	else fail "builder empty_test_suite wrong"; fi
+	# non-empty clears both
+	echo '{"failures":0,"errors":0,"tests":42,"skipped":0}' > "$PR/tests.json"
+	( cd "$P" && sh "$BUILD" --profile laravel --target "$P" --raw-dir "$PR" --output "$P/s.json" ) >/dev/null 2>&1
+	[ "$(jq -r '.summary.empty_test_suite' "$P/s.json")" = "false" ] && [ "$(jq -r '.summary.test_count' "$P/s.json")" = "42" ] \
+		&& pass "builder: non-empty suite clears empty_test_suite (test_count=42)" || fail "builder non-empty suite wrong"
+else
+	fail "builder §2 test-evidence integration: php REQUIRED but unavailable"
+fi
+# diff-coverage aggregation (php + js): violations sum, percent min. No profile needed (canonical rows).
+DA="$WORK/da/reports/raw"; mkdir -p "$DA"
+echo '{"tool":"diff-coverage","status":"pass","changed_lines_coverage_percent":90,"violations":0}' > "$DA/php-diff-coverage.json"
+echo '{"tool":"diff-coverage","status":"findings","changed_lines_coverage_percent":55,"violations":1}' > "$DA/js-diff-coverage.json"
+sh "$BUILD" --raw-dir "$DA" --output "$WORK/da/s.json" >/dev/null 2>&1
+[ "$(jq '.summary.changed_lines_coverage_violations' "$WORK/da/s.json")" = "1" ] && [ "$(jq '.summary.changed_lines_coverage_percent' "$WORK/da/s.json")" = "55" ] \
+	&& pass "builder: diff-coverage aggregates (violations sum=1, percent MIN=55)" || fail "builder diff-coverage aggregation wrong"
+# no quality counter leaked into security
+if [ "$(jq '.summary.secrets' "$WORK/da/s.json")" = "0" ] && [ "$(jq '.summary.critical_vulnerabilities' "$WORK/da/s.json")" = "0" ]; then
+	pass "builder: §2 quality counters not mixed into security counters"
+else fail "builder mixed §2 quality into security"; fi
+
+# --- (12) combined-profile coverage independence (PHP vs JS) ------------------
+if command -v php >/dev/null 2>&1; then
+	C="$WORK/comb"; CR="$C/reports/raw"; mkdir -p "$CR"
+	printf '{"name":"x/y"}\n' > "$C/composer.json"; printf '{"name":"x","version":"1.0.0"}\n' > "$C/package.json"
+	bmce() { ( cd "$C" && sh "$BUILD" --profile laravel-react-docker --target "$C" --raw-dir "$CR" --output "$C/s.json" ) >/dev/null 2>&1; jq -r '.summary.missing_coverage_evidence' "$C/s.json"; }
+	rm -f "$CR"/*coverage.json 2>/dev/null || true
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"
+	[ "$(bmce)" = "true" ] && pass "combined: only PHP coverage present -> missing_coverage_evidence true (JS missing)" || fail "combined PHP-only should flag missing JS coverage"
+	rm -f "$CR/php-coverage.json"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/js-coverage.json"
+	[ "$(bmce)" = "true" ] && pass "combined: only JS coverage present -> missing_coverage_evidence true (PHP missing)" || fail "combined JS-only should flag missing PHP coverage"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"
+	[ "$(bmce)" = "false" ] && pass "combined: both PHP + JS coverage present -> missing_coverage_evidence false" || fail "combined both-present should clear missing coverage"
+else
+	fail "combined-profile coverage independence: php REQUIRED but unavailable"
+fi
+
+# --- (13) runners: focused/debug/source-size + js-coverage no-dir + php diff-coverage ----
+R="$WORK/run"; mkdir -p "$R/src" "$R/tests"; cd "$R"
+printf 'describe.only("a", () => { it.only("b", () => {}); });\n' > tests/a.test.js
+printf 'it.skip("c", () => {});\n' > tests/b.test.js
+sh "$ROOT/scripts/runners/focused-tests.sh" >/dev/null 2>&1
+[ "$(jq '.focused_test_violations' reports/raw/focused-tests.json)" -ge 2 ] && [ "$(jq '.skipped_test_marker_violations' reports/raw/focused-tests.json)" -ge 1 ] \
+	&& pass "focused-tests runner: counts .only markers + skip markers" || fail "focused-tests runner wrong"
+printf '<?php\nfunction f(){ dd($x); var_dump($y); }\n' > src/prod.php
+sh "$ROOT/scripts/runners/debug-code.sh" >/dev/null 2>&1
+[ "$(jq '.debug_code_violations' reports/raw/debug-code.json)" -ge 2 ] && pass "debug-code runner: counts debug residue" || fail "debug-code runner wrong"
+mkdir -p .sentinel-shield; printf 'quality:\n  maintainability:\n    max_file_lines: 100\n    max_function_lines: 80\n' > .sentinel-shield/quality-policy.yaml
+seq 1 200 | sed 's/^/x/' > src/big.js
+sh "$ROOT/scripts/runners/source-size.sh" >/dev/null 2>&1
+[ "$(jq '.large_file_violations' reports/raw/source-size.json)" -ge 1 ] && pass "source-size runner: flags file over max_file_lines" || fail "source-size runner wrong"
+cd "$ROOT"
+# js-coverage.sh with reports/raw NOT pre-existing: must not crash on the run-log redirect
+JD="$WORK/jsnodir"; mkdir -p "$JD/coverage"; printf '{"name":"x","scripts":{}}\n' > "$JD/package.json"
+echo '{"total":{"lines":{"total":10,"covered":9,"pct":90},"branches":{"total":4,"covered":3,"pct":75},"functions":{"total":2,"covered":2,"pct":100}}}' > "$JD/coverage/coverage-summary.json"
+rc=0; ( cd "$JD" && sh "$ROOT/scripts/runners/js-coverage.sh" ) >/dev/null 2>&1 || rc=$?
+{ [ "$rc" -eq 0 ] && [ -f "$JD/reports/raw/js-coverage.json" ]; } && pass "js-coverage.sh: works when reports/raw did not pre-exist" || fail "js-coverage.sh failed with missing reports/raw (rc=$rc)"
+# php diff-coverage runner: deterministic git+clover path
+if command -v php >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+	G="$WORK/gitproj"; mkdir -p "$G/src"; cd "$G"
+	git init -q; git config user.email t@t; git config user.name t
+	printf '<?php\nclass A { public function f(){ return 1; } }\n' > src/A.php
+	git add -A; git commit -qm init
+	# stub pest emitting per-line clover for the changed lines
+	mkdir -p vendor/bin
+	cat > vendor/bin/pest <<'STUB'
+#!/bin/sh
+out=""; while [ $# -gt 0 ]; do case "$1" in --coverage-clover) out="$2"; shift 2;; *) shift;; esac; done
+cat > "$out" <<XML
+<?xml version="1.0"?>
+<coverage><project><file name="$(pwd)/src/A.php"><line num="2" type="stmt" count="0"/><line num="3" type="stmt" count="0"/></file></project></coverage>
+XML
+STUB
+	chmod +x vendor/bin/pest
+	printf '<?php\nclass A { public function f(){ return 1; } public function g(){ return 2; } }\n' > src/A.php
+	git add -A; git commit -qm change
+	SENTINEL_SHIELD_DIFF_BASE=HEAD~1 sh "$ROOT/scripts/runners/php-diff-coverage.sh" >/dev/null 2>&1
+	if [ -f reports/raw/php-diff-coverage.json ]; then
+		pass "php-diff-coverage runner: produced a report from git diff + clover (percent=$(jq -r '.changed_lines_coverage_percent' reports/raw/php-diff-coverage.json))"
+	else fail "php-diff-coverage runner produced no report"; fi
+	cd "$ROOT"
+else
+	fail "php-diff-coverage runner: php+git REQUIRED but unavailable"
+fi
+
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

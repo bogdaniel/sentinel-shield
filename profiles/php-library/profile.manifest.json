@@ -79,7 +79,11 @@
     "semgrep.json",
     "php-coverage.json",
     "php-complexity.json",
-    "php-duplication.json"
+    "php-duplication.json",
+    "php-diff-coverage.json",
+    "focused-tests.json",
+    "debug-code.json",
+    "source-size.json"
   ],
   "tools": {
     "php-syntax": {
@@ -401,7 +405,7 @@
       "report": "reports/raw/php-coverage.json",
       "missing_behavior": "warn",
       "execution": {
-        "pr": false,
+        "pr": true,
         "main": true,
         "scheduled": false
       }
@@ -424,7 +428,7 @@
       "report": "reports/raw/php-complexity.json",
       "missing_behavior": "warn",
       "execution": {
-        "pr": false,
+        "pr": true,
         "main": true,
         "scheduled": false
       }
@@ -447,7 +451,7 @@
       "report": "reports/raw/php-duplication.json",
       "missing_behavior": "warn",
       "execution": {
-        "pr": false,
+        "pr": true,
         "main": true,
         "scheduled": false
       }
@@ -484,6 +488,58 @@
         "pr": false,
         "main": false,
         "scheduled": true
+      }
+    },
+    "focused-tests": {
+      "policy": "recommended",
+      "category": "test-hygiene",
+      "runner": "scripts/runners/focused-tests.sh",
+      "report": "reports/raw/focused-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "debug-code": {
+      "policy": "recommended",
+      "category": "hygiene",
+      "runner": "scripts/runners/debug-code.sh",
+      "report": "reports/raw/debug-code.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "source-size": {
+      "policy": "recommended",
+      "category": "maintainability",
+      "runner": "scripts/runners/source-size.sh",
+      "report": "reports/raw/source-size.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-diff-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "executable": [
+        "vendor/bin/pest",
+        "vendor/bin/phpunit"
+      ],
+      "runner": "scripts/runners/php-diff-coverage.sh",
+      "report": "reports/raw/php-diff-coverage.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
       }
     }
   }

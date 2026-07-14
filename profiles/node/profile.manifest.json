@@ -62,7 +62,11 @@
     "gitleaks.json",
     "semgrep.json",
     "js-coverage.json",
-    "js-duplication.json"
+    "js-duplication.json",
+    "js-diff-coverage.json",
+    "focused-tests.json",
+    "debug-code.json",
+    "source-size.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -367,7 +371,7 @@
         "deps-install"
       ],
       "execution": {
-        "pr": false,
+        "pr": true,
         "main": true,
         "scheduled": false
       }
@@ -389,7 +393,7 @@
       "report": "reports/raw/js-duplication.json",
       "missing_behavior": "warn",
       "execution": {
-        "pr": false,
+        "pr": true,
         "main": true,
         "scheduled": false
       }
@@ -448,6 +452,53 @@
         "pr": false,
         "main": false,
         "scheduled": true
+      }
+    },
+    "focused-tests": {
+      "policy": "recommended",
+      "category": "test-hygiene",
+      "runner": "scripts/runners/focused-tests.sh",
+      "report": "reports/raw/focused-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "debug-code": {
+      "policy": "recommended",
+      "category": "hygiene",
+      "runner": "scripts/runners/debug-code.sh",
+      "report": "reports/raw/debug-code.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "source-size": {
+      "policy": "recommended",
+      "category": "maintainability",
+      "runner": "scripts/runners/source-size.sh",
+      "report": "reports/raw/source-size.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-diff-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "report": "reports/raw/js-diff-coverage.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
       }
     }
   },

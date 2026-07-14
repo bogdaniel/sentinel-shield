@@ -44,6 +44,16 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | complexity.json (php-/js-complexity.json) | phpmd-complexity.sh | `{max_complexity,violations}` | complexity.sh | complexity_violations | unavailable | exit 2 | 270-quality-gates |
 | duplication.json (php-/js-duplication.json) | phpcpd.sh / jscpd.sh | `{duplication_percent,violations}` | duplication.sh | duplication_violations | unavailable | exit 2 | 270-quality-gates |
 | dead-code.json (php-/js-dead-code.json) | knip.sh / external | `{dead_code_count,violations}` | dead-code.sh | dead_code_violations | unavailable | exit 2 | 270-quality-gates |
+| diff-coverage.json (php-/js-diff-coverage.json) | php-diff-coverage.sh (git diff × Clover) / external JS | `{changed_lines_coverage_percent,violations}` | diff-coverage.sh | changed_lines_coverage_violations | unavailable | exit 2 | 270-quality-gates |
+| focused-tests.json | focused-tests.sh (grep) | `{focused_test_violations,skipped_test_marker_violations}` | focused-tests.sh | focused_test_violations / skipped_test_marker_violations | unavailable | exit 2 | 270-quality-gates |
+| debug-code.json | debug-code.sh (grep) | `{debug_code_violations}` | debug-code.sh | debug_code_violations | unavailable | exit 2 | 270-quality-gates |
+| source-size.json | source-size.sh (wc -l) | `{large_file_violations,max_file_lines,max_function_lines}` | source-size.sh | large_file_violations / large_function_violations | unavailable | exit 2 | 270-quality-gates |
+
+The `tests.json` collector additionally emits informational `test_count` + the `skipped_tests` counter
+(and the profile builder derives the `missing_test_evidence`/`empty_test_suite` booleans). The
+grep/`wc -l`-based runners (focused-tests, debug-code, source-size) are always available, so a clean
+scan is a real `pass`; `source-size` holds `large_function_violations`/`max_function_lines` at `0`
+(large-function is best-effort/external) but accepts an externally-normalized value.
 
 Engineering-quality raw reports (v2.1) are a **separate channel** from security. In combined
 profiles the per-stack aliases (`php-coverage.json`, `js-coverage.json`, …) both feed the same

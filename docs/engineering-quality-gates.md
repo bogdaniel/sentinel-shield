@@ -38,12 +38,22 @@ and, for the recommended/optional policies used by default, does not block.
 | `complexity_violations` | Functions/methods over the complexity threshold. |
 | `duplication_violations` | Duplicated-code percentage over the threshold. |
 | `dead_code_violations` | Unused exports/files/symbols over policy. |
+| `changed_lines_coverage_violations` | New/changed-line (diff) coverage below `quality.coverage.changed_lines_min`, summed across stacks. |
+| `skipped_tests` | Count of skipped tests. |
+| `focused_test_violations` | Focused markers (`describe.only`/`it.only`/`test.only`/`->only()`). |
+| `skipped_test_marker_violations` | Skip markers (`markTestSkipped`/`markTestIncomplete`/`it.skip`/`xit`/`xdescribe`). |
+| `debug_code_violations` | Debug residue (`dd`/`dump`/`var_dump`/`print_r`/`ray`/`die`/`exit`; `debugger`/`console.log`/`console.debug`). |
+| `large_file_violations` | Files over `quality.maintainability.max_file_lines`. |
+| `large_function_violations` | Functions over `quality.maintainability.max_function_lines` (best-effort/external — see below). |
 | `missing_coverage_evidence` | (boolean) An applicable coverage tool produced **no** valid report — strict/regulated fail on ABSENT coverage, not only on bad coverage. |
+| `missing_test_evidence` | (boolean) An APPLICABLE test stack produced **no** valid test report (profile-aware; `--profile` only; absent→`false`). |
+| `empty_test_suite` | (boolean) An applicable test report exists but ran **zero** tests (profile-aware). |
 
 Informational metrics also travel in the summary (never gate directly): `coverage_line_percent`,
 `coverage_branch_percent`, `coverage_method_percent`, `coverage_class_percent`,
 `mutation_score_percent`, `complexity_max`, `complexity_average`, `duplication_percent`,
-`dead_code_count`.
+`dead_code_count`, `changed_lines_coverage_percent` (aggregate = **minimum** across stacks),
+`test_count` (**sum**), `max_file_lines` (**maximum**), `max_function_lines` (**maximum**).
 
 ## Mode defaults
 
@@ -56,13 +66,27 @@ Informational metrics also travel in the summary (never gate directly): `coverag
 | `duplication_violations` | false | false | **true** | **true** |
 | `dead_code_violations` | false | false | false | **true** |
 | `missing_coverage_evidence` | false | false | **true** | **true** |
+| `changed_lines_coverage_violations` | false | **true** | **true** | **true** |
+| `missing_test_evidence` | false | **true** | **true** | **true** |
+| `empty_test_suite` | false | **true** | **true** | **true** |
+| `debug_code_violations` | false | **true** | **true** | **true** |
+| `focused_test_violations` | **true** | **true** | **true** | **true** |
+| `skipped_test_marker_violations` | false | false | **true** | **true** |
+| `large_file_violations` | false | false | **true** | **true** |
+| `large_function_violations` | false | false | **true** | **true** |
+| `skipped_tests` | false | false | false | **true** |
 
-- **report-only** — collect and report quality metrics; nothing new blocks.
+- **report-only** — collect and report quality metrics; nothing new blocks — **except**
+  `focused_test_violations`, which blocks in every mode (a `.only()` left in the suite silently
+  disables the rest of the tests).
 - **baseline** — quality metrics are visible but non-blocking (existing test/type/architecture/
-  security gates behave as before). Migrate here first.
-- **strict** — coverage threshold, coverage regression, complexity, and duplication block.
-  Mutation and dead-code stay off (they are slow/noisy).
-- **regulated** — everything strict blocks, plus mutation and dead-code.
+  security gates behave as before). Migrate here first. Baseline additionally blocks the
+  high-confidence signals `changed_lines_coverage_violations`, `missing_test_evidence`,
+  `empty_test_suite`, and `debug_code_violations` (plus `focused_test_violations`).
+- **strict** — coverage threshold, coverage regression, complexity, and duplication block, plus
+  `skipped_test_marker_violations`, `large_file_violations`, and `large_function_violations`.
+  Mutation, dead-code, and `skipped_tests` stay off (they are slow/noisy).
+- **regulated** — everything strict blocks, plus mutation, dead-code, and `skipped_tests`.
 
 Existing gate defaults (`test_failures`, `style_violations`, `type_errors`,
 `architecture_violations`, security) are unchanged.
@@ -137,6 +161,76 @@ it is optional/scheduled by default and only gates in **regulated** mode.
 
 Each runner leaves its report **absent** when its tool is not installed — never a fake-clean 0.
 
+## Changed-lines (diff) coverage
+
+Whole-project coverage can stay green while a PR adds untested lines. The **diff-coverage** signal
+scores only the **new/changed** lines and gates them against `quality.coverage.changed_lines_min`
+(0..100) — falling below it sets `changed_lines_coverage_violations`. PHP is produced deterministically
+by [`scripts/runners/php-diff-coverage.sh`](../scripts/runners/php-diff-coverage.sh) (a `git diff`
+intersected with per-line Clover coverage via
+[`scripts/adapters/clover-diff-to-coverage-json.php`](../scripts/adapters/clover-diff-to-coverage-json.php)),
+written to `reports/raw/diff-coverage.json` (per-stack alias `php-diff-coverage.json`). JS diff
+coverage is **external/normalized input** — there is no bundled JS runner; drop a normalized
+`reports/raw/js-diff-coverage.json`. The informational `changed_lines_coverage_percent` aggregates as
+the **minimum** across stacks (the weakest stack drives the gate); `changed_lines_coverage_violations`
+is the **sum**. Default mode: report-only false, baseline/strict/regulated **true**.
+
+## Test evidence & empty suites
+
+Two boolean gates make "the tests actually ran" a first-class signal (both **profile-aware** — raised
+only when the summary is built with `--profile`; absent reads as `false`):
+
+- `missing_test_evidence` — an **applicable** test stack produced no valid test report.
+- `empty_test_suite` — an applicable test report exists but ran **zero** tests.
+
+The `tests` collector also emits informational `test_count` (total tests run, **summed** across stacks)
+and the `skipped_tests` counter. **PHP and JS test evidence are independent**: PHP tests never satisfy
+a JS requirement and vice-versa — a green PHP suite does not excuse a missing/empty JS suite (mirroring
+the independent `php-tests`/`js-tests` groups and the independent coverage channels). Default mode for
+both booleans: report-only false, baseline/strict/regulated **true**.
+
+## Focused & skipped test markers
+
+- `focused_test_violations` — focused markers (`describe.only`/`it.only`/`test.only`/`->only()`) that
+  silently disable the rest of a suite. This gate **blocks in every mode, including report-only** — a
+  stray `.only()` is never acceptable.
+- `skipped_test_marker_violations` — skip markers (`markTestSkipped`/`markTestIncomplete`/`it.skip`/
+  `xit`/`xdescribe`). Blocks in strict/regulated.
+- `skipped_tests` — the runtime count of skipped tests (from the `tests` collector). A counter, gated
+  only in **regulated**.
+
+Focused/skip markers are scanned by [`scripts/runners/focused-tests.sh`](../scripts/runners/focused-tests.sh)
+(grep-based, always-available) into `reports/raw/focused-tests.json`.
+
+## Debug residue
+
+`debug_code_violations` counts debug leftovers scanned by
+[`scripts/runners/debug-code.sh`](../scripts/runners/debug-code.sh) (grep-based, always-available) into
+`reports/raw/debug-code.json`: PHP `dd`/`dump`/`var_dump`/`print_r`/`ray`/`die`/`exit`; JS `debugger`/
+`console.log`/`console.debug`. Default mode: report-only false, baseline/strict/regulated **true**.
+
+## Maintainability size gates
+
+- `large_file_violations` — files over `quality.maintainability.max_file_lines`.
+- `large_function_violations` — functions over `quality.maintainability.max_function_lines`.
+
+Both thresholds are integers ≥ 1 and gate in strict/regulated. The source scanner
+[`scripts/runners/source-size.sh`](../scripts/runners/source-size.sh) (grep/`wc -l`-based, always
+available) implements **large-FILE** detection fully (`wc -l` vs `max_file_lines`) into
+`reports/raw/source-size.json`, plus informational `max_file_lines`/`max_function_lines`. **Large-FUNCTION
+detection is deliberately best-effort/external for now**: a pure-shell scan cannot reliably count
+per-function lines, so the runner holds `large_function_violations` (and `max_function_lines`) at `0`
+rather than emit false positives. The gate and collector are fully wired and accept an
+externally-normalized `source-size.json` from a real per-function counter when one is dropped in.
+
+## Profile execution on PRs
+
+The **fast** quality tools now run on pull requests (`execution.pr: true`) so quality regresses are
+caught before merge, not only on `main`: `php-coverage`/`php-complexity`/`php-duplication` and
+`js-coverage`/`js-duplication`, plus the new `php-diff-coverage`/`js-diff-coverage`, `focused-tests`,
+`debug-code`, and `source-size`. The **slow** signals — mutation and dead-code — stay `pr: false`
+(scheduled/main only). See [`profile-tool-policy.md`](profile-tool-policy.md).
+
 ## Quality policy configuration
 
 Thresholds live in `.sentinel-shield/quality-policy.yaml` (copy from
@@ -151,6 +245,7 @@ quality:
     enabled: true
     line_min: 80
     branch_min: 60
+    changed_lines_min: 80        # diff-coverage threshold for new/changed lines (0..100)
     fail_on_decrease: true
     baseline_file: reports/quality/coverage-baseline.json
   mutation:
@@ -162,9 +257,17 @@ quality:
   duplication:
     enabled: true
     max_percentage: 5
+  maintainability:
+    max_file_lines: 500          # large_file_violations threshold (integer >= 1)
+    max_function_lines: 80       # large_function_violations threshold (integer >= 1; best-effort)
   dead_code:
     enabled: false
 ```
+
+`quality.coverage.changed_lines_min` and the `quality.maintainability.*` thresholds are
+optional/additive — an absent key falls back to the documented built-in defaults. A **malformed**
+value (non-numeric threshold, `max_file_lines`/`max_function_lines` below 1) fails closed (exit `2`),
+exactly like the other thresholds.
 
 **Fail closed:** when this file is present but malformed (unparseable YAML, a non-numeric threshold,
 a non-boolean flag) the runners exit `2`. It is never silently ignored. An **absent** policy is

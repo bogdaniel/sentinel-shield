@@ -62,9 +62,37 @@ backward-compatible; **no release, tag, or runtime release evidence is produced 
   (`node-react`, `laravel-react-docker`, `hardened-enterprise`) compose both stacks via `extends`
   without one stack satisfying the other's coverage.
 - **Docs**: new `docs/engineering-quality-gates.md`; updated raw-report and schema references.
-- **Tests**: `tests/prod/270-quality-gates.sh` covers resolver defaults/overrides, all five
+- **Tests**: `tests/prod/270-quality-gates.sh` covers resolver defaults/overrides, all
   collectors, builder aggregation, enforcer enable/disable/strict/regulated, quality-policy
   fail-closed, and the Istanbul/Clover adapters.
+- **Evidence-backed gating (round 2)**: additional best-practice gates so strict/regulated cannot
+  pass because reports are absent or new code is untested —
+  - `changed_lines_coverage_violations` / `changed_lines_coverage_percent` — diff (changed-lines)
+    coverage vs `quality.coverage.changed_lines_min` (baseline+). Collector `diff-coverage`;
+    deterministic PHP runner `php-diff-coverage.sh` (git diff + Clover per-line via
+    `clover-diff-to-coverage-json.php`); JS is external-normalized.
+  - `missing_test_evidence` / `empty_test_suite` (boolean, baseline+) + `test_count` /
+    `skipped_tests` (`skipped_tests` gates in regulated) — the test adapters (PHPUnit/Pest/Jest/
+    Vitest) now emit `tests`/`skipped`; the builder flags an applicable test stack with no report
+    or zero tests. PHP and JS test evidence are independent.
+  - `focused_test_violations` (all modes) / `skipped_test_marker_violations` (strict+) — grep
+    scanner `focused-tests.sh` for `describe.only`/`->only()`/`markTestSkipped`/`it.skip`/…
+  - `debug_code_violations` (baseline+) — grep scanner `debug-code.sh` for
+    `dd`/`dump`/`var_dump`/`console.log`/`debugger`/… (production source only).
+  - `large_file_violations` / `large_function_violations` (strict+) + `max_file_lines` /
+    `max_function_lines` — `source-size.sh` (file-size deterministic; function-size best-effort/
+    external), thresholds `quality.maintainability.max_file_lines` / `max_function_lines`.
+  - Quality-policy validation tightened: percentages finite 0..100, integer thresholds ≥ 1,
+    present-but-empty rejected (exit 2); new `quality.coverage.changed_lines_min` +
+    `quality.maintainability.*`.
+  - Profiles: the fast quality tools (coverage/complexity/duplication + diff-coverage + the
+    focused/debug/size scanners) now run on PRs (`execution.pr=true`); mutation and dead-code stay
+    off-PR. New tool keys wired into all five base profiles (combined profiles compose via
+    `extends`).
+  - `270-quality-gates.sh` extended (67 checks): every new gate's failure path, combined-profile
+    PHP/JS coverage + test-evidence independence, quality-policy malformed cases, adapter option/
+    baseline fail-closed, the `js-coverage.sh` no-dir fix, and all runners; Node **and** PHP are
+    now mandatory for this suite (no skip-pass), provisioned in the CI `self-tests` job.
 
 ## [2.0.1] — Engine-Only Maintenance Release — 2026-07-09
 

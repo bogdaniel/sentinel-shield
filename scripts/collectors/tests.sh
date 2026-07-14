@@ -31,8 +31,16 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# num <key> — numeric value of .<key>, floored, or 0 for absent/non-numeric.
+num() { jq --arg k "$1" '((.[$k] // 0) | if type=="number" then floor else 0 end)' "$INPUT"; }
+
 N=$(jq '((.failures // 0) + (.errors // 0))' "$INPUT")
+TESTS=$(num tests); SKIP=$(num skipped)
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
-REPORT=$(jq -n --arg s "$STATUS" --argjson n "$N" '{status: $s, failures: $n}')
-OV=$(jq -n --argjson n "$N" '{test_failures: $n}')
+# test_count / skipped_tests are v2.1 additive informational-plus-gate signals; empty_test_suite /
+# missing_test_evidence are computed PROFILE-AWARE by the builder (per-stack), not here.
+REPORT=$(jq -n --arg s "$STATUS" --argjson n "$N" --argjson t "$TESTS" --argjson k "$SKIP" \
+	'{status: $s, failures: $n, tests: $t, skipped: $k}')
+OV=$(jq -n --argjson n "$N" --argjson t "$TESTS" --argjson k "$SKIP" \
+	'{test_failures: $n, test_count: $t, skipped_tests: $k}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

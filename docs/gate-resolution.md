@@ -126,6 +126,15 @@ complexity_violations
 duplication_violations
 dead_code_violations
 missing_coverage_evidence
+changed_lines_coverage_violations
+missing_test_evidence
+empty_test_suite
+skipped_tests
+focused_test_violations
+skipped_test_marker_violations
+debug_code_violations
+large_file_violations
+large_function_violations
 ```
 
 Mode defaults (blocks the build?):
@@ -139,13 +148,28 @@ Mode defaults (blocks the build?):
 | duplication_violations | ❌ | ❌ | ✅ | ✅ |
 | dead_code_violations | ❌ | ❌ | ❌ | ✅ |
 | missing_coverage_evidence | ❌ | ❌ | ✅ | ✅ |
+| changed_lines_coverage_violations | ❌ | ✅ | ✅ | ✅ |
+| missing_test_evidence | ❌ | ✅ | ✅ | ✅ |
+| empty_test_suite | ❌ | ✅ | ✅ | ✅ |
+| debug_code_violations | ❌ | ✅ | ✅ | ✅ |
+| focused_test_violations | ✅ | ✅ | ✅ | ✅ |
+| skipped_test_marker_violations | ❌ | ❌ | ✅ | ✅ |
+| large_file_violations | ❌ | ❌ | ✅ | ✅ |
+| large_function_violations | ❌ | ❌ | ✅ | ✅ |
+| skipped_tests | ❌ | ❌ | ❌ | ✅ |
 
-✅ = the gate blocks the build. ❌ = report-only (does not block). `report-only` and `baseline` keep all
-six non-blocking; `strict` adds coverage threshold/regression, complexity, duplication, and
-`missing_coverage_evidence`; `regulated` adds mutation and dead-code (the slow/noisy signals) on top.
-`missing_coverage_evidence` is a boolean gate the builder (`--profile`) raises when an APPLICABLE
-coverage tool produced no report, so strict/regulated fail on ABSENT coverage (not only on bad
-coverage), and are additive to the resolver.
+✅ = the gate blocks the build. ❌ = report-only (does not block). The original six (plus
+`missing_coverage_evidence`) are unchanged: `report-only`/`baseline` keep them non-blocking, `strict`
+adds coverage threshold/regression, complexity, duplication, and `missing_coverage_evidence`, and
+`regulated` adds mutation and dead-code. The second-round keys tighten earlier:
+`focused_test_violations` blocks in **every** mode (a stray `.only()` silently disables the suite);
+`changed_lines_coverage_violations`, `missing_test_evidence`, `empty_test_suite`, and
+`debug_code_violations` block from **baseline** up; `skipped_test_marker_violations`,
+`large_file_violations`, and `large_function_violations` block from **strict** up; `skipped_tests`
+blocks only in **regulated**. `missing_coverage_evidence`, `missing_test_evidence`, and
+`empty_test_suite` are boolean gates the builder (`--profile`) raises when an APPLICABLE coverage/test
+tool produced no report (or ran zero tests), so strict/regulated fail on ABSENT evidence (not only on
+bad results); all are additive to the resolver and a missing summary key reads as `0`/`false`.
 
 Overrides follow the **same precedence and reporting** as every other gate: a `gates.fail_on.<key>`
 value in `.sentinel-shield/profile.yaml` overrides its mode default and is reported explicitly. An

@@ -148,7 +148,13 @@ php-duplication|php-duplication.json|duplication.sh|php_duplication
 js-duplication|js-duplication.json|duplication.sh|js_duplication
 dead-code|dead-code.json|dead-code.sh|dead_code
 php-dead-code|php-dead-code.json|dead-code.sh|php_dead_code
-js-dead-code|js-dead-code.json|dead-code.sh|js_dead_code'
+js-dead-code|js-dead-code.json|dead-code.sh|js_dead_code
+diff-coverage|diff-coverage.json|diff-coverage.sh|diff_coverage
+php-diff-coverage|php-diff-coverage.json|diff-coverage.sh|php_diff_coverage
+js-diff-coverage|js-diff-coverage.json|diff-coverage.sh|js_diff_coverage
+focused-tests|focused-tests.json|focused-tests.sh|focused_tests
+debug-code|debug-code.json|debug-code.sh|debug_code
+source-size|source-size.json|source-size.sh|source_size'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -291,8 +297,8 @@ ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 #   - coverage_regression is a boolean-ish flag: clamp the summed count to 0/1 (1 = ANY stack
 #     regressed).
 COUNTS=$(printf '%s' "$ARR" | jq '
-	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent"];
-	def maxs: ["complexity_max","complexity_average","duplication_percent"];
+	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent","changed_lines_coverage_percent"];
+	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines"];
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
@@ -304,7 +310,10 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 repository_health_warnings:0, ai_review_findings:0,
 		 coverage_threshold_violations:0, coverage_regression:0,
 		 mutation_score_violations:0, complexity_violations:0,
-		 duplication_violations:0, dead_code_violations:0};
+		 duplication_violations:0, dead_code_violations:0,
+		 changed_lines_coverage_violations:0, skipped_tests:0, test_count:0,
+		 focused_test_violations:0, skipped_test_marker_violations:0,
+		 debug_code_violations:0, large_file_violations:0, large_function_violations:0};
 		reduce ($c.summary | keys_unsorted[]) as $k (.;
 			($c.summary[$k]) as $v
 			| if (mins | index($k)) then
@@ -331,6 +340,8 @@ REQ_FAIL=0
 CFG_FAIL=0
 EXE_FAIL=0
 MISSING_COV=false   # v2.1: an applicable coverage tool produced no valid report (profile-aware)
+MISSING_TEST=false  # v2.1: an applicable test stack produced no valid test report
+EMPTY_SUITE=false   # v2.1: an applicable test report exists but ran zero tests
 if [ -n "$PROFILE_NAME" ]; then
 	HAVE_POLICY=1
 	RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
@@ -488,12 +499,35 @@ EOF
 	# only on bad coverage). Emit-name matches /coverage/ (coverage, php_coverage, js_coverage).
 	# "unknown" applicability counts as applicable (fail closed). A present report (status
 	# pass/findings) is evidence and never counts as missing.
+	# Main coverage tools only (php_coverage/js_coverage) — NOT diff-coverage (which has its own
+	# changed_lines_coverage_violations gate), so a missing diff report never fakes a missing
+	# main-coverage failure.
 	MISSING_COV=$(printf '%s' "$POLICY_TOOLS" | jq -r '
 		[ to_entries[]
-		  | select(.key | test("coverage"))
+		  | select((.key | test("coverage")) and (.key | test("diff") | not))
 		  | select((.value.applicability // "unknown") != "not-applicable")
 		  | select((.value.status // "") | IN("unavailable","not-configured","execution-error")) ] | length
 		| if . > 0 then "true" else "false" end')
+
+	# missing_test_evidence / empty_test_suite (v2.1): each APPLICABLE test stack must produce a
+	# non-empty test report. Expected test reports = distinct reports of profile tools with
+	# category=="tests" (e.g. tests.json for PHP, js-tests.json for JS) — so PHP and JS stay
+	# independent (PHP tests never satisfy JS, and vice-versa). A missing/invalid report is
+	# missing evidence; a present report with 0 tests is an empty suite. Never faked.
+	_test_reports=$(printf '%s' "$EFF" | jq -r '
+		[ .tools[]? | select((.category // "") == "tests")
+		  | select((.applicability // "unknown") != "not-applicable")
+		  | .report ] | map(select(. != null and . != "")) | unique[]' 2>/dev/null || true)
+	for _tr in $_test_reports; do
+		_trf="$RAW_DIR/$(basename -- "$_tr")"
+		if [ -f "$_trf" ] && [ -s "$_trf" ] && jq -e . "$_trf" >/dev/null 2>&1; then
+			_tc=$(jq -r '((.tests // 0) | if type=="number" then floor else 0 end)' "$_trf" 2>/dev/null || printf 0)
+			case "$_tc" in '' | *[!0-9]*) _tc=0 ;; esac
+			[ "$_tc" -eq 0 ] && EMPTY_SUITE=true
+		else
+			MISSING_TEST=true
+		fi
+	done
 
 	# Merge policy objects onto the collector tool reports (policy fields win; the
 	# unavailable/etc. status overwrites any collector "unavailable"); detail kept.
@@ -535,14 +569,14 @@ jq -n \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
 	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
-	--argjson misscov "$MISSING_COV" '
+	--argjson misscov "$MISSING_COV" --argjson misstest "$MISSING_TEST" --argjson emptysuite "$EMPTY_SUITE" '
 	{
 		version: $version,
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
 		summary: ($counts + { missing_sbom: $ms, missing_release_evidence: $mr, expired_exceptions: $ee }
-			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov } else {} end)),
+			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
 		evidence: {

@@ -69,10 +69,13 @@ ENTERPRISE_COUNT_KEYS="php_syntax_errors style_violations dependency_policy_viol
 # security counters — quality findings are never folded into vulnerability counts, and
 # vice-versa. NOT suppressible by accepted-risk (loud and visible by design); disable via
 # an explicit gates.fail_on override or a lower mode.
-QUALITY_COUNT_KEYS="coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations"
+QUALITY_COUNT_KEYS="coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations changed_lines_coverage_violations skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations"
+
+# Boolean quality gates (v2.1) — evaluated with eval_bool_gate (absent key reads as false).
+QUALITY_BOOL_KEYS="missing_coverage_evidence missing_test_evidence empty_test_suite"
 
 # Informational quality metrics surfaced in the enforcement report (never gate directly).
-QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count"
+QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count changed_lines_coverage_percent test_count max_file_lines max_function_lines"
 
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
@@ -547,11 +550,13 @@ for _qck in $QUALITY_COUNT_KEYS; do
 	eval_count_gate "$_qck"
 done
 
-# missing_coverage_evidence (v2.1) — a boolean quality gate: the builder (run with --profile)
-# sets summary.missing_coverage_evidence=true when an APPLICABLE coverage tool produced no valid
-# report, so strict/regulated fail on ABSENT coverage (not only on bad coverage). Absent key
-# (older/non-profile summary) reads as false, preserving back-compat.
-eval_bool_gate "missing_coverage_evidence"
+# Boolean quality gates (v2.1) — missing_coverage_evidence / missing_test_evidence /
+# empty_test_suite. The builder (run with --profile) sets these when an APPLICABLE coverage/test
+# stack produced no valid report (or an empty suite), so strict/regulated fail on ABSENT evidence
+# (not only on bad numbers). Absent key (older/non-profile summary) reads as false (back-compat).
+for _qbk in $QUALITY_BOOL_KEYS; do
+	eval_bool_gate "$_qbk"
+done
 
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
 # When the summary carries per-tool policy data (build-security-summary.sh --profile),

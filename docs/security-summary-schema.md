@@ -73,7 +73,7 @@ keys and treats every optional key as absent→0.
 The engineering-quality family adds **optional** summary keys. They are a **separate counter channel**
 from security (never folded into `*_vulnerabilities`), are additive to the schema, and are missing→`0`
 by convention, so **old summaries remain valid** and producers need not emit them. Six are gate
-counters; nine are informational numbers that never gate directly:
+counters; the rest are informational numbers that never gate directly:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -83,16 +83,31 @@ counters; nine are informational numbers that never gate directly:
 | `complexity_violations` | integer | Functions/methods over the complexity threshold. |
 | `duplication_violations` | integer | Duplicated-code percentage over the threshold. |
 | `dead_code_violations` | integer | Unused exports/files/symbols over policy. |
+| `changed_lines_coverage_violations` | integer | Stacks whose new/changed-line (diff) coverage is below `quality.coverage.changed_lines_min` (**summed**). |
+| `skipped_tests` | integer | Count of skipped tests (**summed**). Gated in regulated. |
+| `focused_test_violations` | integer | Focused markers (`describe.only`/`it.only`/`->only()`). Gated in every mode. |
+| `skipped_test_marker_violations` | integer | Skip markers (`markTestSkipped`/`it.skip`/`xit`/…). Gated in strict/regulated. |
+| `debug_code_violations` | integer | Debug residue (`dd`/`dump`/`var_dump`/`console.log`/`debugger`/…). Gated in baseline+. |
+| `large_file_violations` | integer | Files over `quality.maintainability.max_file_lines`. Gated in strict/regulated. |
+| `large_function_violations` | integer | Functions over `quality.maintainability.max_function_lines` (best-effort). Gated in strict/regulated. |
 | `missing_coverage_evidence` | boolean | `true` when an APPLICABLE coverage tool produced no valid report (emitted only with `--profile`; absent reads as `false`). Lets strict/regulated fail on ABSENT coverage. |
+| `missing_test_evidence` | boolean | `true` when an APPLICABLE test stack produced no valid test report (`--profile` only; absent reads as `false`). |
+| `empty_test_suite` | boolean | `true` when an applicable test report exists but ran zero tests (`--profile` only; absent reads as `false`). |
 | `coverage_line_percent` / `coverage_branch_percent` / `coverage_method_percent` / `coverage_class_percent` | number | Informational coverage percentages. |
+| `changed_lines_coverage_percent` | number | Informational diff-coverage percent (aggregate = **minimum** across stacks). |
 | `mutation_score_percent` | number | Informational mutation score indicator. |
 | `complexity_max` / `complexity_average` | number | Informational complexity metrics. |
 | `duplication_percent` | number | Informational duplicated-code percentage. |
 | `dead_code_count` | integer | Informational count of dead-code items. |
+| `test_count` | integer | Informational total tests executed (**summed** across stacks). |
+| `max_file_lines` / `max_function_lines` | integer | Informational largest file / function line-counts (aggregate = **maximum** across stacks). |
 
-The six gate counters map to `SENTINEL_SHIELD_FAIL_ON_<UPPERCASE>` flags exactly like the keys below
-(each fails when its count `> 0` and its resolved flag is `true`); the nine informational metrics are
-for reporting/triage only and are **not** gated. Quality gates are **not** accepted-risk-suppressible.
+The gate counters and the three boolean gates map to `SENTINEL_SHIELD_FAIL_ON_<UPPERCASE>` flags
+exactly like the keys below (integer counters fail when the count `> 0`, booleans fail when `true`, in
+each case only when the resolved flag is `true`); the informational metrics are for reporting/triage
+only and are **not** gated. All of these keys are optional/additive — a missing one reads as `0`
+(or `false` for the booleans) so old summaries stay valid. Quality gates are **not**
+accepted-risk-suppressible.
 
 ---
 

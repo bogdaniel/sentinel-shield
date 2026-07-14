@@ -739,6 +739,12 @@ percentages travel in `security-summary.json`; mode defaults enable coverage-thr
 complexity and duplication in **strict**, and everything (adding mutation + dead-code) in **regulated**.
 Thresholds live in `.sentinel-shield/quality-policy.yaml`. Deptrac stays `architecture_violations`,
 PHPStan/Psalm stay `type_errors`, Pint/PHP-CS-Fixer stay `style_violations` — unchanged.
+The family now also covers **changed-line (diff) coverage**, **test-evidence / empty-suite** checks
+(`missing_test_evidence`, `empty_test_suite`), **focused/skipped-test markers**
+(`focused_test_violations` blocks in every mode; `skipped_test_marker_violations`, `skipped_tests`),
+**debug residue** (`debug_code_violations`), and **file-size maintainability** (`large_file_violations`,
+`large_function_violations`) — all additive/optional (missing→0/false) and in the same separate counter
+channel; the fast quality tools now also run on PRs.
 > **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
 > **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
 > [`docs/engineering-quality-gates.md`](docs/engineering-quality-gates.md).

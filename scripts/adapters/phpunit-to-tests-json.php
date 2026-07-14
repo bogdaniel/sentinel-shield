@@ -56,23 +56,31 @@ if ($doc === false) {
 // else sum top-level <testsuite> nodes.
 $failures = 0;
 $errors   = 0;
+$tests    = 0;
+$skipped  = 0;
 
 $root = $doc->getName();
 if ($root === 'testsuites' && (isset($doc['failures']) || isset($doc['errors']))) {
     $failures = (int) ($doc['failures'] ?? 0);
     $errors   = (int) ($doc['errors'] ?? 0);
+    $tests    = (int) ($doc['tests'] ?? 0);
+    $skipped  = (int) ($doc['skipped'] ?? 0);
 } elseif ($root === 'testsuite') {
     $failures = (int) ($doc['failures'] ?? 0);
     $errors   = (int) ($doc['errors'] ?? 0);
+    $tests    = (int) ($doc['tests'] ?? 0);
+    $skipped  = (int) ($doc['skipped'] ?? 0);
 } else {
     // <testsuites> without aggregate attrs: sum direct child <testsuite> nodes.
     foreach ($doc->testsuite as $suite) {
         $failures += (int) ($suite['failures'] ?? 0);
         $errors   += (int) ($suite['errors'] ?? 0);
+        $tests    += (int) ($suite['tests'] ?? 0);
+        $skipped  += (int) ($suite['skipped'] ?? 0);
     }
 }
 
-$result = ['failures' => $failures, 'errors' => $errors];
+$result = ['failures' => $failures, 'errors' => $errors, 'tests' => $tests, 'skipped' => $skipped];
 
 $dir = dirname($output);
 if ($dir !== '' && !is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {

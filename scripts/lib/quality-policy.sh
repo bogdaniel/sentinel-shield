@@ -91,20 +91,46 @@ _qp_check_num() {
 	}
 }
 
+# qp_key_present <dotted.key> — 0 (true) when the key EXISTS in the policy file (even with an
+# empty/null value), so a present-but-empty threshold can be rejected rather than silently
+# defaulted. yq mode is exact; the awk fallback can only see keys that carried a value (a
+# quoted-empty `x: ""` is present with value `""` and is caught by the numeric check anyway).
+qp_key_present() {
+	[ "$QP_PRESENT" -eq 1 ] || return 1
+	_leaf=${1##*.}; _parent=${1%.*}
+	if [ "$QP_USE_YQ" -eq 1 ]; then
+		_p=$(yq e ".$_parent | has(\"$_leaf\")" "$QP_FILE" 2>/dev/null || printf 'false')
+		[ "$_p" = "true" ]
+	else
+		printf '%s\n' "$QP_FLAT" | awk -F= -v k="$1" '$1==k{f=1} END{exit f?0:1}'
+	fi
+}
+
+# _qp_num_field <key> <min> <max> <int:0|1> — validate a numeric threshold: reject present-but-
+# empty (exit 2), validate range/format for a present value, ignore a truly-absent key (default).
+_qp_num_field() {
+	_v=$(qp_get "$1")
+	if [ -z "$_v" ]; then
+		if qp_key_present "$1"; then log_error "quality-policy: $1 must not be empty"; exit 2; fi
+		return 0
+	fi
+	_qp_check_num "$1" "$_v" "$2" "$3" "$4"
+}
+
 # _qp_validate — exit 2 when a present, known numeric/boolean field is malformed.
 _qp_validate() {
 	[ "$QP_PRESENT" -eq 1 ] || return 0
 	# Percentages / scores: finite number in 0..100.
 	for _k in quality.coverage.line_min quality.coverage.branch_min \
 		quality.coverage.method_min quality.coverage.class_min \
+		quality.coverage.changed_lines_min \
 		quality.mutation.min_score quality.duplication.max_percentage; do
-		_v=$(qp_get "$_k") || true
-		[ -n "$_v" ] && _qp_check_num "$_k" "$_v" 0 100 0
+		_qp_num_field "$_k" 0 100 0
 	done
-	# Complexity thresholds: integer >= 1.
-	for _k in quality.complexity.max_cyclomatic_complexity quality.complexity.max_cognitive_complexity; do
-		_v=$(qp_get "$_k") || true
-		[ -n "$_v" ] && _qp_check_num "$_k" "$_v" 1 100000 1
+	# Integer thresholds >= 1 (complexity + maintainability sizes).
+	for _k in quality.complexity.max_cyclomatic_complexity quality.complexity.max_cognitive_complexity \
+		quality.maintainability.max_file_lines quality.maintainability.max_function_lines; do
+		_qp_num_field "$_k" 1 100000 1
 	done
 	for _k in quality.coverage.enabled quality.coverage.fail_on_decrease \
 		quality.mutation.enabled quality.complexity.enabled \
