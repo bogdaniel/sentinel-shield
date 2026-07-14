@@ -40,8 +40,8 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-V=$(jq '((.violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-PCT=$(jq 'if (.changed_lines_coverage_percent|type)=="number" then .changed_lines_coverage_percent else 0 end' "$INPUT")
+V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+PCT=$(jq 'if ((.changed_lines_coverage_percent|type)=="number" and .changed_lines_coverage_percent >= 0) then .changed_lines_coverage_percent else 0 end' "$INPUT")
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
 OV=$(jq -n --argjson v "$V" --argjson p "$PCT" \

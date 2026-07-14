@@ -39,8 +39,8 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-V=$(jq '((.violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-DP=$(jq 'if (.duplication_percent|type)=="number" then .duplication_percent else 0 end' "$INPUT")
+V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+DP=$(jq 'if ((.duplication_percent|type)=="number" and .duplication_percent >= 0) then .duplication_percent else 0 end' "$INPUT")
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
 OV=$(jq -n --argjson v "$V" --argjson dp "$DP" '{duplication_violations:$v, duplication_percent:$dp}')

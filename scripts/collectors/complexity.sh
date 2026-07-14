@@ -41,9 +41,9 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-num() { jq --arg k "$1" 'if (.[$k]|type)=="number" then .[$k] else 0 end' "$INPUT"; }
+num() { jq --arg k "$1" 'if ((.[$k]|type)=="number" and .[$k] >= 0) then .[$k] else 0 end' "$INPUT"; }
 
-V=$(jq '((.violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 MAXC=$(num max_complexity); AVGC=$(num average_complexity)
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 

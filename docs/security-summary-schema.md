@@ -72,8 +72,14 @@ keys and treats every optional key as absent→0.
 
 The engineering-quality family adds **optional** summary keys. They are a **separate counter channel**
 from security (never folded into `*_vulnerabilities`), are additive to the schema, and are missing→`0`
-by convention, so **old summaries remain valid** and producers need not emit them. Six are gate
-counters; the rest are informational numbers that never gate directly:
+by convention, so **old summaries remain valid** and producers need not emit them. **Thirteen are
+count gates** (`coverage_threshold_violations`, `coverage_regression`, `mutation_score_violations`,
+`complexity_violations`, `duplication_violations`, `dead_code_violations`,
+`changed_lines_coverage_violations`, `skipped_tests`, `focused_test_violations`,
+`skipped_test_marker_violations`, `debug_code_violations`, `large_file_violations`,
+`large_function_violations`) and **three are boolean gates** (`missing_coverage_evidence`,
+`missing_test_evidence`, `empty_test_suite`); the rest are informational numbers that never gate
+directly:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -129,6 +135,22 @@ The enforcer evaluates each gate only when its resolved flag is `true`:
 | `MISSING_SBOM` | `summary.missing_sbom == true` OR `evidence.sbom.present == false` |
 | `MISSING_RELEASE_EVIDENCE` | `summary.missing_release_evidence == true` OR `evidence.release_evidence.present == false` |
 | `EXPIRED_EXCEPTIONS` | `summary.expired_exceptions > 0` OR `exceptions.expired > 0` |
+
+**Engineering-quality gates (v2.1)** map the same way — each count gate fails when its
+`summary.<key> > 0`, each boolean gate when its `summary.<key> == true`, only while the resolved
+flag is `true`:
+
+| Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
+| --- | --- |
+| `COVERAGE_THRESHOLD_VIOLATIONS` / `COVERAGE_REGRESSION` | `summary.<key> > 0` |
+| `MUTATION_SCORE_VIOLATIONS` / `COMPLEXITY_VIOLATIONS` / `DUPLICATION_VIOLATIONS` / `DEAD_CODE_VIOLATIONS` | `summary.<key> > 0` |
+| `CHANGED_LINES_COVERAGE_VIOLATIONS` / `SKIPPED_TESTS` | `summary.<key> > 0` |
+| `FOCUSED_TEST_VIOLATIONS` / `SKIPPED_TEST_MARKER_VIOLATIONS` / `DEBUG_CODE_VIOLATIONS` | `summary.<key> > 0` |
+| `LARGE_FILE_VIOLATIONS` / `LARGE_FUNCTION_VIOLATIONS` | `summary.<key> > 0` |
+| `MISSING_COVERAGE_EVIDENCE` / `MISSING_TEST_EVIDENCE` / `EMPTY_TEST_SUITE` | `summary.<key> == true` |
+
+See [`gate-resolution.md`](gate-resolution.md) for the authoritative per-mode default matrix and
+[`engineering-quality-gates.md`](engineering-quality-gates.md) for the full reference.
 
 Disabled gates (flag `false`) are recorded as `skipped` and never fail the build.
 

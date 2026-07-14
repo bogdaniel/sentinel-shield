@@ -32,7 +32,7 @@ done
 ss_collector_guard "$TOOL" "$INPUT"
 
 # num <key> — numeric value of .<key>, floored, or 0 for absent/non-numeric.
-num() { jq --arg k "$1" '((.[$k] // 0) | if type=="number" then floor else 0 end)' "$INPUT"; }
+num() { jq --arg k "$1" '((.[$k] // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT"; }
 
 N=$(jq '((.failures // 0) + (.errors // 0))' "$INPUT")
 TESTS=$(num tests); SKIP=$(num skipped)

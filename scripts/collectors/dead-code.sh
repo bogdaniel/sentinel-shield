@@ -39,9 +39,9 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-DCC=$(jq '((.dead_code_count // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+DCC=$(jq '((.dead_code_count // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 # .violations wins when present+numeric; otherwise fall back to the dead-code count.
-V=$(jq --argjson dcc "$DCC" 'if (.violations|type)=="number" then (.violations|floor) else $dcc end' "$INPUT")
+V=$(jq --argjson dcc "$DCC" 'if (.violations|type)=="number" then (if .violations < 0 then 0 else (.violations|floor) end) else $dcc end' "$INPUT")
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
 OV=$(jq -n --argjson v "$V" --argjson dcc "$DCC" '{dead_code_violations:$v, dead_code_count:$dcc}')

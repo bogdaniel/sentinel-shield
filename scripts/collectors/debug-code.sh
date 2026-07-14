@@ -38,7 +38,7 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-DCV=$(jq '((.debug_code_violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+DCV=$(jq '((.debug_code_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 
 if [ "$DCV" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 

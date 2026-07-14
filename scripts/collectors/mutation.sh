@@ -39,8 +39,8 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-V=$(jq '((.violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-SC=$(jq 'if (.score_percent|type)=="number" then .score_percent else 0 end' "$INPUT")
+V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+SC=$(jq 'if ((.score_percent|type)=="number" and .score_percent >= 0) then .score_percent else 0 end' "$INPUT")
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
 OV=$(jq -n --argjson v "$V" --argjson sc "$SC" '{mutation_score_violations:$v, mutation_score_percent:$sc}')

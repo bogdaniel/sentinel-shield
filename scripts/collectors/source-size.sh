@@ -44,10 +44,10 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-LFV=$(jq '((.large_file_violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-LFUV=$(jq '((.large_function_violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-MAXF=$(jq '((.max_file_lines // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-MAXFN=$(jq '((.max_function_lines // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+LFV=$(jq '((.large_file_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+LFUV=$(jq '((.large_function_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+MAXF=$(jq '((.max_file_lines // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+MAXFN=$(jq '((.max_function_lines // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 SUM=$((LFV + LFUV))
 
 if [ "$LFV" -gt 0 ] || [ "$LFUV" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi

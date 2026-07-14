@@ -43,9 +43,9 @@ case "$RS" in
 esac
 
 # num <key> — the numeric value of .<key>, or 0 for absent/non-numeric.
-num() { jq --arg k "$1" 'if (.[$k]|type)=="number" then .[$k] else 0 end' "$INPUT"; }
+num() { jq --arg k "$1" 'if ((.[$k]|type)=="number" and .[$k] >= 0) then .[$k] else 0 end' "$INPUT"; }
 
-V=$(jq '((.violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 REG=$(jq 'if (.regression == true) then 1 else 0 end' "$INPUT")
 LP=$(num line_percent); BP=$(num branch_percent); MP=$(num method_percent); CP=$(num class_percent)
 

@@ -41,8 +41,8 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-FTV=$(jq '((.focused_test_violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
-STM=$(jq '((.skipped_test_marker_violations // 0) | if type=="number" then floor else 0 end)' "$INPUT")
+FTV=$(jq '((.focused_test_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+STM=$(jq '((.skipped_test_marker_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 SUM=$((FTV + STM))
 
 if [ "$FTV" -gt 0 ] || [ "$STM" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi

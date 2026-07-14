@@ -331,6 +331,15 @@ echo '{"tool":"source-size","status":"findings","large_file_violations":2,"large
 o=$(sh "$COLL/source-size.sh" --input "$DC/ss.json")
 [ "$(echo "$o" | jq '.summary.large_file_violations')" = "2" ] && [ "$(echo "$o" | jq '.summary.max_file_lines')" = "900" ] \
 	&& pass "source-size collector maps violations + max lines" || fail "source-size collector wrong"
+# negative values in a raw report must clamp to 0 (never emit a negative that violates minimum:0)
+echo '{"focused_test_violations":-4,"skipped_test_marker_violations":-1}' > "$DC/neg.json"
+o=$(sh "$COLL/focused-tests.sh" --input "$DC/neg.json")
+[ "$(echo "$o" | jq '.summary.focused_test_violations')" = "0" ] && [ "$(echo "$o" | jq '.summary.skipped_test_marker_violations')" = "0" ] \
+	&& pass "collectors clamp negative counts to 0 (schema minimum:0 upheld)" || fail "collector did not clamp negatives"
+echo '{"line_percent":-9,"violations":-3,"regression":false}' > "$DC/negcov.json"
+o=$(sh "$COLL/coverage.sh" --input "$DC/negcov.json")
+[ "$(echo "$o" | jq '.summary.coverage_threshold_violations')" = "0" ] && [ "$(echo "$o" | jq '.summary.coverage_line_percent')" = "0" ] \
+	&& pass "coverage collector clamps negative violations + percent to 0" || fail "coverage collector did not clamp negatives"
 
 # --- (9) resolver mode defaults for the §2 gates -----------------------------
 gv() { awk -F= -v k="SENTINEL_SHIELD_FAIL_ON_$2" '$1==k{print $2;exit}' "$1"; }
