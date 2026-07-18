@@ -31,6 +31,19 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# A present report that honestly reports an error/absent status must NOT be read as a clean
+# result — preserve it so the overlay/evidence gates see the truth; unknown status fails closed.
+RS=$(jq -r '.status // ""' "$INPUT")
+case "$RS" in
+	'' | pass | fail | findings | warn) : ;;
+	unavailable | not-configured | execution-error | disabled | not-applicable)
+		ss_emit_collector "$TOOL" "$RS" "$(jq -n --arg s "$RS" '{status:$s, findings:0}')" '{}'
+		exit 0 ;;
+	*)
+		ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error","findings":0}' '{}'
+		exit 0 ;;
+esac
+
 # num <key> — numeric value of .<key>, floored, or 0 for absent/non-numeric.
 num() { jq --arg k "$1" '((.[$k] // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT"; }
 

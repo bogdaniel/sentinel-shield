@@ -64,7 +64,10 @@ qp_load() {
 			sub(/[[:space:]]+#.*$/, "", val); gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
 			for (k = depth; k <= 50; k++) stack[k] = ""
 			stack[depth] = key
-			if (val != "") print joinpath(depth) "=" val
+			# Emit EVERY present scalar key, even one with an empty value (e.g. `line_min:`),
+			# as `path=`. This lets qp_key_present detect a present-but-empty field in the
+			# yq-less fallback so _qp_validate can fail it closed instead of silently defaulting.
+			print joinpath(depth) "=" val
 		}
 	' "$QP_FILE") || { log_error "quality-policy: cannot parse $QP_FILE"; exit 2; }
 
@@ -136,7 +139,12 @@ _qp_validate() {
 		quality.mutation.enabled quality.complexity.enabled \
 		quality.duplication.enabled quality.dead_code.enabled; do
 		_v=$(qp_get "$_k") || true
-		[ -n "$_v" ] || continue
+		if [ -z "$_v" ]; then
+			# present-but-empty boolean fails closed (yq mode via has(); fallback via the
+			# path= entry now emitted for empty scalars); a truly-absent key uses the default.
+			if qp_key_present "$_k"; then log_error "quality-policy: $_k must not be empty"; exit 2; fi
+			continue
+		fi
 		bool_value "$_v" >/dev/null 2>&1 || { log_error "quality-policy: $_k must be a boolean, got '$_v'"; exit 2; }
 	done
 }

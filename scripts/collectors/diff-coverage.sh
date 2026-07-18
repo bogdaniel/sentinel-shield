@@ -33,10 +33,14 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
-RS=$(jq -r '.status // "pass"' "$INPUT")
+RS=$(jq -r '.status // ""' "$INPUT")
 case "$RS" in
-	unavailable | not-configured | execution-error)
+	'' | pass | findings | warn) : ;;  # normal: derive status from the numeric fields below
+	unavailable | not-configured | execution-error | disabled | not-applicable)
 		ss_emit_collector "$TOOL" "$RS" "$(jq -n --arg s "$RS" '{status:$s, findings:0}')" '{}'
+		exit 0 ;;
+	*)  # unknown/unexpected status -> fail closed (never derive a clean pass)
+		ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error","findings":0}' '{}'
 		exit 0 ;;
 esac
 

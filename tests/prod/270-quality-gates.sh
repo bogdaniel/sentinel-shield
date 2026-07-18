@@ -104,7 +104,7 @@ rc=0; sh "$COLL/coverage.sh" --input "$CT/bad.json" >/dev/null 2>&1 || rc=$?
 st=$(sh "$COLL/coverage.sh" --input "$CT/missing.json" 2>/dev/null | jq -r '.status')
 [ "$st" = "unavailable" ] && pass "coverage collector: missing -> unavailable" || fail "coverage missing got $st"
 st=$(sh "$COLL/coverage.sh" --input "$CT/malstatus.json" | jq -r '.status')
-[ "$st" = "findings" ] && pass "coverage collector: malformed status -> derived from counts" || fail "coverage malstatus got $st"
+[ "$st" = "execution-error" ] && pass "coverage collector: malformed/unknown status -> execution-error (fail closed, never a derived pass)" || fail "coverage malstatus got $st"
 
 # other collectors map their key
 echo '{"violations":2}' > "$CT/m.json"; [ "$(sh "$COLL/mutation.sh" --input "$CT/m.json" | jq '.summary.mutation_score_violations')" = "2" ] && pass "mutation collector maps violations" || fail "mutation map"
@@ -482,5 +482,81 @@ STUB
 else
 	fail "php-diff-coverage runner: php+git REQUIRED but unavailable"
 fi
+
+# --- (14) builder status preservation: honest error statuses must NOT become pass ----------
+# A present, valid-JSON report with an error status must drive the evidence gates, never a
+# clean pass. Requires php (laravel profile applicability).
+if command -v php >/dev/null 2>&1; then
+	sp_build() { # <coverage.json|-> <tests.json|-> ; sets SP_JSON to the summary path
+		_w=$(mktemp -d); mkdir -p "$_w/reports/raw"; printf '{"name":"x/y"}\n' > "$_w/composer.json"
+		[ "$1" != "-" ] && printf '%s' "$1" > "$_w/reports/raw/php-coverage.json"
+		[ "$2" != "-" ] && printf '%s' "$2" > "$_w/reports/raw/tests.json"
+		( cd "$_w" && sh "$BUILD" --profile laravel --target "$_w" --raw-dir "$_w/reports/raw" --output "$_w/s.json" ) >/dev/null 2>&1
+		SP_JSON="$_w/s.json"
+	}
+	# 4.1A coverage execution-error -> missing evidence + preserved status + executed:false
+	sp_build '{"tool":"coverage","status":"execution-error"}' '-'
+	if [ "$(jq -r '.summary.missing_coverage_evidence' "$SP_JSON")" = "true" ] \
+		&& [ "$(jq -r '.tools.php_coverage.status' "$SP_JSON")" = "execution-error" ] \
+		&& [ "$(jq -r '.tools.php_coverage.executed' "$SP_JSON")" = "false" ]; then
+		pass "builder: coverage execution-error -> missing_coverage_evidence + status preserved + executed=false"
+	else fail "builder: coverage execution-error not preserved ($(jq -c '{mce:.summary.missing_coverage_evidence,s:.tools.php_coverage.status,e:.tools.php_coverage.executed}' "$SP_JSON"))"; fi
+	# 4.1B unavailable, 4.1C not-configured
+	sp_build '{"tool":"coverage","status":"unavailable"}' '-'
+	{ [ "$(jq -r '.summary.missing_coverage_evidence' "$SP_JSON")" = "true" ] && [ "$(jq -r '.tools.php_coverage.status' "$SP_JSON")" = "unavailable" ]; } \
+		&& pass "builder: coverage unavailable -> missing evidence + status unavailable" || fail "builder: coverage unavailable not preserved"
+	sp_build '{"tool":"coverage","status":"not-configured"}' '-'
+	{ [ "$(jq -r '.summary.missing_coverage_evidence' "$SP_JSON")" = "true" ] && [ "$(jq -r '.tools.php_coverage.status' "$SP_JSON")" = "not-configured" ]; } \
+		&& pass "builder: coverage not-configured -> missing evidence + status not-configured" || fail "builder: coverage not-configured not preserved"
+	# 4.1D findings -> evidence EXISTS (false), violation still counted
+	sp_build '{"tool":"coverage","status":"findings","line_percent":50,"violations":1,"regression":false}' '-'
+	{ [ "$(jq -r '.summary.missing_coverage_evidence' "$SP_JSON")" = "false" ] && [ "$(jq '.summary.coverage_threshold_violations' "$SP_JSON")" = "1" ] && [ "$(jq -r '.tools.php_coverage.status' "$SP_JSON")" = "findings" ]; } \
+		&& pass "builder: coverage findings -> evidence present (mce=false), violation counted" || fail "builder: coverage findings wrong"
+	# 4.3 unknown status fails closed as execution-error
+	sp_build '{"tool":"coverage","status":"weird"}' '-'
+	{ [ "$(jq -r '.tools.php_coverage.status' "$SP_JSON")" = "execution-error" ] && [ "$(jq -r '.summary.missing_coverage_evidence' "$SP_JSON")" = "true" ]; } \
+		&& pass "builder: unknown coverage status fails closed (execution-error, missing evidence)" || fail "builder: unknown coverage status not fail-closed"
+	# 4.2A tests execution-error -> missing_test_evidence, NOT empty_test_suite
+	sp_build '{"tool":"coverage","status":"pass","line_percent":90,"violations":0,"regression":false}' '{"status":"execution-error"}'
+	if [ "$(jq -r '.summary.missing_test_evidence' "$SP_JSON")" = "true" ] \
+		&& [ "$(jq -r '.summary.empty_test_suite' "$SP_JSON")" = "false" ] \
+		&& [ "$(jq -r '.tools.tests.status' "$SP_JSON")" = "execution-error" ]; then
+		pass "builder: tests execution-error -> missing_test_evidence, empty_test_suite=false, status preserved"
+	else fail "builder: tests execution-error not handled ($(jq -c '{mte:.summary.missing_test_evidence,es:.summary.empty_test_suite,s:.tools.tests.status}' "$SP_JSON"))"; fi
+	# 4.2B tests empty (0) -> empty_test_suite, not missing
+	sp_build '{"tool":"coverage","status":"pass","line_percent":90,"violations":0,"regression":false}' '{"failures":0,"errors":0,"tests":0,"skipped":0}'
+	{ [ "$(jq -r '.summary.missing_test_evidence' "$SP_JSON")" = "false" ] && [ "$(jq -r '.summary.empty_test_suite' "$SP_JSON")" = "true" ]; } \
+		&& pass "builder: tests with 0 tests -> empty_test_suite (not missing)" || fail "builder: empty suite wrong"
+	# 4.2C tests 42 -> both false, test_count=42
+	sp_build '{"tool":"coverage","status":"pass","line_percent":90,"violations":0,"regression":false}' '{"failures":0,"errors":0,"tests":42,"skipped":0}'
+	{ [ "$(jq -r '.summary.missing_test_evidence' "$SP_JSON")" = "false" ] && [ "$(jq -r '.summary.empty_test_suite' "$SP_JSON")" = "false" ] && [ "$(jq '.summary.test_count' "$SP_JSON")" = "42" ]; } \
+		&& pass "builder: tests with 42 -> evidence present, test_count=42" || fail "builder: 42-test case wrong"
+else
+	fail "builder status-preservation tests: php REQUIRED but unavailable"
+fi
+# collector-level: unknown status fails closed (no php needed)
+echo '{"status":"weird"}' > "$WORK/uc.json"
+[ "$(sh "$COLL/coverage.sh" --input "$WORK/uc.json" | jq -r '.status')" = "execution-error" ] \
+	&& pass "coverage collector: unknown status -> execution-error (fail closed)" || fail "coverage collector unknown status not fail-closed"
+echo '{"status":"execution-error"}' > "$WORK/ec.json"
+[ "$(sh "$COLL/coverage.sh" --input "$WORK/ec.json" | jq -r '.status')" = "execution-error" ] \
+	&& pass "coverage collector: execution-error passed through" || fail "coverage collector execution-error not preserved"
+
+# --- (15) quality-policy fallback: present-but-empty value fails closed (no yq) --------------
+# Force the awk fallback with a fake non-mikefarah yq so the yq path is not taken.
+QSHIM="$WORK/qshim"; mkdir -p "$QSHIM"; printf '#!/bin/sh\necho "yq version 3.4.1"\n' > "$QSHIM/yq"; chmod +x "$QSHIM/yq"
+cat > "$WORK/qpfh.sh" <<EOF
+set -eu
+. "$ROOT/scripts/lib/sentinel-shield-common.sh"
+. "$ROOT/scripts/lib/quality-policy.sh"
+qp_load "\$1"
+EOF
+qpf() { printf '%b' "$2" > "$WORK/qpf.yaml"; rc=0; PATH="$QSHIM:$PATH" sh "$WORK/qpfh.sh" "$WORK/qpf.yaml" >/dev/null 2>&1 || rc=$?; [ "$rc" = "$3" ] && pass "quality-policy fallback: $1" || fail "quality-policy fallback: $1 (exit $rc, want $3)"; }
+qpf "empty numeric line_min fails closed" 'quality:\n  coverage:\n    line_min:\n' 2
+qpf "empty boolean enabled fails closed"  'quality:\n  coverage:\n    enabled:\n' 2
+qpf "empty maintainability size fails closed" 'quality:\n  maintainability:\n    max_file_lines:\n' 2
+qpf "malformed 1.2.3 fails closed"        'quality:\n  coverage:\n    line_min: 1.2.3\n' 2
+qpf "valid absent key uses default"       'quality:\n  coverage:\n    branch_min: 60\n' 0
+qpf "valid full policy accepted"          'quality:\n  coverage:\n    enabled: true\n    line_min: 80\n' 0
 
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1

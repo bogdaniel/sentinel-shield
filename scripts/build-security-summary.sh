@@ -396,7 +396,11 @@ if [ -n "$PROFILE_NAME" ]; then
 		[ -n "$trep" ] && repfile="$RAW_DIR/$(basename -- "$trep")"
 
 		# Reuse the collector's status when this tool has one (TOOL_TABLE), so the
-		# findings/pass split matches the mapped summary counters.
+		# findings/pass split matches the mapped summary counters. _hascol distinguishes
+		# "a collector ran and returned a status" from "this tool has NO collector" (e.g.
+		# larastan/pint/syft declare a report but no scripts/collectors/*.sh) — the latter
+		# must NOT be treated as a collector emitting an empty status.
+		_hascol=$(printf '%s' "$TOOLSOBJ" | jq -r --arg e "$emit" 'if has($e) then "1" else "0" end')
 		cstatus=$(printf '%s' "$TOOLSOBJ" | jq -r --arg e "$emit" '(.[$e].status) // ""')
 
 		report_ok=0
@@ -422,10 +426,26 @@ if [ -n "$PROFILE_NAME" ]; then
 				status="unavailable"
 			fi
 		elif [ "$report_ok" -eq 1 ]; then
-			executed=true; installed=true
+			# A present, valid-JSON report may STILL honestly report a non-clean status
+			# (unavailable / not-configured / execution-error / disabled / not-applicable) —
+			# those must be PRESERVED, never collapsed into a clean pass, so the evidence gates
+			# (missing_coverage_evidence / missing_test_evidence) and required-tool enforcement
+			# read the truth. Unknown status fails closed as execution-error.
 			case "$cstatus" in
-				fail | findings) status="findings" ;;
-				*) status="pass" ;;
+				fail | findings | warn) status="findings"; executed=true; installed=true ;;
+				pass) status="pass"; executed=true; installed=true ;;
+				unavailable) status="unavailable"; executed=false ;;
+				not-configured) status="not-configured"; configured=false; executed=false ;;
+				execution-error) status="execution-error"; executed=false ;;
+				disabled) status="disabled"; configured=false; executed=false ;;
+				not-applicable) status="not-applicable"; executed=false ;;
+				'')
+					# Empty cstatus: no collector for this tool -> a present, valid report means it
+					# ran, so pass. A collector that ran but returned an empty status is an anomaly
+					# -> fail closed as execution-error.
+					if [ "$_hascol" = "0" ]; then status="pass"; executed=true; installed=true
+					else status="execution-error"; executed=false; fi ;;
+				*) status="execution-error"; executed=false ;;
 			esac
 		else
 			# Report absent/invalid: NEVER becomes a clean 0.
@@ -521,9 +541,18 @@ EOF
 	for _tr in $_test_reports; do
 		_trf="$RAW_DIR/$(basename -- "$_tr")"
 		if [ -f "$_trf" ] && [ -s "$_trf" ] && jq -e . "$_trf" >/dev/null 2>&1; then
-			_tc=$(jq -r '((.tests // 0) | if type=="number" then floor else 0 end)' "$_trf" 2>/dev/null || printf 0)
-			case "$_tc" in '' | *[!0-9]*) _tc=0 ;; esac
-			[ "$_tc" -eq 0 ] && EMPTY_SUITE=true
+			# A present report that honestly reports a non-clean status (unavailable /
+			# not-configured / execution-error / disabled) is MISSING test evidence — NOT an
+			# empty (but successful) suite. Only a clean report with tests:0 is empty_test_suite.
+			_tst=$(jq -r '.status // ""' "$_trf" 2>/dev/null || printf '')
+			case "$_tst" in
+				unavailable | not-configured | execution-error | disabled)
+					MISSING_TEST=true ;;
+				*)
+					_tc=$(jq -r '((.tests // 0) | if type=="number" then floor else 0 end)' "$_trf" 2>/dev/null || printf 0)
+					case "$_tc" in '' | *[!0-9]*) _tc=0 ;; esac
+					[ "$_tc" -eq 0 ] && EMPTY_SUITE=true ;;
+			esac
 		else
 			MISSING_TEST=true
 		fi
