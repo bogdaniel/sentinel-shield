@@ -291,6 +291,53 @@ which compose the bases via `extends`) declare **both** stacks; there a combined
 them (violations SUM, percentages MINIMUM, regression = 1 if any stack regressed) without one stack
 satisfying the other's coverage.
 
+## 4b. Architecture-governance tool policies (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`architecture-governance.md`](architecture-governance.md).
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. These tool keys carry
+`category: architecture` and fold into a **separate counter channel** from security (never mixed into
+`*_vulnerabilities`). They obey the same policy/state machine above, and the architecture states are
+exactly the ones in §1 — `pass`, `findings`, `unavailable`, `not-configured`, `execution-error`,
+`disabled`, `not-applicable` — never collapsed into a fake-clean `pass`.
+
+| Tool key | Profiles | Typical policy | Runner | Report | → gate key |
+| --- | --- | --- | --- | --- | --- |
+| `deptrac` | laravel, symfony, php-library | `recommended` | `deptrac.sh` | `reports/raw/deptrac.json` | `architecture_violations` |
+| `php-arkitect` | laravel, symfony, php-library | `optional` | `php-arkitect.sh` | `reports/raw/php-arkitect.json` | `architecture_violations` |
+| `php-architecture-tests` | laravel, symfony, php-library | `optional` | `php-architecture-tests.sh` | `reports/raw/php-architecture-tests.json` | `architecture_violations` |
+| `dependency-cruiser` | node, react | `recommended` | `dependency-cruiser.sh` | `reports/raw/dependency-cruiser.json` | `architecture_violations` |
+| `eslint-boundaries` | node, react | `recommended` | `eslint-boundaries.sh` | `reports/raw/eslint-boundaries.json` | `architecture_violations` |
+| `js-architecture-tests` | node, react | `optional` | `js-architecture-tests.sh` | `reports/raw/js-architecture-tests.json` | `architecture_violations` |
+
+`eslint-boundaries` counts **only** architecture-boundary rules (`boundaries/*`,
+`import/no-restricted-paths`, `no-restricted-imports`); general ESLint findings map to their own
+summary keys through the `eslint` tool key and are never double-counted.
+
+**Evidence expectation.** `required`/`recommended`/`one-of` architecture producers are **expected**:
+when the profile declares an APPLICABLE one and no valid report is produced, the builder
+(`--profile`) sets `missing_architecture_evidence`, so strict/regulated fail on ABSENT architecture
+evidence (not only on bad results). `optional` producers are **opt-in and never** set it. A consuming
+project can opt out honestly in `.sentinel-shield/architecture-policy.yaml`
+(`architecture.enabled: false` or `architecture.evidence_required: false`) — that is explicit, and it
+never fakes a pass.
+
+**PR execution.** The **fast** producers run on pull requests (`execution.pr: true`):
+`dependency-cruiser` and `eslint-boundaries`. `deptrac`, `php-arkitect` and the custom architecture
+suites run on the **main gate**.
+
+**Stack scoping** works exactly as for the quality tools: `laravel`/`symfony`/`php-library` declare
+the PHP producers, `node`/`react` declare the JS/TS producers, and composed profiles carry both — PHP
+and JS architecture evidence are independent. Violations SUM across producers;
+`architecture_context_count` aggregates as the **maximum** (producers describe the same codebase).
+
+> Architecture tools detect dependency-boundary violations, not the quality of domain modeling
+> itself. Architecture governance is supported by engine tests and fixtures. Do not claim real
+> consumer proof until a real Laravel/Symfony/Node consumer validation exists.
+
 ---
 
 ## 5. Control-waivers (`.sentinel-shield/control-waivers.json`)

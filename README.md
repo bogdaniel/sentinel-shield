@@ -748,3 +748,19 @@ channel; the fast quality tools now also run on PRs.
 > **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
 > **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
 > [`docs/engineering-quality-gates.md`](docs/engineering-quality-gates.md).
+
+## Architecture Governance v2 (v2.1)
+Sentinel Shield enforces architecture governance through **normalized architecture evidence**. Deptrac
+is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. `architecture_violations` is now **summed
+across all architecture producers**, a new boolean gate `missing_architecture_evidence` (flag
+`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`) fails when expected evidence is absent or
+errored, and `architecture_rule_count` / `architecture_tool_count` / `architecture_context_count` ride
+along as informational — all optional/additive, so older summaries stay valid. Mode defaults: violations
+block from **baseline**, missing evidence blocks from **strict**, and **regulated** additionally requires
+the raw architecture reports to be retained. Producers are configured in
+`.sentinel-shield/architecture-policy.yaml`; style starting points live in `templates/architecture/`.
+Architecture tools detect dependency-boundary violations, not the quality of domain modeling itself.
+> **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
+> **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
+> [`docs/architecture-governance.md`](docs/architecture-governance.md).

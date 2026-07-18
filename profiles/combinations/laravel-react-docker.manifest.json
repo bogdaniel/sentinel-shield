@@ -116,7 +116,9 @@
     "hadolint",
     "gitleaks",
     "semgrep",
-    "tests"
+    "tests",
+    "dependency-cruiser",
+    "eslint-boundaries"
   ],
   "recommended_main_gate_tools": [
     "codeql",
@@ -127,7 +129,10 @@
     "grype",
     "deptrac",
     "checkov",
-    "dependency-check"
+    "dependency-check",
+    "php-arkitect",
+    "dependency-cruiser",
+    "eslint-boundaries"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
@@ -164,6 +169,9 @@
     "dependency-policy.json",
     "architecture-tests.json",
     "deptrac.json",
-    "sbom.spdx.json"
+    "sbom.spdx.json",
+    "dependency-cruiser.json",
+    "eslint-boundaries.json",
+    "php-arkitect.json"
   ]
 }

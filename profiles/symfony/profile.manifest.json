@@ -760,6 +760,45 @@
         "main": true,
         "scheduled": false
       }
+    },
+    "php-arkitect": {
+      "policy": "optional",
+      "category": "architecture",
+      "packages": [
+        {
+          "name": "phparkitect/phparkitect",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phparkitect",
+        "phparkitect"
+      ],
+      "runner": "scripts/runners/php-arkitect.sh",
+      "report": "reports/raw/php-arkitect.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "phparkitect.php",
+        "classification": "project-owned"
+      }
+    },
+    "php-architecture-tests": {
+      "policy": "optional",
+      "category": "architecture",
+      "runner": "scripts/runners/php-architecture-tests.sh",
+      "report": "reports/raw/php-architecture-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
     }
   }
 }

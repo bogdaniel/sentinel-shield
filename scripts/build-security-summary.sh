@@ -134,6 +134,11 @@ ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_rev
 kuzushi|kuzushi.json|kuzushi.sh|kuzushi
 dependency-policy|dependency-policy.json|dependency-policy.sh|dependency_policy
 architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests
+php-arkitect|php-arkitect.json|php-arkitect.sh|php_arkitect
+php-architecture-tests|php-architecture-tests.json|php-architecture-tests.sh|php_architecture_tests
+dependency-cruiser|dependency-cruiser.json|dependency-cruiser.sh|dependency_cruiser
+eslint-boundaries|eslint-boundaries.json|eslint-boundaries.sh|eslint_boundaries
+js-architecture-tests|js-architecture-tests.json|js-architecture-tests.sh|js_architecture_tests
 coverage|coverage.json|coverage.sh|coverage
 php-coverage|php-coverage.json|coverage.sh|php_coverage
 js-coverage|js-coverage.json|coverage.sh|js_coverage
@@ -296,9 +301,13 @@ ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 #   - informational MAX keys (worst-observed): take the maximum across stacks.
 #   - coverage_regression is a boolean-ish flag: clamp the summed count to 0/1 (1 = ANY stack
 #     regressed).
+#   - architecture (v2.1.0): architecture_violations / architecture_rule_count /
+#     architecture_tool_count SUM across producers (Deptrac + dependency-cruiser + ... all
+#     contribute), while architecture_context_count takes the MAXIMUM — producers describe the
+#     SAME codebase, so summing bounded contexts would double-count them.
 COUNTS=$(printf '%s' "$ARR" | jq '
 	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent","changed_lines_coverage_percent"];
-	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines"];
+	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines","architecture_context_count"];
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
@@ -313,7 +322,8 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 duplication_violations:0, dead_code_violations:0,
 		 changed_lines_coverage_violations:0, skipped_tests:0, test_count:0,
 		 focused_test_violations:0, skipped_test_marker_violations:0,
-		 debug_code_violations:0, large_file_violations:0, large_function_violations:0};
+		 debug_code_violations:0, large_file_violations:0, large_function_violations:0,
+		 architecture_rule_count:0, architecture_tool_count:0, architecture_context_count:0};
 		reduce ($c.summary | keys_unsorted[]) as $k (.;
 			($c.summary[$k]) as $v
 			| if (mins | index($k)) then
@@ -342,6 +352,7 @@ EXE_FAIL=0
 MISSING_COV=false   # v2.1: an applicable coverage tool produced no valid report (profile-aware)
 MISSING_TEST=false  # v2.1: an applicable test stack produced no valid test report
 EMPTY_SUITE=false   # v2.1: an applicable test report exists but ran zero tests
+MISSING_ARCH=false  # v2.1.0: an applicable architecture producer produced no valid evidence
 if [ -n "$PROFILE_NAME" ]; then
 	HAVE_POLICY=1
 	RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
@@ -558,6 +569,50 @@ EOF
 		fi
 	done
 
+	# missing_architecture_evidence (v2.1.0): every APPLICABLE architecture producer declared by
+	# the profile (category=="architecture") must produce VALID evidence — a report whose status
+	# is pass or findings. A missing/invalid report, or an honest unavailable / not-configured /
+	# execution-error / disabled status, is MISSING evidence: "we never ran it" must never read as
+	# "we are clean". Unknown status fails closed (execution-error) in the collector already.
+	# Producer-agnostic: Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries and custom
+	# architecture tests are all just producers of the same contract.
+	# The consuming project's architecture policy can switch this off honestly:
+	# architecture.enabled=false or architecture.evidence_required=false -> never missing. An
+	# ABSENT policy means governance is on with evidence required (the profile still decides
+	# which producers are applicable, and the MODE still decides whether this blocks).
+	_ap_file="${TARGET_DIR:+$TARGET_DIR/}.sentinel-shield/architecture-policy.yaml"
+	_arch_required=1
+	if [ -f "$_ap_file" ]; then
+		# shellcheck source=scripts/lib/architecture-policy.sh
+		. "$SCRIPT_DIR/lib/architecture-policy.sh"
+		ap_load "$_ap_file"
+		if ! ap_enabled || [ "$(ap_bool architecture.evidence_required true)" != "true" ]; then
+			_arch_required=0
+		fi
+	fi
+	if [ "$_arch_required" -eq 1 ]; then
+		# OPTIONAL producers (PHPArkitect, custom architecture-test suites) are opt-in: a project
+		# that never asked for them is not missing evidence. Required/recommended/one-of producers
+		# ARE expected — that is what "applicable architecture tool" means here.
+		_arch_reports=$(printf '%s' "$EFF" | jq -r '
+			[ .tools[]? | select((.category // "") == "architecture")
+			  | select((.applicability // "unknown") != "not-applicable")
+			  | select((.policy // "") != "optional")
+			  | .report ] | map(select(. != null and . != "")) | unique[]' 2>/dev/null || true)
+		for _ar in $_arch_reports; do
+			_arf="$RAW_DIR/$(basename -- "$_ar")"
+			if [ -f "$_arf" ] && [ -s "$_arf" ] && jq -e . "$_arf" >/dev/null 2>&1; then
+				_ast=$(jq -r 'if type=="object" then (.status // "") else "" end' "$_arf" 2>/dev/null || printf '')
+				case "$_ast" in
+					unavailable | not-configured | execution-error | disabled) MISSING_ARCH=true ;;
+					*) : ;;   # pass / findings / legacy status-less report = evidence
+				esac
+			else
+				MISSING_ARCH=true
+			fi
+		done
+	fi
+
 	# Merge policy objects onto the collector tool reports (policy fields win; the
 	# unavailable/etc. status overwrites any collector "unavailable"); detail kept.
 	TOOLSOBJ=$(jq -n --argjson base "$TOOLSOBJ" --argjson pol "$POLICY_TOOLS" '$base * $pol')
@@ -598,14 +653,15 @@ jq -n \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
 	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
-	--argjson misscov "$MISSING_COV" --argjson misstest "$MISSING_TEST" --argjson emptysuite "$EMPTY_SUITE" '
+	--argjson misscov "$MISSING_COV" --argjson misstest "$MISSING_TEST" --argjson emptysuite "$EMPTY_SUITE" \
+	--argjson missarch "$MISSING_ARCH" '
 	{
 		version: $version,
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
 		summary: ($counts + { missing_sbom: $ms, missing_release_evidence: $mr, expired_exceptions: $ee }
-			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite } else {} end)),
+			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
 		evidence: {

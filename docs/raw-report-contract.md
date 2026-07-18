@@ -16,7 +16,12 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | tests.json | phpunit/vitest/jest adapter | `{failures,errors}` | tests.sh | test_failures | unavailable | exit 2 | templates/raw |
 | eslint.json | ESLint --format json | `[{errorCount,messages}]` | eslint.sh | type_errors/med/high | unavailable | exit 2 | templates/raw |
 | typescript.json | tsc collector | `{errors}` | typescript.sh | type_errors | unavailable | exit 2 | templates/raw |
-| deptrac.json | Deptrac | `{Report.Violations}` | deptrac.sh | architecture_violations | unavailable | exit 2 | templates/raw |
+| deptrac.json | Deptrac | native `{report.violations}`/`{Report.Violations}`/`{violations}` or normalized contract | deptrac.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
+| php-arkitect.json | runners/php-arkitect.sh | normalized architecture contract | php-arkitect.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
+| php-architecture-tests.json | runners/php-architecture-tests.sh | normalized architecture contract | php-architecture-tests.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
+| dependency-cruiser.json | dependency-cruiser | native `{summary:{violations[],ruleSetUsed.forbidden[]}}` or normalized contract | dependency-cruiser.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
+| eslint-boundaries.json | ESLint boundary rules | native ESLint JSON array or normalized contract | eslint-boundaries.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
+| js-architecture-tests.json | runners/js-architecture-tests.sh | normalized architecture contract | js-architecture-tests.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
 | hadolint.json | run-hadolint.sh | array `[{code,file,level}]` | hadolint.sh | unsafe_docker | unavailable | exit 2 | self-test |
 | docker-base-digest.json | audit-docker-base-digest.sh | `[{rule_id:SS_DOCKER_BASE_DIGEST}]` | docker-base-digest.sh | unsafe_docker | unavailable | exit 2 | self-test |
 | github-actions-pins.json | audit-github-actions-pins.sh | `{findings}` | github-actions-pins.sh | unsafe_github_actions | unavailable | exit 2 | self-test |
@@ -37,7 +42,7 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | nuclei.json | Nuclei | array `[{info.severity}]` | nuclei.sh | dast_findings | unavailable | exit 2 | scanner-matrix |
 | ai-security-review.json | Claude Code Sec Review | `{findings:[…]}` | ai-security-review.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
 | dependency-policy.json | audits/dependency-policy.sh | `{count,violations[]}` | dependency-policy.sh | dependency_policy_violations | unavailable | exit 2 | feature-completion |
-| architecture-tests.json | runners/architecture-tests.sh | `{violations:N}` | architecture-tests.sh | architecture_violations | unavailable | exit 2 | feature-completion |
+| architecture-tests.json | runners/architecture-tests.sh | `{violations:N}` / normalized architecture contract | architecture-tests.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
 | kuzushi.json | Kuzushi | `{findings:[…]}` | kuzushi.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
 | coverage.json (php-/js-coverage.json) | php-coverage.sh / js-coverage.sh | `{line_percent,violations,regression}` | coverage.sh | coverage_threshold_violations / coverage_regression | unavailable | exit 2 | 270-quality-gates |
 | mutation.json (php-/js-mutation.json) | infection.sh / stryker.sh | `{score_percent,violations}` | mutation.sh | mutation_score_violations | unavailable | exit 2 | 270-quality-gates |
@@ -63,6 +68,68 @@ stack drives the gate), and `coverage_regression` is 1 if ANY stack regressed. S
 
 All collectors are exercised by `scripts/self-test.sh` (`scanner-matrix` for v0.1.12 tools,
 named suites for the mature core). Severity fidelity caveats: see production-readiness-audit.md.
+
+## v2.1 — normalized architecture raw contract
+
+Sentinel Shield enforces architecture governance through **normalized architecture evidence**.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
+producers. Custom architecture tests can also emit the same contract. Architecture raw reports are a
+**separate channel** from security and are never folded into vulnerability counters. Full reference:
+[`architecture-governance.md`](architecture-governance.md).
+
+Every architecture producer writes `reports/raw/<producer>.json` in this shape (or a native shape the
+matching collector understands):
+
+```json
+{
+  "tool": "architecture",
+  "status": "pass",
+  "violations": 0,
+  "rule_count": 12,
+  "context_count": 4,
+  "failures": []
+}
+```
+
+Each `failures[]` entry carries the crossed boundary:
+
+```json
+{
+  "rule": "domain-must-not-depend-on-infrastructure",
+  "from": "App\\Domain\\Order\\Order",
+  "to": "App\\Infrastructure\\Persistence\\DoctrineOrderRepository",
+  "message": "Domain layer depends on Infrastructure"
+}
+```
+
+Allowed statuses: `pass`, `findings`, `unavailable`, `not-configured`, `execution-error`, `disabled`,
+`not-applicable`. Rules the engine enforces:
+
+- `pass` + `violations: 0` = the suite ran clean; `findings` + `violations > 0` = it ran and found
+  violations. Only those two count as evidence.
+- `unavailable`, `not-configured`, `execution-error`, `disabled`, `not-applicable` are **preserved**,
+  never collapsed into a clean pass.
+- An unknown status **fails closed** as `execution-error`; a missing/empty raw report becomes
+  `unavailable`; invalid JSON exits 2.
+- An unknown **native** tool shape must NOT become `pass` — it becomes `execution-error`.
+
+The normalized contract is implemented once in `scripts/collectors/architecture.sh`; the per-producer
+collectors above are entry points over it, exactly as `php-coverage`/`js-coverage` share
+`collectors/coverage.sh`. The `eslint-boundaries` collector counts **only** boundary rules
+(`boundaries/*`, `import/no-restricted-paths`, `no-restricted-imports`) — general ESLint findings map
+to their own summary keys via `eslint.json` and are never double-counted as architecture violations.
+
+Producers feed `architecture_violations` (**summed**) plus the informational
+`architecture_rule_count` (summed), `architecture_tool_count` (producers with valid evidence), and
+`architecture_context_count` (**maximum** across producers — they describe the same codebase, so
+summing would double-count). With `--profile`, an applicable producer that emitted no valid evidence
+sets `missing_architecture_evidence`. All of these keys are optional/additive: an older summary that
+omits them stays valid, and an absent key reads as `0`/`false`.
+
+> Architecture tools detect dependency-boundary violations, not the quality of domain modeling
+> itself. Architecture governance is supported by engine tests and fixtures
+> (`280-architecture-governance`). Do not claim real consumer proof until a real
+> Laravel/Symfony/Node consumer validation exists.
 
 ## Main-gate validation harness output (v0.1.17)
 

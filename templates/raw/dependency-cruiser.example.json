@@ -1,0 +1,17 @@
+{
+  "producer": "dependency-cruiser",
+  "summary": {
+    "violations": [],
+    "error": 0,
+    "warn": 0,
+    "info": 0,
+    "totalCruised": 128,
+    "ruleSetUsed": {
+      "forbidden": [
+        { "name": "no-domain-to-infrastructure", "severity": "error", "from": { "path": "^src/domain" }, "to": { "path": "^src/infrastructure" } },
+        { "name": "no-circular", "severity": "error", "from": {}, "to": { "circular": true } }
+      ]
+    }
+  },
+  "_comment": "Native dependency-cruiser shape, clean baseline. A violation entry looks like {\"from\":\"src/domain/order.ts\",\"to\":\"src/infrastructure/db.ts\",\"rule\":{\"name\":\"no-domain-to-infrastructure\",\"severity\":\"error\"}}."
+}

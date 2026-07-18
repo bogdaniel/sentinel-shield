@@ -56,7 +56,7 @@
         "critical_vulnerabilities": { "type": "integer", "minimum": 0 },
         "high_vulnerabilities": { "type": "integer", "minimum": 0 },
         "medium_vulnerabilities": { "type": "integer", "minimum": 0 },
-        "architecture_violations": { "type": "integer", "minimum": 0 },
+        "architecture_violations": { "type": "integer", "minimum": 0, "description": "Architecture-boundary violations, summed across ALL architecture producers (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, custom architecture tests). Detects dependency-boundary breaches — it does not prove domain-modelling quality." },
         "type_errors": { "type": "integer", "minimum": 0 },
         "test_failures": { "type": "integer", "minimum": 0 },
         "unsafe_docker": { "type": "integer", "minimum": 0 },
@@ -106,6 +106,10 @@
         "debug_code_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of debug residue (dd/dump/var_dump/console.log/debugger/…). Gated in baseline+. Optional/additive; absent reads as 0." },
         "large_file_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of files exceeding quality.maintainability.max_file_lines. Gated in strict/regulated. Optional/additive; absent reads as 0." },
         "large_function_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of functions exceeding quality.maintainability.max_function_lines (best-effort). Gated in strict/regulated. Optional/additive; absent reads as 0." },
+        "missing_architecture_evidence": { "type": "boolean", "description": "v2.1.0+ architecture-governance gate (boolean). True when an APPLICABLE architecture producer is expected by the profile/policy but produced no valid evidence — status unavailable / not-configured / execution-error / disabled, or no report at all. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive." },
+        "architecture_rule_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Number of architecture rules evaluated, summed across producers that expose it (0 when none do). Never a gate." },
+        "architecture_tool_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Number of architecture producers that produced VALID evidence (status pass or findings), summed across producers. Never a gate." },
+        "architecture_context_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Bounded contexts / modules / layers detected or declared. Aggregated as the MAXIMUM across producers (they describe the same codebase, so summing would double-count). Never a gate." },
         "max_file_lines": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Largest file line-count observed (aggregate = maximum across stacks). Optional." },
         "max_function_lines": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Largest function line-count observed (aggregate = maximum across stacks). Optional." }
       }

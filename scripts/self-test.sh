@@ -966,6 +966,24 @@ run_feature_completion() {
 	echo '{"violations":2}' > "$_r/architecture-tests.json"
 	fc_check "arch-tests collector -> architecture_violations" "$(sh "$C/architecture-tests.sh" --input "$_r/architecture-tests.json" | jq '.summary.architecture_violations')" "2"
 
+	# v2.1.0 architecture governance: every producer has a runner + collector, the normalized
+	# contract is honored, and an unknown shape fails closed. Full coverage lives in
+	# tests/prod/280-architecture-governance.sh (run by `self-test.sh production-readiness`).
+	_miss=0
+	for r in deptrac php-arkitect php-architecture-tests dependency-cruiser eslint-boundaries js-architecture-tests architecture-tests; do
+		[ -f "$ROOT/scripts/runners/$r.sh" ] && sh -n "$ROOT/scripts/runners/$r.sh" || { log_error "  arch runner missing/bad: $r"; _miss=$((_miss + 1)); }
+	done
+	for c in architecture deptrac php-arkitect php-architecture-tests dependency-cruiser eslint-boundaries js-architecture-tests architecture-tests; do
+		[ -f "$ROOT/scripts/collectors/$c.sh" ] && sh -n "$ROOT/scripts/collectors/$c.sh" || { log_error "  arch collector missing/bad: $c"; _miss=$((_miss + 1)); }
+	done
+	fc_check "all v2.1.0 architecture producers present + valid" "$_miss" "0"
+	echo '{"tool":"architecture","status":"findings","violations":3,"rule_count":9,"context_count":2}' > "$_r/arch-norm.json"
+	fc_check "architecture collector -> normalized contract" "$(sh "$C/architecture.sh" --input "$_r/arch-norm.json" | jq '.summary.architecture_violations')" "3"
+	echo '{"unrecognized":"shape"}' > "$_r/arch-unknown.json"
+	fc_check "architecture collector: unknown shape -> execution-error (no fake clean)" "$(sh "$C/architecture.sh" --input "$_r/arch-unknown.json" | jq -r '.status')" "execution-error"
+	[ -f "$ROOT/tests/prod/280-architecture-governance.sh" ] && _p280=present || _p280=missing
+	fc_check "prod suite 280-architecture-governance.sh present (production-readiness)" "$_p280" "present"
+
 	# new runners exist + are syntactically valid
 	_miss=0
 	for r in psalm php-style eslint typescript actionlint zizmor deptrac codeql-export architecture-tests; do

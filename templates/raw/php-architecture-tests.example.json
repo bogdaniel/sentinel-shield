@@ -1,0 +1,9 @@
+{
+  "tool": "architecture",
+  "producer": "php-architecture-tests",
+  "status": "pass",
+  "violations": 0,
+  "rule_count": 14,
+  "context_count": 4,
+  "failures": []
+}

@@ -17,8 +17,8 @@
   ],
   "never_touch": [".sentinel-shield/accepted-risks.json"],
   "required_scripts": ["scripts/adapters/vitest-to-tests-json.mjs", "scripts/adapters/jest-to-tests-json.mjs", "scripts/runners/eslint.sh", "scripts/runners/typescript.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests"],
+  "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests", "dependency-cruiser", "eslint-boundaries"],
   "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check"],
   "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
-  "recommended_raw_reports": ["npm-audit.json", "tests.json", "typescript.json", "eslint.json", "gitleaks.json", "semgrep.json"]
+  "recommended_raw_reports": ["npm-audit.json", "tests.json", "typescript.json", "eslint.json", "gitleaks.json", "semgrep.json", "dependency-cruiser.json", "eslint-boundaries.json"]
 }

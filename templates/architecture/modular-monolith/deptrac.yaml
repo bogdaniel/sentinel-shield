@@ -1,0 +1,80 @@
+# Sentinel Shield — Deptrac ruleset: modular monolith with public module APIs (PHP).
+#
+# Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+#
+# This is an EXAMPLE. The engine never auto-installs it and never overwrites project-owned
+# files — copy it to deptrac.yaml (or point architecture.tools.deptrac.config at it) yourself.
+#
+# Every module is split into two layers:
+#   <Module>Api      — the published surface (App\Modules\<Module>\Api\...), importable by
+#                      any other module's Api or Internal layer.
+#   <Module>Internal — everything else in the module, importable ONLY by its own module.
+#
+# So cross-module traffic is always Internal -> other module's Api, never Internal -> Internal.
+# Shared holds framework-agnostic primitives every module may use.
+#
+# Add a module by adding both layers plus its two ruleset entries.
+
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Shared
+      collectors:
+        - type: className
+          value: ^App\\Shared\\.*
+
+    - name: CatalogApi
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Catalog\\Api\\.*
+    - name: CatalogInternal
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Catalog\\(?!Api\\).*
+
+    - name: OrderingApi
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Ordering\\Api\\.*
+    - name: OrderingInternal
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Ordering\\(?!Api\\).*
+
+    - name: BillingApi
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Billing\\Api\\.*
+    - name: BillingInternal
+      collectors:
+        - type: className
+          value: ^App\\Modules\\Billing\\(?!Api\\).*
+
+  ruleset:
+    Shared: ~
+
+    CatalogApi:
+      - Shared
+    CatalogInternal:
+      - Shared
+      - CatalogApi
+      - OrderingApi
+      - BillingApi
+
+    OrderingApi:
+      - Shared
+    OrderingInternal:
+      - Shared
+      - OrderingApi
+      - CatalogApi
+      - BillingApi
+
+    BillingApi:
+      - Shared
+    BillingInternal:
+      - Shared
+      - BillingApi
+      - CatalogApi
+      - OrderingApi

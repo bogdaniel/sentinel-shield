@@ -509,6 +509,72 @@
         "main": true,
         "scheduled": false
       }
+    },
+    "dependency-cruiser": {
+      "policy": "recommended",
+      "category": "architecture",
+      "packages": [
+        {
+          "name": "dependency-cruiser",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/depcruise",
+        "depcruise"
+      ],
+      "runner": "scripts/runners/dependency-cruiser.sh",
+      "report": "reports/raw/dependency-cruiser.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": ".dependency-cruiser.js",
+        "classification": "project-owned"
+      }
+    },
+    "eslint-boundaries": {
+      "policy": "recommended",
+      "category": "architecture",
+      "packages": [
+        {
+          "name": "eslint-plugin-boundaries",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/eslint",
+        "eslint"
+      ],
+      "runner": "scripts/runners/eslint-boundaries.sh",
+      "report": "reports/raw/eslint-boundaries.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "eslint.config.js",
+        "classification": "project-owned"
+      }
+    },
+    "js-architecture-tests": {
+      "policy": "optional",
+      "category": "architecture",
+      "runner": "scripts/runners/js-architecture-tests.sh",
+      "report": "reports/raw/js-architecture-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
     }
   },
   "tool_notes": {

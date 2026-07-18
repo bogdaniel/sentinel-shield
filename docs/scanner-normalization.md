@@ -89,7 +89,7 @@ Rules:
 | `npm_audit` | `.metadata.vulnerabilities.{critical,high,moderate}` | → `*_vulnerabilities` (moderate→medium) |
 | `phpstan` | `.totals.file_errors + .totals.errors` | `type_errors` |
 | `psalm` | array / `.issues[]` | `type_errors` |
-| `deptrac` | `.report.violations` (defensive) | `architecture_violations` |
+| `deptrac` | native `.report.violations` / `.Report.Violations` / `.violations`, or the normalized architecture contract (v2.1.0) | `architecture_violations` (see [`architecture-governance.md`](architecture-governance.md)) |
 | `tests` | `{ "failures", "errors" }` | `test_failures` |
 | `typescript` | `{ "errors": N }` (normalized) | `type_errors` |
 | `eslint` | native ESLint JSON array | `type_errors` (errorCount), `medium_vulnerabilities` (warningCount), `high_vulnerabilities` (security severity-2) |
@@ -126,6 +126,36 @@ a fake-clean 0); missing quality keys resolve to 0. Coverage is the mandatory qu
 complexity, duplication, and dead-code are optional. Deptrac remains `architecture_violations`,
 PHPStan/Psalm remain `type_errors`, and Pint/PHP-CS-Fixer remain `style_violations` — none move into
 the quality channel.
+
+### Architecture collectors (v2.1.0)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`architecture-governance.md`](architecture-governance.md).
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac
+is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
+producers. Custom architecture tests can also emit the same contract. Architecture is its own
+counter channel — never mixed into `*_vulnerabilities` or the quality keys:
+
+| Collector | Reads | → summary key(s) |
+| --- | --- | --- |
+| `deptrac` | `reports/raw/deptrac.json` (native or normalized) | `architecture_violations` |
+| `php_arkitect` | `reports/raw/php-arkitect.json` | `architecture_violations` |
+| `php_architecture_tests` | `reports/raw/php-architecture-tests.json` | `architecture_violations` |
+| `dependency_cruiser` | `reports/raw/dependency-cruiser.json` (native `.summary.violations[]` or normalized) | `architecture_violations` |
+| `eslint_boundaries` | `reports/raw/eslint-boundaries.json` (native ESLint array or normalized) | `architecture_violations` — counts ONLY `boundaries/*`, `import/no-restricted-paths`, `no-restricted-imports`, so general ESLint findings are not double-counted |
+| `js_architecture_tests` | `reports/raw/js-architecture-tests.json` | `architecture_violations` |
+| `architecture_tests` | `reports/raw/architecture-tests.json` | `architecture_violations` |
+
+All of them share one implementation of the contract (`scripts/collectors/architecture.sh`), the way
+`php-`/`js-coverage` share `collectors/coverage.sh`. Counts SUM across producers;
+`architecture_rule_count` / `architecture_tool_count` sum and `architecture_context_count` takes the
+maximum. Only status `pass`/`findings` counts as evidence — `unavailable`, `not-configured`,
+`execution-error`, `disabled` and `not-applicable` are preserved and set
+`missing_architecture_evidence` (which blocks in strict/regulated). An unknown status or an
+unrecognized native shape fails closed as `execution-error`, never a clean 0.
+
+Architecture tools detect dependency-boundary violations, not the quality of domain modeling itself.
 
 **Combined-profile aggregation.** In combined profiles (e.g. `laravel-react-docker`) PHP and JS
 coverage are independent (`php-coverage.json` and `js-coverage.json` never overwrite each other) and

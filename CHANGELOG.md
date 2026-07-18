@@ -94,6 +94,87 @@ backward-compatible; **no release, tag, or runtime release evidence is produced 
     baseline fail-closed, the `js-coverage.sh` no-dir fix, and all runners; Node **and** PHP are
     now mandatory for this suite (no skip-pass), provisioned in the CI `self-tests` job.
 
+### Added — Architecture Governance v2 (v2.1.0)
+
+Architecture validation becomes a first-class, evidence-backed, **multi-language** governance
+layer instead of a single PHP tool wrapper. Fully additive and backward-compatible; **no release,
+tag, release manifest, or evidence bundle is produced by this change** — the latest published
+release remains `v2.0.1`.
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are
+JS/TS producers. Custom architecture tests can also emit the same contract. Architecture tools
+detect dependency-boundary violations, not the quality of domain modeling itself.
+
+- **New gate + summary keys**: boolean `missing_architecture_evidence` (emitted as
+  `SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`, overridable via `gates.fail_on`) plus
+  informational `architecture_rule_count`, `architecture_tool_count`, `architecture_context_count`.
+  The existing `architecture_violations` gate is unchanged in name and meaning but is now the SUM
+  across every architecture producer. Mode defaults: `architecture_violations`
+  false/true/true/true and `missing_architecture_evidence` false/false/true/true across
+  report-only/baseline/strict/regulated — baseline blocks on violations found by evidence that
+  exists; strict/regulated also block when expected evidence is missing, unavailable or errored.
+  All keys are optional/additive: older summaries stay valid and an absent key reads as 0/false.
+- **Normalized architecture raw contract** (`{tool, status, violations, rule_count, context_count,
+  failures[]}`) implemented once in `scripts/collectors/architecture.sh`. Statuses `pass`,
+  `findings`, `unavailable`, `not-configured`, `execution-error`, `disabled`, `not-applicable` are
+  preserved verbatim; only `pass`/`findings` count as evidence. Fail-closed throughout: unknown
+  status → `execution-error`, unrecognized native shape → `execution-error` (never a clean 0),
+  missing/empty report → `unavailable`, invalid JSON → exit 2.
+- **Deptrac hardened** (`scripts/runners/deptrac.sh`, `scripts/collectors/deptrac.sh`):
+  `--output`/`--config`/`--policy` flags, config detection (`deptrac.yaml`/`.yml`/`.php`), vendor
+  and global binary support, version metadata, native output preserved verbatim, and honest
+  `unavailable` / `not-configured` / `execution-error` statuses. The collector accepts the known
+  native shapes and the normalized contract; an unrecognized shape is `execution-error`, never
+  `pass`.
+- **New producers**: PHPArkitect (`php-arkitect`), custom PHP architecture tests
+  (`php-architecture-tests`), dependency-cruiser, ESLint boundaries (`eslint-boundaries`), and
+  custom JS/TS architecture tests (`js-architecture-tests`) — each with a runner, a collector and a
+  `templates/raw/*.example.json`. JS runners detect the package manager from the lockfile
+  (`package-lock.json` → npm, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn) instead of forcing
+  `npx`. `eslint-boundaries` counts ONLY boundary rules (`boundaries/*`,
+  `import/no-restricted-paths`, `no-restricted-imports`), so general ESLint findings are never
+  double-counted as architecture violations.
+- **Architecture policy** (`scripts/lib/architecture-policy.sh` +
+  `templates/architecture-policy.example.yaml`): POSIX sh loader in the spirit of
+  `quality-policy.sh` — mikefarah `yq` v4 when available, canonical-YAML awk fallback otherwise,
+  never required. Fails closed on malformed YAML, non-boolean known booleans and present-but-empty
+  known fields; an absent policy means defaults. `architecture.enabled: false` /
+  `architecture.evidence_required: false` are the honest opt-outs.
+- **Builder** (`scripts/build-security-summary.sh`): architecture evidence is profile-aware like
+  coverage/test evidence. Violations, rule counts and tool counts SUM across producers;
+  `architecture_context_count` takes the MAXIMUM (producers describe the same codebase, so summing
+  would double-count). Architecture findings are never folded into security counters. Optional
+  (opt-in) producers never set `missing_architecture_evidence`.
+- **Profiles**: `laravel`, `symfony`, `php-library` gain `php-arkitect` and
+  `php-architecture-tests` (both optional) alongside the existing recommended `deptrac`; `node` and
+  `react` gain recommended `dependency-cruiser` + `eslint-boundaries` and optional
+  `js-architecture-tests`. The fast JS producers run on PRs; Deptrac/PHPArkitect/custom suites run
+  on the main gate. Combination profiles compose via `extends`, keeping PHP and JS evidence
+  independent.
+- **Style templates** under `templates/architecture/` (clean-architecture, hexagonal,
+  ddd-bounded-contexts, modular-monolith, node-clean-architecture, node-ddd-bounded-contexts,
+  react-feature-boundaries), each marked "Template only. Adapt to your namespaces/folders. Do not
+  enable as blocking until observed clean." Project-owned architecture files are never overwritten.
+- **Docs**: new `docs/architecture-governance.md`; `docs/architecture-policy.md` rewritten for
+  v2.1.0; updates across raw-report-contract, security-summary-schema, gate-resolution,
+  profile-tool-policy, product-status/contract, strict/regulated readiness, consumer-onboarding,
+  production-rollout, the Deptrac guides and the README.
+- **Tests**: new `tests/prod/280-architecture-governance.sh` covers resolver mode defaults, every
+  collector (native + normalized + fail-closed paths), runner honesty without the tools installed,
+  builder aggregation and non-mixing with security counters, profile-aware missing evidence,
+  combined PHP+JS independence, and the policy loader's fail-closed parsing. Picked up
+  automatically by `scripts/self-test.sh production-readiness`.
+
+**Behavior changes to note.** The generic architecture-test runner no longer maps a failing
+command to `violations: 1`: a command that fails without emitting the JSON contract is now an
+honest `execution-error` (a failure of unknown size is not a violation count). It also deletes any
+stale report before running, so a leftover report from a previous run can never be mistaken for the
+current run's evidence.
+
+Architecture governance is supported by engine tests and fixtures. Do not claim real consumer proof
+until a real Laravel/Symfony/Node consumer validation exists.
+
 ## [2.0.1] — Engine-Only Maintenance Release — 2026-07-09
 
 Maintenance release candidate refreshing post-`v2.0.0` release evidence. **No executable

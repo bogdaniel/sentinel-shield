@@ -1,0 +1,11 @@
+{
+  "tool": "architecture",
+  "producer": "php-arkitect",
+  "status": "pass",
+  "violations": 0,
+  "rule_count": 8,
+  "context_count": 3,
+  "failures": [],
+  "config": "phparkitect.php",
+  "_comment": "Clean baseline example. A violation-bearing example lives in architecture.example.json; the failures[] entry shape is documented in docs/architecture-governance.md."
+}

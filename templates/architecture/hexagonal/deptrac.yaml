@@ -1,0 +1,54 @@
+# Sentinel Shield — Deptrac ruleset: Hexagonal / Ports & Adapters (PHP).
+#
+# Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+#
+# This is an EXAMPLE. The engine never auto-installs it and never overwrites project-owned
+# files — copy it to deptrac.yaml (or point architecture.tools.deptrac.config at it) yourself.
+#
+# Dependency rule: everything points INWARD toward Domain.
+#   Domain          -> nothing
+#   Ports           -> Domain                      (interfaces owned by the inside)
+#   Application     -> Domain, Ports
+#   InboundAdapters -> Ports, Application          (HTTP/CLI/queue entry points)
+#   OutboundAdapters-> Ports, Domain               (persistence/HTTP clients implementing ports)
+# Adapters never talk to each other; the inside never references an adapter.
+
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: className
+          value: ^App\\Domain\\.*
+    - name: Ports
+      collectors:
+        - type: className
+          value: ^App\\Ports\\.*
+    - name: Application
+      collectors:
+        - type: className
+          value: ^App\\Application\\.*
+    - name: InboundAdapters
+      collectors:
+        - type: className
+          value: ^App\\Adapters\\Inbound\\.*
+    - name: OutboundAdapters
+      collectors:
+        - type: className
+          value: ^App\\Adapters\\Outbound\\.*
+
+  ruleset:
+    Domain: ~
+    Ports:
+      - Domain
+    Application:
+      - Domain
+      - Ports
+    InboundAdapters:
+      - Ports
+      - Application
+    OutboundAdapters:
+      - Ports
+      - Domain

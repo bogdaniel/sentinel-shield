@@ -19,6 +19,7 @@ it orders the work and points at the authoritative mechanics rather than re-stat
 - [`install-sync-guide.md`](install-sync-guide.md) — install/sync productization, rollback, troubleshooting.
 - [`adoption-guide.md`](adoption-guide.md) — the five mode phases (report-only → baseline → strict → regulated).
 - [`product-status.md`](product-status.md) — maturity source of truth.
+- [`architecture-governance.md`](architecture-governance.md) — architecture evidence contract, producers, policy file, style templates.
 - [`pilot-consumers.md`](pilot-consumers.md) — the cited live consumer (`bogdaniel/zenchron-tools`) and what it did / did not prove.
 
 ---
@@ -263,6 +264,50 @@ code) live in a **separate counter channel** from security and default to **non-
 3. **Record a coverage baseline** so `coverage_regression` becomes meaningful.
 4. **Promote to strict**, where coverage threshold/regression, complexity, and duplication block; add
    mutation + dead-code by moving to **regulated**. Quality gates are **not** accepted-risk-suppressible.
+
+---
+
+## 221 — Adopting architecture governance (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim (latest release remains `v2.0.1`). Adopt it the same report-only-first way as every
+> other gate. Full reference: [`architecture-governance.md`](architecture-governance.md).
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. Per profile: `laravel` / `symfony` /
+`php-library` get **deptrac** (recommended) plus optional **php-arkitect** and **php-architecture-tests**;
+`node` / `react` get **dependency-cruiser** and **eslint-boundaries** (both recommended) plus optional
+**js-architecture-tests**. dependency-cruiser and ESLint boundaries are fast enough to run on PRs.
+
+> **Evidence honesty.** Architecture governance is supported by engine tests and fixtures. Do not
+> claim real consumer proof until a real Laravel/Symfony/Node consumer validation exists. Architecture
+> tools detect dependency-boundary violations, not the quality of domain modeling itself. Sentinel
+> Shield does **not** prove Clean Architecture by itself, does **not** prove DDD correctness, does
+> **not** replace architectural review, and Deptrac does **not** validate BDD/TDD/ATDD.
+
+The adoption ramp:
+
+1. **Report-only / baseline — add a producer + config, observe the count.** Copy
+   `templates/architecture-policy.example.yaml` to `.sentinel-shield/architecture-policy.yaml` and
+   enable the producers for your stack. Starting points for the rule files live under
+   `templates/architecture/` (clean-architecture, hexagonal, ddd-bounded-contexts, modular-monolith,
+   node-clean-architecture, node-ddd-bounded-contexts, react-feature-boundaries) — each is marked
+   *"Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean."*
+   Sentinel Shield **never** overwrites project-owned architecture files. Read
+   `architecture_violations` (summed across all producers) and the informational
+   `architecture_rule_count` / `architecture_tool_count` / `architecture_context_count`. In `baseline`,
+   violations from evidence that exists block; absent evidence does not block yet.
+2. **Fix or accept what it finds.** Tune the rules to your real namespaces/folders, fix the crossings
+   worth fixing, and keep the count stable and visible before tightening.
+3. **Strict — missing evidence starts blocking.** `missing_architecture_evidence` turns on
+   (`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`): an applicable producer that is absent,
+   `unavailable` or errored now fails. Opt out honestly with `architecture.enabled: false` or
+   `architecture.evidence_required: false` rather than faking a pass. An absent policy file is fine —
+   defaults apply; a malformed one fails closed. Pre-flight:
+   [`strict-mode-readiness.md`](strict-mode-readiness.md).
+4. **Regulated — retain the raw architecture reports** (`reports/raw/*.json` per producer) with the
+   release evidence. Pre-flight: [`regulated-mode-readiness.md`](regulated-mode-readiness.md).
 
 ---
 

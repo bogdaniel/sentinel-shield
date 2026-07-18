@@ -15,6 +15,14 @@ and how to triage findings honestly without emitting fake-clean results.
 > result when there was nothing to analyse** — absent config or absent binary must
 > surface as `unavailable`, not `pass`.
 
+> **What these tools actually detect (v2.1.0).** Architecture tools detect
+> dependency-boundary violations, not the quality of domain modeling itself. Sentinel Shield does
+> **not** claim that it proves Clean Architecture by itself, that it proves DDD correctness, that
+> it replaces architectural review, or that Deptrac validates BDD/TDD/ATDD. **Architecture
+> governance is supported by engine tests and fixtures**
+> (`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real
+> Laravel/Symfony/Node consumer validation exists.
+
 The fixtures referenced here live under `tests/fixtures/deptrac-v024/` and
 `tests/fixtures/architecture-v024/`. They let the self-test harness exercise the
 collector count mappings **without** installing Deptrac or any architecture-test
@@ -37,6 +45,95 @@ collector summary under `architecture_violations`.
 The v0.1.24 fixtures use the `.Report.Violations` shape for Deptrac (the second
 branch of the defensive parser) and the bare `.violations` number for
 architecture-tests.
+
+---
+
+## v2.1.0 — where Deptrac sits now
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are
+JS/TS producers. Custom architecture tests can also emit the same contract. Deptrac is therefore
+**one producer among several**, not the architecture gate itself — the capability spec is
+[`architecture-governance.md`](architecture-governance.md).
+
+The count mappings recapped above still hold; what changed is that a report now carries an
+explicit status, and the counts are aggregated.
+
+**Runner (`scripts/runners/deptrac.sh`)** takes `--output`, `--config`, `--policy`. Config
+detection: `--config`, then `architecture.tools.deptrac.config` from
+`.sentinel-shield/architecture-policy.yaml`, then `deptrac.yaml`, `deptrac.yml`, `deptrac.php`.
+Binary detection: `vendor/bin/deptrac`, then a global `deptrac`. The native report is preserved
+verbatim, annotated with `producer`, `config` and `tool_version`.
+
+| Situation | Status | Never |
+|---|---|---|
+| Binary absent | `unavailable` | a clean `violations: 0` |
+| No config found | `not-configured` | a clean `violations: 0` |
+| Ran, no valid JSON | `execution-error` | a clean `violations: 0` |
+| Disabled in policy | `disabled` | a clean `violations: 0` |
+
+**Collector (`scripts/collectors/deptrac.sh`)** accepts the native shapes (`.report.violations`,
+`.Report.Violations`, `.violations` as number or array) and the normalized architecture contract,
+preserves status-bearing reports, and maps rule/context metadata where available. An
+**unrecognized shape becomes `execution-error`, never `pass`.** Only `pass` and `findings` count
+as evidence; an unknown status fails closed as `execution-error`; a missing or empty report is
+`unavailable`; invalid JSON exits 2.
+
+**Aggregation.** `architecture_violations` is now the **sum** across producers. The new boolean
+gate `missing_architecture_evidence` fires when an expected producer yields no valid evidence:
+
+| Gate | report-only | baseline | strict | regulated |
+|---|---:|---:|---:|---:|
+| `architecture_violations` | false | true | true | true |
+| `missing_architecture_evidence` | false | false | true | true |
+
+This is the mechanical form of §177/§178's rule that `unavailable` must never read as a pass.
+`architecture_rule_count`, `architecture_tool_count` and `architecture_context_count` are
+informational.
+
+### PHPArkitect's counting ceiling
+
+PHPArkitect (`scripts/runners/php-arkitect.sh`) is a new optional PHP producer, and it is the
+least precise one in the set. It has **no stable machine-readable formatter**, so its violation
+count is parsed out of CLI output. A non-zero exit with no parseable violation line is reported
+as **1 violation** — never `0`.
+
+Read that number as a **floor, not a total**: "at least one boundary broke" is what the runner
+can honestly assert when the output does not itemise. Do not cite a PHPArkitect count as an exact
+violation total, and do not treat a drop from *n* to 1 as progress without reading the output.
+Deptrac's count, by contrast, comes from a real JSON formatter and is exact.
+
+### What a green architecture gate does and does not mean
+
+Architecture tools detect **dependency-boundary violations, not the quality of domain modeling
+itself**. A green gate means "no declared boundary was crossed in the code we scanned, by the
+rules you wrote". Whether those rules describe a good architecture is a human judgement.
+
+Specifically, Sentinel Shield does **not** claim:
+
+- that it proves Clean Architecture by itself — it proves your ruleset held;
+- that it proves DDD correctness — layer regexes do not know whether your aggregates are right;
+- that it replaces architectural review — a reviewed bad boundary passes just as green as a good
+  one;
+- **that Deptrac validates BDD/TDD/ATDD.** Deptrac reads the static dependency graph. It does not
+  execute a single test, does not observe behaviour, does not know whether a scenario, a spec or
+  an acceptance criterion exists, and cannot tell a test-driven codebase from an untested one. A
+  clean Deptrac report on a project with zero tests is entirely possible. Test and behaviour
+  evidence comes from the coverage and test producers, never from an architecture producer.
+
+Rules worth asserting on a Laravel/Symfony codebase — Domain must not depend on Infrastructure;
+Domain must not depend on HTTP/controllers; Domain must not depend on framework facades;
+Application may depend on Domain only; Infrastructure may depend inward; Presentation may depend
+on Application, not Infrastructure directly; Bounded Context internals must not be imported by
+other contexts.
+
+Style starting points ship under `templates/architecture/`
+(`clean-architecture/`, `hexagonal/`, `ddd-bounded-contexts/`, `modular-monolith/`, plus the
+Node/React variants), each marked:
+
+```txt
+Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+```
 
 ---
 
@@ -350,3 +447,13 @@ mappings*; they are **not** evidence of a live consumer run. Promotion to
 actually defines architecture layers, with the resulting report retained. Until
 then: configure deliberately, run in observe mode first, and **never emit a clean
 result when nothing was analysed** — absence is `unavailable`, not `pass`.
+
+**v2.1.0 addendum.** Architecture governance is supported by engine tests and fixtures
+(`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real
+Laravel/Symfony/Node consumer validation exists. The v2.1.0 statuses make the gap legible rather
+than closing it: `unavailable` / `not-configured` / `execution-error` / `disabled` are now
+distinguishable, and `missing_architecture_evidence` blocks in strict and regulated — but a
+distinguishable absence is still an absence, and engine tests are still not a consumer run.
+
+See [`architecture-governance.md`](architecture-governance.md) for the capability spec and
+[`architecture-policy.md`](architecture-policy.md) for the policy file.

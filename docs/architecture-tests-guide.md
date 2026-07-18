@@ -1,4 +1,4 @@
-# Architecture-Tests Guide (v0.1.25)
+# Architecture-Tests Guide (v0.1.25, updated for v2.1.0)
 
 How to wire any architecture-boundary test suite into Sentinel Shield through the
 generic `architecture-tests` collector: the raw JSON contract, worked fixtures with
@@ -19,6 +19,135 @@ bring **your own** architecture-test runner and emit the raw contract yourself.
 > **experimental / not-yet-proven**. Nothing here is promoted on the strength of
 > fixtures alone. **Never emit a clean result when nothing was analysed** — absent
 > input must surface as `unavailable`, not `pass`.
+
+---
+
+## v2.1.0 — Architecture Governance v2
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are
+JS/TS producers. Custom architecture tests can also emit the same contract. The full capability
+— contract, gates, aggregation, policy — is specified in
+[`architecture-governance.md`](architecture-governance.md); this guide stays the home of the
+**custom architecture-test producer**.
+
+### Runners
+
+| Script | Role |
+|---|---|
+| `scripts/runners/architecture-tests.sh` | the generic implementation |
+| `scripts/runners/php-architecture-tests.sh` | thin PHP entry point over it |
+| `scripts/runners/js-architecture-tests.sh` | thin JS/TS entry point over it |
+
+### Command resolution order
+
+The runner needs a command to execute. It resolves one, in order:
+
+1. `--command` on the command line;
+2. the environment variable —
+
+   ```env
+   SENTINEL_SHIELD_ARCH_TEST_CMD=          # generic / PHP
+   SENTINEL_SHIELD_PHP_ARCH_TEST_CMD=      # PHP-specific override
+   SENTINEL_SHIELD_JS_ARCH_TEST_CMD=       # JS/TS
+   ```
+
+3. `architecture.tools.architecture_tests.command` in
+   `.sentinel-shield/architecture-policy.yaml`:
+
+   ```yaml
+   architecture:
+     tools:
+       architecture_tests:
+         command: "npm run test:architecture"
+   ```
+
+The command must write `reports/raw/<producer>.json` or print contract JSON on stdout.
+
+| Outcome | Reported status |
+|---|---|
+| No command resolved | `unavailable` |
+| Command fails and emits no JSON | `execution-error` |
+| Command exits 0 with no JSON | `pass`, `violations: 0` — the exit code is the only evidence, and the report's `message` field says so |
+| Command emits valid contract JSON | normalized as emitted |
+
+### Behaviour changes in v2.1.0
+
+- **A failing arch-test command is no longer `violations: 1`.** Previously a non-zero exit with
+  no report was mapped to a single violation. It is now an honest `execution-error`: a failure of
+  unknown size is not a violation count.
+- **The runner deletes any stale report before running.** A leftover
+  `reports/raw/<producer>.json` from an earlier run can never be mistaken for the current run's
+  evidence.
+- The `pass`-on-exit-0-without-JSON case is deliberately weak evidence and is labelled as such in
+  the report's `message`. Prefer emitting the contract explicitly.
+
+### The normalized architecture contract
+
+The §114 shape below still parses. The v2.1.0 normalized contract any producer may emit is:
+
+```json
+{
+  "tool": "architecture",
+  "status": "pass",
+  "violations": 0,
+  "rule_count": 12,
+  "context_count": 4,
+  "failures": [
+    {
+      "rule": "domain-must-not-depend-on-infrastructure",
+      "from": "App\\Domain\\Order\\Order",
+      "to": "App\\Infrastructure\\Persistence\\DoctrineOrderRepository",
+      "message": "Domain layer depends on Infrastructure"
+    }
+  ]
+}
+```
+
+Allowed statuses: `pass`, `findings`, `unavailable`, `not-configured`, `execution-error`,
+`disabled`, `not-applicable`. **Only `pass` and `findings` count as evidence.** An unknown status
+fails closed as `execution-error`; a missing or empty report becomes `unavailable`; invalid JSON
+exits 2. "We never ran it" can never read as "we are clean."
+
+### Summary keys
+
+| Key | Type | Meaning |
+|---|---|---|
+| `architecture_violations` | integer gate | Now the **sum** across every producer (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, architecture-tests). |
+| `missing_architecture_evidence` | boolean gate | True when an expected producer yields no valid evidence. Strict and regulated block on it. |
+| `architecture_rule_count` | informational | Rules evaluated, summed across producers. |
+| `architecture_tool_count` | informational | Producers that emitted valid evidence. |
+| `architecture_context_count` | informational | Bounded contexts / modules / layers. |
+
+| Gate | report-only | baseline | strict | regulated |
+|---|---:|---:|---:|---:|
+| `architecture_violations` | false | true | true | true |
+| `missing_architecture_evidence` | false | false | true | true |
+
+### Rules worth asserting (Laravel / Symfony)
+
+Whatever producer you pick, these are the boundary rules that carry their weight:
+
+- Domain must not depend on Infrastructure.
+- Domain must not depend on HTTP / controllers.
+- Domain must not depend on framework facades.
+- Application may depend on Domain only.
+- Infrastructure may depend inward.
+- Presentation may depend on Application, not on Infrastructure directly.
+- Bounded Context internals must not be imported by other contexts.
+
+### Style templates
+
+Starting points ship under `templates/architecture/` — `clean-architecture/`, `hexagonal/`,
+`ddd-bounded-contexts/`, `modular-monolith/` (`deptrac.yaml`) plus the Node/React
+dependency-cruiser and ESLint variants. Each carries the same header:
+
+```txt
+Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+```
+
+Engine test evidence for the capability: `tests/prod/280-architecture-governance.sh`. That is
+engine-level proof, and it does not change §120 — it is still not a live consumer run.
 
 ---
 
@@ -179,6 +308,14 @@ sh scripts/collectors/architecture-tests.sh --input reports/raw/architecture-tes
 (Deptrac is the other Laravel option — see
 [`profiles/laravel/deptrac.yaml`](../profiles/laravel/deptrac.yaml) and
 `architecture-deptrac-realism.md` §171.)
+
+**Since v2.1.0 you no longer have to bridge PHPArkitect by hand:** it is a first-class optional
+PHP producer with its own runner, `scripts/runners/php-arkitect.sh`, writing
+`reports/raw/php-arkitect.json`. Note its counting ceiling — PHPArkitect has no stable
+machine-readable formatter, so the runner parses the violation count out of CLI output, and a
+non-zero exit with no parseable violation line is reported as **1** violation (never `0`). The
+count is therefore a floor, not a precise total. The full statement of that limitation is in
+[`architecture-deptrac-realism.md`](architecture-deptrac-realism.md).
 
 ## Symfony example (§109)
 
@@ -379,4 +516,10 @@ Before claiming an architecture-tests result is trustworthy, confirm:
   `unavailable`, not `pass`.
 
 See also [`architecture-deptrac-realism.md`](architecture-deptrac-realism.md) §180
-for the parallel statement on Deptrac.
+for the parallel statement on Deptrac, and
+[`architecture-governance.md`](architecture-governance.md) for the v2.1.0 capability spec
+(normalized contract, producer table, gates, policy).
+
+Architecture governance as a whole is supported by engine tests and fixtures
+(`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real
+Laravel/Symfony/Node consumer validation exists.
