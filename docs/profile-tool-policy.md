@@ -241,6 +241,58 @@ waiver** — it does **not** suppress findings (use accepted-risks for finding g
 and is never auto-applied. Non-suppressible secrets scanners cannot be waived this
 way.
 
+## 4a. Engineering-quality tool policies (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family adds tool keys that fold into a **separate counter channel** from
+security (never mixed into `*_vulnerabilities`). They obey the same policy/state machine above:
+
+Tool keys are stack-scoped (`php-*` on PHP profiles, `js-*` on JS profiles) so a combined profile
+carries both without collision:
+
+| Tool key | Typical policy | Runner | → gate key |
+| --- | --- | --- | --- |
+| `php-coverage` / `js-coverage` | `recommended` (coverage is the mandatory quality signal) | `php-coverage.sh` / `js-coverage.sh` (+ `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression`, `missing_coverage_evidence` |
+| `php-complexity` / `js-complexity` | `recommended` (PHP, PHPMD) / `optional` (JS, external) | `phpmd-complexity.sh` | `complexity_violations` |
+| `php-duplication` / `js-duplication` | `recommended` | `phpcpd.sh` / `jscpd.sh` | `duplication_violations` |
+| `php-mutation` / `js-mutation` | `optional` (slow) | `infection.sh` / `stryker.sh` | `mutation_score_violations` |
+| `php-dead-code` / `js-dead-code` | `optional` | `knip.sh` (JS) / external (PHP) | `dead_code_violations` |
+| `php-diff-coverage` / `js-diff-coverage` | `recommended` (PHP, deterministic runner) / `external` (JS, normalized input) | `php-diff-coverage.sh` (git diff × Clover via `clover-diff-to-coverage-json.php`) / external | `changed_lines_coverage_violations` |
+| `focused-tests` | `recommended` (grep-based, always available) | `focused-tests.sh` | `focused_test_violations`, `skipped_test_marker_violations` |
+| `debug-code` | `recommended` (grep-based, always available) | `debug-code.sh` | `debug_code_violations` |
+| `source-size` | `recommended` (`wc -l`-based, always available) | `source-size.sh` | `large_file_violations`, `large_function_violations` (best-effort) |
+
+The `tests` group is also extended to emit `test_count` + `skipped_tests`, and the profile builder
+(`--profile`) derives the `missing_test_evidence`/`empty_test_suite` booleans from applicable test
+stacks. Because `focused-tests`/`debug-code`/`source-size` are grep/`wc -l`-based they are **always
+available**, so a clean scan is a real `pass` — not `unavailable`; `source-size` reports
+`large_function_violations` as `0` (best-effort/external) until a real per-function counter is dropped
+in.
+
+**PR execution.** The **fast** quality tools now run on pull requests (`execution.pr: true`):
+`php-coverage`/`php-complexity`/`php-duplication`, `js-coverage`/`js-duplication`, and the new
+`php-diff-coverage`/`js-diff-coverage`, `focused-tests`, `debug-code`, and `source-size`. The **slow**
+signals `php-mutation`/`js-mutation` and `php-dead-code`/`js-dead-code` stay `execution.pr: false`
+(main/scheduled only).
+
+Numeric thresholds and the coverage baseline live in `.sentinel-shield/quality-policy.yaml` (schema
+`schemas/quality-policy.schema.json`, template `templates/quality-policy.example.yaml`); an **absent**
+policy falls back to documented defaults, a **malformed** one fails closed (exit 2). Absent quality
+tools stay `unavailable` (never a fake-clean 0); when the profile declares an APPLICABLE coverage tool
+whose report is absent, the builder sets `missing_coverage_evidence` so strict/regulated fail on
+ABSENT coverage (not only on bad coverage).
+
+**Stack scoping:** the single-stack base profiles declare only their own stack —
+`laravel`/`symfony`/`php-library` carry the `php-*` quality tools, `node`/`react` carry the `js-*`
+tools. Only genuinely composed profiles (`node-react`, `laravel-react-docker`, `hardened-enterprise`,
+which compose the bases via `extends`) declare **both** stacks; there a combined profile aggregates
+them (violations SUM, percentages MINIMUM, regression = 1 if any stack regressed) without one stack
+satisfying the other's coverage.
+
+---
+
 ## 5. Control-waivers (`.sentinel-shield/control-waivers.json`)
 
 A control-waiver lets a **required** tool/control be temporarily absent without

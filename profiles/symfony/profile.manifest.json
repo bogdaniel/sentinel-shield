@@ -110,7 +110,14 @@
     "tests.json",
     "composer-audit.json",
     "gitleaks.json",
-    "semgrep.json"
+    "semgrep.json",
+    "php-coverage.json",
+    "php-complexity.json",
+    "php-duplication.json",
+    "php-diff-coverage.json",
+    "focused-tests.json",
+    "debug-code.json",
+    "source-size.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -600,6 +607,154 @@
       ],
       "report": "reports/raw/tests.json",
       "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "executable": [
+        "vendor/bin/pest",
+        "vendor/bin/phpunit"
+      ],
+      "runner": "scripts/runners/php-coverage.sh",
+      "report": "reports/raw/php-coverage.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-complexity": {
+      "policy": "recommended",
+      "category": "complexity",
+      "packages": [
+        {
+          "name": "phpmd/phpmd",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpmd",
+        "phpmd"
+      ],
+      "runner": "scripts/runners/phpmd-complexity.sh",
+      "report": "reports/raw/php-complexity.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-duplication": {
+      "policy": "recommended",
+      "category": "duplication",
+      "packages": [
+        {
+          "name": "sebastian/phpcpd",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpcpd",
+        "phpcpd"
+      ],
+      "runner": "scripts/runners/phpcpd.sh",
+      "report": "reports/raw/php-duplication.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-mutation": {
+      "policy": "optional",
+      "category": "mutation",
+      "packages": [
+        {
+          "name": "infection/infection",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/infection",
+        "infection"
+      ],
+      "runner": "scripts/runners/infection.sh",
+      "report": "reports/raw/php-mutation.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "php-dead-code": {
+      "policy": "optional",
+      "category": "dead-code",
+      "report": "reports/raw/php-dead-code.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "focused-tests": {
+      "policy": "recommended",
+      "category": "test-hygiene",
+      "runner": "scripts/runners/focused-tests.sh",
+      "report": "reports/raw/focused-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "debug-code": {
+      "policy": "recommended",
+      "category": "hygiene",
+      "runner": "scripts/runners/debug-code.sh",
+      "report": "reports/raw/debug-code.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "source-size": {
+      "policy": "recommended",
+      "category": "maintainability",
+      "runner": "scripts/runners/source-size.sh",
+      "report": "reports/raw/source-size.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "php-diff-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "executable": [
+        "vendor/bin/pest",
+        "vendor/bin/phpunit"
+      ],
+      "runner": "scripts/runners/php-diff-coverage.sh",
+      "report": "reports/raw/php-diff-coverage.json",
+      "missing_behavior": "warn",
       "execution": {
         "pr": true,
         "main": true,

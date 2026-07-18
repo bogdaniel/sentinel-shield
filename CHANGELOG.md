@@ -12,6 +12,88 @@ repositories). See [`docs/product-status.md`](docs/product-status.md)
 for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
 engine-only v2 scope.
 
+## [Unreleased]
+
+### Added — Engineering Quality Gates (v2.1)
+
+First-class **engineering-quality** gate family, extending Sentinel Shield from a security/
+release-gate baseline into a broader engineering-governance baseline. Fully additive and
+backward-compatible; **no release, tag, or runtime release evidence is produced by this change.**
+
+- **New gates** (resolver + enforcer): `coverage_threshold_violations`, `coverage_regression`,
+  `mutation_score_violations`, `complexity_violations`, `duplication_violations`,
+  `dead_code_violations`, and the boolean `missing_coverage_evidence`. Emitted as
+  `SENTINEL_SHIELD_FAIL_ON_*` and overridable via `gates.fail_on`. Mode defaults: strict blocks
+  coverage threshold/regression + complexity + duplication + missing-coverage-evidence; regulated
+  additionally blocks mutation + dead-code; report-only/baseline keep all new gates non-blocking.
+  Existing mode defaults are unchanged. `missing_coverage_evidence` (set by the builder when a
+  profile declares an APPLICABLE coverage tool that produced no report) makes strict/regulated fail
+  on ABSENT coverage, not only on bad coverage.
+- **Fail-closed hardening**: the coverage adapters reject out-of-range/non-boolean options and
+  malformed metric objects (exit 2) and fail closed when an explicitly configured regression
+  baseline is missing/malformed; the quality-policy loader validates thresholds as finite,
+  in-range numbers (percentages 0..100, complexity integer ≥ 1) and rejects `1.2.3`/`...`/`101`/
+  `-1`/`NaN`; the PHPMD/knip runners require a recognized report shape (no fake-clean 0 from `{}`).
+- **Schema** (`schemas/security-summary.schema.json`): additive optional summary keys — the six
+  gate counters above plus informational `coverage_line_percent`, `coverage_branch_percent`,
+  `coverage_method_percent`, `coverage_class_percent`, `mutation_score_percent`, `complexity_max`,
+  `complexity_average`, `duplication_percent`, `dead_code_count`. Existing required keys, key
+  names, and exit-code semantics are unchanged; old summaries still validate.
+- **Collectors** (`scripts/collectors/`): `coverage`, `mutation`, `complexity`, `duplication`,
+  `dead-code` — same missing→`unavailable`/invalid→exit-2 contract as every other collector.
+- **Builder** (`scripts/build-security-summary.sh`): quality counters merge as a separate channel
+  (never mixed with vulnerability counters). Combined-profile coverage aggregation — violations
+  SUM across stacks, coverage percentages take the MINIMUM (weakest stack drives the gate),
+  `coverage_regression` is 1 if any stack regressed. Per-stack `php-*`/`js-*` report aliases keep
+  distinct tool visibility; a missing quality report is `unavailable`, never fake-clean.
+- **Coverage support**: PHP Clover (`scripts/adapters/clover-to-coverage-json.php` +
+  `scripts/runners/php-coverage.sh`) and JS Istanbul
+  (`scripts/adapters/istanbul-summary-to-coverage-json.mjs` + `scripts/runners/js-coverage.sh`),
+  with threshold + baseline-regression evaluation from the quality policy.
+- **Additional runners** (optional/recommended by policy): `infection.sh`, `phpmd-complexity.sh`,
+  `phpcpd.sh` (PHP); `stryker.sh`, `jscpd.sh`, `knip.sh` (JS/TS). All leave the report absent when
+  their tool is unavailable.
+- **Quality policy**: `.sentinel-shield/quality-policy.yaml` (loader `scripts/lib/quality-policy.sh`,
+  schema `schemas/quality-policy.schema.json`, template `templates/quality-policy.example.yaml`) —
+  thresholds/baselines for the runners. Fails closed (exit 2) when present-but-malformed; an absent
+  policy uses documented defaults.
+- **Profiles**: coverage/complexity/duplication (recommended) and mutation/dead-code (optional)
+  wired into `laravel`, `symfony`, `php-library`, `node`, `react`; combined profiles
+  (`node-react`, `laravel-react-docker`, `hardened-enterprise`) compose both stacks via `extends`
+  without one stack satisfying the other's coverage.
+- **Docs**: new `docs/engineering-quality-gates.md`; updated raw-report and schema references.
+- **Tests**: `tests/prod/270-quality-gates.sh` covers resolver defaults/overrides, all
+  collectors, builder aggregation, enforcer enable/disable/strict/regulated, quality-policy
+  fail-closed, and the Istanbul/Clover adapters.
+- **Evidence-backed gating (round 2)**: additional best-practice gates so strict/regulated cannot
+  pass because reports are absent or new code is untested —
+  - `changed_lines_coverage_violations` / `changed_lines_coverage_percent` — diff (changed-lines)
+    coverage vs `quality.coverage.changed_lines_min` (baseline+). Collector `diff-coverage`;
+    deterministic PHP runner `php-diff-coverage.sh` (git diff + Clover per-line via
+    `clover-diff-to-coverage-json.php`); JS is external-normalized.
+  - `missing_test_evidence` / `empty_test_suite` (boolean, baseline+) + `test_count` /
+    `skipped_tests` (`skipped_tests` gates in regulated) — the test adapters (PHPUnit/Pest/Jest/
+    Vitest) now emit `tests`/`skipped`; the builder flags an applicable test stack with no report
+    or zero tests. PHP and JS test evidence are independent.
+  - `focused_test_violations` (all modes) / `skipped_test_marker_violations` (strict+) — grep
+    scanner `focused-tests.sh` for `describe.only`/`->only()`/`markTestSkipped`/`it.skip`/…
+  - `debug_code_violations` (baseline+) — grep scanner `debug-code.sh` for
+    `dd`/`dump`/`var_dump`/`console.log`/`debugger`/… (production source only).
+  - `large_file_violations` / `large_function_violations` (strict+) + `max_file_lines` /
+    `max_function_lines` — `source-size.sh` (file-size deterministic; function-size best-effort/
+    external), thresholds `quality.maintainability.max_file_lines` / `max_function_lines`.
+  - Quality-policy validation tightened: percentages finite 0..100, integer thresholds ≥ 1,
+    present-but-empty rejected (exit 2); new `quality.coverage.changed_lines_min` +
+    `quality.maintainability.*`.
+  - Profiles: the fast quality tools (coverage/complexity/duplication + diff-coverage + the
+    focused/debug/size scanners) now run on PRs (`execution.pr=true`); mutation and dead-code stay
+    off-PR. New tool keys wired into all five base profiles (combined profiles compose via
+    `extends`).
+  - `270-quality-gates.sh` extended (67 checks): every new gate's failure path, combined-profile
+    PHP/JS coverage + test-evidence independence, quality-policy malformed cases, adapter option/
+    baseline fail-closed, the `js-coverage.sh` no-dir fix, and all runners; Node **and** PHP are
+    now mandatory for this suite (no skip-pass), provisioned in the CI `self-tests` job.
+
 ## [2.0.1] — Engine-Only Maintenance Release — 2026-07-09
 
 Maintenance release candidate refreshing post-`v2.0.0` release evidence. **No executable

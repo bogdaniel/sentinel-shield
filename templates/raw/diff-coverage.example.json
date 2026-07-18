@@ -1,0 +1,1 @@
+{ "tool": "diff-coverage", "status": "pass", "changed_lines_coverage_percent": 85.5, "threshold": 80, "violations": 0 }

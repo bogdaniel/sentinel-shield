@@ -107,6 +107,80 @@ them non-blocking except strict (install-script + network) and regulated (all).
 
 ---
 
+## Engineering quality gates (v2.1)
+
+> **Unreleased, additive engine capability.** These six gate keys are **not** part of `v2.0.1`/`v2.0.0`
+> and are **not** a new release claim (latest release remains `v2.0.1`, engine-only). They are additive
+> to the resolver: existing gates and their mode defaults above are **unchanged**, and consumers may
+> ignore them entirely. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family is a **separate counter channel** from security (the two are never
+folded together). The resolver emits these alongside the canonical keys, uppercased and prefixed
+`SENTINEL_SHIELD_FAIL_ON_` (e.g. `SENTINEL_SHIELD_FAIL_ON_COVERAGE_THRESHOLD_VIOLATIONS`):
+
+```txt
+coverage_threshold_violations
+coverage_regression
+mutation_score_violations
+complexity_violations
+duplication_violations
+dead_code_violations
+missing_coverage_evidence
+changed_lines_coverage_violations
+missing_test_evidence
+empty_test_suite
+skipped_tests
+focused_test_violations
+skipped_test_marker_violations
+debug_code_violations
+large_file_violations
+large_function_violations
+```
+
+Mode defaults (blocks the build?):
+
+| Gate | report-only | baseline | strict | regulated |
+| --- | --- | --- | --- | --- |
+| coverage_threshold_violations | ❌ | ❌ | ✅ | ✅ |
+| coverage_regression | ❌ | ❌ | ✅ | ✅ |
+| mutation_score_violations | ❌ | ❌ | ❌ | ✅ |
+| complexity_violations | ❌ | ❌ | ✅ | ✅ |
+| duplication_violations | ❌ | ❌ | ✅ | ✅ |
+| dead_code_violations | ❌ | ❌ | ❌ | ✅ |
+| missing_coverage_evidence | ❌ | ❌ | ✅ | ✅ |
+| changed_lines_coverage_violations | ❌ | ✅ | ✅ | ✅ |
+| missing_test_evidence | ❌ | ✅ | ✅ | ✅ |
+| empty_test_suite | ❌ | ✅ | ✅ | ✅ |
+| debug_code_violations | ❌ | ✅ | ✅ | ✅ |
+| focused_test_violations | ✅ | ✅ | ✅ | ✅ |
+| skipped_test_marker_violations | ❌ | ❌ | ✅ | ✅ |
+| large_file_violations | ❌ | ❌ | ✅ | ✅ |
+| large_function_violations | ❌ | ❌ | ✅ | ✅ |
+| skipped_tests | ❌ | ❌ | ❌ | ✅ |
+
+✅ = the gate blocks the build. ❌ = report-only (does not block). The original six (plus
+`missing_coverage_evidence`) are unchanged: `report-only`/`baseline` keep them non-blocking, `strict`
+adds coverage threshold/regression, complexity, duplication, and `missing_coverage_evidence`, and
+`regulated` adds mutation and dead-code. The second-round keys tighten earlier:
+`focused_test_violations` blocks in **every** mode (a stray `.only()` silently disables the suite);
+`changed_lines_coverage_violations`, `missing_test_evidence`, `empty_test_suite`, and
+`debug_code_violations` block from **baseline** up; `skipped_test_marker_violations`,
+`large_file_violations`, and `large_function_violations` block from **strict** up; `skipped_tests`
+blocks only in **regulated**. `missing_coverage_evidence`, `missing_test_evidence`, and
+`empty_test_suite` are boolean gates the builder (`--profile`) raises when an APPLICABLE coverage/test
+tool produced no report (or ran zero tests), so strict/regulated fail on ABSENT evidence (not only on
+bad results); all are additive to the resolver and a missing summary key reads as `0`/`false`.
+
+Overrides follow the **same precedence and reporting** as every other gate: a `gates.fail_on.<key>`
+value in `.sentinel-shield/profile.yaml` overrides its mode default and is reported explicitly. An
+**invalid (non-boolean) override value fails closed (exit 2)**, exactly like the canonical keys. Quality
+gates are **not** accepted-risk-suppressible — to stop blocking on one, set its `fail_on` flag to
+`false` or drop to a lower mode. Numeric thresholds (and the coverage baseline) live in
+`.sentinel-shield/quality-policy.yaml`; a malformed policy file fails closed (exit 2), an absent one
+falls back to documented defaults. Missing quality summary keys are treated as `0` (additive/optional).
+
+---
+
 ## Override precedence
 
 Resolution order is strict and explicit:

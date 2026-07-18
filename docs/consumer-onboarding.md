@@ -243,6 +243,29 @@ not.
 
 ---
 
+## 220 — Adopting engineering quality gates (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim (latest release remains `v2.0.1`). Adopt it the same report-only-first way as every
+> other gate. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality gates (coverage, coverage regression, mutation, complexity, duplication, dead
+code) live in a **separate counter channel** from security and default to **non-blocking** in
+`report-only`/`baseline`, so they are safe to turn on early for visibility.
+
+1. **Copy the policy template.** Copy `templates/quality-policy.example.yaml` to
+   `.sentinel-shield/quality-policy.yaml` and set realistic `line_min`/`branch_min` (and, if you use
+   them, mutation/complexity/duplication thresholds). An absent file falls back to defaults; a malformed
+   one fails closed (exit 2).
+2. **Report-only first.** Wire the coverage runner (mandatory quality signal) — and any optional
+   mutation/complexity/duplication/dead-code runners — and read the numbers in the enforcement report;
+   nothing new blocks yet.
+3. **Record a coverage baseline** so `coverage_regression` becomes meaningful.
+4. **Promote to strict**, where coverage threshold/regression, complexity, and duplication block; add
+   mutation + dead-code by moving to **regulated**. Quality gates are **not** accepted-risk-suppressible.
+
+---
+
 ## Where this fits
 
 This checklist covers a **single consumer**. To roll Sentinel Shield across **many** projects —

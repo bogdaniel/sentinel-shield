@@ -1,0 +1,1 @@
+{ "tool": "complexity", "status": "pass", "max_complexity": 9, "average_complexity": 3.2, "threshold": 10, "violations": 0 }

@@ -728,3 +728,23 @@ Real zenchron-tools evidence (run 27239206382): **Semgrep 1.165.0 consumer-verif
 errors on real code, vs 118 on 1.90.0), **Grype** (SBOM-first) and **Dockle** (built image) promoted
 to **live-validated**. **Dependency-Check** attempted but not live-validated (cold NVD exceeds CI
 budget — nightly with a warm cache). See [`docs/main-gate-live-evidence.md`](docs/main-gate-live-evidence.md).
+
+## Engineering quality gates (v2.1)
+Sentinel Shield gates an **engineering-quality** family — coverage (line/branch/method/class),
+coverage regression, mutation score, complexity, duplication, and dead code — in a **separate counter
+channel** from security (the two are never folded together). Six new gate keys
+(`coverage_threshold_violations`, `coverage_regression`, `mutation_score_violations`,
+`complexity_violations`, `duplication_violations`, `dead_code_violations`) plus optional informational
+percentages travel in `security-summary.json`; mode defaults enable coverage-threshold/regression,
+complexity and duplication in **strict**, and everything (adding mutation + dead-code) in **regulated**.
+Thresholds live in `.sentinel-shield/quality-policy.yaml`. Deptrac stays `architecture_violations`,
+PHPStan/Psalm stay `type_errors`, Pint/PHP-CS-Fixer stay `style_violations` — unchanged.
+The family now also covers **changed-line (diff) coverage**, **test-evidence / empty-suite** checks
+(`missing_test_evidence`, `empty_test_suite`), **focused/skipped-test markers**
+(`focused_test_violations` blocks in every mode; `skipped_test_marker_violations`, `skipped_tests`),
+**debug residue** (`debug_code_violations`), and **file-size maintainability** (`large_file_violations`,
+`large_function_violations`) — all additive/optional (missing→0/false) and in the same separate counter
+channel; the fast quality tools now also run on PRs.
+> **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
+> **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
+> [`docs/engineering-quality-gates.md`](docs/engineering-quality-gates.md).

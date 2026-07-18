@@ -69,7 +69,13 @@
     "typescript.json",
     "eslint.json",
     "gitleaks.json",
-    "semgrep.json"
+    "semgrep.json",
+    "js-coverage.json",
+    "js-duplication.json",
+    "js-diff-coverage.json",
+    "focused-tests.json",
+    "debug-code.json",
+    "source-size.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -358,6 +364,146 @@
       "requires": [
         "deps-install"
       ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "runner": "scripts/runners/js-coverage.sh",
+      "report": "reports/raw/js-coverage.json",
+      "missing_behavior": "warn",
+      "requires": [
+        "deps-install"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-duplication": {
+      "policy": "recommended",
+      "category": "duplication",
+      "packages": [
+        {
+          "name": "jscpd",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/jscpd"
+      ],
+      "runner": "scripts/runners/jscpd.sh",
+      "report": "reports/raw/js-duplication.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-mutation": {
+      "policy": "optional",
+      "category": "mutation",
+      "packages": [
+        {
+          "name": "@stryker-mutator/core",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/stryker"
+      ],
+      "runner": "scripts/runners/stryker.sh",
+      "report": "reports/raw/js-mutation.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "js-dead-code": {
+      "policy": "optional",
+      "category": "dead-code",
+      "packages": [
+        {
+          "name": "knip",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/knip",
+        "node_modules/.bin/ts-prune"
+      ],
+      "runner": "scripts/runners/knip.sh",
+      "report": "reports/raw/js-dead-code.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "js-complexity": {
+      "policy": "optional",
+      "category": "complexity",
+      "report": "reports/raw/js-complexity.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": false,
+        "scheduled": true
+      }
+    },
+    "focused-tests": {
+      "policy": "recommended",
+      "category": "test-hygiene",
+      "runner": "scripts/runners/focused-tests.sh",
+      "report": "reports/raw/focused-tests.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "debug-code": {
+      "policy": "recommended",
+      "category": "hygiene",
+      "runner": "scripts/runners/debug-code.sh",
+      "report": "reports/raw/debug-code.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "source-size": {
+      "policy": "recommended",
+      "category": "maintainability",
+      "runner": "scripts/runners/source-size.sh",
+      "report": "reports/raw/source-size.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-diff-coverage": {
+      "policy": "recommended",
+      "category": "coverage",
+      "report": "reports/raw/js-diff-coverage.json",
+      "missing_behavior": "warn",
       "execution": {
         "pr": true,
         "main": true,

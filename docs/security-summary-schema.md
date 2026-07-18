@@ -39,7 +39,12 @@ A missing `summary` key is an **error** (exit 2), never a silent zero.
 
 ## Summary key meanings
 
-All keys are required. Integer keys are non-negative counts; two are booleans.
+The **legacy** keys below are required (a missing one is an error, never a silent zero); integer
+keys are non-negative counts and two are booleans. Keys added later — the `third_party_*` channel
+(v0.1.5+), the `v0.1.12+` enterprise counters, and the **v2.1 engineering-quality keys** (see the
+subsection below) — are **optional/additive**: a missing one reads as `0` (or `false` for the
+boolean gate), so older summaries stay valid. The enforcer validates exactly the required legacy
+keys and treats every optional key as absent→0.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -59,6 +64,56 @@ All keys are required. Integer keys are non-negative counts; two are booleans.
 | `third_party_install_script_risk` | integer | (v0.1.5+, optional) Dependency install-script (pre/post/install) risks. |
 | `third_party_obfuscation` | integer | (v0.1.5+, optional) Third-party obfuscation indicators. |
 | `third_party_network_behavior` | integer | (v0.1.5+, optional) Third-party env-read / outbound-network indicators. |
+
+### Engineering-quality summary keys (v2.1, optional/additive)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+The engineering-quality family adds **optional** summary keys. They are a **separate counter channel**
+from security (never folded into `*_vulnerabilities`), are additive to the schema, and are missing→`0`
+by convention, so **old summaries remain valid** and producers need not emit them. **Thirteen are
+count gates** (`coverage_threshold_violations`, `coverage_regression`, `mutation_score_violations`,
+`complexity_violations`, `duplication_violations`, `dead_code_violations`,
+`changed_lines_coverage_violations`, `skipped_tests`, `focused_test_violations`,
+`skipped_test_marker_violations`, `debug_code_violations`, `large_file_violations`,
+`large_function_violations`) and **three are boolean gates** (`missing_coverage_evidence`,
+`missing_test_evidence`, `empty_test_suite`); the rest are informational numbers that never gate
+directly:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `coverage_threshold_violations` | integer | Coverage thresholds breached (line/branch/method/class). |
+| `coverage_regression` | integer | `1` when coverage dropped vs the recorded baseline for any stack. |
+| `mutation_score_violations` | integer | Mutation score (MSI) below the configured minimum. |
+| `complexity_violations` | integer | Functions/methods over the complexity threshold. |
+| `duplication_violations` | integer | Duplicated-code percentage over the threshold. |
+| `dead_code_violations` | integer | Unused exports/files/symbols over policy. |
+| `changed_lines_coverage_violations` | integer | Stacks whose new/changed-line (diff) coverage is below `quality.coverage.changed_lines_min` (**summed**). |
+| `skipped_tests` | integer | Count of skipped tests (**summed**). Gated in regulated. |
+| `focused_test_violations` | integer | Focused markers (`describe.only`/`it.only`/`->only()`). Gated in every mode. |
+| `skipped_test_marker_violations` | integer | Skip markers (`markTestSkipped`/`it.skip`/`xit`/…). Gated in strict/regulated. |
+| `debug_code_violations` | integer | Debug residue (`dd`/`dump`/`var_dump`/`console.log`/`debugger`/…). Gated in baseline+. |
+| `large_file_violations` | integer | Files over `quality.maintainability.max_file_lines`. Gated in strict/regulated. |
+| `large_function_violations` | integer | Functions over `quality.maintainability.max_function_lines` (best-effort). Gated in strict/regulated. |
+| `missing_coverage_evidence` | boolean | `true` when an APPLICABLE coverage tool produced no valid report (emitted only with `--profile`; absent reads as `false`). Lets strict/regulated fail on ABSENT coverage. |
+| `missing_test_evidence` | boolean | `true` when an APPLICABLE test stack produced no valid test report (`--profile` only; absent reads as `false`). |
+| `empty_test_suite` | boolean | `true` when an applicable test report exists but ran zero tests (`--profile` only; absent reads as `false`). |
+| `coverage_line_percent` / `coverage_branch_percent` / `coverage_method_percent` / `coverage_class_percent` | number | Informational coverage percentages. |
+| `changed_lines_coverage_percent` | number | Informational diff-coverage percent (aggregate = **minimum** across stacks). |
+| `mutation_score_percent` | number | Informational mutation score indicator. |
+| `complexity_max` / `complexity_average` | number | Informational complexity metrics. |
+| `duplication_percent` | number | Informational duplicated-code percentage. |
+| `dead_code_count` | integer | Informational count of dead-code items. |
+| `test_count` | integer | Informational total tests executed (**summed** across stacks). |
+| `max_file_lines` / `max_function_lines` | integer | Informational largest file / function line-counts (aggregate = **maximum** across stacks). |
+
+The gate counters and the three boolean gates map to `SENTINEL_SHIELD_FAIL_ON_<UPPERCASE>` flags
+exactly like the keys below (integer counters fail when the count `> 0`, booleans fail when `true`, in
+each case only when the resolved flag is `true`); the informational metrics are for reporting/triage
+only and are **not** gated. All of these keys are optional/additive — a missing one reads as `0`
+(or `false` for the booleans) so old summaries stay valid. Quality gates are **not**
+accepted-risk-suppressible.
 
 ---
 
@@ -80,6 +135,22 @@ The enforcer evaluates each gate only when its resolved flag is `true`:
 | `MISSING_SBOM` | `summary.missing_sbom == true` OR `evidence.sbom.present == false` |
 | `MISSING_RELEASE_EVIDENCE` | `summary.missing_release_evidence == true` OR `evidence.release_evidence.present == false` |
 | `EXPIRED_EXCEPTIONS` | `summary.expired_exceptions > 0` OR `exceptions.expired > 0` |
+
+**Engineering-quality gates (v2.1)** map the same way — each count gate fails when its
+`summary.<key> > 0`, each boolean gate when its `summary.<key> == true`, only while the resolved
+flag is `true`:
+
+| Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
+| --- | --- |
+| `COVERAGE_THRESHOLD_VIOLATIONS` / `COVERAGE_REGRESSION` | `summary.<key> > 0` |
+| `MUTATION_SCORE_VIOLATIONS` / `COMPLEXITY_VIOLATIONS` / `DUPLICATION_VIOLATIONS` / `DEAD_CODE_VIOLATIONS` | `summary.<key> > 0` |
+| `CHANGED_LINES_COVERAGE_VIOLATIONS` / `SKIPPED_TESTS` | `summary.<key> > 0` |
+| `FOCUSED_TEST_VIOLATIONS` / `SKIPPED_TEST_MARKER_VIOLATIONS` / `DEBUG_CODE_VIOLATIONS` | `summary.<key> > 0` |
+| `LARGE_FILE_VIOLATIONS` / `LARGE_FUNCTION_VIOLATIONS` | `summary.<key> > 0` |
+| `MISSING_COVERAGE_EVIDENCE` / `MISSING_TEST_EVIDENCE` / `EMPTY_TEST_SUITE` | `summary.<key> == true` |
+
+See [`gate-resolution.md`](gate-resolution.md) for the authoritative per-mode default matrix and
+[`engineering-quality-gates.md`](engineering-quality-gates.md) for the full reference.
 
 Disabled gates (flag `false`) are recorded as `skipped` and never fail the build.
 

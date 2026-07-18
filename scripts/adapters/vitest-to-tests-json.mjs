@@ -44,18 +44,28 @@ try {
 
 // Vitest's JSON reporter is Jest-compatible. Prefer top-level aggregate counts.
 // failures = failed tests; errors = failed test SUITES (compile/runtime errors).
+const SKIPPED_STATUSES = new Set(['skipped', 'pending', 'todo', 'disabled']);
 let failures;
 let errors;
+let tests;
+let skipped;
 if (typeof data.numFailedTests === 'number') {
   failures = data.numFailedTests;
   errors = typeof data.numFailedTestSuites === 'number' ? data.numFailedTestSuites : 0;
+  tests = typeof data.numTotalTests === 'number' ? data.numTotalTests : 0;
+  skipped = (typeof data.numPendingTests === 'number' ? data.numPendingTests : 0)
+    + (typeof data.numTodoTests === 'number' ? data.numTodoTests : 0);
 } else if (Array.isArray(data.testResults)) {
   // Fallback: derive from per-file results.
   failures = 0;
   errors = 0;
+  tests = 0;
+  skipped = 0;
   for (const tr of data.testResults) {
     if (Array.isArray(tr.assertionResults)) {
+      tests += tr.assertionResults.length;
       failures += tr.assertionResults.filter((a) => a.status === 'failed').length;
+      skipped += tr.assertionResults.filter((a) => SKIPPED_STATUSES.has(a.status)).length;
     }
     if (tr.status === 'failed' && (!Array.isArray(tr.assertionResults) || tr.assertionResults.length === 0)) {
       errors += 1; // suite failed without producing assertions (e.g. import error)
@@ -65,7 +75,7 @@ if (typeof data.numFailedTests === 'number') {
   fail('unrecognized Vitest JSON shape (expected numFailedTests or testResults[])');
 }
 
-const result = { failures, errors };
+const result = { failures, errors, tests, skipped };
 const dir = dirname(output);
 try {
   if (dir && dir !== '.') mkdirSync(dir, { recursive: true });

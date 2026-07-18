@@ -62,6 +62,21 @@ THIRD_PARTY_KEYS="third_party_suspicious_code third_party_install_script_risk th
 # suppressible and is unaffected.
 ENTERPRISE_COUNT_KEYS="php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings"
 
+# Engineering-quality count gates (v2.1). Evaluated like count gates; optional (an
+# older summary that omits them reads as 0, not a config error). Mode defaults gate
+# these (see resolve-gates.sh): strict blocks coverage threshold/regression + complexity +
+# duplication; regulated adds mutation + dead-code. These are a SEPARATE channel from
+# security counters — quality findings are never folded into vulnerability counts, and
+# vice-versa. NOT suppressible by accepted-risk (loud and visible by design); disable via
+# an explicit gates.fail_on override or a lower mode.
+QUALITY_COUNT_KEYS="coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations changed_lines_coverage_violations skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations"
+
+# Boolean quality gates (v2.1) — evaluated with eval_bool_gate (absent key reads as false).
+QUALITY_BOOL_KEYS="missing_coverage_evidence missing_test_evidence empty_test_suite"
+
+# Informational quality metrics surfaced in the enforcement report (never gate directly).
+QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count changed_lines_coverage_percent test_count max_file_lines max_function_lines"
+
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
 SUMMARY="reports/security-summary.json"
@@ -455,6 +470,20 @@ eval_unsafe_docker() {
 	fi
 }
 
+# Boolean gate: fails when summary.<key> == true and the flag is enabled. Absent key reads
+# as false (no trigger). Used by missing_coverage_evidence (no evidence.present sidecar).
+eval_bool_gate() {
+	_key=$1
+	_flag=$(gate_flag "$_key")
+	_v=$(jqr ".summary.$_key")   # true|false|null
+	_trig=false; [ "$_v" = "true" ] && _trig=true
+	if [ "$_flag" = "true" ]; then
+		if [ "$_trig" = "true" ]; then add_eval "$_key" true "$_trig" fail; else add_eval "$_key" true "$_trig" pass; fi
+	else
+		add_eval "$_key" false "$_trig" skipped
+	fi
+}
+
 # Evidence/boolean gate: fails when summary flag is true OR evidence present==false.
 eval_missing_gate() {
 	_key=$1            # missing_sbom | missing_release_evidence
@@ -512,6 +541,21 @@ done
 # Enterprise scanner count gates (v0.1.12). Evaluated like count gates; optional.
 for _eck in $ENTERPRISE_COUNT_KEYS; do
 	eval_count_gate "$_eck"
+done
+
+# Engineering-quality count gates (v2.1). Evaluated like count gates; optional. NOT
+# suppressible (they are absent from SUPPRESSIBLE_GATES, so is_gate_suppressed is always
+# false for them) — a quality regression is loud by design.
+for _qck in $QUALITY_COUNT_KEYS; do
+	eval_count_gate "$_qck"
+done
+
+# Boolean quality gates (v2.1) — missing_coverage_evidence / missing_test_evidence /
+# empty_test_suite. The builder (run with --profile) sets these when an APPLICABLE coverage/test
+# stack produced no valid report (or an empty suite), so strict/regulated fail on ABSENT evidence
+# (not only on bad numbers). Absent key (older/non-profile summary) reads as false (back-compat).
+for _qbk in $QUALITY_BOOL_KEYS; do
+	eval_bool_gate "$_qbk"
 done
 
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
@@ -809,6 +853,24 @@ write_markdown() {
 			printf -- '| %s | %s |\n' "$k" "$_tv"
 		done
 		printf -- '| tool status | %s |\n\n' "$(jqr '.tools.third_party_semgrep.status')"
+
+		printf '## Engineering quality gates\n\n'
+		printf -- '> Separate channel from security and architecture. Quality findings are\n'
+		printf -- '> never folded into vulnerability counts. Mode defaults: strict blocks\n'
+		printf -- '> coverage threshold/regression + complexity + duplication; regulated adds\n'
+		printf -- '> mutation + dead-code. See docs/engineering-quality-gates.md.\n\n'
+		printf -- '| Gate | Count |\n| --- | --- |\n'
+		for k in $QUALITY_COUNT_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv=0 ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+		printf -- '| Metric | Value |\n| --- | --- |\n'
+		for k in $QUALITY_INFO_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
 
 		if [ "$HAS_POLICY" = "1" ]; then
 			printf '## Required-tool policy (controls)\n\n'

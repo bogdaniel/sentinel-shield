@@ -133,7 +133,28 @@ nuclei|nuclei.json|nuclei.sh|nuclei
 ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_review
 kuzushi|kuzushi.json|kuzushi.sh|kuzushi
 dependency-policy|dependency-policy.json|dependency-policy.sh|dependency_policy
-architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests'
+architecture-tests|architecture-tests.json|architecture-tests.sh|architecture_tests
+coverage|coverage.json|coverage.sh|coverage
+php-coverage|php-coverage.json|coverage.sh|php_coverage
+js-coverage|js-coverage.json|coverage.sh|js_coverage
+mutation|mutation.json|mutation.sh|mutation
+php-mutation|php-mutation.json|mutation.sh|php_mutation
+js-mutation|js-mutation.json|mutation.sh|js_mutation
+complexity|complexity.json|complexity.sh|complexity
+php-complexity|php-complexity.json|complexity.sh|php_complexity
+js-complexity|js-complexity.json|complexity.sh|js_complexity
+duplication|duplication.json|duplication.sh|duplication
+php-duplication|php-duplication.json|duplication.sh|php_duplication
+js-duplication|js-duplication.json|duplication.sh|js_duplication
+dead-code|dead-code.json|dead-code.sh|dead_code
+php-dead-code|php-dead-code.json|dead-code.sh|php_dead_code
+js-dead-code|js-dead-code.json|dead-code.sh|js_dead_code
+diff-coverage|diff-coverage.json|diff-coverage.sh|diff_coverage
+php-diff-coverage|php-diff-coverage.json|diff-coverage.sh|php_diff_coverage
+js-diff-coverage|js-diff-coverage.json|diff-coverage.sh|js_diff_coverage
+focused-tests|focused-tests.json|focused-tests.sh|focused_tests
+debug-code|debug-code.json|debug-code.sh|debug_code
+source-size|source-size.json|source-size.sh|source_size'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -268,7 +289,16 @@ fi
 # --- merge -------------------------------------------------------------------
 ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 
+# Merge rules by key class:
+#   - count keys (default): SUM across collectors (so PHP + JS coverage violations add).
+#   - informational MIN keys (percentages): the weakest stack drives the gate, so take the
+#     minimum across applicable stacks (docs/engineering-quality-gates.md coverage aggregation).
+#   - informational MAX keys (worst-observed): take the maximum across stacks.
+#   - coverage_regression is a boolean-ish flag: clamp the summed count to 0/1 (1 = ANY stack
+#     regressed).
 COUNTS=$(printf '%s' "$ARR" | jq '
+	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent","changed_lines_coverage_percent"];
+	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines"];
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
@@ -277,9 +307,24 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 third_party_obfuscation:0, third_party_network_behavior:0,
 		 style_violations:0, php_syntax_errors:0, dependency_policy_violations:0,
 		 iac_violations:0, dast_findings:0, container_image_violations:0,
-		 repository_health_warnings:0, ai_review_findings:0};
-		reduce ($c.summary | keys_unsorted[]) as $k (.; .[$k] = ((.[$k] // 0) + ($c.summary[$k] // 0)))
-	)')
+		 repository_health_warnings:0, ai_review_findings:0,
+		 coverage_threshold_violations:0, coverage_regression:0,
+		 mutation_score_violations:0, complexity_violations:0,
+		 duplication_violations:0, dead_code_violations:0,
+		 changed_lines_coverage_violations:0, skipped_tests:0, test_count:0,
+		 focused_test_violations:0, skipped_test_marker_violations:0,
+		 debug_code_violations:0, large_file_violations:0, large_function_violations:0};
+		reduce ($c.summary | keys_unsorted[]) as $k (.;
+			($c.summary[$k]) as $v
+			| if (mins | index($k)) then
+				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | min) end)
+			  elif (maxs | index($k)) then
+				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | max) end)
+			  else
+				.[$k] = ((.[$k] // 0) + ($v // 0))
+			  end)
+	)
+	| .coverage_regression = ([.coverage_regression, 1] | min)')
 
 TOOLSOBJ=$(printf '%s' "$ARR" | jq 'reduce .[] as $c ({}; .[$c.tool] = $c.tool_report)')
 
@@ -294,6 +339,9 @@ ONEOF_ECHO='{}'
 REQ_FAIL=0
 CFG_FAIL=0
 EXE_FAIL=0
+MISSING_COV=false   # v2.1: an applicable coverage tool produced no valid report (profile-aware)
+MISSING_TEST=false  # v2.1: an applicable test stack produced no valid test report
+EMPTY_SUITE=false   # v2.1: an applicable test report exists but ran zero tests
 if [ -n "$PROFILE_NAME" ]; then
 	HAVE_POLICY=1
 	RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
@@ -348,7 +396,11 @@ if [ -n "$PROFILE_NAME" ]; then
 		[ -n "$trep" ] && repfile="$RAW_DIR/$(basename -- "$trep")"
 
 		# Reuse the collector's status when this tool has one (TOOL_TABLE), so the
-		# findings/pass split matches the mapped summary counters.
+		# findings/pass split matches the mapped summary counters. _hascol distinguishes
+		# "a collector ran and returned a status" from "this tool has NO collector" (e.g.
+		# larastan/pint/syft declare a report but no scripts/collectors/*.sh) — the latter
+		# must NOT be treated as a collector emitting an empty status.
+		_hascol=$(printf '%s' "$TOOLSOBJ" | jq -r --arg e "$emit" 'if has($e) then "1" else "0" end')
 		cstatus=$(printf '%s' "$TOOLSOBJ" | jq -r --arg e "$emit" '(.[$e].status) // ""')
 
 		report_ok=0
@@ -374,10 +426,26 @@ if [ -n "$PROFILE_NAME" ]; then
 				status="unavailable"
 			fi
 		elif [ "$report_ok" -eq 1 ]; then
-			executed=true; installed=true
+			# A present, valid-JSON report may STILL honestly report a non-clean status
+			# (unavailable / not-configured / execution-error / disabled / not-applicable) —
+			# those must be PRESERVED, never collapsed into a clean pass, so the evidence gates
+			# (missing_coverage_evidence / missing_test_evidence) and required-tool enforcement
+			# read the truth. Unknown status fails closed as execution-error.
 			case "$cstatus" in
-				fail | findings) status="findings" ;;
-				*) status="pass" ;;
+				fail | findings | warn) status="findings"; executed=true; installed=true ;;
+				pass) status="pass"; executed=true; installed=true ;;
+				unavailable) status="unavailable"; executed=false ;;
+				not-configured) status="not-configured"; configured=false; executed=false ;;
+				execution-error) status="execution-error"; executed=false ;;
+				disabled) status="disabled"; configured=false; executed=false ;;
+				not-applicable) status="not-applicable"; executed=false ;;
+				'')
+					# Empty cstatus: no collector for this tool -> a present, valid report means it
+					# ran, so pass. A collector that ran but returned an empty status is an anomaly
+					# -> fail closed as execution-error.
+					if [ "$_hascol" = "0" ]; then status="pass"; executed=true; installed=true
+					else status="execution-error"; executed=false; fi ;;
+				*) status="execution-error"; executed=false ;;
 			esac
 		else
 			# Report absent/invalid: NEVER becomes a clean 0.
@@ -446,6 +514,50 @@ EOF
 	done
 	REQ_FAIL=$((REQ_FAIL + _unsat))
 
+	# missing_coverage_evidence (v2.1): an APPLICABLE coverage tool that produced no valid report
+	# means strict/regulated has NO coverage evidence (so the gate can fail on ABSENT coverage, not
+	# only on bad coverage). Emit-name matches /coverage/ (coverage, php_coverage, js_coverage).
+	# "unknown" applicability counts as applicable (fail closed). A present report (status
+	# pass/findings) is evidence and never counts as missing.
+	# Main coverage tools only (php_coverage/js_coverage) — NOT diff-coverage (which has its own
+	# changed_lines_coverage_violations gate), so a missing diff report never fakes a missing
+	# main-coverage failure.
+	MISSING_COV=$(printf '%s' "$POLICY_TOOLS" | jq -r '
+		[ to_entries[]
+		  | select((.key | test("coverage")) and (.key | test("diff") | not))
+		  | select((.value.applicability // "unknown") != "not-applicable")
+		  | select((.value.status // "") | IN("unavailable","not-configured","execution-error")) ] | length
+		| if . > 0 then "true" else "false" end')
+
+	# missing_test_evidence / empty_test_suite (v2.1): each APPLICABLE test stack must produce a
+	# non-empty test report. Expected test reports = distinct reports of profile tools with
+	# category=="tests" (e.g. tests.json for PHP, js-tests.json for JS) — so PHP and JS stay
+	# independent (PHP tests never satisfy JS, and vice-versa). A missing/invalid report is
+	# missing evidence; a present report with 0 tests is an empty suite. Never faked.
+	_test_reports=$(printf '%s' "$EFF" | jq -r '
+		[ .tools[]? | select((.category // "") == "tests")
+		  | select((.applicability // "unknown") != "not-applicable")
+		  | .report ] | map(select(. != null and . != "")) | unique[]' 2>/dev/null || true)
+	for _tr in $_test_reports; do
+		_trf="$RAW_DIR/$(basename -- "$_tr")"
+		if [ -f "$_trf" ] && [ -s "$_trf" ] && jq -e . "$_trf" >/dev/null 2>&1; then
+			# A present report that honestly reports a non-clean status (unavailable /
+			# not-configured / execution-error / disabled) is MISSING test evidence — NOT an
+			# empty (but successful) suite. Only a clean report with tests:0 is empty_test_suite.
+			_tst=$(jq -r '.status // ""' "$_trf" 2>/dev/null || printf '')
+			case "$_tst" in
+				unavailable | not-configured | execution-error | disabled)
+					MISSING_TEST=true ;;
+				*)
+					_tc=$(jq -r '((.tests // 0) | if type=="number" then floor else 0 end)' "$_trf" 2>/dev/null || printf 0)
+					case "$_tc" in '' | *[!0-9]*) _tc=0 ;; esac
+					[ "$_tc" -eq 0 ] && EMPTY_SUITE=true ;;
+			esac
+		else
+			MISSING_TEST=true
+		fi
+	done
+
 	# Merge policy objects onto the collector tool reports (policy fields win; the
 	# unavailable/etc. status overwrites any collector "unavailable"); detail kept.
 	TOOLSOBJ=$(jq -n --argjson base "$TOOLSOBJ" --argjson pol "$POLICY_TOOLS" '$base * $pol')
@@ -485,14 +597,15 @@ jq -n \
 	--arg sbom_path "$SBOM_PATH" --arg rel_path "$RELEASE_PATH" \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
-	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" '
+	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
+	--argjson misscov "$MISSING_COV" --argjson misstest "$MISSING_TEST" --argjson emptysuite "$EMPTY_SUITE" '
 	{
 		version: $version,
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
 		summary: ($counts + { missing_sbom: $ms, missing_release_evidence: $mr, expired_exceptions: $ee }
-			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef } else {} end)),
+			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
 		evidence: {

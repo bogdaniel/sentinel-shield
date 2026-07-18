@@ -44,17 +44,27 @@ try {
 
 // Jest top-level aggregates: numFailedTests + numRuntimeErrorTestSuites (suites that
 // could not run, e.g. import/transform errors) -> errors.
+const SKIPPED_STATUSES = new Set(['skipped', 'pending', 'todo', 'disabled']);
 let failures;
 let errors;
+let tests;
+let skipped;
 if (typeof data.numFailedTests === 'number') {
   failures = data.numFailedTests;
   errors = typeof data.numRuntimeErrorTestSuites === 'number' ? data.numRuntimeErrorTestSuites : 0;
+  tests = typeof data.numTotalTests === 'number' ? data.numTotalTests : 0;
+  skipped = (typeof data.numPendingTests === 'number' ? data.numPendingTests : 0)
+    + (typeof data.numTodoTests === 'number' ? data.numTodoTests : 0);
 } else if (Array.isArray(data.testResults)) {
   failures = 0;
   errors = 0;
+  tests = 0;
+  skipped = 0;
   for (const tr of data.testResults) {
     if (Array.isArray(tr.assertionResults)) {
+      tests += tr.assertionResults.length;
       failures += tr.assertionResults.filter((a) => a.status === 'failed').length;
+      skipped += tr.assertionResults.filter((a) => SKIPPED_STATUSES.has(a.status)).length;
     }
     if (tr.status === 'failed' && (!Array.isArray(tr.assertionResults) || tr.assertionResults.length === 0)) {
       errors += 1;
@@ -64,7 +74,7 @@ if (typeof data.numFailedTests === 'number') {
   fail('unrecognized Jest JSON shape (expected numFailedTests or testResults[])');
 }
 
-const result = { failures, errors };
+const result = { failures, errors, tests, skipped };
 const dir = dirname(output);
 try {
   if (dir && dir !== '.') mkdirSync(dir, { recursive: true });

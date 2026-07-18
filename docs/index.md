@@ -58,6 +58,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 
 ### Modes, gates & governance
 - [`gate-resolution.md`](gate-resolution.md) — mode → gate flags → enforce **[stable]**
+- [`engineering-quality-gates.md`](engineering-quality-gates.md) — coverage/mutation/complexity/duplication/dead-code quality gates (v2.1; unreleased, additive engine capability) **[stable]**
 - [`severity-policy.md`](severity-policy.md) — severity → gate mapping **[stable]**
 - [`strict-mode-readiness.md`](strict-mode-readiness.md) — strict opt-in pre-flight **[stable]**
 - [`regulated-mode-readiness.md`](regulated-mode-readiness.md) — regulated (not default) **[advanced]**

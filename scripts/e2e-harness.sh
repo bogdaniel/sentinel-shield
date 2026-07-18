@@ -290,6 +290,13 @@ eh_build_and_gate() {
 	sh "$SCRIPT_DIR/resolve-gates.sh" --profile "$PROFILE_YAML" --mode baseline \
 		--output-dir "$_w/reports" --format env >/dev/null 2>&1 \
 		|| { printf 'error'; return 4; }
+	# This harness proves the REQUIRED-tool -> gate contract (tool availability/execution decides
+	# pass/fail). The additive engineering-quality gates (v2.1) are orthogonal — driven by fixture
+	# test-counts / debug / focused-test / diff-coverage content, not by required-tool availability —
+	# and are exhaustively exercised by tests/prod/270-quality-gates.sh. Force them OFF here so
+	# fixture source content cannot perturb the required-tool contract this harness verifies.
+	_envf="$_w/reports/sentinel-shield-gates.env"
+	awk '/^SENTINEL_SHIELD_FAIL_ON_(COVERAGE_THRESHOLD_VIOLATIONS|COVERAGE_REGRESSION|MUTATION_SCORE_VIOLATIONS|COMPLEXITY_VIOLATIONS|DUPLICATION_VIOLATIONS|DEAD_CODE_VIOLATIONS|MISSING_COVERAGE_EVIDENCE|CHANGED_LINES_COVERAGE_VIOLATIONS|MISSING_TEST_EVIDENCE|EMPTY_TEST_SUITE|SKIPPED_TESTS|FOCUSED_TEST_VIOLATIONS|SKIPPED_TEST_MARKER_VIOLATIONS|DEBUG_CODE_VIOLATIONS|LARGE_FILE_VIOLATIONS|LARGE_FUNCTION_VIOLATIONS)=/{sub(/=.*/,"=false")}{print}' "$_envf" > "$_envf.tmp" && mv "$_envf.tmp" "$_envf"
 	_rc=0
 	sh "$SCRIPT_DIR/enforce-gates.sh" \
 		--gates-env "$_w/reports/sentinel-shield-gates.env" \

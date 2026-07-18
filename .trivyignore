@@ -1,0 +1,14 @@
+# Sentinel Shield — Trivy filesystem-scan suppressions.
+#
+# The Sentinel Shield ENGINE ships no PHP production dependencies; its supply chain is the
+# shell scripts, workflows, and schemas in this repo. The only composer.lock in the tree is a
+# static TEST FIXTURE (tests/fixtures/projects/symfony/) that models a consumer project for
+# install/detection tests — it is never `composer install`ed and is not part of the engine's
+# supply chain. A fixture's pinned lock will perpetually accrue new advisories as the Trivy DB
+# updates, so these fixture-only findings are suppressed here (with justification) to keep the
+# engine fs scan meaningful for the engine's OWN dependencies.
+#
+# symfony/yaml v7.0.0 (tests/fixtures/projects/symfony/composer.lock), new 2026 advisories:
+CVE-2026-45133
+CVE-2026-45304
+CVE-2026-45305

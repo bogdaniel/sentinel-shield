@@ -1,0 +1,1 @@
+{ "tool": "source-size", "status": "pass", "large_file_violations": 0, "large_function_violations": 0, "max_file_lines": 320, "max_function_lines": 48, "thresholds": { "max_file_lines": 500, "max_function_lines": 80 } }

@@ -104,6 +104,58 @@ TypeScript and ESLint normalization (including the conservative ESLint
 severity mapping) is documented in
 [`node-react-normalization.md`](node-react-normalization.md).
 
+### Engineering-quality collectors (v2.1)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+Five additional collectors map coverage/mutation/complexity/duplication/dead-code raw reports into the
+engineering-quality summary keys. These are a **separate counter channel** from security — they are
+never mixed into `*_vulnerabilities` or any other security key:
+
+| Collector | Reads (via runners/adapters) | → summary key(s) |
+| --- | --- | --- |
+| `coverage` | `reports/raw/php-coverage.json` / `js-coverage.json` (from `php-coverage.sh` / `js-coverage.sh` + `clover-to-coverage-json.php` / `istanbul-summary-to-coverage-json.mjs`) | `coverage_threshold_violations`, `coverage_regression` (+ informational `coverage_*_percent`) |
+| `mutation` | `reports/raw/*` from `infection.sh` (PHP) / `stryker.sh` (JS) | `mutation_score_violations` (+ `mutation_score_percent`) |
+| `complexity` | `reports/raw/*` from `phpmd-complexity.sh` (+ optional external JS complexity) | `complexity_violations` (+ `complexity_max`/`complexity_average`) |
+| `duplication` | `reports/raw/*` from `phpcpd.sh` (PHP) / `jscpd.sh` (JS) | `duplication_violations` (+ `duplication_percent`) |
+| `dead_code` | `reports/raw/*` from `knip.sh` (JS; PHP optional/external) | `dead_code_violations` (+ `dead_code_count`) |
+
+Each runner leaves its report **absent** when its tool is not installed (recorded `unavailable`, never
+a fake-clean 0); missing quality keys resolve to 0. Coverage is the mandatory quality signal; mutation,
+complexity, duplication, and dead-code are optional. Deptrac remains `architecture_violations`,
+PHPStan/Psalm remain `type_errors`, and Pint/PHP-CS-Fixer remain `style_violations` — none move into
+the quality channel.
+
+**Combined-profile aggregation.** In combined profiles (e.g. `laravel-react-docker`) PHP and JS
+coverage are independent (`php-coverage.json` and `js-coverage.json` never overwrite each other) and
+the builder aggregates them: `coverage_threshold_violations` is the **sum** of per-stack violations,
+the `coverage_*_percent` informational metrics take the **minimum** across applicable stacks (the
+weakest-covered stack drives the gate), and `coverage_regression` is **1 if any** stack regressed.
+
+#### Second-round quality collectors (v2.1)
+
+Four more collectors, in the **same separate channel**, cover diff-coverage, focused/skip markers,
+debug residue, and source size:
+
+| Collector | Reads (via runners) | → summary key(s) |
+| --- | --- | --- |
+| `diff-coverage` | `reports/raw/diff-coverage.json` (per-stack `php-diff-coverage.json` / `js-diff-coverage.json`) — PHP from `php-diff-coverage.sh` (`git diff` × Clover per-line via `clover-diff-to-coverage-json.php`); JS is external/normalized | `changed_lines_coverage_violations` (+ informational `changed_lines_coverage_percent`) |
+| `focused-tests` | `reports/raw/focused-tests.json` (from `focused-tests.sh`, grep-based) | `focused_test_violations`, `skipped_test_marker_violations` |
+| `debug-code` | `reports/raw/debug-code.json` (from `debug-code.sh`, grep-based) | `debug_code_violations` |
+| `source-size` | `reports/raw/source-size.json` (from `source-size.sh`, `wc -l`-based) | `large_file_violations`, `large_function_violations` (+ informational `max_file_lines`/`max_function_lines`) |
+
+The `tests` collector is **extended** to also emit `test_count` (total tests executed) and
+`skipped_tests` alongside `test_failures`; the profile builder (`--profile`) additionally derives the
+`missing_test_evidence` and `empty_test_suite` booleans from applicable test stacks. The
+grep/`wc -l`-based runners (`focused-tests`, `debug-code`, `source-size`) are **always available**, so a
+clean scan is a real `pass` (not `unavailable`); `source-size` implements large-**file** detection fully
+but holds `large_function_violations`/`max_function_lines` at `0` (large-function is best-effort/external
+for now — the collector accepts an externally-normalized value). **Per-stack independence** holds here
+too: `php-diff-coverage.json` and `js-diff-coverage.json` never overwrite each other, PHP test evidence
+never satisfies a JS requirement (or vice-versa), and `changed_lines_coverage_violations` **sums** across
+stacks while `changed_lines_coverage_percent` takes the **minimum**.
+
 > Severity→bucket mappings are first-pass and **conservative**. They will need
 > tuning per project (e.g. how you treat Semgrep `INFO`, or composer `low`). These
 > are starting points, not a claim of perfect coverage. Output formats also vary by

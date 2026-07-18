@@ -136,6 +136,20 @@ the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifes
 
 ---
 
+## 4a. Engineering quality gates (v2.1) — unreleased, additive engine capability
+
+An **engineering-quality** gate family (coverage, coverage regression, mutation, complexity,
+duplication, dead code) has been implemented as an **additive** engine capability. Consistent with §2,
+its six new summary keys (`coverage_threshold_violations`, `coverage_regression`,
+`mutation_score_violations`, `complexity_violations`, `duplication_violations`, `dead_code_violations`)
+and nine informational metrics are **new keys added, not renames/removals** — existing keys and their
+semantics are untouched, and consumers must tolerate the additions. Quality counters are a **separate
+channel** from security; they are **not** accepted-risk-suppressible. This is an **unreleased, additive
+engine capability**: it is **not** part of `v2.0.1`/`v2.0.0` and is **not** a new release claim (latest
+release remains `v2.0.1`, engine-only). Reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+---
+
 ## 5. Migration policy before v1.0
 
 - **Pre-1.0 versioning.** While Sentinel Shield is below `v1.0`, **minor tags may
