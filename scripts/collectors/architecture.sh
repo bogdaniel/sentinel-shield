@@ -62,12 +62,13 @@ if [ "$SHAPE" = "unknown" ]; then
 	exit 0
 fi
 
-N=$(jq '
-	(if ((.violations? | type) == "number") then .violations
-	 elif ((.violations? | type) == "array") then (.violations | length)
-	 elif ((.failures? | type) == "array") then (.failures | length)
-	 else 0 end)
-	| if (type == "number" and . >= 0) then floor else 0 end' "$INPUT")
+# The count is NOT coerced: a recognized shape carrying a malformed/negative count fails closed
+# as execution-error inside arch_emit rather than being reported as a clean 0.
+N=$(arch_count "$INPUT" '
+	if ((.violations? | type) == "number") then .violations
+	elif ((.violations? | type) == "array") then (.violations | length)
+	elif ((.failures? | type) == "array") then (.failures | length)
+	else -1 end')
 RULES=$(arch_num "$INPUT" '.rule_count // 0')
 CTX=$(arch_num "$INPUT" '.context_count // 0')
 

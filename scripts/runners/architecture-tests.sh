@@ -61,9 +61,15 @@ if ap_present; then
 	if ! ap_tool_enabled architecture_tests false; then arch_write_status "$OUT" "$PRODUCER" disabled "architecture_tests disabled in $POLICY"; exit 0; fi
 fi
 
-# env var (indirect read, POSIX-safe) then policy.
+# env var (indirect read) then policy. The NAME is validated as a POSIX shell identifier before
+# the indirect expansion, so a crafted --env-var value can never smuggle shell code into eval.
 if [ -z "$CMD" ]; then
-	CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"")
+	case "$ENV_VAR" in
+		[A-Za-z_][A-Za-z0-9_]*) CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"") ;;
+		*)
+			log_error "invalid --env-var name '$ENV_VAR' (expected a POSIX shell identifier)"
+			exit 2 ;;
+	esac
 fi
 if [ -z "$CMD" ] && ap_present; then
 	CMD=$(ap_get architecture.tools.architecture_tests.command)
@@ -78,7 +84,9 @@ RC=0
 # Remove any STALE report first: a leftover file from a previous run (possibly an honest
 # "unavailable") must never be mistaken for this run's evidence.
 rm -f "$OUT"
-sh -c "$CMD" > "$STDOUT_LOG" 2>/dev/null || RC=$?
+# Only STDOUT is captured (it may carry the JSON contract); stderr passes through to the caller
+# so a failing architecture suite is debuggable instead of silently swallowed.
+sh -c "$CMD" > "$STDOUT_LOG" || RC=$?
 
 # 1) the command wrote the report file itself (preferred: full contract with failures[]).
 if [ -s "$OUT" ] && jq -e . "$OUT" >/dev/null 2>&1; then
@@ -93,6 +101,12 @@ if [ -s "$STDOUT_LOG" ] && jq -e . "$STDOUT_LOG" >/dev/null 2>&1; then
 	rm -f "$STDOUT_LOG"
 	log_info "$PRODUCER: normalized stdout JSON -> $OUT"
 	exit 0
+fi
+# Neither path produced JSON: surface whatever the command printed before discarding it, so the
+# operator can see WHY (a stack trace, a usage error, a plain-text test summary).
+if [ -s "$STDOUT_LOG" ]; then
+	log_warn "$PRODUCER: command produced no JSON contract; its output was:"
+	cat "$STDOUT_LOG" >&2
 fi
 rm -f "$STDOUT_LOG"
 

@@ -777,7 +777,7 @@
       ],
       "runner": "scripts/runners/php-arkitect.sh",
       "report": "reports/raw/php-arkitect.json",
-      "missing_behavior": "warn",
+      "missing_behavior": "info",
       "execution": {
         "pr": false,
         "main": true,
@@ -793,7 +793,7 @@
       "category": "architecture",
       "runner": "scripts/runners/php-architecture-tests.sh",
       "report": "reports/raw/php-architecture-tests.json",
-      "missing_behavior": "warn",
+      "missing_behavior": "info",
       "execution": {
         "pr": false,
         "main": true,

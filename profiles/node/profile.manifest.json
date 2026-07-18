@@ -560,7 +560,7 @@
       "category": "architecture",
       "runner": "scripts/runners/js-architecture-tests.sh",
       "report": "reports/raw/js-architecture-tests.json",
-      "missing_behavior": "warn",
+      "missing_behavior": "info",
       "execution": {
         "pr": false,
         "main": true,

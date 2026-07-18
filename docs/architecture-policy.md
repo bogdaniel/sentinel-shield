@@ -95,16 +95,24 @@ architecture reports to be retained as release evidence.
 
 ## Status — honest
 
-Architecture governance is supported by engine tests and fixtures
-(`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real
-Laravel/Symfony/Node consumer validation exists.
+The **v2.1.0 architecture-governance layer** (the normalized contract, the new producers, the
+`missing_architecture_evidence` gate, the policy loader) is supported by engine tests and fixtures
+(`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof for that layer
+until a real Laravel/Symfony/Node consumer validation exists.
 
-Deptrac remains **not live-validated** on a consumer: the pilot (zenchron-tools) has no
-`deptrac.yaml`, so the runner correctly reported `unavailable` (no fake). **Profile guidance:**
-Laravel/Symfony projects should add `deptrac.yaml` **only when architecture layers are actually
-defined** — an empty/placeholder config produces meaningless results. The same applies to the JS
-producers: a `.dependency-cruiser.js` with no real rules proves nothing. Promote any producer to
-blocking only after a real cited run on a layered project.
+**Deptrac itself is a separate, older question and is already `live-validated`**: a real Symfony
+DDD consumer (`bogdaniel/silver-potato`, CI run `27633798174`, deptrac 1.0.2) produced a
+`deptrac.json` that the collector mapped to `architecture_violations = 4`. That evidence — not
+this page — is the source of truth for Deptrac's validation status; see
+[`deptrac-evidence-guide.md`](deptrac-evidence-guide.md) §9 and
+[`main-gate-live-evidence.md`](main-gate-live-evidence.md). What is *not* yet consumer-validated is
+Deptrac running **through the v2.1.0 runner/policy path**, and every producer added in v2.1.0
+(PHPArkitect, dependency-cruiser, ESLint boundaries, the custom-test producers).
+
+**Profile guidance:** Laravel/Symfony projects should add `deptrac.yaml` **only when architecture
+layers are actually defined** — an empty/placeholder config produces meaningless results. The same
+applies to the JS producers: a `.dependency-cruiser.js` with no real rules proves nothing. Promote
+any producer to blocking only after a real cited run on a layered project.
 
 Style starting points live under `templates/architecture/` and are marked "Template only. Adapt to
 your namespaces/folders. Do not enable as blocking until observed clean." Sentinel Shield never

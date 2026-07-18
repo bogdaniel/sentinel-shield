@@ -104,10 +104,16 @@ The §114 shape below still parses. The v2.1.0 normalized contract any producer 
 }
 ```
 
-Allowed statuses: `pass`, `findings`, `unavailable`, `not-configured`, `execution-error`,
-`disabled`, `not-applicable`. **Only `pass` and `findings` count as evidence.** An unknown status
-fails closed as `execution-error`; a missing or empty report becomes `unavailable`; invalid JSON
-exits 2. "We never ran it" can never read as "we are clean."
+Allowed statuses in the **raw report**: `pass`, `findings`, `unavailable`, `not-configured`,
+`execution-error`, `disabled`, `not-applicable`. **Only `pass` and `findings` count as evidence.**
+An unknown status fails closed as `execution-error`; a missing or empty report becomes
+`unavailable`; invalid JSON exits 2. "We never ran it" can never read as "we are clean."
+
+> **Collector output uses `fail`, not `findings`.** The raw report a producer writes and the object
+> a collector emits are two different surfaces: a collector reporting violations emits `fail` — the
+> vocabulary shared by every other finding-mapping collector and asserted by the `v025-live`
+> self-test — while the raw contract above uses `findings`. The builder treats them identically.
+> See [`architecture-governance.md`](architecture-governance.md#two-status-surfaces-do-not-conflate-them).
 
 ### Summary keys
 

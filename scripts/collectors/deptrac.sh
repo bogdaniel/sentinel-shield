@@ -63,12 +63,14 @@ if [ "$SHAPE" = "unknown" ]; then
 	exit 0
 fi
 
-N=$(jq '
+# The count is NOT coerced: a recognized Deptrac shape carrying a malformed/negative count fails
+# closed as execution-error inside arch_emit rather than being reported as a clean 0.
+N=$(arch_count "$INPUT" '
 	if ((.report.violations? | type) == "number") then .report.violations
 	elif ((.Report.Violations? | type) == "number") then .Report.Violations
 	elif ((.violations? | type) == "number") then .violations
 	elif ((.violations? | type) == "array") then (.violations | length)
-	else 0 end | if . >= 0 then floor else 0 end' "$INPUT")
+	else -1 end')
 
 # Rule/context metadata where the producer exposes it (normalized contract, or Deptrac's
 # layer list when present). Absent metadata stays 0 — informational only, never a gate.

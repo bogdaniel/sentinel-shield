@@ -41,14 +41,31 @@ arch_passthrough_status() {
 }
 
 # arch_emit <tool> <violations> <rule_count> <context_count> — emit an EVIDENCE-bearing
-# collector object. Status is derived from the violation count (pass / findings); the tool
-# counts as one valid architecture producer (architecture_tool_count = 1) because it ran.
+# collector object. Status is derived from the violation count; the tool counts as one valid
+# architecture producer (architecture_tool_count = 1) because it ran.
+#
+# Status vocabulary (two distinct surfaces — do not conflate them):
+#   RAW REPORT (what a producer writes):  pass | findings | unavailable | ...
+#   COLLECTOR  (what this emits):         pass | fail      | unavailable | ...
+# `fail` is the long-standing collector vocabulary shared by every other finding-mapping
+# collector (gitleaks, semgrep, phpstan, deptrac since v0.1.14, …) and is asserted by the
+# v025-live self-test. The builder maps fail/findings identically, so this is naming only.
+#
+# A malformed or negative COUNT is not evidence: the report claimed to be readable but is not,
+# so it fails closed as execution-error rather than being coerced to a clean 0 (which would
+# also wrongly credit architecture_tool_count).
 arch_emit() {
 	_at=$1; _av=$2; _ar=${3:-0}; _ac=${4:-0}
-	case "$_av" in '' | *[!0-9]*) _av=0 ;; esac
+	case "$_av" in
+		'' | *[!0-9]*)
+			log_warn "$_at: violation count '$_av' is not a non-negative integer; status=execution-error (never coerced to a clean 0)"
+			ss_emit_collector "$_at" "execution-error" \
+				'{"status":"execution-error","violations":0,"reason":"invalid violation count"}' '{}'
+			return 0 ;;
+	esac
 	case "$_ar" in '' | *[!0-9]*) _ar=0 ;; esac
 	case "$_ac" in '' | *[!0-9]*) _ac=0 ;; esac
-	if [ "$_av" -gt 0 ]; then _ast="findings"; else _ast="pass"; fi
+	if [ "$_av" -gt 0 ]; then _ast="fail"; else _ast="pass"; fi
 	_aov=$(jq -n --argjson v "$_av" --argjson r "$_ar" --argjson c "$_ac" \
 		'{architecture_violations:$v, architecture_rule_count:$r, architecture_context_count:$c, architecture_tool_count:1}')
 	_arep=$(jq -n --arg s "$_ast" --argjson v "$_av" --argjson r "$_ar" --argjson c "$_ac" \
@@ -81,6 +98,18 @@ arch_pkg_exec() {
 		yarn) printf 'yarn' ;;
 		*) printf 'npx --no-install' ;;
 	esac
+}
+
+# arch_count <input> <jq-expression> — the VIOLATION count exactly as the report states it, or
+# the literal string "invalid" when it is absent, non-numeric, negative or fractional. Unlike
+# arch_num (informational metadata, safe to default to 0), a violation count must never be
+# silently coerced: arch_emit turns "invalid" into execution-error so a broken report cannot
+# read as clean.
+arch_count() {
+	jq -r "
+		($2) as \$v
+		| if (\$v | type) == \"number\" and \$v >= 0 and (\$v | floor) == \$v then (\$v | tostring)
+		  else \"invalid\" end" "$1" 2>/dev/null || printf 'invalid'
 }
 
 # arch_num <input> <jq-expression> — non-negative integer from the raw report, or 0.

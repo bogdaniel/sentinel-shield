@@ -120,7 +120,10 @@ detect dependency-boundary violations, not the quality of domain modeling itself
   `findings`, `unavailable`, `not-configured`, `execution-error`, `disabled`, `not-applicable` are
   preserved verbatim; only `pass`/`findings` count as evidence. Fail-closed throughout: unknown
   status → `execution-error`, unrecognized native shape → `execution-error` (never a clean 0),
-  missing/empty report → `unavailable`, invalid JSON → exit 2.
+  a malformed/negative/fractional violation count → `execution-error` (never coerced to a clean 0,
+  and never credited as an evidence-producing tool), missing/empty report → `unavailable`, invalid
+  JSON → exit 2. The COLLECTOR status vocabulary is unchanged (`pass`/`fail`/…): the new statuses
+  apply to the raw-report surface, so `deptrac` still emits `fail` exactly as it has since v0.1.14.
 - **Deptrac hardened** (`scripts/runners/deptrac.sh`, `scripts/collectors/deptrac.sh`):
   `--output`/`--config`/`--policy` flags, config detection (`deptrac.yaml`/`.yml`/`.php`), vendor
   and global binary support, version metadata, native output preserved verbatim, and honest

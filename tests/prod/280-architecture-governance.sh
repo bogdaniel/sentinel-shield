@@ -84,8 +84,8 @@ cv() { sh "$COLL/deptrac.sh" --input "$1" 2>/dev/null | jq -r "$2"; }
 	&& [ "$(cv "$CT/dep-clean.json" '.status')" = "pass" ] \
 	&& pass "deptrac collector: native clean report -> pass, 0 violations" || fail "deptrac native clean wrong"
 [ "$(cv "$CT/dep-viol.json" '.summary.architecture_violations')" = "4" ] \
-	&& [ "$(cv "$CT/dep-viol.json" '.status')" = "findings" ] \
-	&& pass "deptrac collector: native violation report -> findings, 4 violations" || fail "deptrac native violations wrong"
+	&& [ "$(cv "$CT/dep-viol.json" '.status')" = "fail" ] \
+	&& pass "deptrac collector: native violation report -> fail, 4 violations" || fail "deptrac native violations wrong"
 [ "$(cv "$CT/dep-arr.json" '.summary.architecture_violations')" = "3" ] \
 	&& pass "deptrac collector: violations array -> length" || fail "deptrac violations array wrong"
 o=$(sh "$COLL/deptrac.sh" --input "$CT/norm.json")
@@ -117,6 +117,20 @@ pass "deptrac collector: unavailable / not-configured / execution-error / disabl
 	&& pass "deptrac collector: unknown status -> execution-error (fail closed)" || fail "unknown status not failing closed"
 [ "$(cv "$CT/unknown-shape.json" '.status')" = "execution-error" ] \
 	&& pass "deptrac collector: unknown native shape -> execution-error (never a clean pass)" || fail "unknown shape not failing closed"
+# A RECOGNIZED shape whose count is malformed/negative/fractional is not evidence either: it must
+# fail closed rather than be coerced to a clean 0 (which would also wrongly credit tool_count).
+echo '{"report":{"violations":-3}}' > "$CT/neg.json"
+echo '{"tool":"architecture","status":"findings","violations":2.5}' > "$CT/frac.json"
+echo '{"tool":"architecture","status":"findings","violations":"many"}' > "$CT/nan.json"
+_badcount=0
+for _f in neg frac nan; do
+	_st=$(cv "$CT/$_f.json" '.status')
+	_tc=$(cv "$CT/$_f.json" '.summary.architecture_tool_count // 0')
+	{ [ "$_st" = "execution-error" ] && [ "$_tc" = "0" ]; } || { _badcount=1; echo "  ($_f got status=$_st tool_count=$_tc)"; }
+done
+[ "$_badcount" -eq 0 ] \
+	&& pass "collectors: negative / fractional / non-numeric violation counts -> execution-error (never coerced to 0)" \
+	|| fail "a malformed violation count was coerced instead of failing closed"
 rc=0; sh "$COLL/deptrac.sh" --input "$CT/bad.json" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && pass "deptrac collector: invalid JSON -> exit 2" || fail "deptrac invalid JSON got exit $rc"
 [ "$(cv "$CT/nope.json" '.status')" = "unavailable" ] \
@@ -136,7 +150,7 @@ echo '{"summary":{"violations":[],"error":0,"ruleSetUsed":{"forbidden":[1,2]}}}'
 echo '{"modules":[{"source":"a.ts"}]}' > "$CT/dc-unknown.json"
 dcv() { sh "$COLL/dependency-cruiser.sh" --input "$1" 2>/dev/null | jq -r "$2"; }
 [ "$(dcv "$CT/dc-viol.json" '.summary.architecture_violations')" = "2" ] \
-	&& [ "$(dcv "$CT/dc-viol.json" '.status')" = "findings" ] \
+	&& [ "$(dcv "$CT/dc-viol.json" '.status')" = "fail" ] \
 	&& [ "$(dcv "$CT/dc-viol.json" '.summary.architecture_rule_count')" = "4" ] \
 	&& pass "dependency-cruiser collector: native violations -> architecture_violations (+rule_count)" \
 	|| fail "dependency-cruiser native violation mapping wrong"
@@ -423,11 +437,15 @@ done
 [ "$_apbad" -eq 0 ] && pass "architecture-policy: non-boolean tool flag fails closed" || fail "architecture-policy accepted a non-boolean"
 # tabs / advanced YAML need real yq -> fail closed without it
 printf 'architecture:\n\tenabled: true\n' > "$WORK/ap-tab.yaml"
+# Tabs are invalid YAML indentation in BOTH parser paths, so the expected result is exit 2
+# either way — with yq it is rejected as malformed YAML, without yq by the explicit tab check.
 rc=0; sh "$WORK/ap-harness.sh" "$WORK/ap-tab.yaml" >/dev/null 2>&1 || rc=$?
 if command -v yq >/dev/null 2>&1 && yq --version 2>/dev/null | grep -Eq 'mikefarah|version v4'; then
-	pass "architecture-policy: tab indentation handled by mikefarah yq (installed)"
+	[ "$rc" -eq 2 ] && pass "architecture-policy: tab indentation fails closed with mikefarah yq (exit 2)" \
+		|| fail "tab YAML should exit 2 with yq installed, got $rc"
 else
-	[ "$rc" -eq 2 ] && pass "architecture-policy: tab indentation fails closed without yq (exit 2)" || fail "tab YAML should exit 2, got $rc"
+	[ "$rc" -eq 2 ] && pass "architecture-policy: tab indentation fails closed without yq (exit 2)" \
+		|| fail "tab YAML should exit 2, got $rc"
 fi
 
 # --- (12) template + schema wiring -------------------------------------------

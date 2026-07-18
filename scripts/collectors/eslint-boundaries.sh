@@ -60,14 +60,12 @@ fi
 
 if [ "$SHAPE" = "eslint" ]; then
 	# ONLY architecture-boundary rule ids are counted here.
-	N=$(jq '[ .[].messages[]? | select((.ruleId // "") | test("^boundaries/|^import/no-restricted-paths$|^no-restricted-imports$")) ] | length' "$INPUT")
+	N=$(arch_count "$INPUT" '[ .[].messages[]? | select((.ruleId // "") | test("^boundaries/|^import/no-restricted-paths$|^no-restricted-imports$")) ] | length')
 	RULES=$(jq '[ .[].messages[]? | (.ruleId // "") | select(test("^boundaries/|^import/no-restricted-paths$|^no-restricted-imports$")) ] | unique | length' "$INPUT")
 else
-	N=$(jq '(if ((.violations|type)=="array") then (.violations|length) else .violations end)
-		| if (type=="number" and . >= 0) then floor else 0 end' "$INPUT")
+	N=$(arch_count "$INPUT" 'if ((.violations|type)=="array") then (.violations|length) else .violations end')
 	RULES=$(arch_num "$INPUT" '.rule_count // 0')
 fi
-case "$N" in '' | *[!0-9]*) N=0 ;; esac
 case "$RULES" in '' | *[!0-9]*) RULES=0 ;; esac
 CTX=$(jq 'if type=="object" then (.context_count // 0) else 0 end | if type=="number" and . >= 0 then floor else 0 end' "$INPUT" 2>/dev/null || printf 0)
 

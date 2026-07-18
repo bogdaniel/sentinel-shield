@@ -142,6 +142,19 @@ Rules the engine enforces:
 
 Only `pass` and `findings` count as evidence. "We never ran it" can never read as "we are clean".
 
+### Two status surfaces (do not conflate them)
+
+| Surface | Vocabulary |
+| --- | --- |
+| **Raw report** — what a producer writes to `reports/raw/*.json` | `pass` / `findings` / `unavailable` / `not-configured` / `execution-error` / `disabled` / `not-applicable` |
+| **Collector output** — what `scripts/collectors/*.sh` emits on stdout | `pass` / **`fail`** / `unavailable` / `not-configured` / `execution-error` / `disabled` / `not-applicable` |
+
+A collector reporting findings emits `fail`, the long-standing vocabulary shared with every other
+finding-mapping collector (gitleaks, semgrep, phpstan, and Deptrac since v0.1.14) and asserted by
+the `v025-live` self-test. The builder maps `fail` and `findings` identically, so the difference is
+naming, not behavior — but the collector status is a published surface and v2.1.0 does **not**
+repurpose it.
+
 ## Producers
 
 | Producer | Stack | Runner | Collector | Raw report |

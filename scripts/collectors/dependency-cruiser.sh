@@ -55,12 +55,12 @@ if [ "$SHAPE" = "unknown" ]; then
 fi
 
 if [ "$SHAPE" = "native" ]; then
-	N=$(arch_num "$INPUT" '.summary.violations | length')
+	# Count NOT coerced (see arch_count): a malformed count fails closed, never a clean 0.
+	N=$(arch_count "$INPUT" '.summary.violations | length')
 	# Rules evaluated = the forbidden/allowed rule set dependency-cruiser actually used.
 	RULES=$(arch_num "$INPUT" '((.summary.ruleSetUsed.forbidden? // []) | length) + ((.summary.ruleSetUsed.allowed? // []) | length)')
 else
-	N=$(jq '(if ((.violations|type)=="array") then (.violations|length) else .violations end)
-		| if (type=="number" and . >= 0) then floor else 0 end' "$INPUT")
+	N=$(arch_count "$INPUT" 'if ((.violations|type)=="array") then (.violations|length) else .violations end')
 	RULES=$(arch_num "$INPUT" '.rule_count // 0')
 fi
 CTX=$(arch_num "$INPUT" '.context_count // 0')

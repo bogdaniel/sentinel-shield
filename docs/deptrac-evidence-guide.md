@@ -75,9 +75,15 @@ describes, now expressed as four distinguishable statuses instead of one.
 contract, preserves status-bearing reports rather than flattening them, and maps rule/context
 metadata where available. An **unrecognized shape becomes `execution-error`, never `pass`.**
 
-The normalized contract, allowed statuses (`pass`, `findings`, `unavailable`, `not-configured`,
-`execution-error`, `disabled`, `not-applicable`), and the rule that only `pass`/`findings` count
-as evidence are specified in [`architecture-governance.md`](architecture-governance.md).
+The normalized contract, allowed **raw-report** statuses (`pass`, `findings`, `unavailable`,
+`not-configured`, `execution-error`, `disabled`, `not-applicable`), and the rule that only
+`pass`/`findings` count as evidence are specified in
+[`architecture-governance.md`](architecture-governance.md).
+
+The **collector** keeps its own long-standing vocabulary: it emits `fail` (not `findings`) when it
+maps violations, exactly as it has since v0.1.14 and as asserted by the `v025-live` self-test — so
+the captured evidence in §9 (`architecture_violations = 4` → **fail**) still reads the same way in
+v2.1.0. Only the raw-report side gained the new statuses.
 
 ### `missing_architecture_evidence`
 
@@ -245,10 +251,10 @@ evidence pattern:
   not available; skipping* and exits 0; the collector emits `status=unavailable`. This
   is **not** evidence and **not** a pass — install via `composer require --dev
   deptrac/deptrac:^4` and re-run. Never treat `unavailable` as green.
-- **No `deptrac.yaml`**: `deptrac analyse` cannot define layers, so no usable
-  `deptrac.json` is produced → wrapper reports unavailable. Since v2.1.0 this case is reported
-  distinctly as **`not-configured`** (missing binary stays `unavailable`), which tells you which
-  of the two to fix. The fix is a **real** consumer config (see §2), not a fabricated one.
+- **No `deptrac.yaml`**: `deptrac analyse` cannot define layers, so no usable `deptrac.json` is
+  produced. Since v2.1.0 the runner reports this case as **`not-configured`**; `unavailable` is
+  reserved exclusively for a **missing binary**, so the status tells you which of the two to fix.
+  The fix is a **real** consumer config (see §2), not a fabricated one.
 - **Invalid / malformed JSON**: the collector exits **2** (error path), not `pass`.
   Inspect the raw output — usually a truncated file, a wrong formatter flag, or a
   Deptrac error. Re-run with `--formatter=json --output=...`.

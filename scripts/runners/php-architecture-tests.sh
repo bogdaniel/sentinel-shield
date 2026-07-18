@@ -8,6 +8,13 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CMD="${SENTINEL_SHIELD_PHP_ARCH_TEST_CMD:-${SENTINEL_SHIELD_ARCH_TEST_CMD:-}}"
-set -- --output "reports/raw/php-architecture-tests.json" --producer php-architecture-tests "$@"
-[ -n "$CMD" ] && set -- "$@" --command "$CMD"
-exec sh "$SCRIPT_DIR/architecture-tests.sh" "$@"
+# Defaults FIRST, caller's "$@" LAST: later flags win in the arg loop, so an explicit
+# --command/--output on the command line overrides the env-var fallback rather than losing to it.
+# (Two branches, not ${CMD:+...}: an unquoted expansion would word-split a multi-word command.)
+if [ -n "$CMD" ]; then
+	exec sh "$SCRIPT_DIR/architecture-tests.sh" \
+		--output "reports/raw/php-architecture-tests.json" --producer php-architecture-tests \
+		--command "$CMD" "$@"
+fi
+exec sh "$SCRIPT_DIR/architecture-tests.sh" \
+	--output "reports/raw/php-architecture-tests.json" --producer php-architecture-tests "$@"

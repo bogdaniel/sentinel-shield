@@ -102,8 +102,12 @@ Each `failures[]` entry carries the crossed boundary:
 }
 ```
 
-Allowed statuses: `pass`, `findings`, `unavailable`, `not-configured`, `execution-error`, `disabled`,
-`not-applicable`. Rules the engine enforces:
+Allowed **raw-report** statuses: `pass`, `findings`, `unavailable`, `not-configured`,
+`execution-error`, `disabled`, `not-applicable`. (The **collector** it feeds emits `fail` rather
+than `findings` when it maps violations — the vocabulary every other finding-mapping collector in
+this table uses. The builder treats the two identically; see
+[`architecture-governance.md`](architecture-governance.md#two-status-surfaces-do-not-conflate-them).)
+Rules the engine enforces:
 
 - `pass` + `violations: 0` = the suite ran clean; `findings` + `violations > 0` = it ran and found
   violations. Only those two count as evidence.
