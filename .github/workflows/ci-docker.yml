@@ -79,6 +79,9 @@ jobs:
           scan-ref: .
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # Read the root .trivyignore explicitly (test-fixture advisory suppressions with
+          # justification). Trivy reads it from CWD by default; set it too for robustness.
+          trivyignores: .trivyignore
           exit-code: "1"
 
       - name: Trivy image scan

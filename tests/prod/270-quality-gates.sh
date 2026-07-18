@@ -89,7 +89,7 @@ echo '{"tool":"coverage","status":"pass","line_percent":90,"branch_percent":80,"
 echo '{"tool":"coverage","status":"findings","line_percent":50,"violations":3,"regression":true}' > "$CT/viol.json"
 echo '{"tool":"coverage","violations":"NaN","line_percent":"x"}' > "$CT/nonnum.json"
 echo 'not json {' > "$CT/bad.json"
-echo '{"status":"weird","violations":1}' > "$CT/malstatus.json"
+echo '{"tool":"coverage","status":"weird","violations":1}' > "$CT/malstatus.json"
 
 v=$(sh "$COLL/coverage.sh" --input "$CT/clean.json" | jq '.summary.coverage_threshold_violations')
 [ "$v" = "0" ] && pass "coverage collector: clean -> 0 violations" || fail "coverage clean got $v"
@@ -535,28 +535,48 @@ else
 	fail "builder status-preservation tests: php REQUIRED but unavailable"
 fi
 # collector-level: unknown status fails closed (no php needed)
-echo '{"status":"weird"}' > "$WORK/uc.json"
+echo '{"tool":"coverage","status":"weird"}' > "$WORK/uc.json"
 [ "$(sh "$COLL/coverage.sh" --input "$WORK/uc.json" | jq -r '.status')" = "execution-error" ] \
 	&& pass "coverage collector: unknown status -> execution-error (fail closed)" || fail "coverage collector unknown status not fail-closed"
-echo '{"status":"execution-error"}' > "$WORK/ec.json"
+echo '{"tool":"coverage","status":"execution-error"}' > "$WORK/ec.json"
 [ "$(sh "$COLL/coverage.sh" --input "$WORK/ec.json" | jq -r '.status')" = "execution-error" ] \
 	&& pass "coverage collector: execution-error passed through" || fail "coverage collector execution-error not preserved"
 
 # --- (15) quality-policy fallback: present-but-empty value fails closed (no yq) --------------
 # Force the awk fallback with a fake non-mikefarah yq so the yq path is not taken.
 QSHIM="$WORK/qshim"; mkdir -p "$QSHIM"; printf '#!/bin/sh\necho "yq version 3.4.1"\n' > "$QSHIM/yq"; chmod +x "$QSHIM/yq"
+# The harness prints the loaded values on success so tests can assert defaults are applied and
+# explicit values load (exit 0 alone would not prove the fallback actually read/defaulted values).
 cat > "$WORK/qpfh.sh" <<EOF
 set -eu
 . "$ROOT/scripts/lib/sentinel-shield-common.sh"
 . "$ROOT/scripts/lib/quality-policy.sh"
 qp_load "\$1"
+printf 'VALS line_min=%s branch_min=%s enabled=%s fod=%s\n' \\
+	"\$(qp_num quality.coverage.line_min 80)" \\
+	"\$(qp_num quality.coverage.branch_min 60)" \\
+	"\$(qp_bool quality.coverage.enabled true)" \\
+	"\$(qp_bool quality.coverage.fail_on_decrease false)"
 EOF
-qpf() { printf '%b' "$2" > "$WORK/qpf.yaml"; rc=0; PATH="$QSHIM:$PATH" sh "$WORK/qpfh.sh" "$WORK/qpf.yaml" >/dev/null 2>&1 || rc=$?; [ "$rc" = "$3" ] && pass "quality-policy fallback: $1" || fail "quality-policy fallback: $1 (exit $rc, want $3)"; }
+# qpf <label> <yaml> <expected-exit> [<expected VALS substring for exit-0 cases>]
+qpf() {
+	printf '%b' "$2" > "$WORK/qpf.yaml"; rc=0
+	_out=$(PATH="$QSHIM:$PATH" sh "$WORK/qpfh.sh" "$WORK/qpf.yaml" 2>&1) || rc=$?
+	# confirm the fallback (awk) path actually ran, not the yq path.
+	if [ "$rc" != "$3" ]; then fail "quality-policy fallback: $1 (exit $rc, want $3)"; return; fi
+	if [ "$rc" = "0" ] && [ -n "${4:-}" ]; then
+		case "$_out" in *"$4"*) pass "quality-policy fallback: $1 (values: $4)" ;; *) fail "quality-policy fallback: $1 — expected values '$4', got '$(printf '%s' "$_out" | grep VALS || echo none)'" ;; esac
+	else
+		pass "quality-policy fallback: $1"
+	fi
+}
 qpf "empty numeric line_min fails closed" 'quality:\n  coverage:\n    line_min:\n' 2
 qpf "empty boolean enabled fails closed"  'quality:\n  coverage:\n    enabled:\n' 2
 qpf "empty maintainability size fails closed" 'quality:\n  maintainability:\n    max_file_lines:\n' 2
 qpf "malformed 1.2.3 fails closed"        'quality:\n  coverage:\n    line_min: 1.2.3\n' 2
-qpf "valid absent key uses default"       'quality:\n  coverage:\n    branch_min: 60\n' 0
-qpf "valid full policy accepted"          'quality:\n  coverage:\n    enabled: true\n    line_min: 80\n' 0
+# absent line_min defaults to 80, absent enabled defaults to true; explicit branch_min=60 loads
+qpf "valid absent keys use defaults"      'quality:\n  coverage:\n    branch_min: 60\n' 0 'line_min=80 branch_min=60 enabled=true fod=false'
+# explicit values load; unspecified branch_min still defaults to 60
+qpf "valid explicit values load"          'quality:\n  coverage:\n    enabled: false\n    line_min: 55\n    fail_on_decrease: true\n' 0 'line_min=55 branch_min=60 enabled=false fod=true'
 
 [ "$FAILED" -eq 0 ] && exit 0 || exit 1
