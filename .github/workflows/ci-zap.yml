@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
 
       - name: ZAP full scan (staging)
-        uses: zaproxy/action-full-scan@d2a07475d467566c9a3e3c700f31f47724aa1060 # v0.10.0
+        uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
         with:
           target: ${{ vars.STAGING_URL }}   # repository/environment variable, staging only
           cmd_options: "-a"
