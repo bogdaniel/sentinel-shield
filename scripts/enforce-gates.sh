@@ -210,7 +210,7 @@ env_get() { printf '%s\n' "$GATES_ENV" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,
 # gate_flag <gate_key> — resolved fail_on flag (true/false). Absent -> false+warn.
 # gate_flag <key> — resolved boolean for a gate, parsed CANONICALLY.
 #
-# FAIL CLOSED (v2.0.1 security hotfix). Two prior fail-open paths are closed here:
+# FAIL CLOSED (v2.0.2 security hotfix). Two prior fail-open paths are closed here:
 #   * an ABSENT flag used to warn and disable the gate. A truncated, hand-edited or
 #     tampered gates.env therefore silently switched gates off — a gates.env with no
 #     FAIL_ON_ lines at all passed a summary carrying secrets and criticals.
@@ -269,7 +269,7 @@ for _k in missing_sbom missing_release_evidence; do
 	esac
 done
 
-# --- evidence-integrity precondition for strict/regulated (v2.0.1 hotfix) ----
+# --- evidence-integrity precondition for strict/regulated (v2.0.2 hotfix) ----
 # THE INVARIANT: "no scanner ran" must never read as "we are clean".
 #
 # It previously did. build-security-summary.sh invokes every collector even when its raw
@@ -451,7 +451,7 @@ eval_count_gate() {
 	# ABSENT is legitimately 0: an older summary predating a gate simply omits the key,
 	# and that back-compat promise is documented. Everything else is NOT.
 	#
-	# FAIL CLOSED (v2.0.1 security hotfix). This previously read
+	# FAIL CLOSED (v2.0.2 security hotfix). This previously read
 	#   case "$_val" in '' | *[!0-9]*) _val=0 ;; esac
 	# which coerced EVERY malformed value to a clean 0: floats (3.5), negatives (-5),
 	# strings ("not-a-number") and jq errors all evaluated as `pass`. A count we cannot

@@ -734,7 +734,7 @@ jq -n \
 		summary: ($counts
 			+ { missing_sbom: $ms, missing_release_evidence: $mr }
 			# expired_exceptions has TWO independent sources and both must survive
-			# (v2.0.1 hotfix). This previously read `expired_exceptions: $ee`, which
+			# (v2.0.2 hotfix). This previously read `expired_exceptions: $ee`, which
 			# unconditionally OVERWROTE any collector-reported expiry with the count from
 			# reports/exceptions.json alone — so a collector that detected an expired
 			# waiver had its finding silently discarded on the way into the summary.

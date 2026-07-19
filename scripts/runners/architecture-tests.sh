@@ -89,7 +89,7 @@ if [ -z "$CMD" ] && ap_present; then
 	[ -n "$CMD" ] && CMD_SOURCE="project"
 fi
 
-# REFUSE to execute a scanned-repo-supplied shell string (v2.0.1 security hotfix).
+# REFUSE to execute a scanned-repo-supplied shell string (v2.0.2 security hotfix).
 #
 # `sh -c "$CMD"` below runs this verbatim. Sourced from the scanned project's
 # architecture-policy.yaml, that is arbitrary code execution in the gate runner, granted to
@@ -141,7 +141,7 @@ if [ -s "$STDOUT_LOG" ]; then
 fi
 rm -f "$STDOUT_LOG"
 
-# 3) no JSON at all. An exit code is NOT architecture evidence (v2.0.1 hotfix).
+# 3) no JSON at all. An exit code is NOT architecture evidence (v2.0.2 hotfix).
 #
 # This branch used to synthesise {status:"pass", violations:0} from `exit 0`, so any
 # command that merely succeeds — `true`, a no-op script, a suite that silently collected

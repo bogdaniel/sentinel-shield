@@ -14,6 +14,7 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 ### Fixed — full-repo review batch 10: targeted robustness + offboarding (deferred-class, safe subset)
 
 The objective, low-risk items from the deferred optimization/improvement class — the ones with
@@ -616,7 +617,7 @@ only)` pinned the defect itself as expected behaviour.
 correctly needs a workflow-lint summary key that does not exist — a schema change, not a mapping
 fix.
 
-### Security — fail-closed evidence and gate integrity (engine-only hotfix)
+### Security — fail-closed evidence and gate integrity (engine-only hotfix, v2.0.2)
 
 Restores the core product invariant: **absent, malformed, partial, unrecognized, negative or
 non-integer evidence fails closed.** "The scanner did not run" and "the scanner output could

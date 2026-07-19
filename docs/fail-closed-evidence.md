@@ -1,4 +1,9 @@
-# Fail-Closed Evidence and Gate Integrity (v2.0.1 security hotfix)
+# Fail-Closed Evidence and Gate Integrity (v2.0.2 security hotfix)
+
+> **Version note.** The remediation plan called this `v2.0.1`, but that tag is already
+> published (2026-07-09, engine-only maintenance). This hotfix is therefore **v2.0.2**. The
+> branch keeps its original name; the released version is what matters. `v2.0.0` and `v2.0.1`
+> remain immutable.
 
 ## The invariant
 

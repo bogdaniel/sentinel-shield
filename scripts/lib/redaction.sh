@@ -254,7 +254,7 @@ _rd_root_records() {
 _rd_pattern_stage() {
 	_rd_home="${RD_HOME:-$HOME}"
 	# Secret-bearing key WORDS, case-insensitive via bracket classes (sed has no portable
-	# /I). Used by the JSON key/value rules below (v2.0.1 hotfix): the previous generic
+	# /I). Used by the JSON key/value rules below (v2.0.2 hotfix): the previous generic
 	# rule's value class excluded the double-quote character, so in JSON — where the byte
 	# after `": "` IS a quote — it could never match. `{"GITHUB_TOKEN": "..."}` passed
 	# through untouched, and JSON is the format security-summary.json, reports/raw/* and

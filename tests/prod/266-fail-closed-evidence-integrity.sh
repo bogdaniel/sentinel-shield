@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sentinel Shield prod test — fail-closed evidence integrity (v2.0.1 security hotfix).
+# Sentinel Shield prod test — fail-closed evidence integrity (v2.0.2 security hotfix).
 #
 # THE INVARIANT THIS SUITE DEFENDS:
 #   Absent, malformed, partial, skipped, unrecognized, negative or non-integer evidence

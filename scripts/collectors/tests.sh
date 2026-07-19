@@ -44,7 +44,7 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-# Fail closed on a report that carries NO test-result fields at all (v2.0.1 hotfix).
+# Fail closed on a report that carries NO test-result fields at all (v2.0.2 hotfix).
 # `{}` used to read as `{"status":"pass","failures":0,"tests":0}` — a clean pass — which
 # also satisfied the REQUIRED one-of test group: `printf '{}' > reports/raw/tests.json`
 # certified that a project's tests passed without a single test having run. A document

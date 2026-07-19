@@ -216,7 +216,7 @@ ss_collector_guard() {
 # ss_shape_or_fail <tool> <input> <jq-recognizer> [summary-overrides-json]
 # Fail closed when a scanner report is valid JSON but its SHAPE is not recognized.
 #
-# v2.0.1 security hotfix. The security collectors used to end their extraction with
+# v2.0.2 security hotfix. The security collectors used to end their extraction with
 # `else 0 end`, or relied on jq's `?` operator, so a document whose top-level keys had
 # been renamed upstream produced ZERO findings and status=pass. A scanner version bump
 # could therefore convert every real finding into a clean gate silently. Unrecognized
@@ -239,7 +239,7 @@ ss_shape_or_fail() {
 # ss_counts_or_fail <tool> <counts-json> [summary-overrides-json]
 # Validate that every value in a collector's count object is a NON-NEGATIVE INTEGER.
 #
-# v2.0.1 security hotfix. Counts were passed through unvalidated and the builder SUMS
+# v2.0.2 security hotfix. Counts were passed through unvalidated and the builder SUMS
 # them across collectors, so one report carrying `critical: -99` cancelled another
 # scanner's real findings — exact cancellation to 0 produced a full PASS. Floats and
 # strings were equally unchecked. A malformed count is untrusted evidence.
