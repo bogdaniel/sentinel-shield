@@ -6,7 +6,7 @@ the two carry different validation guarantees. Where this document and marketing
 prose disagree, [`product-status.md`](product-status.md) is the canonical maturity source
 and this file is the canonical support-scope source.
 
-> Version identifiers below use immutable examples. **`v2.0.0` is published as an engine-only
+> Version identifiers below use immutable examples. **`v2.0.1` is published as an engine-only
 > production release** (marked latest, tag target `13be630`). The **v1.x line (`v1.9.2`)
 > remains supported**; framework live-validation is still excluded from the v2.0.0 scope.
 
@@ -14,9 +14,9 @@ and this file is the canonical support-scope source.
 
 | Line | Status | Support |
 | --- | --- | --- |
-| **v2.0.0** (`v2.0.0`, engine-only) | Published production release, **latest** | **Supported — engine scope only.** Security and correctness patches for the STABLE engine surface. **No framework live-validation guarantee** (Laravel/Symfony not live-validated). |
+| **v2.0.0** (`v2.0.1`, engine-only) | Published production release, **latest** | **Supported — engine scope only.** Security and correctness patches for the STABLE engine surface. **No framework live-validation guarantee** (Laravel/Symfony not live-validated). |
 | **v1.x** (latest `v1.9.2`) | Stable, GA | **Fully supported** — security and correctness patches. |
-| **v2.0.0 pre-releases** (`v2.0.0-beta.1`, `v2.0.0-rc.1`) | Superseded | **Unsupported.** Superseded by `v2.0.0`. Upgrade. |
+| **v2.0.0 pre-releases** (`v2.0.0-beta.1`, `v2.0.0-rc.1`) | Superseded | **Unsupported.** Superseded by `v2.0.1`. Upgrade. |
 | **v2.0.0 alpha** (`v2.0.0-alpha.1`) | Superseded | **Unsupported.** Superseded by `v2.0.0-beta.1`. Upgrade. |
 | pre-1.0 (`v0.x`) | Historical | **Unsupported.** |
 

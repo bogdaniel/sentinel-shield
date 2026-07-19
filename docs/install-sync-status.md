@@ -34,6 +34,12 @@ stack-appropriate config). Dry-run output for each is reproducible via
 
 ## Known gaps (not fixed — TODO / roadmap)
 
+> **Two entries below are RESOLVED and kept only for history.**
+> `profiles/combinations/node-react.manifest.json` and `profiles/symfony/profile.manifest.json`
+> both EXIST; the gaps claiming they are missing are stale. The supported-profiles table above
+> lists four profiles — nine manifests ship. (Gaps about `sync-managed-block` still being an
+> alias for `overwrite-if-force` remain accurate.)
+
 1. **No dedicated `node-react` *combination* manifest.** Node+React installs via the `react`
    profile today (which declares stacks `react, node`). It works but is non-obvious and does not
    install a Node-test adapter doc set. *TODO: add `profiles/combinations/node-react.manifest.json`

@@ -1,5 +1,27 @@
 # Install / Sync Consumer-Safety Guide (v0.1.25)
 
+> ## CORRECTION (audit)
+>
+> **The "Honesty banner" below was itself inaccurate.** It stated that the install/sync
+> scripts "do **NOT** take any backup of files before overwriting", implement safety "purely
+> through manifest modes + a hard-coded protection list", and that "there is **no script-side
+> backup or transaction**".
+>
+> That is false. `install-baseline.sh`, `sync-baseline.sh` and `migrate-v1.sh` all use
+> `scripts/lib/transaction.sh` (12 / 12 / 9 call sites respectively): an operation lock, a
+> per-file snapshot taken **before** each write (`tx_install_file`), rollback on failure, and
+> `scripts/recover-operation.sh` for a stale lock. [`recovery.md`](recovery.md) describes this
+> correctly and has been contradicting this file.
+>
+> **The recovery advice below was actively wrong.** For "Partial write (interrupted)" it said
+> to "re-run dry-run … then re-apply" — but `tx_detect_stale` refuses to mutate and **exits 4**
+> while a prior operation lock exists. Following the documented procedure fails. Use
+> `scripts/recover-operation.sh` first; see [`recovery.md`](recovery.md).
+>
+> Two banner bullets remain accurate: there is no dirty-working-tree guard, and the scripts run
+> no git commands.
+
+
 Operator-facing safety playbook for adopting and upgrading Sentinel Shield in a consuming
 project: rollback recipes, the self-tests the captain should wire, safe-branch and PR workflow,
 version upgrades and pinning, multi-project rollout, and failure recovery.

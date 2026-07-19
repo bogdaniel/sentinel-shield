@@ -135,7 +135,7 @@ Each profile's tool lists are verified against the stack it targets:
 - **laravel** intentionally runs a leaner analysis set in CI — `phpstan` (Larastan via
   `scripts/runners/laravel-phpstan.sh`) + `deptrac` (main-gate). The profile *ships*
   `psalm.xml`/`pint.json`/`rector.php` as reference configs for manual project adoption,
-  but does not wire `psalm`/`php-style` runners or raw reports, so they are deliberately
+  but wires `pint` as a **required** tool (`missing_behavior: fail`, PR + main) and `psalm` as recommended — an earlier revision of this line claimed it deliberately did not wire style analysis, which the manifest contradicts; it does not wire the `php-style` runner specifically or raw reports, so they are deliberately
   absent from the tool lists (adding them would over-claim).
 - **php-library** is framework-free PHP: `php-syntax`, `phpstan` (generic, not Larastan),
   `composer-audit`, `gitleaks`, `semgrep`. No deptrac/psalm/Docker assumptions.
@@ -173,3 +173,25 @@ The new **symfony** fixture adds `bin/console` (the marker `detect-stack.sh` key
 Symfony, alongside `symfony.lock`) and a `composer.lock` beside `composer.json` so the
 `dependency-policy` audit reports **0 violations** (manifest-without-lockfile is the only
 policy rule implemented today). `src/Kernel.php` mirrors a real Symfony app layout.
+
+## The `docker` profile is NON-OPERATIVE
+
+`profiles/docker/profile.manifest.json` declares no `tools` map and no `extends`, so:
+
+```sh
+$ sh scripts/resolve-effective-profile.sh --profile docker --format json | jq '.tools|length'
+0
+```
+
+Every container/IaC scanner this document associates with the docker profile — `hadolint`,
+`docker-base-digest`, `trivy-image`, `dockle`, `checkov`, `syft`, `grype` — is therefore
+**never required, never run, and never gated** by it. `required_tool_failures` cannot fire for
+this profile because it has no required tools. The `recommended_*_tools` arrays in that
+manifest are legacy hints the engine does not consume (see the note in
+[`profile-tool-policy.md`](profile-tool-policy.md)).
+
+This is documented rather than "fixed" by inventing tool declarations: wiring scanners that
+have never been validated against a real container consumer would be precisely the overclaim
+this project forbids. Use `hardened-enterprise` (which `extends` laravel + node + docker and
+resolves 58 tools) for real container coverage, or add a `tools` map to the docker manifest and
+validate it before relying on it.

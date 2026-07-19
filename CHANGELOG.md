@@ -14,6 +14,60 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — false claims and a non-operative profile (documentation accuracy)
+
+Docs asserting **more validation than the engine performs**, in the file set whose entire
+purpose is honest status reporting. Every claim below was verified against the code before
+being changed, and `tests/prod/268-documentation-accuracy.sh` now guards the class
+mechanically — nothing checked these before.
+
+- **`product-status.md` claimed three consumer rows were `yes (live)`** — "real lockfile,
+  `npm ci`, mutations caught, byte-for-byte rollback". The live tier is gated on
+  `SS_CONSUMER_LIVE=1` and **nothing in the repository sets it**, so the CI job labelled
+  "Consumer validation (BLOCKING)" runs the structural tier and emits `skip/LIVE_UNAVAILABLE`.
+  The same file already downgraded the php-library row for exactly this condition — the
+  standard was applied unevenly, in favour of the flattering rows. Downgraded to
+  `structural only`.
+- **The `docker` profile resolves ZERO tools.** It declares no `tools` map and no `extends`, so
+  `hadolint`, `docker-base-digest`, `trivy-image`, `dockle`, `checkov`, `syft` and `grype` are
+  never required, never run and never gated by it; `required_tool_failures` cannot fire. The
+  manifest is now marked `"operative": false` and says so in its own description, and the docs
+  stop advertising the coverage. **Deliberately not "fixed" by wiring tools**: declaring
+  scanners that have never been validated against a real container consumer would be precisely
+  the overclaim this project forbids. `hardened-enterprise` (52 tools) is the working path.
+- **`install-sync-consumer-safety.md` was built on a false premise** — ~400 lines asserting the
+  scripts take "no backup" and have "no script-side backup or transaction". All three use
+  `lib/transaction.sh` (12/12/9 call sites): operation lock, per-file snapshot before write,
+  rollback. Worse, its documented recovery step ("re-run dry-run, then re-apply") **fails**:
+  `tx_detect_stale` exits 4 while a prior lock exists. Correction inserted at the top.
+- **Both SHA inventories were stale and unenforced.** Several documented SHAs appeared in no
+  workflow and several real pins were undocumented, under a header claiming the list was
+  "asserted by two fail-closed gates" — neither audit script ever reads those docs. Both are
+  regenerated from the tree, and the dead `zaproxy/*` rows are removed (no workflow has used
+  them since `ci-zap.yml` was deleted).
+- **Two docs understated the security posture**, claiming only `ci-self-test.yml` was SHA-pinned
+  and that other templates "must be pinned before production". **126 of 126** `uses:` lines
+  across all workflows and templates are pinned.
+- **`profile-compatibility.md` said Laravel deliberately omits style analysis**; the manifest
+  declares `pint` as `required` with `missing_behavior: fail` on PR and main. An adopter
+  trusting the doc and skipping Pint would hit a required-tool failure.
+- **`support-policy.md` still presented `v2.0.0` as latest** — zero mentions of `v2.0.1`. The
+  document governing customer entitlements was a release behind.
+- **`install-sync-status.md` listed two "known gaps (not fixed)" that are fixed** — the
+  `node-react` combination and `symfony` manifests both exist.
+- **"DAST is never a default gate"** appeared in several docs; `regulated` resolves
+  `FAIL_ON_DAST_FINDINGS=true`.
+- **Three different gate counts were each called "canonical"** (12 / 24 / the resolver's actual
+  41). `resolve-gates.sh` is now named as the only authority.
+
+New: `tests/prod/268-documentation-accuracy.sh` asserts that no doc claims a live tier that
+cannot run, that a zero-tool profile is marked non-operative, that the SHA-pinning claims match
+the workflows, that no doc pins actions for a deleted workflow, that the support policy tracks
+the current release, and that no stale literal gate count is asserted.
+
+**No tag, release, manifest, or evidence bundle is produced by this change.**
+
+
 ### Added — Engineering Quality Gates (v2.1)
 
 First-class **engineering-quality** gate family, extending Sentinel Shield from a security/

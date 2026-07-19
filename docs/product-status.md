@@ -65,11 +65,20 @@ third-party production adopter — which is **false for everything** this cycle.
 `release-gated` means a self-test / CI gate blocks regressions. Laravel and Symfony
 **framework live-validation is FALSE**.
 
+> **Consumer-validation tiers.** `tests/prod/201-node-consumers.sh` has a STRUCTURAL tier
+> (always runs) and a LIVE tier gated on `SS_CONSUMER_LIVE=1` — real `npm ci`, real mutation
+> detection, real rollback. Nothing in this repository sets that variable, so the blocking CI
+> job labelled "Consumer validation (BLOCKING)" exercises the structural tier only and emits
+> `skip/LIVE_UNAVAILABLE` records. These rows previously read **yes (live)**; that was an
+> overclaim, and it was applied unevenly — the php-library row was already, correctly,
+> downgraded for exactly this condition.
+
+
 | Capability | Implemented | Engine-tested | Fixture-tested | Standalone-consumer-tested | External-production-tested | Release-gated | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Node service consumer (npm) | yes | yes | yes | **yes (live)** | no | yes | real lockfile, `npm ci`, mutations caught, byte-for-byte rollback (`tests/consumers/node-service`, `201-node-consumers.sh`) |
-| Node PM-variant consumers (npm/pnpm/yarn) | yes | yes | yes | **yes (live)** | no | yes | real lockfiles, `pnpm --frozen-lockfile` / `yarn --immutable` (`tests/consumers/pm-variants`) |
-| React app consumer | yes | yes | yes | **yes (live)** | no | yes | real lockfile + install, byte-for-byte rollback (`tests/consumers/react-app`) |
+| Node service consumer (npm) | yes | yes | yes | structural only | no | yes | structural only — the LIVE tier is `SS_CONSUMER_LIVE=1` and NOTHING in the repo sets it, so CI exercises the structural tier and records `skip/LIVE_UNAVAILABLE` (`tests/consumers/node-service`, `201-node-consumers.sh`) |
+| Node PM-variant consumers (npm/pnpm/yarn) | yes | yes | yes | structural only | no | yes | structural only — LIVE tier (`SS_CONSUMER_LIVE=1`) is never enabled in CI (`tests/consumers/pm-variants`) |
+| React app consumer | yes | yes | yes | structural only | no | yes | structural only — LIVE tier (`SS_CONSUMER_LIVE=1`) is never enabled in CI (`tests/consumers/react-app`) |
 | Standalone PHP-library consumer | yes | yes | yes | **yes (structural only)** | no | yes | structure verified; live composer/phpunit/phpstan/pint gates are **CI-deferred SKIPs, not proven locally** (`tests/consumers/php-library`, `200-php-consumer.sh`) |
 | Laravel profile (framework live-validation) | yes | yes | yes | **no** | no | yes | engine + fixture only; **not** live-validated in a real Laravel consumer |
 | Symfony profile (framework live-validation) | yes | yes | yes | **no** | no | yes | engine + fixture only; **not** live-validated in a real Symfony consumer |
@@ -131,7 +140,7 @@ and this row does **not** change the canonical release status above. Full refere
 | `supported` | Runner/collector/self-test fixture exists and is deterministic, but **not yet run against a real consumer**. |
 | `experimental` | Wired, but the parser/severity mapping is coarse or noisy (e.g. OSV/CodeQL `level→severity`). Use with review. |
 | `ci-validated (evidence-fixture)` | Real scanner + real CI run ID + real artifact + collector-verified, but on a **dedicated, intentionally-insecure, non-deployed evidence fixture** (engineered findings). Stronger than `experimental`/local; **NOT** the same as third-party-production `live-validated`. (v1.6.0: Checkov/Terrascan/Conftest.) |
-| `manual` | Runs only on explicit operator action with a target + allowlist (DAST). Never a default gate. |
+| `manual` | Runs only on explicit operator action with a target + allowlist (DAST). Not gated below `regulated` (regulated DOES gate `dast_findings` by default — verified: `resolve-gates.sh --mode regulated` emits `FAIL_ON_DAST_FINDINGS=true`). |
 | `template-only` | Workflow/docs exist; not executed by default and not yet validated on a consumer. |
 | `non-gating` | Produces advisory output only; never blocks a release by default (AI review). |
 | `not-ready` | Declared/reserved or known-incomplete; do not rely on it. |

@@ -315,3 +315,25 @@ THEN (every path):
 For the YAML override scenarios behind each mode (and DAST / AI opt-ins), see the example
 `profile.yaml` files in [`examples/profiles/`](examples/profiles/) and the resolver behaviour in
 [`gate-resolution.md`](gate-resolution.md).
+
+## The `docker` profile is NON-OPERATIVE
+
+`profiles/docker/profile.manifest.json` declares no `tools` map and no `extends`, so:
+
+```sh
+$ sh scripts/resolve-effective-profile.sh --profile docker --format json | jq '.tools|length'
+0
+```
+
+Every container/IaC scanner this document associates with the docker profile — `hadolint`,
+`docker-base-digest`, `trivy-image`, `dockle`, `checkov`, `syft`, `grype` — is therefore
+**never required, never run, and never gated** by it. `required_tool_failures` cannot fire for
+this profile because it has no required tools. The `recommended_*_tools` arrays in that
+manifest are legacy hints the engine does not consume (see the note in
+[`profile-tool-policy.md`](profile-tool-policy.md)).
+
+This is documented rather than "fixed" by inventing tool declarations: wiring scanners that
+have never been validated against a real container consumer would be precisely the overclaim
+this project forbids. Use `hardened-enterprise` (which `extends` laravel + node + docker and
+resolves 58 tools) for real container coverage, or add a `tools` map to the docker manifest and
+validate it before relying on it.
