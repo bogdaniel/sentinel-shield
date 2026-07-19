@@ -28,13 +28,20 @@ mechanically — nothing checked these before.
   The same file already downgraded the php-library row for exactly this condition — the
   standard was applied unevenly, in favour of the flattering rows. Downgraded to
   `structural only`.
-- **The `docker` profile resolves ZERO tools.** It declares no `tools` map and no `extends`, so
-  `hadolint`, `docker-base-digest`, `trivy-image`, `dockle`, `checkov`, `syft` and `grype` are
-  never required, never run and never gated by it; `required_tool_failures` cannot fire. The
-  manifest is now marked `"operative": false` and says so in its own description, and the docs
-  stop advertising the coverage. **Deliberately not "fixed" by wiring tools**: declaring
-  scanners that have never been validated against a real container consumer would be precisely
-  the overclaim this project forbids. `hardened-enterprise` (52 tools) is the working path.
+- **The `docker` profile resolved ZERO tools — now 13.** It declared no `tools` map and no
+  `extends`, so `hadolint`, `docker-base-digest`, `trivy-fs`, `dockle`, `checkov`, `syft` and
+  `grype` were never required, never run and never gated, and `required_tool_failures` could not
+  fire. Worse than the docs suggested: `hardened-enterprise` **extends** `docker`, so the
+  maximum-hardening profile had no container or IaC coverage either (52 tools -> 59 now).
+  A real `tools` map is wired, with policies assigned by **validated maturity**
+  (`docs/scanner-maturity-policy.md`) rather than aspiration:
+  `required` for the nine that run from Sentinel Shield itself or are live-validated
+  (hadolint, docker-base-digest, gitleaks, actionlint, zizmor, github-actions-pins, trivy-fs,
+  syft, grype); `recommended` for Checkov/Terrascan/Conftest, which are **ci-validated against
+  evidence fixtures only** — requiring them would assert live IaC validation this project has
+  not performed; `optional` for Dockle, which needs a built image (`$SENTINEL_SHIELD_IMAGE`).
+  Nine tools are gate-enforced, verified end-to-end: `required_tool_failures` is 9 with no
+  reports and 0 with them.
 - **`install-sync-consumer-safety.md` was built on a false premise** — ~400 lines asserting the
   scripts take "no backup" and have "no script-side backup or transaction". All three use
   `lib/transaction.sh` (12/12/9 call sites): operation lock, per-file snapshot before write,

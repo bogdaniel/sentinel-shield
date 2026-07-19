@@ -45,6 +45,15 @@ for _p in docker laravel symfony node react php-library hardened-enterprise; do
 	fi
 done
 
+# NEGATIVE CONTROL for the branch above. Every shipped profile now resolves tools, so the
+# "zero tools must be marked non-operative" rule would sit unexercised and could rot into a
+# no-op. Prove it still detects an empty profile.
+_np=$(mktemp -d)
+printf '{"profile":"ss-empty-probe","description":"probe","stacks":[]}\n' > "$_np/profile.manifest.json"
+_probe=$(jq -r 'if has("operative") then (.operative|tostring) else "unset" end' "$_np/profile.manifest.json")
+check "negative control: a manifest with no tools and no operative flag reads 'unset'" "$_probe" "unset"
+rm -rf -- "$_np"
+
 # --- SHA-pinning claims must match the workflows -----------------------------
 _tot=$(grep -rhoE '^[[:space:]]*uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
 _pin=$(grep -rhoE '^[[:space:]]*uses: [^@[:space:]]+@[0-9a-f]{40}' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)

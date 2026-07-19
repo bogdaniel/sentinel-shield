@@ -174,24 +174,27 @@ Symfony, alongside `symfony.lock`) and a `composer.lock` beside `composer.json` 
 `dependency-policy` audit reports **0 violations** (manifest-without-lockfile is the only
 policy rule implemented today). `src/Kernel.php` mirrors a real Symfony app layout.
 
-## The `docker` profile is NON-OPERATIVE
+## The `docker` profile
 
-`profiles/docker/profile.manifest.json` declares no `tools` map and no `extends`, so:
+`profiles/docker/profile.manifest.json` declares a real `tools` map and resolves **13 tools**:
 
 ```sh
 $ sh scripts/resolve-effective-profile.sh --profile docker --format json | jq '.tools|length'
-0
+13
 ```
 
-Every container/IaC scanner this document associates with the docker profile — `hadolint`,
-`docker-base-digest`, `trivy-image`, `dockle`, `checkov`, `syft`, `grype` — is therefore
-**never required, never run, and never gated** by it. `required_tool_failures` cannot fire for
-this profile because it has no required tools. The `recommended_*_tools` arrays in that
-manifest are legacy hints the engine does not consume (see the note in
-[`profile-tool-policy.md`](profile-tool-policy.md)).
+Policies follow **validated maturity** ([`scanner-maturity-policy.md`](scanner-maturity-policy.md)),
+not aspiration:
 
-This is documented rather than "fixed" by inventing tool declarations: wiring scanners that
-have never been validated against a real container consumer would be precisely the overclaim
-this project forbids. Use `hardened-enterprise` (which `extends` laravel + node + docker and
-resolves 58 tools) for real container coverage, or add a `tools` map to the docker manifest and
-validate it before relying on it.
+| Policy | Tools | Why |
+| --- | --- | --- |
+| `required` | `hadolint`, `docker-base-digest`, `gitleaks`, `actionlint`, `zizmor`, `github-actions-pins`, `trivy-fs`, `syft`, `grype` | run from Sentinel Shield itself, or live-validated |
+| `recommended` | `checkov`, `terrascan`, `conftest` | **ci-validated (evidence-fixture) only** — requiring them would assert live IaC validation this project has not performed |
+| `optional` | `dockle` | live-validated, but needs a built image (`$SENTINEL_SHIELD_IMAGE`) a consumer may not produce |
+
+Nine tools are gate-enforced, so `required_tool_failures` fires when their evidence is absent.
+
+> **Previously this profile resolved ZERO tools** — it declared no `tools` map and no `extends`,
+> so every scanner these docs associated with it was never required, never run and never gated,
+> and `required_tool_failures` could not fire at all. Because `hardened-enterprise` **extends**
+> `docker`, that profile silently had no container or IaC coverage either.
