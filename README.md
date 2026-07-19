@@ -541,7 +541,7 @@ See [`docs/adoption-guide.md`](docs/adoption-guide.md) for the full five-phase p
 | Posture | OpenSSF Scorecard, Dependabot |
 | Docker / IaC | Hadolint, Trivy, Dockle (optional), Checkov, Terrascan (optional), OPA/Conftest |
 | GitHub Actions | actionlint, zizmor, OpenSSF Scorecard, OPA/Conftest |
-| Runtime / staging | OWASP ZAP baseline (PRs), ZAP full (nightly), Nuclei (optional, controlled) |
+| Runtime / staging | OWASP ZAP baseline, ZAP full, Nuclei — all manual/controlled, consumer-project template only (never a PR check) |
 | AI-assisted review | Claude Code Security Review, Kuzushi (assistive only) |
 
 ---

@@ -72,7 +72,7 @@ by default (see `resolve-gates.sh`).
 | Checkov | missing | **collector+audit ✓** | MAIN | checkov.json | checkov.sh | iac_violations | ✗/✓/✓ | if IaC | no | yes | IaC |
 | Conftest / OPA | partial | **collector+audit ✓** | MAIN | conftest.json | conftest.sh | iac_violations | ✗/✓/✓ | if IaC | no | yes | OPA/Rego policies exist |
 | Terrascan | missing | **collector+audit ✓** | MAIN | terrascan.json | terrascan.sh | iac_violations | ✗/✓/✓ | if IaC | no | yes | IaC |
-| OWASP ZAP baseline | partial (ci-zap) | **collector+runner (MANUAL) ✓** | MANUAL | zap.json | zap.sh | dast_findings | ✗/✗/✓ | **off** | **target+allowlist** | **no** | passive; fail-closed guard |
+| OWASP ZAP baseline | consumer template | **collector+runner (MANUAL) ✓** | MANUAL | zap.json | zap.sh | dast_findings | ✗/✗/✓ | **off** | **target+allowlist** | **no** | passive; fail-closed guard |
 | OWASP ZAP full | missing | **collector+runner (MANUAL) ✓** | MANUAL | zap-full.json | zap.sh | dast_findings | ✗/✗/✓ | **off** | **target+allowlist** | **no** | active; approval required |
 | Nuclei | missing | **collector+runner (MANUAL) ✓** | MANUAL | nuclei.json | nuclei.sh | dast_findings | ✗/✗/✓ | **off** | **target+allowlist** | **no** | controlled; allowlist |
 | Claude Code Security Review | missing | **collector+template (assistive)** | MANUAL/AI | ai-security-review.json | ai-security-review.sh | ai_review_findings | **never default** | off | API key (CI) | advisory | non-gating unless explicitly enabled |

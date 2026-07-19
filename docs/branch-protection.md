@@ -95,7 +95,11 @@ filenames) when configuring required checks. This table mirrors
 | `ci-node`            | `detect` (`applicability-detector`), `node` (`conditional-heavy`) |
 | `ci-docker`          | `detect` (`applicability-detector`), `docker` (`conditional-heavy`) |
 | `ci-release-gate`    | `gate` (`release-only`) |
-| `ci-zap`             | `zap-baseline`, `zap-full` (both `scheduled-only`) |
+
+> DAST (OWASP ZAP / Nuclei) publishes no core check. It is an optional
+> consumer-project template — `templates/workflows/sentinel-shield-dast.yml` —
+> not an active core workflow, because Sentinel Shield core ships no web
+> application target. See [`dast-policy.md`](dast-policy.md).
 
 > The `ci-workflow-lint` workflow now publishes three checks: `workflow-lint`
 > (actionlint + zizmor), `workflow-runtime-audit` (runtime-hardening invariants),

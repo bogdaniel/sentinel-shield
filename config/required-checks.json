@@ -80,12 +80,6 @@
         { "name": "gate", "classification": "release-only" }
       ]
     },
-    "ci-zap.yml": {
-      "checks": [
-        { "name": "zap-baseline", "classification": "scheduled-only" },
-        { "name": "zap-full", "classification": "scheduled-only" }
-      ]
-    },
     "ci-adopter-validation.yml": {
       "checks": [
         { "name": "scorecard-unit", "classification": "always-required" },

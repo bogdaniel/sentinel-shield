@@ -228,7 +228,7 @@ consuming project; a gate that never blocks is not a gate.
 | --- | --- | --- |
 | PR gate | On every pull request to `master` | Stop unsafe code entering the default branch |
 | `master` branch gate | On push/merge to `master` | Protect the integration branch |
-| Nightly gate | Scheduled | Deeper, slower scans (ZAP full, full Trivy, Scorecard) |
+| Nightly gate | Scheduled | Deeper, slower scans (full Trivy, Scorecard; ZAP full only for consumer projects with a staging target — see §5) |
 | Production release gate | On tag / release | Final evidence and approval before deploy |
 | Emergency release | Out-of-band, documented | Controlled bypass with mandatory follow-up |
 
@@ -308,7 +308,11 @@ authorise blind production deploys.
 
 Run on a schedule against a non-production environment:
 
-- OWASP ZAP full scan against staging only (never production by default).
+- OWASP ZAP full scan against staging only (never production by default). DAST applies to
+  **consumer projects that expose a staging target**, via the controlled template
+  [`templates/workflows/sentinel-shield-dast.yml`](templates/workflows/sentinel-shield-dast.yml)
+  with host allowlisting and fail-closed guards ([`docs/dast-policy.md`](docs/dast-policy.md)).
+  Sentinel Shield core ships no web target, so it runs no DAST in its own CI.
 - Full Trivy image and filesystem scan.
 - OpenSSF Scorecard.
 - OSV-Scanner / Dependency-Check full run.
