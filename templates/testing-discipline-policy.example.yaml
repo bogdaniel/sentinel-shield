@@ -54,6 +54,10 @@ testing_discipline:
     # BDD evidence is OFF by default. A library must never be forced to carry Gherkin it never
     # asked for. Turn both flags on to make behavior-spec evidence EXPECTED — only then can
     # missing_behavior_specification become true.
+    #
+    # An EXPLICIT `enabled: false` also VETOES a profile that declares a required BDD producer:
+    # stating the channel does not apply here beats a profile default. Each producer writes its
+    # own raw report (behat-specs.json, cucumber-specs.json), and multiple producers aggregate.
     enabled: false
     require_behavior_specs: false
     spec_paths:
@@ -64,6 +68,11 @@ testing_discipline:
   atdd:
     # ATDD acceptance evidence is OFF by default, for the same reason: a browser acceptance
     # suite is an opt-in commitment, and it is usually too slow to demand on every PR.
+    #
+    # An EXPLICIT `enabled: false` also VETOES a profile that declares a required ATDD producer.
+    # Each producer writes its own raw report (playwright-acceptance.json,
+    # cypress-acceptance.json, behat-acceptance.json, cucumber-acceptance.json), so Playwright
+    # and Cypress can both run and their results AGGREGATE instead of overwriting each other.
     enabled: false
     require_acceptance_evidence: false
     acceptance_paths:

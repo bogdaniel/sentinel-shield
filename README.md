@@ -781,7 +781,10 @@ Six new gates ride along — `production_change_without_test_change`, `missing_t
 proxy blocks from **strict**, acceptance failures block from **baseline** when evidence exists, orphan
 specs block in **regulated**, and BDD/ATDD evidence is demanded only from **application** profiles that
 opted in. Producers (Behat, Cucumber.js, Playwright, Cypress, or anything emitting the contract) are
-configured in `.sentinel-shield/testing-discipline-policy.yaml`.
+configured in `.sentinel-shield/testing-discipline-policy.yaml`. The contract is generic but each
+producer writes its own raw report path, so multiple ATDD/BDD producers **aggregate** instead of
+overwriting each other; an explicit `bdd.enabled: false` / `atdd.enabled: false` switches a channel
+off even when a profile declares a required producer.
 
 **TDD cannot be proven from final code.** TDD is a workflow, and a final snapshot does not record the
 order its lines were written — Sentinel Shield enforces TDD evidence proxies, not developer intent. It

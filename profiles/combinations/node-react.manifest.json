@@ -44,7 +44,7 @@
   "never_touch": [".sentinel-shield/accepted-risks.json"],
   "required_scripts": ["scripts/adapters/vitest-to-tests-json.mjs", "scripts/adapters/jest-to-tests-json.mjs", "scripts/runners/eslint.sh", "scripts/runners/typescript.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
   "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests", "dependency-cruiser", "eslint-boundaries", "test-change-evidence"],
-  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check", "playwright"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype", "playwright"],
-  "recommended_raw_reports": ["npm-audit.json", "tests.json", "typescript.json", "eslint.json", "gitleaks.json", "semgrep.json", "dependency-cruiser.json", "eslint-boundaries.json", "test-change-evidence.json", "behavior-specs.json", "acceptance-tests.json"]
+  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check", "playwright-acceptance"],
+  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype", "playwright-acceptance"],
+  "recommended_raw_reports": ["npm-audit.json", "tests.json", "typescript.json", "eslint.json", "gitleaks.json", "semgrep.json", "dependency-cruiser.json", "eslint-boundaries.json", "test-change-evidence.json", "behat-specs.json", "behat-acceptance.json", "playwright-acceptance.json"]
 }

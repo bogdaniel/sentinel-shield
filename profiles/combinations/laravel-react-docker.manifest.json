@@ -133,7 +133,7 @@
     "php-arkitect",
     "dependency-cruiser",
     "eslint-boundaries",
-    "playwright"
+    "playwright-acceptance"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
@@ -141,7 +141,7 @@
     "dockle",
     "dependency-check",
     "grype",
-    "playwright"
+    "playwright-acceptance"
   ],
   "recommended_raw_reports": [
     "gitleaks.json",
@@ -176,7 +176,8 @@
     "eslint-boundaries.json",
     "php-arkitect.json",
     "test-change-evidence.json",
-    "behavior-specs.json",
-    "acceptance-tests.json"
+    "behat-specs.json",
+    "behat-acceptance.json",
+    "playwright-acceptance.json"
   ]
 }

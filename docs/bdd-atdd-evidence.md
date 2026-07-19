@@ -154,3 +154,33 @@ explicitly requires it.
 - [`testing-discipline-governance.md`](testing-discipline-governance.md)
 - [`acceptance-test-evidence.md`](acceptance-test-evidence.md)
 - [`tdd-evidence-policy.md`](tdd-evidence-policy.md)
+
+### Producer raw report paths are distinct
+
+The `acceptance-tests` and `behavior-specs` **contracts are generic** — every producer emits the
+same shape, and the collector never cares which tool produced it. But each producer writes its
+**own raw report path**, because a shared path means the producer that runs last silently
+destroys the earlier producer's evidence before the collector ever sees it:
+
+| Producer | Raw report | Collector emit-name |
+| --- | --- | --- |
+| Behat (specs) | `reports/raw/behat-specs.json` | `behat_specs` |
+| Cucumber.js (specs) | `reports/raw/cucumber-specs.json` | `cucumber_specs` |
+| Playwright | `reports/raw/playwright-acceptance.json` | `playwright_acceptance` |
+| Cypress | `reports/raw/cypress-acceptance.json` | `cypress_acceptance` |
+| Behat (acceptance) | `reports/raw/behat-acceptance.json` | `behat_acceptance` |
+| Cucumber.js (acceptance) | `reports/raw/cucumber-acceptance.json` | `cucumber_acceptance` |
+| custom / manual | `reports/raw/acceptance-tests.json`, `reports/raw/behavior-specs.json` | `acceptance_tests`, `behavior_specs` |
+
+**Multiple ATDD (and BDD) producers aggregate.** `acceptance_test_count` and
+`acceptance_test_failures` are SUMMED across producers, as is `behavior_spec_count`; the
+`missing_*` booleans are OR-ed. Running Playwright *and* Cypress is a supported, correct setup —
+they no longer overwrite each other, and their results add up.
+
+The generic `acceptance-tests.json` / `behavior-specs.json` paths remain supported for a
+**custom or manual** producer emitting the contract directly. No shipped profile claims those
+paths, so a hand-rolled producer can never collide with a profile-declared one.
+
+**Missing evidence is derived only when the channel is expected** — see the expectation rules
+above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
+guaranteed by Sentinel Shield.

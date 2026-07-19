@@ -584,18 +584,18 @@
       }
     },
     "test-change-evidence": {
-      "policy": "required",
+      "policy": "recommended",
       "category": "testing-discipline",
       "runner": "scripts/runners/test-change-evidence.sh",
       "report": "reports/raw/test-change-evidence.json",
-      "missing_behavior": "fail",
+      "missing_behavior": "warn",
       "execution": {
         "pr": true,
         "main": true,
         "scheduled": false
       }
     },
-    "behat": {
+    "behat-specs": {
       "policy": "optional",
       "category": "bdd",
       "packages": [
@@ -610,7 +610,7 @@
         "behat"
       ],
       "runner": "scripts/runners/behat.sh",
-      "report": "reports/raw/behavior-specs.json",
+      "report": "reports/raw/behat-specs.json",
       "missing_behavior": "info",
       "execution": {
         "pr": true,

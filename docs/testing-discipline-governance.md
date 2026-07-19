@@ -106,8 +106,11 @@ either sufficient:
    `require_behavior_specs` (and the ATDD equivalent).
 
 By default profiles ship BDD/ATDD producers as `optional`, so nothing is demanded from a
-project that never opted in. The TDD proxy ships as `required` because it needs no project
-tooling at all — only a git history.
+project that never opted in. The TDD proxy ships as `recommended`: its evidence IS expected
+(the threshold for that channel is `required` *or* `recommended`, matching architecture
+evidence, because the proxy needs no project tooling — only a git history), but its absence is
+judged by the mode-tiered gate rather than the always-on required-tool channel, so the
+report-only -> baseline -> strict adoption ramp is preserved.
 
 Policy can also switch a channel off honestly: `testing_discipline.enabled: false`, or the
 per-channel `enabled` flag. An absent policy means TDD on, BDD/ATDD off.
@@ -128,11 +131,11 @@ SENTINEL_SHIELD_FAIL_ON_MISSING_ACCEPTANCE_EVIDENCE=
 | Channel | Runner | Report | Adapter |
 | --- | --- | --- | --- |
 | TDD proxy | `scripts/runners/test-change-evidence.sh` | `reports/raw/test-change-evidence.json` | — (reads git directly) |
-| BDD (PHP) | `scripts/runners/behat.sh` | `reports/raw/behavior-specs.json` | `behat-junit-to-behavior-specs.php` |
-| BDD (JS) | `scripts/runners/cucumber-js.sh` | `reports/raw/behavior-specs.json` | `cucumber-json-to-behavior-specs.mjs` |
-| ATDD (browser) | `scripts/runners/playwright.sh`, `cypress.sh` | `reports/raw/acceptance-tests.json` | `playwright-json-to-acceptance-tests.mjs`, `junit-to-acceptance-tests.mjs` |
-| ATDD (PHP) | `scripts/runners/behat-acceptance.sh` | `reports/raw/acceptance-tests.json` | `junit-to-acceptance-tests.php` |
-| ATDD (JS Gherkin) | `scripts/runners/cucumber-acceptance.sh` | `reports/raw/acceptance-tests.json` | — (inline mapping) |
+| BDD (PHP) | `scripts/runners/behat.sh` | `reports/raw/behat-specs.json` | `behat-junit-to-behavior-specs.php` |
+| BDD (JS) | `scripts/runners/cucumber-js.sh` | `reports/raw/cucumber-specs.json` | `cucumber-json-to-behavior-specs.mjs` |
+| ATDD (browser) | `scripts/runners/playwright.sh`, `cypress.sh` | `reports/raw/playwright-acceptance.json`, `reports/raw/cypress-acceptance.json` | `playwright-json-to-acceptance-tests.mjs`, `junit-to-acceptance-tests.mjs` |
+| ATDD (PHP) | `scripts/runners/behat-acceptance.sh` | `reports/raw/behat-acceptance.json` | `junit-to-acceptance-tests.php` |
+| ATDD (JS Gherkin) | `scripts/runners/cucumber-acceptance.sh` | `reports/raw/cucumber-acceptance.json` | — (inline mapping) |
 
 Every producer reports honestly: a binary that is absent is `unavailable`, a missing config is
 `not-configured`, a run that produced nothing readable is `execution-error`. **None of them
@@ -157,3 +160,33 @@ explicitly requires it.
 - [`acceptance-test-evidence.md`](acceptance-test-evidence.md) — ATDD specifics, including `tests: 0`
 - [`test-discipline-waivers.md`](test-discipline-waivers.md) — waiving the TDD proxy honestly
 - [`architecture-governance.md`](architecture-governance.md) — the v2.1.0 sibling feature
+
+### Producer raw report paths are distinct
+
+The `acceptance-tests` and `behavior-specs` **contracts are generic** — every producer emits the
+same shape, and the collector never cares which tool produced it. But each producer writes its
+**own raw report path**, because a shared path means the producer that runs last silently
+destroys the earlier producer's evidence before the collector ever sees it:
+
+| Producer | Raw report | Collector emit-name |
+| --- | --- | --- |
+| Behat (specs) | `reports/raw/behat-specs.json` | `behat_specs` |
+| Cucumber.js (specs) | `reports/raw/cucumber-specs.json` | `cucumber_specs` |
+| Playwright | `reports/raw/playwright-acceptance.json` | `playwright_acceptance` |
+| Cypress | `reports/raw/cypress-acceptance.json` | `cypress_acceptance` |
+| Behat (acceptance) | `reports/raw/behat-acceptance.json` | `behat_acceptance` |
+| Cucumber.js (acceptance) | `reports/raw/cucumber-acceptance.json` | `cucumber_acceptance` |
+| custom / manual | `reports/raw/acceptance-tests.json`, `reports/raw/behavior-specs.json` | `acceptance_tests`, `behavior_specs` |
+
+**Multiple ATDD (and BDD) producers aggregate.** `acceptance_test_count` and
+`acceptance_test_failures` are SUMMED across producers, as is `behavior_spec_count`; the
+`missing_*` booleans are OR-ed. Running Playwright *and* Cypress is a supported, correct setup —
+they no longer overwrite each other, and their results add up.
+
+The generic `acceptance-tests.json` / `behavior-specs.json` paths remain supported for a
+**custom or manual** producer emitting the contract directly. No shipped profile claims those
+paths, so a hand-rolled producer can never collide with a profile-declared one.
+
+**Missing evidence is derived only when the channel is expected** — see the expectation rules
+above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
+guaranteed by Sentinel Shield.

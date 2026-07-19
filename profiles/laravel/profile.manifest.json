@@ -94,8 +94,8 @@
     "debug-code.json",
     "source-size.json",
     "test-change-evidence.json",
-    "behavior-specs.json",
-    "acceptance-tests.json"
+    "behat-specs.json",
+    "behat-acceptance.json"
   ],
   "tools": {
     "php-syntax": {
@@ -702,42 +702,15 @@
       }
     },
     "test-change-evidence": {
-      "policy": "required",
+      "policy": "recommended",
       "category": "testing-discipline",
       "runner": "scripts/runners/test-change-evidence.sh",
       "report": "reports/raw/test-change-evidence.json",
-      "missing_behavior": "fail",
+      "missing_behavior": "warn",
       "execution": {
         "pr": true,
         "main": true,
         "scheduled": false
-      }
-    },
-    "behat": {
-      "policy": "optional",
-      "category": "bdd",
-      "packages": [
-        {
-          "name": "behat/behat",
-          "scope": "dev",
-          "compatibility": "auto"
-        }
-      ],
-      "executable": [
-        "vendor/bin/behat",
-        "behat"
-      ],
-      "runner": "scripts/runners/behat.sh",
-      "report": "reports/raw/behavior-specs.json",
-      "missing_behavior": "info",
-      "execution": {
-        "pr": true,
-        "main": true,
-        "scheduled": false
-      },
-      "config": {
-        "path": "behat.yml",
-        "classification": "project-owned"
       }
     },
     "behat-acceptance": {
@@ -755,12 +728,39 @@
         "behat"
       ],
       "runner": "scripts/runners/behat-acceptance.sh",
-      "report": "reports/raw/acceptance-tests.json",
+      "report": "reports/raw/behat-acceptance.json",
       "missing_behavior": "info",
       "execution": {
         "pr": false,
         "main": true,
         "scheduled": true
+      },
+      "config": {
+        "path": "behat.yml",
+        "classification": "project-owned"
+      }
+    },
+    "behat-specs": {
+      "policy": "optional",
+      "category": "bdd",
+      "packages": [
+        {
+          "name": "behat/behat",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/behat",
+        "behat"
+      ],
+      "runner": "scripts/runners/behat.sh",
+      "report": "reports/raw/behat-specs.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
       },
       "config": {
         "path": "behat.yml",

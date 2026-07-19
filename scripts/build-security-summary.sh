@@ -179,7 +179,13 @@ focused-tests|focused-tests.json|focused-tests.sh|focused_tests
 debug-code|debug-code.json|debug-code.sh|debug_code
 source-size|source-size.json|source-size.sh|source_size
 test-change-evidence|test-change-evidence.json|test-change-evidence.sh|test_change_evidence
+behat-specs|behat-specs.json|behavior-specs.sh|behat_specs
+cucumber-specs|cucumber-specs.json|behavior-specs.sh|cucumber_specs
 behavior-specs|behavior-specs.json|behavior-specs.sh|behavior_specs
+playwright-acceptance|playwright-acceptance.json|acceptance-tests.sh|playwright_acceptance
+cypress-acceptance|cypress-acceptance.json|acceptance-tests.sh|cypress_acceptance
+behat-acceptance|behat-acceptance.json|acceptance-tests.sh|behat_acceptance
+cucumber-acceptance|cucumber-acceptance.json|acceptance-tests.sh|cucumber_acceptance
 acceptance-tests|acceptance-tests.json|acceptance-tests.sh|acceptance_tests'
 
 # --- defaults / CLI ----------------------------------------------------------
@@ -467,14 +473,26 @@ if [ -n "$PROFILE_NAME" ]; then
 			ARCH_EVIDENCE_EMITS="${ARCH_EVIDENCE_EMITS}${emit} "
 		fi
 
-		# Testing-discipline producers whose evidence is EXPECTED (v2.2.0): REQUIRED only, and
-		# only for an applicable stack. `required` is the profile author's explicit statement
-		# that this channel must produce evidence here.
-		if [ "$tappl" != "not-applicable" ] && [ "$tpol" = "required" ]; then
+		# Testing-discipline producers whose evidence is EXPECTED (v2.2.0). The threshold differs
+		# per channel, deliberately:
+		#
+		#   testing-discipline (TDD proxy): required OR recommended — same rule as architecture
+		#     evidence (v2.1.0), because the proxy needs NO project tooling, only a git history.
+		#     It ships as `recommended` so it never trips the always-on required-tool channel;
+		#     whether absent evidence BLOCKS is left to the MODE (strict/regulated), which is the
+		#     adoption ramp this feature is designed around.
+		#
+		#   bdd / atdd: REQUIRED only. Gherkin and browser acceptance suites are real
+		#     commitments, so only a profile author explicitly marking a producer `required`
+		#     makes that evidence expected. A recommended/optional producer is an invitation.
+		if [ "$tappl" != "not-applicable" ]; then
 			case "$tcat" in
-				testing-discipline) TDD_EVIDENCE_EMITS="${TDD_EVIDENCE_EMITS}${emit} " ;;
-				bdd) BDD_EVIDENCE_EMITS="${BDD_EVIDENCE_EMITS}${emit} " ;;
-				atdd) ATDD_EVIDENCE_EMITS="${ATDD_EVIDENCE_EMITS}${emit} " ;;
+				testing-discipline)
+					[ "$tpol" != "optional" ] && TDD_EVIDENCE_EMITS="${TDD_EVIDENCE_EMITS}${emit} " ;;
+				bdd)
+					[ "$tpol" = "required" ] && BDD_EVIDENCE_EMITS="${BDD_EVIDENCE_EMITS}${emit} " ;;
+				atdd)
+					[ "$tpol" = "required" ] && ATDD_EVIDENCE_EMITS="${ATDD_EVIDENCE_EMITS}${emit} " ;;
 			esac
 		fi
 
@@ -734,14 +752,30 @@ EOF
 	#      (testing_discipline.bdd.enabled + require_behavior_specs, and the ATDD equivalent).
 	# Policy can also switch a channel OFF honestly (testing_discipline.enabled=false, or the
 	# per-channel enabled flag) — an absent policy means TDD on, BDD/ATDD off.
+	# Channel switches are tracked SEPARATELY from "does the policy require evidence":
+	#   _bdd_on / _atdd_on  — is the channel enabled at all?
+	#   _bdd_req / _atdd_req — does the policy itself demand evidence?
+	# A channel explicitly switched OFF wins over a profile that declares a REQUIRED producer:
+	# `bdd.enabled: false` is the project stating this channel does not apply here, and a
+	# profile default must not override that statement. The master switch
+	# (testing_discipline.enabled: false) turns all three channels off.
 	_td_file="${TARGET_DIR:+$TARGET_DIR/}.sentinel-shield/testing-discipline-policy.yaml"
-	_td_on=1; _tdd_on=1; _bdd_req=0; _atdd_req=0
+	_td_on=1; _tdd_on=1; _bdd_on=1; _atdd_on=1; _bdd_req=0; _atdd_req=0
 	if [ -f "$_td_file" ]; then
 		# shellcheck source=scripts/lib/testing-discipline-policy.sh
 		. "$SCRIPT_DIR/lib/testing-discipline-policy.sh"
 		td_load "$_td_file"
 		td_enabled || _td_on=0
 		td_tdd_enabled || _tdd_on=0
+		# NOTE the asymmetry, and it is deliberate: bdd.enabled DEFAULTS TO FALSE, so a policy
+		# file that never mentions BDD leaves _bdd_on=0 and the channel is expectation-free
+		# unless a profile requires a producer. Only an EXPLICIT `enabled: false` should be able
+		# to veto a required profile producer, so the veto below tests key presence, not just
+		# the resolved value.
+		if td_key_present testing_discipline.bdd.enabled \
+			&& [ "$(td_bool testing_discipline.bdd.enabled false)" != "true" ]; then _bdd_on=0; fi
+		if td_key_present testing_discipline.atdd.enabled \
+			&& [ "$(td_bool testing_discipline.atdd.enabled false)" != "true" ]; then _atdd_on=0; fi
 		td_bdd_required && _bdd_req=1
 		td_atdd_required && _atdd_req=1
 	fi
@@ -755,6 +789,20 @@ EOF
 	#     no resolvable diff base).
 	# The raw report is never re-parsed here: the collector is the component that understands
 	# each producer's shape, and re-reading the file would silently overrule it.
+	# td_no_evidence_for <space-padded-emit-list> <report-flag> — "true" when NOT ONE producer in
+	# the list produced usable evidence. The ANY-of counterpart to td_missing_for, used when a
+	# POLICY demands a channel but the profile names no specific producer: any single producer
+	# that ran and reported real evidence satisfies the requirement.
+	td_no_evidence_for() {
+		printf '%s' "$TOOLSOBJ" | jq -r --arg emits "$1" --arg flag "$2" '
+			[ to_entries[]
+			  | . as $e
+			  | select($emits | contains(" " + $e.key + " "))
+			  | select((($e.value.status // "") | IN("pass","findings","fail","warn"))
+					and (($e.value[$flag] // false) != true)) ]
+			| length | if . > 0 then "false" else "true" end'
+	}
+
 	td_missing_for() {
 		printf '%s' "$TOOLSOBJ" | jq -r --arg emits "$1" --arg flag "$2" '
 			[ to_entries[]
@@ -769,17 +817,28 @@ EOF
 	if [ "$_td_on" -eq 1 ] && [ "$_tdd_on" -eq 1 ] && [ "$TDD_EVIDENCE_EMITS" != " " ]; then
 		MISSING_TCE=$(td_missing_for "$TDD_EVIDENCE_EMITS" missing_test_change_evidence)
 	fi
-	if [ "$_td_on" -eq 1 ] && { [ "$BDD_EVIDENCE_EMITS" != " " ] || [ "$_bdd_req" -eq 1 ]; }; then
-		# A policy that REQUIRES behavior specs makes the evidence expected even when the profile
-		# only lists the producer as recommended/optional — the project asked for this.
-		_bdd_emits="$BDD_EVIDENCE_EMITS"
-		[ "$_bdd_req" -eq 1 ] && _bdd_emits=" behavior_specs "
-		MISSING_BDD=$(td_missing_for "$_bdd_emits" missing_behavior_specification)
+	# Two different questions, two different quantifiers:
+	#   profile declares REQUIRED producers -> EVERY one of them must produce evidence (ALL).
+	#     The profile author named each producer deliberately; a silent one is missing evidence.
+	#   policy requires the channel but the profile names no producer -> ANY known producer
+	#     satisfies it. The project asked for "behavior specs", not for Behat specifically, so a
+	#     Cucumber-only project is not failed for the absence of Behat.
+	BDD_ALL_EMITS=" behat_specs cucumber_specs behavior_specs "
+	ATDD_ALL_EMITS=" playwright_acceptance cypress_acceptance behat_acceptance cucumber_acceptance acceptance_tests "
+
+	if [ "$_td_on" -eq 1 ] && [ "$_bdd_on" -eq 1 ]; then
+		if [ "$BDD_EVIDENCE_EMITS" != " " ]; then
+			MISSING_BDD=$(td_missing_for "$BDD_EVIDENCE_EMITS" missing_behavior_specification)
+		elif [ "$_bdd_req" -eq 1 ]; then
+			MISSING_BDD=$(td_no_evidence_for "$BDD_ALL_EMITS" missing_behavior_specification)
+		fi
 	fi
-	if [ "$_td_on" -eq 1 ] && { [ "$ATDD_EVIDENCE_EMITS" != " " ] || [ "$_atdd_req" -eq 1 ]; }; then
-		_atdd_emits="$ATDD_EVIDENCE_EMITS"
-		[ "$_atdd_req" -eq 1 ] && _atdd_emits=" acceptance_tests "
-		MISSING_ATDD=$(td_missing_for "$_atdd_emits" missing_acceptance_evidence)
+	if [ "$_td_on" -eq 1 ] && [ "$_atdd_on" -eq 1 ]; then
+		if [ "$ATDD_EVIDENCE_EMITS" != " " ]; then
+			MISSING_ATDD=$(td_missing_for "$ATDD_EVIDENCE_EMITS" missing_acceptance_evidence)
+		elif [ "$_atdd_req" -eq 1 ]; then
+			MISSING_ATDD=$(td_no_evidence_for "$ATDD_ALL_EMITS" missing_acceptance_evidence)
+		fi
 	fi
 	for _tdv in "$MISSING_TCE" "$MISSING_BDD" "$MISSING_ATDD"; do
 		case "$_tdv" in

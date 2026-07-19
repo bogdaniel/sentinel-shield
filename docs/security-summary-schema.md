@@ -156,6 +156,13 @@ folded into vulnerability counters:
 | `acceptance_test_failures` | integer gate | Failing acceptance tests/scenarios, summed across producers. |
 | `missing_acceptance_evidence` | boolean gate | `true` when acceptance evidence is **expected** but absent/unavailable/errored, or a report has `tests: 0` (a suite that ran nothing proves nothing). |
 
+`acceptance_test_count`, `acceptance_test_failures` and `behavior_spec_count` are **summed
+across producers** — each ATDD/BDD producer writes its own raw report path
+(`playwright-acceptance.json`, `cypress-acceptance.json`, `behat-specs.json`, …), so running
+Playwright *and* Cypress aggregates rather than overwriting. The generic
+`acceptance-tests.json` / `behavior-specs.json` paths remain available for a custom/manual
+producer.
+
 The three `missing_*` booleans are emitted only when `build-security-summary.sh` runs with
 `--profile`, and are `true` only when that evidence was **expected** — a library that never
 adopted BDD/ATDD is never marked as missing it. See

@@ -459,11 +459,15 @@ channel:
 
 | Category | Producers | Default policy |
 | --- | --- | --- |
-| `testing-discipline` | `test-change-evidence` | `required` (needs only git — no project tooling) |
-| `bdd` | `behat`, `cucumber-js` | `optional` |
-| `atdd` | `behat-acceptance`, `cucumber-acceptance`, `playwright`, `cypress` | `optional` |
+| `testing-discipline` | `test-change-evidence` | `recommended` (needs only git; evidence still expected, but the MODE decides blocking) |
+| `bdd` | `behat-specs`, `cucumber-specs` | `optional` |
+| `atdd` | `behat-acceptance`, `cucumber-acceptance`, `playwright-acceptance`, `cypress-acceptance` | `optional` |
 
-Only a **required** producer makes its channel's evidence expected. BDD/ATDD producers ship as
+For **bdd** and **atdd**, only a `required` producer makes that channel's evidence expected.
+For the **testing-discipline** (TDD proxy) channel the threshold is `required` *or*
+`recommended` — the same rule architecture evidence uses — because the proxy needs no project
+tooling, only a git history. It is deliberately not shipped as `required`: that would route its
+absence through the always-on required-tool channel and fail every mode, defeating the ramp. BDD/ATDD producers ship as
 `optional` on every profile so a project that never adopted them is never failed for their
 absence; a project opts in via `.sentinel-shield/testing-discipline-policy.yaml` or by promoting
 the producer to `required` in a profile override.
@@ -479,3 +483,33 @@ Playwright/Cypress:   main true, scheduled true (too slow for every PR)
 
 Do not make slow browser acceptance suites mandatory for every PR unless the profile or policy
 explicitly requires it.
+
+### Producer raw report paths are distinct
+
+The `acceptance-tests` and `behavior-specs` **contracts are generic** — every producer emits the
+same shape, and the collector never cares which tool produced it. But each producer writes its
+**own raw report path**, because a shared path means the producer that runs last silently
+destroys the earlier producer's evidence before the collector ever sees it:
+
+| Producer | Raw report | Collector emit-name |
+| --- | --- | --- |
+| Behat (specs) | `reports/raw/behat-specs.json` | `behat_specs` |
+| Cucumber.js (specs) | `reports/raw/cucumber-specs.json` | `cucumber_specs` |
+| Playwright | `reports/raw/playwright-acceptance.json` | `playwright_acceptance` |
+| Cypress | `reports/raw/cypress-acceptance.json` | `cypress_acceptance` |
+| Behat (acceptance) | `reports/raw/behat-acceptance.json` | `behat_acceptance` |
+| Cucumber.js (acceptance) | `reports/raw/cucumber-acceptance.json` | `cucumber_acceptance` |
+| custom / manual | `reports/raw/acceptance-tests.json`, `reports/raw/behavior-specs.json` | `acceptance_tests`, `behavior_specs` |
+
+**Multiple ATDD (and BDD) producers aggregate.** `acceptance_test_count` and
+`acceptance_test_failures` are SUMMED across producers, as is `behavior_spec_count`; the
+`missing_*` booleans are OR-ed. Running Playwright *and* Cypress is a supported, correct setup —
+they no longer overwrite each other, and their results add up.
+
+The generic `acceptance-tests.json` / `behavior-specs.json` paths remain supported for a
+**custom or manual** producer emitting the contract directly. No shipped profile claims those
+paths, so a hand-rolled producer can never collide with a profile-declared one.
+
+**Missing evidence is derived only when the channel is expected** — see the expectation rules
+above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
+guaranteed by Sentinel Shield.

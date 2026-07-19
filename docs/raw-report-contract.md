@@ -44,8 +44,14 @@ a normalized object `{tool,status,summary{...},tool_report}` merged by `build-se
 | dependency-policy.json | audits/dependency-policy.sh | `{count,violations[]}` | dependency-policy.sh | dependency_policy_violations | unavailable | exit 2 | feature-completion |
 | architecture-tests.json | runners/architecture-tests.sh | `{violations:N}` / normalized architecture contract | architecture-tests.sh | architecture_violations | unavailable | exit 2 | 280-architecture-governance |
 | test-change-evidence.json | runners/test-change-evidence.sh | normalized testing-discipline contract | test-change-evidence.sh | production_change_without_test_change, expired_exceptions | unavailable | exit 2 | 290-testing-discipline-governance |
-| behavior-specs.json | Behat / Cucumber.js (via adapters) | normalized behavior-specs contract | behavior-specs.sh | behavior_spec_count, orphan_behavior_specifications | unavailable | exit 2 | 290-testing-discipline-governance |
-| acceptance-tests.json | Playwright / Cypress / Behat / Cucumber (via adapters) | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
+| behat-specs.json | Behat (via adapter) | normalized behavior-specs contract | behavior-specs.sh | behavior_spec_count, orphan_behavior_specifications | unavailable | exit 2 | 290-testing-discipline-governance |
+| cucumber-specs.json | Cucumber.js (via adapter) | normalized behavior-specs contract | behavior-specs.sh | behavior_spec_count, orphan_behavior_specifications | unavailable | exit 2 | 290-testing-discipline-governance |
+| behavior-specs.json | custom/manual producer | normalized behavior-specs contract | behavior-specs.sh | behavior_spec_count, orphan_behavior_specifications | unavailable | exit 2 | 290-testing-discipline-governance |
+| playwright-acceptance.json | Playwright (via adapter) | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
+| cypress-acceptance.json | Cypress (via adapter) | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
+| behat-acceptance.json | Behat acceptance suite (via adapter) | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
+| cucumber-acceptance.json | Cucumber.js acceptance run | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
+| acceptance-tests.json | custom/manual producer | normalized acceptance-tests contract | acceptance-tests.sh | acceptance_test_count, acceptance_test_failures | unavailable | exit 2 | 290-testing-discipline-governance |
 | kuzushi.json | Kuzushi | `{findings:[…]}` | kuzushi.sh | ai_review_findings (non-gating) | unavailable | exit 2 | scanner-matrix |
 | coverage.json (php-/js-coverage.json) | php-coverage.sh / js-coverage.sh | `{line_percent,violations,regression}` | coverage.sh | coverage_threshold_violations / coverage_regression | unavailable | exit 2 | 270-quality-gates |
 | mutation.json (php-/js-mutation.json) | infection.sh / stryker.sh | `{score_percent,violations}` | mutation.sh | mutation_score_violations | unavailable | exit 2 | 270-quality-gates |
@@ -218,7 +224,9 @@ developer workflow.
 - `missing_test_change_evidence` lives in the collector's `tool_report`, not the summary — the
   BUILDER decides whether that evidence was expected.
 
-### `behavior-specs.json` (BDD)
+### behavior-specs contract (BDD)
+
+Written to `behat-specs.json` / `cucumber-specs.json` per producer (or `behavior-specs.json` for a custom producer):
 
 ```json
 {
@@ -235,7 +243,9 @@ developer workflow.
 `spec_count + scenario_count → behavior_spec_count`. A producer that ran and declared **zero**
 specs and zero scenarios is recorded as missing evidence, never as a clean pass.
 
-### `acceptance-tests.json` (ATDD)
+### acceptance-tests contract (ATDD)
+
+Written to `playwright-acceptance.json` / `cypress-acceptance.json` / `behat-acceptance.json` / `cucumber-acceptance.json` per producer (or `acceptance-tests.json` for a custom producer):
 
 ```json
 {
@@ -258,3 +268,33 @@ Allowed statuses for all three: `pass`, `findings`, `unavailable`, `not-configur
 `execution-error`, `disabled`, `not-applicable`. An **unknown status fails closed as
 `execution-error`**; an unrecognized shape fails closed; a missing/empty report is
 `unavailable`; invalid JSON exits 2. A malformed gating count is never coerced to a clean `0`.
+
+### Producer raw report paths are distinct
+
+The `acceptance-tests` and `behavior-specs` **contracts are generic** — every producer emits the
+same shape, and the collector never cares which tool produced it. But each producer writes its
+**own raw report path**, because a shared path means the producer that runs last silently
+destroys the earlier producer's evidence before the collector ever sees it:
+
+| Producer | Raw report | Collector emit-name |
+| --- | --- | --- |
+| Behat (specs) | `reports/raw/behat-specs.json` | `behat_specs` |
+| Cucumber.js (specs) | `reports/raw/cucumber-specs.json` | `cucumber_specs` |
+| Playwright | `reports/raw/playwright-acceptance.json` | `playwright_acceptance` |
+| Cypress | `reports/raw/cypress-acceptance.json` | `cypress_acceptance` |
+| Behat (acceptance) | `reports/raw/behat-acceptance.json` | `behat_acceptance` |
+| Cucumber.js (acceptance) | `reports/raw/cucumber-acceptance.json` | `cucumber_acceptance` |
+| custom / manual | `reports/raw/acceptance-tests.json`, `reports/raw/behavior-specs.json` | `acceptance_tests`, `behavior_specs` |
+
+**Multiple ATDD (and BDD) producers aggregate.** `acceptance_test_count` and
+`acceptance_test_failures` are SUMMED across producers, as is `behavior_spec_count`; the
+`missing_*` booleans are OR-ed. Running Playwright *and* Cypress is a supported, correct setup —
+they no longer overwrite each other, and their results add up.
+
+The generic `acceptance-tests.json` / `behavior-specs.json` paths remain supported for a
+**custom or manual** producer emitting the contract directly. No shipped profile claims those
+paths, so a hand-rolled producer can never collide with a profile-declared one.
+
+**Missing evidence is derived only when the channel is expected** — see the expectation rules
+above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
+guaranteed by Sentinel Shield.

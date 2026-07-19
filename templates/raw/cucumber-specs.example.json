@@ -1,9 +1,9 @@
 {
   "tool": "behavior-specs",
-  "producer": "custom",
+  "producer": "cucumber-js",
   "status": "pass",
-  "spec_count": 5,
-  "scenario_count": 14,
+  "spec_count": 3,
+  "scenario_count": 9,
   "orphan_behavior_specifications": 0,
   "missing_behavior_specification": false,
   "failures": []

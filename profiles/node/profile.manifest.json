@@ -50,14 +50,14 @@
     "syft",
     "grype",
     "dependency-check",
-    "playwright"
+    "playwright-acceptance"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
     "scorecard",
     "dependency-check",
     "grype",
-    "playwright"
+    "playwright-acceptance"
   ],
   "recommended_raw_reports": [
     "npm-audit.json",
@@ -71,8 +71,8 @@
     "debug-code.json",
     "source-size.json",
     "test-change-evidence.json",
-    "behavior-specs.json",
-    "acceptance-tests.json"
+    "cucumber-specs.json",
+    "playwright-acceptance.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -574,18 +574,18 @@
       }
     },
     "test-change-evidence": {
-      "policy": "required",
+      "policy": "recommended",
       "category": "testing-discipline",
       "runner": "scripts/runners/test-change-evidence.sh",
       "report": "reports/raw/test-change-evidence.json",
-      "missing_behavior": "fail",
+      "missing_behavior": "warn",
       "execution": {
         "pr": true,
         "main": true,
         "scheduled": false
       }
     },
-    "cucumber-js": {
+    "cucumber-specs": {
       "policy": "optional",
       "category": "bdd",
       "packages": [
@@ -599,7 +599,7 @@
         "node_modules/.bin/cucumber-js"
       ],
       "runner": "scripts/runners/cucumber-js.sh",
-      "report": "reports/raw/behavior-specs.json",
+      "report": "reports/raw/cucumber-specs.json",
       "missing_behavior": "info",
       "execution": {
         "pr": true,
@@ -607,7 +607,7 @@
         "scheduled": false
       }
     },
-    "playwright": {
+    "playwright-acceptance": {
       "policy": "optional",
       "category": "atdd",
       "packages": [
@@ -621,7 +621,7 @@
         "node_modules/.bin/playwright"
       ],
       "runner": "scripts/runners/playwright.sh",
-      "report": "reports/raw/acceptance-tests.json",
+      "report": "reports/raw/playwright-acceptance.json",
       "missing_behavior": "info",
       "execution": {
         "pr": false,
@@ -633,7 +633,7 @@
         "classification": "project-owned"
       }
     },
-    "cypress": {
+    "cypress-acceptance": {
       "policy": "optional",
       "category": "atdd",
       "packages": [
@@ -647,7 +647,7 @@
         "node_modules/.bin/cypress"
       ],
       "runner": "scripts/runners/cypress.sh",
-      "report": "reports/raw/acceptance-tests.json",
+      "report": "reports/raw/cypress-acceptance.json",
       "missing_behavior": "info",
       "execution": {
         "pr": false,

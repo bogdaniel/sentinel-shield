@@ -819,12 +819,27 @@ business intent automatically.
 - **Builder**: evidence is `missing` only when **expected** — a profile that declares a `required`
   producer in that category, or a policy that explicitly requires it. Testing-discipline counters are
   a separate channel and are never folded into vulnerability counters.
-- **Profiles**: `test-change-evidence` required across `laravel`, `symfony`, `node`, `react`,
-  `php-library`, `hardened-enterprise`; BDD/ATDD producers ship `optional` so nothing is forced.
-  Browser acceptance suites are scheduled on main/scheduled, not on every PR.
+- **Profiles**: `test-change-evidence` ships as **`recommended`** across `laravel`, `symfony`,
+  `node`, `react`, `php-library` (the deptrac/v2.1.0 precedent) — its evidence is still EXPECTED,
+  but absence is judged by the mode-tiered `missing_test_change_evidence` gate rather than the
+  always-on required-tool channel, preserving the report-only -> baseline -> strict adoption ramp.
+  BDD/ATDD producers ship `optional` so nothing is forced. Browser acceptance suites run on
+  main/scheduled, not on every PR.
 - **Tests**: `tests/prod/290-testing-discipline-governance.sh` (69 checks) covering resolver mode
   defaults, TDD-proxy classification and waivers, collector fail-closed behavior, builder expectation
   logic, enforcer semantics, back-compatibility of pre-v2.2.0 summaries, and documentation honesty.
+- **Distinct producer raw reports**: the `acceptance-tests` / `behavior-specs` contracts are
+  generic, but every producer writes its own path (`playwright-acceptance.json`,
+  `cypress-acceptance.json`, `behat-acceptance.json`, `cucumber-acceptance.json`,
+  `behat-specs.json`, `cucumber-specs.json`). A shared path let the producer that ran last
+  destroy the earlier producer's evidence before the collector saw it, undercounting
+  `acceptance_test_count` / `acceptance_test_failures`. Multiple producers now AGGREGATE (counts
+  summed, `missing_*` OR-ed). The generic `acceptance-tests.json` / `behavior-specs.json` paths
+  remain supported for a custom/manual producer and are claimed by no shipped profile.
+- **Policy channel switches**: an explicit `testing_discipline.bdd.enabled: false` /
+  `atdd.enabled: false` now vetoes a profile that declares a REQUIRED producer in that channel —
+  an explicit project decision beats a profile default. `testing_discipline.enabled: false` still
+  disables all three channels.
 - **Docs**: `docs/testing-discipline-governance.md`, `docs/tdd-evidence-policy.md`,
   `docs/bdd-atdd-evidence.md`, `docs/acceptance-test-evidence.md`, `docs/test-discipline-waivers.md`.
 

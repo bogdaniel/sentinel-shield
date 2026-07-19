@@ -1,9 +1,9 @@
 {
   "tool": "acceptance-tests",
-  "producer": "custom",
+  "producer": "cypress",
   "status": "pass",
-  "tests": 4,
+  "tests": 8,
   "failures": 0,
-  "skipped": 0,
+  "skipped": 1,
   "missing_acceptance_evidence": false
 }

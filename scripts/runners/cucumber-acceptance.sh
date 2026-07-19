@@ -21,7 +21,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/testing-discipline-policy.sh
 . "$SCRIPT_DIR/../lib/testing-discipline-policy.sh"
 
-OUT="reports/raw/acceptance-tests.json"
+OUT="reports/raw/cucumber-acceptance.json"
 POLICY=".sentinel-shield/testing-discipline-policy.yaml"
 ACCEPT_PATH=""
 
