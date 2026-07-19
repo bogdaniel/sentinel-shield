@@ -1,0 +1,44 @@
+# Sentinel Shield — Deptrac ruleset: Clean Architecture (PHP).
+#
+# Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+#
+# This is an EXAMPLE. The engine never auto-installs it and never overwrites project-owned
+# files — copy it to deptrac.yaml (or point architecture.tools.deptrac.config at it) yourself.
+#
+# Dependency rule: dependencies point INWARD only.
+#   Domain        -> nothing
+#   Application   -> Domain
+#   Infrastructure-> Domain, Application
+#   Presentation  -> Application (NOT Infrastructure directly; wire adapters via DI)
+
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: Domain
+      collectors:
+        - type: className
+          value: ^App\\Domain\\.*
+    - name: Application
+      collectors:
+        - type: className
+          value: ^App\\Application\\.*
+    - name: Infrastructure
+      collectors:
+        - type: className
+          value: ^App\\Infrastructure\\.*
+    - name: Presentation
+      collectors:
+        - type: className
+          value: ^App\\(Presentation|Ui|Http)\\.*
+
+  ruleset:
+    Domain: ~
+    Application:
+      - Domain
+    Infrastructure:
+      - Domain
+      - Application
+    Presentation:
+      - Application

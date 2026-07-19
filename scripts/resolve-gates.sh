@@ -28,7 +28,7 @@ die_cfg() {
 }
 
 # Canonical fail_on keys, in stable output order.
-FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations missing_coverage_evidence changed_lines_coverage_violations missing_test_evidence empty_test_suite skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations"
+FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations missing_coverage_evidence changed_lines_coverage_violations missing_test_evidence empty_test_suite skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations missing_architecture_evidence"
 
 VALID_MODES="report-only baseline strict regulated"
 
@@ -235,7 +235,13 @@ default_for() {
 				| coverage_threshold_violations | coverage_regression | mutation_score_violations \
 				| complexity_violations | duplication_violations | dead_code_violations \
 				| missing_coverage_evidence \
-				| skipped_tests | skipped_test_marker_violations | large_file_violations | large_function_violations) printf 'false' ;;
+				| skipped_tests | skipped_test_marker_violations | large_file_violations | large_function_violations \
+				| missing_architecture_evidence) printf 'false' ;;
+					# v2.1.0 architecture governance: architecture_violations DOES block in
+					# baseline (falls through to *) — evidence that exists and reports
+					# violations is actionable. missing_architecture_evidence stays
+					# non-blocking until strict, so adopting projects can wire producers
+					# up first (docs/architecture-governance.md).
 				*) printf 'true' ;;
 			esac
 			;;

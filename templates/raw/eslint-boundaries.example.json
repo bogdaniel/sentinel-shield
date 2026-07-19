@@ -1,0 +1,10 @@
+{
+  "tool": "architecture",
+  "producer": "eslint-boundaries",
+  "status": "pass",
+  "violations": 0,
+  "rule_count": 2,
+  "context_count": 0,
+  "failures": [],
+  "_comment": "Clean baseline example. Only boundary rules (boundaries/*, import/no-restricted-paths, no-restricted-imports) are counted; general ESLint findings map elsewhere. Violation example: architecture.example.json."
+}

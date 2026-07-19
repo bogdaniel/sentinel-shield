@@ -1,0 +1,50 @@
+# Sentinel Shield — architecture policy (which architecture EVIDENCE producers apply).
+#
+# Copy to .sentinel-shield/architecture-policy.yaml and tune. This file declares which
+# architecture producers run, where their rule configs live, and which style the project
+# claims. It does NOT prove Clean Architecture / DDD correctness — the producers detect
+# dependency-boundary violations only (see docs/architecture-governance.md).
+#
+# ABSENT policy = defaults: architecture governance is ON and evidence is REQUIRED. Deleting
+# this file does not turn governance off; set architecture.enabled: false to do that.
+#
+# FAIL CLOSED: a present-but-malformed policy exits 2 — it is never silently ignored. Known
+# boolean fields (every *.enabled, evidence_required) fail closed when present-but-empty or
+# non-boolean; known scalar fields fail closed when present-but-empty.
+#
+# Canonical format only: 2-space indentation, no tabs, no YAML anchors/aliases/flow
+# collections/block scalars (install mikefarah yq v4 if you need those).
+
+architecture:
+  enabled: true               # master switch for architecture governance
+  style: clean-architecture   # documented intent; see templates/architecture/<style>/
+  evidence_required: true     # at least one producer must yield real evidence
+
+  # Bounded contexts (DDD): the source roots scanned for context boundaries.
+  bounded_contexts:
+    enabled: true
+    paths:
+      - src
+      - app
+
+  # Architecture producers. Each tool is independent — disable the ones your stack does not
+  # use so the engine reports "disabled" instead of expecting a report that never arrives.
+  tools:
+    deptrac:
+      enabled: true
+      config: deptrac.yaml
+    php_arkitect:
+      enabled: false          # opt-in: PHPArkitect rules live in PHP (phparkitect.php)
+      config: phparkitect.php
+    architecture_tests:
+      enabled: false
+      # command: vendor/bin/pest --group=arch      # PHP  (or: npm run test:architecture)
+      # A known field that is PRESENT but EMPTY fails closed (exit 2) — `command: ""` is an
+      # empty value in both parser paths, so leave the key OUT until you have a real command.
+      # $SENTINEL_SHIELD_ARCH_TEST_CMD / $SENTINEL_SHIELD_JS_ARCH_TEST_CMD override this.
+    dependency_cruiser:
+      enabled: true
+      config: .dependency-cruiser.js
+    eslint_boundaries:
+      enabled: true
+      config: eslint.config.js

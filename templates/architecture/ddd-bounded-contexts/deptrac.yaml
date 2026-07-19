@@ -1,0 +1,44 @@
+# Sentinel Shield — Deptrac ruleset: DDD bounded contexts (PHP).
+#
+# Template only. Adapt to your namespaces/folders. Do not enable as blocking until observed clean.
+#
+# This is an EXAMPLE. The engine never auto-installs it and never overwrites project-owned
+# files — copy it to deptrac.yaml (or point architecture.tools.deptrac.config at it) yourself.
+#
+# One layer per bounded context (Ordering, Billing, Shipping). A context's INTERNALS are
+# private: no context may depend on another context's layer. Cross-context collaboration goes
+# through the SharedKernel (or, in a fuller setup, published events / anti-corruption layers).
+# SharedKernel depends on nothing so it never drags a context's model along with it.
+#
+# Add a context by adding a layer + an empty-or-SharedKernel-only ruleset entry.
+
+deptrac:
+  paths:
+    - ./src
+
+  layers:
+    - name: SharedKernel
+      collectors:
+        - type: className
+          value: ^App\\(Shared|SharedKernel)\\.*
+    - name: Ordering
+      collectors:
+        - type: className
+          value: ^App\\Ordering\\.*
+    - name: Billing
+      collectors:
+        - type: className
+          value: ^App\\Billing\\.*
+    - name: Shipping
+      collectors:
+        - type: className
+          value: ^App\\Shipping\\.*
+
+  ruleset:
+    SharedKernel: ~
+    Ordering:
+      - SharedKernel
+    Billing:
+      - SharedKernel
+    Shipping:
+      - SharedKernel

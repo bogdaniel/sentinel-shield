@@ -41,8 +41,9 @@ A missing `summary` key is an **error** (exit 2), never a silent zero.
 
 The **legacy** keys below are required (a missing one is an error, never a silent zero); integer
 keys are non-negative counts and two are booleans. Keys added later — the `third_party_*` channel
-(v0.1.5+), the `v0.1.12+` enterprise counters, and the **v2.1 engineering-quality keys** (see the
-subsection below) — are **optional/additive**: a missing one reads as `0` (or `false` for the
+(v0.1.5+), the `v0.1.12+` enterprise counters, the **v2.1 engineering-quality keys** and the
+**v2.1 architecture-governance keys** (see the subsections below) — are **optional/additive**: a
+missing one reads as `0` (or `false` for the
 boolean gate), so older summaries stay valid. The enforcer validates exactly the required legacy
 keys and treats every optional key as absent→0.
 
@@ -52,7 +53,7 @@ keys and treats every optional key as absent→0.
 | `critical_vulnerabilities` | integer | Critical dependency/code vulns. |
 | `high_vulnerabilities` | integer | High vulns. |
 | `medium_vulnerabilities` | integer | Medium vulns. |
-| `architecture_violations` | integer | Deptrac / import-boundary violations. |
+| `architecture_violations` | integer | Architecture-boundary violations. **v2.1:** the SUM across every architecture producer — Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, custom architecture tests (see the subsection below). |
 | `type_errors` | integer | PHPStan/Psalm/tsc errors. |
 | `test_failures` | integer | Failing tests. |
 | `unsafe_docker` | integer | Hadolint/Trivy misconfig findings (v0.1.7: Hadolint scans ALL discovered Dockerfiles, merged into one report — see [`docker-security-standard.md`](docker-security-standard.md)). |
@@ -115,6 +116,34 @@ only and are **not** gated. All of these keys are optional/additive — a missin
 (or `false` for the booleans) so old summaries stay valid. Quality gates are **not**
 accepted-risk-suppressible.
 
+### Architecture-governance summary keys (v2.1, optional/additive)
+
+> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
+> release claim. Full reference: [`architecture-governance.md`](architecture-governance.md).
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. Architecture findings are a **separate
+channel** and are **never** folded into vulnerability counters. `architecture_violations` (already a
+canonical gate above) gains one **boolean gate** companion and three informational numbers:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `architecture_violations` | integer gate | Boundary violations, **summed** across every architecture producer (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, custom architecture tests). |
+| `missing_architecture_evidence` | boolean gate | `true` when an APPLICABLE architecture producer is expected but produced no valid evidence — no report, or status `unavailable`/`not-configured`/`execution-error`/`disabled` (emitted only when `build-security-summary.sh` runs with `--profile`; absent reads as `false`). Lets strict/regulated fail on ABSENT architecture evidence. |
+| `architecture_rule_count` | integer | Informational count of architecture rules evaluated (**summed** across producers that expose it). |
+| `architecture_tool_count` | integer | Informational count of producers that emitted valid evidence (status `pass` or `findings`). |
+| `architecture_context_count` | integer | Informational count of bounded contexts / modules / layers (aggregate = **maximum** across producers — they describe the same codebase, so summing would double-count). |
+
+All of these are optional and additive: an older summary that omits them stays valid, and an absent
+key reads as `0` / `false`. `missing_architecture_evidence` maps to
+`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE` and fails when `true` while that flag is
+`true`; the three counts are informational and are **not** gated.
+
+> Architecture tools detect dependency-boundary violations, not the quality of domain modeling
+> itself. Architecture governance is supported by engine tests and fixtures. Do not claim real
+> consumer proof until a real Laravel/Symfony/Node consumer validation exists.
+
 ---
 
 ## How flags map to summary keys
@@ -149,8 +178,16 @@ flag is `true`:
 | `LARGE_FILE_VIOLATIONS` / `LARGE_FUNCTION_VIOLATIONS` | `summary.<key> > 0` |
 | `MISSING_COVERAGE_EVIDENCE` / `MISSING_TEST_EVIDENCE` / `EMPTY_TEST_SUITE` | `summary.<key> == true` |
 
-See [`gate-resolution.md`](gate-resolution.md) for the authoritative per-mode default matrix and
-[`engineering-quality-gates.md`](engineering-quality-gates.md) for the full reference.
+**Architecture-governance gates (v2.1)** map the same way — `ARCHITECTURE_VIOLATIONS` is already in
+the canonical table above; the new boolean gate joins it:
+
+| Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
+| --- | --- |
+| `MISSING_ARCHITECTURE_EVIDENCE` | `summary.missing_architecture_evidence == true` |
+
+See [`gate-resolution.md`](gate-resolution.md) for the authoritative per-mode default matrix,
+[`engineering-quality-gates.md`](engineering-quality-gates.md) and
+[`architecture-governance.md`](architecture-governance.md) for the full references.
 
 Disabled gates (flag `false`) are recorded as `skipped` and never fail the build.
 

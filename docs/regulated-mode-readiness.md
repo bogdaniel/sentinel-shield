@@ -45,6 +45,20 @@ and `dead_code_violations` — so all six quality gates block in regulated, in a
 channel** from security. These are **not** accepted-risk-suppressible. See
 [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
+Regulated also completes **Architecture Governance v2 (v2.1)** — an unreleased, additive engine
+capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
+`v2.0.1`). Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
+producers. Custom architecture tests can also emit the same contract. Regulated keeps the strict
+behavior — `architecture_violations` (summed across all producers) and `missing_architecture_evidence`
+both block, so absent/unavailable/errored expected evidence fails — and **adds one requirement**: the
+raw architecture evidence artifacts (`reports/raw/*.json` from each producer) must be **retained** with
+the release evidence. See [`architecture-governance.md`](architecture-governance.md).
+
+> **Evidence honesty.** Architecture governance is supported by engine tests and fixtures. Do not
+> claim real consumer proof until a real Laravel/Symfony/Node consumer validation exists. Architecture
+> tools detect dependency-boundary violations, not the quality of domain modeling itself.
+
 Regulated **still keeps `ai_review_findings` NON-gating** — AI review never blocks by
 default in any mode unless the profile explicitly sets
 `gates.fail_on.ai_review_findings: true` ([`ai-review-policy.md`](ai-review-policy.md)).
@@ -72,9 +86,12 @@ Then add:
 3. **Audit-evidence retention is in place.** `missing_release_evidence` and `missing_sbom`
    are mandatory in regulated. Ensure the gated pipeline produces and **retains** the SBOM
    (Syft), the resolved-gates artifacts, the `security-summary.json`, and the release
-   evidence per your compliance retention period. See
-   [`raw-report-contract.md`](raw-report-contract.md) and
-   [`security-summary-schema.md`](security-summary-schema.md).
+   evidence per your compliance retention period. **This includes the raw architecture evidence
+   artifacts** — the `reports/raw/*.json` emitted by each architecture producer (Deptrac, PHPArkitect,
+   dependency-cruiser, ESLint boundaries, custom architecture tests). See
+   [`raw-report-contract.md`](raw-report-contract.md),
+   [`security-summary-schema.md`](security-summary-schema.md) and
+   [`architecture-governance.md`](architecture-governance.md).
 4. **AI review stays non-gating unless explicitly enabled.** Keep
    `ai_review_findings: false` (the default). Only set it `true` deliberately for
    high-assurance flows, knowing AI output is non-deterministic and can hallucinate
@@ -103,6 +120,7 @@ first, review real output, then tighten:**
 | OWASP Dependency-Check | `*_vulnerabilities` | `experimental` — **attempted, NOT live-validated** | No real artifact; cold NVD exceeds CI budget. Run **nightly** with warm cache, advisory, before gating. |
 | Checkov / Conftest / Terrascan | `iac_violations` | `experimental` — **only if configured** | No consumer with IaC validated; meaningful only with IaC. |
 | Deptrac | `architecture_violations` | `supported` — not live-validated | Live-validate on a consumer with `deptrac.yaml`. |
+| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | v2.1 unreleased — engine-tested + fixture-tested, **no real consumer validation** | Absent/unavailable/errored evidence blocks here, and the raw reports must be retained. Wire producers in report-only/baseline, tighten through strict, then regulate. |
 | OpenSSF Scorecard | `repository_health_warnings` | `experimental` — regulated-only gate | Needs repo token; review real warnings before blocking. |
 | Trivy (image) | `*_vulnerabilities` | `experimental`/nightly | Needs an image ref; nightly home. |
 | TruffleHog | `secrets` | `experimental`/nightly | Verified-only count; live-validate. |
@@ -130,6 +148,9 @@ first, then tick every box below before setting `gates.mode: regulated`:
 - [ ] `missing_release_evidence` satisfied: release evidence produced and **retained** per compliance retention.
 - [ ] `missing_sbom` satisfied: SBOM (Syft) produced and retained.
 - [ ] Audit-evidence retention configured (SBOM, resolved gates, `security-summary.json`, evidence).
+- [ ] `missing_architecture_evidence` satisfied: every applicable architecture producer emits evidence,
+      or the project opts out honestly in `.sentinel-shield/architecture-policy.yaml`.
+- [ ] Raw architecture reports (`reports/raw/*.json` per producer) **retained** with the release evidence.
 - [ ] Third-party signals (`suspicious_code`, `obfuscation`) triaged; new regulated blockers clean or accept-risked.
 - [ ] Coarse-severity tools (OSV/CodeQL/Grype/Dependency-Check) reviewed against real output before trusting.
 - [ ] OWASP Dependency-Check, if used, runs **nightly with a warm NVD cache** — advisory until live-validated.

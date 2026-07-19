@@ -181,6 +181,62 @@ falls back to documented defaults. Missing quality summary keys are treated as `
 
 ---
 
+## Architecture governance gates (v2.1)
+
+> **Unreleased, additive engine capability.** `architecture_violations` is a **canonical** gate and its
+> mode defaults above are **unchanged**; v2.1 adds one new gate key alongside it and does **not** make a
+> new release claim (latest release remains `v2.0.1`, engine-only). Full reference:
+> [`architecture-governance.md`](architecture-governance.md).
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. Architecture findings are a **separate
+counter channel** from security (never folded into vulnerability counters). In v2.1
+`architecture_violations` is the **sum** across every architecture producer, and the resolver emits one
+new flag alongside the canonical keys, uppercased and prefixed `SENTINEL_SHIELD_FAIL_ON_`:
+
+```txt
+architecture_violations
+missing_architecture_evidence
+```
+
+Mode defaults (blocks the build?):
+
+| Gate | report-only | baseline | strict | regulated |
+| --- | --- | --- | --- | --- |
+| architecture_violations | ❌ | ✅ | ✅ | ✅ |
+| missing_architecture_evidence | ❌ | ❌ | ✅ | ✅ |
+
+✅ = the gate blocks the build. ❌ = report-only (does not block). The split is deliberate:
+**baseline** fails on violations found by evidence that exists, but not on absent evidence;
+**strict** and **regulated** also fail when expected evidence is missing, unavailable, or errored;
+**regulated** additionally requires the raw evidence artifacts to be retained with the release
+evidence. `missing_architecture_evidence` is a boolean gate the builder (`--profile`) raises when an
+APPLICABLE architecture producer emitted no valid report — `optional` producers are opt-in and never
+raise it. Both keys are additive to the resolver and a missing summary key reads as `0`/`false`.
+
+Overrides follow the **same precedence and reporting** as every other gate: a `gates.fail_on.<key>`
+value in `.sentinel-shield/profile.yaml` overrides its mode default and is reported explicitly, and an
+**invalid (non-boolean) override value fails closed (exit 2)**:
+
+```yaml
+gates:
+  mode: strict
+  fail_on:
+    missing_architecture_evidence: false   # temporary ramp while producers are wired up
+```
+
+Which producers are applicable comes from the profile (`category: architecture`, see
+[`profile-tool-policy.md`](profile-tool-policy.md)); a project can opt out honestly in
+`.sentinel-shield/architecture-policy.yaml` (`architecture.enabled: false` or
+`architecture.evidence_required: false`) — that never fakes a pass.
+
+> Architecture tools detect dependency-boundary violations, not the quality of domain modeling
+> itself. Architecture governance is supported by engine tests and fixtures. Do not claim real
+> consumer proof until a real Laravel/Symfony/Node consumer validation exists.
+
+---
+
 ## Override precedence
 
 Resolution order is strict and explicit:

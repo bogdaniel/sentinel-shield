@@ -74,6 +74,16 @@ QUALITY_COUNT_KEYS="coverage_threshold_violations coverage_regression mutation_s
 # Boolean quality gates (v2.1) — evaluated with eval_bool_gate (absent key reads as false).
 QUALITY_BOOL_KEYS="missing_coverage_evidence missing_test_evidence empty_test_suite"
 
+# Architecture-governance gates (v2.1.0). architecture_violations is the long-standing COUNT
+# gate (evaluated with the security counters below); missing_architecture_evidence is the new
+# boolean evidence gate: strict/regulated fail when an APPLICABLE architecture producer
+# produced no valid evidence, so "we never ran it" cannot read as "we are clean". Architecture
+# findings are their own channel — never folded into vulnerability counters.
+ARCHITECTURE_BOOL_KEYS="missing_architecture_evidence"
+
+# Informational architecture metrics surfaced in the enforcement report (never gate directly).
+ARCHITECTURE_INFO_KEYS="architecture_rule_count architecture_tool_count architecture_context_count"
+
 # Informational quality metrics surfaced in the enforcement report (never gate directly).
 QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count changed_lines_coverage_percent test_count max_file_lines max_function_lines"
 
@@ -558,6 +568,14 @@ for _qbk in $QUALITY_BOOL_KEYS; do
 	eval_bool_gate "$_qbk"
 done
 
+# Architecture evidence gate (v2.1.0) — missing_architecture_evidence. The builder (run with
+# --profile) sets it when an APPLICABLE architecture producer produced no valid evidence, so
+# strict/regulated fail on ABSENT architecture evidence, not only on reported violations.
+# Absent key (older/non-profile summary) reads as false (back-compat).
+for _abk in $ARCHITECTURE_BOOL_KEYS; do
+	eval_bool_gate "$_abk"
+done
+
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
 # When the summary carries per-tool policy data (build-security-summary.sh --profile),
 # enforce required-tool availability/configuration MECHANICALLY, in a channel SEPARATE
@@ -867,6 +885,29 @@ write_markdown() {
 		printf '\n'
 		printf -- '| Metric | Value |\n| --- | --- |\n'
 		for k in $QUALITY_INFO_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+
+		printf '## Architecture governance\n\n'
+		printf -- '> Normalized architecture evidence from any producer (Deptrac for PHP structural\n'
+		printf -- '> boundaries, dependency-cruiser / ESLint boundaries for JS/TS, PHPArkitect and\n'
+		printf -- '> custom architecture tests). Architecture tools detect dependency-boundary\n'
+		printf -- '> violations — they do not prove domain-modelling quality or replace architectural\n'
+		printf -- '> review. Mode defaults: architecture_violations blocks from baseline;\n'
+		printf -- '> missing_architecture_evidence blocks in strict/regulated.\n'
+		printf -- '> See docs/architecture-governance.md.\n\n'
+		printf -- '| Gate | Value |\n| --- | --- |\n'
+		_av=$(jqr '.summary.architecture_violations'); case "$_av" in ''|null) _av=0 ;; esac
+		printf -- '| architecture_violations | %s |\n' "$_av"
+		for k in $ARCHITECTURE_BOOL_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+		printf -- '| Metric | Value |\n| --- | --- |\n'
+		for k in $ARCHITECTURE_INFO_KEYS; do
 			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
 			printf -- '| %s | %s |\n' "$k" "$_qv"
 		done

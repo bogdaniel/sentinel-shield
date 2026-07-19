@@ -43,6 +43,23 @@ capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; late
 until regulated. Thresholds live in `.sentinel-shield/quality-policy.yaml`; quality gates are **not**
 accepted-risk-suppressible. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
+Strict also enables **Architecture Governance v2 (v2.1)** — an unreleased, additive engine capability
+(**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains `v2.0.1`).
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. Relative to `baseline` — where violations
+from evidence that exists already block but absent evidence does not — strict adds
+`missing_architecture_evidence` (resolver flag
+`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`): expected architecture evidence that is
+absent, `unavailable` or errored now blocks too. `architecture_violations` is summed across all
+architecture producers. Opt out honestly in `.sentinel-shield/architecture-policy.yaml`
+(`architecture.enabled: false` or `architecture.evidence_required: false`) rather than faking a pass.
+See [`architecture-governance.md`](architecture-governance.md).
+
+> **Evidence honesty.** Architecture governance is supported by engine tests and fixtures. Do not
+> claim real consumer proof until a real Laravel/Symfony/Node consumer validation exists. Architecture
+> tools detect dependency-boundary violations, not the quality of domain modeling itself.
+
 Strict **keeps these NON-blocking** (resolver returns `false`):
 
 - `missing_release_evidence` — regulated-only by default.
@@ -112,6 +129,7 @@ severity for your project).
 | Dockle (`container_image_violations`) | `container_image_violations` | `proven` (run 27239206382) | Live-validated; needs a built image — inert if you don't build one. |
 | Checkov / Conftest / Terrascan (`iac_violations`) | `iac_violations` | `experimental` — **only if configured** | No consumer with IaC validated; only meaningful if you have IaC. |
 | Deptrac (`architecture_violations`) | `architecture_violations` | `supported` — not live-validated | Live-validate on a consumer that ships a `deptrac.yaml`. |
+| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | v2.1 unreleased — engine-tested + fixture-tested, **no real consumer validation** | Strict starts blocking absent/unavailable/errored evidence. Wire the producers in report-only/baseline first, observe the counts, then let missing evidence block. |
 | Trivy (image), TruffleHog, OpenSSF Scorecard | various | `experimental` / nightly | Nightly/coarse; not strict blockers. |
 | DAST (ZAP/Nuclei) | `dast_findings` | `manual` | Manual + allowlisted; regulated-only. Never a strict gate. |
 | AI review (Claude Code Security Review / Kuzushi) | `ai_review_findings` | `non-gating` | Non-deterministic; never blocks by default, any mode. |
@@ -147,6 +165,12 @@ Tick every box before setting `gates.mode: strict`:
 - [ ] `style_violations` gate configured (Pint/PHP-CS-Fixer/PHPCS or JS equivalent) and clean/accept-risked.
 - [ ] `type_errors` gate configured (PHPStan/Larastan/Psalm/`tsc --noEmit`) and green.
 - [ ] `architecture_violations` (Deptrac) configured if the project asserts boundaries.
+- [ ] Architecture producers wired for every applicable stack — Deptrac (PHP; PHPArkitect / custom PHP
+      architecture tests optional), dependency-cruiser + ESLint boundaries (JS/TS; custom JS
+      architecture tests optional) — and their violation counts observed in report-only/baseline first.
+- [ ] `missing_architecture_evidence` decision made: producers emit evidence on every applicable
+      stack, **or** the project opts out honestly in `.sentinel-shield/architecture-policy.yaml`
+      (`architecture.enabled: false` / `architecture.evidence_required: false`).
 - [ ] IaC decision made: either no IaC (gate inert, intentional) or Checkov/Conftest/Terrascan run **advisory** first.
 - [ ] Container-image decision made: image built in CI for Dockle, or `container_image_violations` confirmed inert.
 - [ ] `missing_sbom` satisfied (Syft SBOM produced in the gated pipeline).
@@ -161,4 +185,5 @@ and re-run `resolve-gates.sh` to confirm the resolved `fail_on` matrix. Tighten
 advisory→blocking incrementally as each tool earns trust.
 
 For the next tier (DAST configured, repo-health gating, audit-evidence retention), see
-[`regulated-mode-readiness.md`](regulated-mode-readiness.md).
+[`regulated-mode-readiness.md`](regulated-mode-readiness.md). For the architecture evidence contract,
+producers and policy file, see [`architecture-governance.md`](architecture-governance.md).

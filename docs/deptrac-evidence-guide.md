@@ -32,6 +32,79 @@ duplicate those; it is the concrete readiness checklist for the consumer run.
 
 ---
 
+## 0. v2.1.0 — Deptrac is one producer among several
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are
+JS/TS producers. Custom architecture tests can also emit the same contract. PHPArkitect is a
+further optional PHP producer. The capability spec is
+[`architecture-governance.md`](architecture-governance.md).
+
+This matters for evidence: **`architecture_violations` is now the sum across all producers**, so
+a Deptrac evidence run is a contribution to the architecture channel rather than the whole of it.
+Cite the Deptrac raw artifact specifically, not the aggregate summary number.
+
+### Runner flags and detection (v2.1.0)
+
+`scripts/runners/deptrac.sh` now takes `--output`, `--config` and `--policy`.
+
+- **Config detection order:** `--config`, then `architecture.tools.deptrac.config` from
+  `.sentinel-shield/architecture-policy.yaml`, then `deptrac.yaml`, `deptrac.yml`, `deptrac.php`.
+- **Binary detection order:** `vendor/bin/deptrac`, then a global `deptrac`.
+- **Version metadata** is recorded with the report.
+- The **native Deptrac report is preserved verbatim**, annotated with `producer`, `config` and
+  `tool_version` — nothing is rewritten or summarised away, so the uploaded artifact is still the
+  tool's own output.
+
+### Honest statuses
+
+| Situation | Status |
+|---|---|
+| Binary absent | `unavailable` |
+| No config found | `not-configured` |
+| Ran but produced no valid JSON | `execution-error` |
+| Turned off in the architecture policy | `disabled` |
+
+The runner **never writes a fake clean `violations: 0`.** This is the same guarantee §8
+describes, now expressed as four distinguishable statuses instead of one.
+
+### Collector shapes
+
+`scripts/collectors/deptrac.sh` accepts the native Deptrac shapes (`.report.violations`,
+`.Report.Violations`, `.violations` as number or array) **and** the normalized architecture
+contract, preserves status-bearing reports rather than flattening them, and maps rule/context
+metadata where available. An **unrecognized shape becomes `execution-error`, never `pass`.**
+
+The normalized contract, allowed **raw-report** statuses (`pass`, `findings`, `unavailable`,
+`not-configured`, `execution-error`, `disabled`, `not-applicable`), and the rule that only
+`pass`/`findings` count as evidence are specified in
+[`architecture-governance.md`](architecture-governance.md).
+
+The **collector** keeps its own long-standing vocabulary: it emits `fail` (not `findings`) when it
+maps violations, exactly as it has since v0.1.14 and as asserted by the `v025-live` self-test — so
+the captured evidence in §9 (`architecture_violations = 4` → **fail**) still reads the same way in
+v2.1.0. Only the raw-report side gained the new statuses.
+
+### `missing_architecture_evidence`
+
+A new boolean gate. When an expected producer yields no valid evidence, strict and regulated
+block:
+
+| Gate | report-only | baseline | strict | regulated |
+|---|---:|---:|---:|---:|
+| `architecture_violations` | false | true | true | true |
+| `missing_architecture_evidence` | false | false | true | true |
+
+For this guide's purpose that is a strengthening, not a loosening: an `unavailable` Deptrac on a
+project where Deptrac is expected now fails a strict gate instead of quietly producing nothing.
+`architecture_rule_count`, `architecture_tool_count` and `architecture_context_count` are
+informational companions.
+
+Engine test evidence for the capability: `tests/prod/280-architecture-governance.sh` — engine
+tests and fixtures, which is exactly the kind of evidence §4 says does **not** promote a tool.
+
+---
+
 ## 1. Required consumer prerequisites
 
 A consumer qualifies to produce Deptrac evidence only if **all** of these hold:
@@ -166,7 +239,7 @@ evidence pattern:
 [ ] composer require --dev deptrac/deptrac:^4  (vendor/bin/deptrac present)
 [ ] run scripts/runners/deptrac.sh -> reports/raw/deptrac.json (valid JSON; clean or real violations)
 [ ] scripts/collectors/deptrac.sh --input reports/raw/deptrac.json parses it
-[ ] summary mapping: architecture_violations = violation count; status pass/fail
+[ ] summary mapping: architecture_violations = violation count; COLLECTOR status pass/fail
 [ ] artifact uploaded if: always(); NO app code changed; findings NOT remediated/suppressed
 [ ] cite run ID + artifact (size, validity) in main-gate-live-evidence.md
 [ ] only AFTER the cited row exists: update product-status.md / enterprise-scanner-matrix.md
@@ -178,9 +251,10 @@ evidence pattern:
   not available; skipping* and exits 0; the collector emits `status=unavailable`. This
   is **not** evidence and **not** a pass — install via `composer require --dev
   deptrac/deptrac:^4` and re-run. Never treat `unavailable` as green.
-- **No `deptrac.yaml`**: `deptrac analyse` cannot define layers, so no usable
-  `deptrac.json` is produced → wrapper reports unavailable. The fix is a **real**
-  consumer config (see §2), not a fabricated one.
+- **No `deptrac.yaml`**: `deptrac analyse` cannot define layers, so no usable `deptrac.json` is
+  produced. Since v2.1.0 the runner reports this case as **`not-configured`**; `unavailable` is
+  reserved exclusively for a **missing binary**, so the status tells you which of the two to fix.
+  The fix is a **real** consumer config (see §2), not a fabricated one.
 - **Invalid / malformed JSON**: the collector exits **2** (error path), not `pass`.
   Inspect the raw output — usually a truncated file, a wrong formatter flag, or a
   Deptrac error. Re-run with `--formatter=json --output=...`.

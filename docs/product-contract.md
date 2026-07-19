@@ -150,6 +150,30 @@ release remains `v2.0.1`, engine-only). Reference: [`engineering-quality-gates.m
 
 ---
 
+## 4b. Architecture Governance v2 (v2.1) — unreleased, additive engine capability
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. Consistent with §1 and §2, this capability is
+**purely additive**:
+
+- **New env flag, no repurposing.** `SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE` is a **new**
+  `SENTINEL_SHIELD_FAIL_ON_*` name added alongside the existing ones; no existing var is renamed or
+  silently repurposed.
+- **New summary keys, no renames/removals.** `missing_architecture_evidence` (boolean gate),
+  `architecture_rule_count`, `architecture_tool_count` and `architecture_context_count` (informational)
+  are **added**. `architecture_violations` keeps its name and meaning — it counts architecture-boundary
+  violations, now summed across every architecture producer rather than a single one.
+- **Old summaries stay valid.** All four keys are optional; a summary that omits them remains
+  schema-valid and an absent key reads as `0` / `false`. Consumers must tolerate the additions.
+- **Separate channel.** Architecture findings are never folded into vulnerability counters.
+
+This is an **unreleased, additive engine capability**: it is **not** part of `v2.0.1`/`v2.0.0` and is
+**not** a new release claim (latest release remains `v2.0.1`, engine-only). Reference:
+[`architecture-governance.md`](architecture-governance.md).
+
+---
+
 ## 5. Migration policy before v1.0
 
 - **Pre-1.0 versioning.** While Sentinel Shield is below `v1.0`, **minor tags may
@@ -222,6 +246,7 @@ appropriate for a release candidate. Final `v1.0.0` follows the rc soak — see
 
 - [`product-status.md`](product-status.md) — canonical maturity (source of truth).
 - [`raw-report-contract.md`](raw-report-contract.md) — per-collector raw report behavior.
+- [`architecture-governance.md`](architecture-governance.md) — architecture evidence contract, producers, and mode defaults.
 - [`profile-driven-adoption.md`](profile-driven-adoption.md) — install/sync model.
 - [`product-readiness-checklist.md`](product-readiness-checklist.md) — readiness evidence.
 - [`roadmap.md`](roadmap.md) — maturity-ordered plan to (eventually) `v1.0`.

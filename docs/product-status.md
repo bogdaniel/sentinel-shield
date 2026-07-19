@@ -100,6 +100,29 @@ and makes **no** new release claim — the latest release remains **`v2.0.1`** (
 row does **not** change the canonical release status above. It is not framework live-validated. Full
 reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
+### Architecture Governance v2 (v2.1) — unreleased, additive engine capability
+
+Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
+the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
+Custom architecture tests can also emit the same contract. The existing `architecture_violations` gate
+is now **summed across all architecture producers**; a new boolean gate
+`missing_architecture_evidence` fails when an applicable producer is expected but produced no valid
+evidence, and three informational keys (`architecture_rule_count`, `architecture_tool_count`,
+`architecture_context_count`) travel alongside it. All four are optional/additive — older summaries
+stay valid. Mode defaults: `architecture_violations` is `false`/`true`/`true`/`true` and
+`missing_architecture_evidence` is `false`/`false`/`true`/`true` across
+report-only/baseline/strict/regulated. It is **NOT part of a release**: it is **not** in `v2.0.1` or
+`v2.0.0` and makes **no** new release claim — the latest release remains **`v2.0.1`** (engine-only),
+and this row does **not** change the canonical release status above. Full reference:
+[`architecture-governance.md`](architecture-governance.md).
+
+> **Evidence honesty.** Architecture governance is supported by engine tests and fixtures
+> (`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real
+> Laravel/Symfony/Node consumer validation exists. Architecture tools detect dependency-boundary
+> violations, not the quality of domain modeling itself — Sentinel Shield does **not** claim to prove
+> Clean Architecture by itself, to prove DDD correctness, to replace architectural review, or that
+> Deptrac validates BDD/TDD/ATDD.
+
 ## Maturity vocabulary (canonical)
 
 | Label | Meaning |

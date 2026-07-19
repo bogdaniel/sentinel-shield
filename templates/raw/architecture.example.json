@@ -1,0 +1,15 @@
+{
+  "tool": "architecture",
+  "status": "findings",
+  "violations": 2,
+  "rule_count": 12,
+  "context_count": 4,
+  "failures": [
+    {
+      "rule": "domain-must-not-depend-on-infrastructure",
+      "from": "App\\Domain\\Order\\Order",
+      "to": "App\\Infrastructure\\Persistence\\DoctrineOrderRepository",
+      "message": "Domain layer depends on Infrastructure"
+    }
+  ]
+}

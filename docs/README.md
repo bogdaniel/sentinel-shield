@@ -39,6 +39,9 @@ need.
 - [`../profiles/`](../profiles/) — per-stack tool configs + `profile.manifest.json` files.
 - [`static-analysis-policy.md`](static-analysis-policy.md), [`style-policy.md`](style-policy.md),
   [`architecture-policy.md`](architecture-policy.md), [`dependency-policy.md`](dependency-policy.md).
+- [`architecture-governance.md`](architecture-governance.md) — normalized architecture evidence
+  across PHP and JS/TS producers (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries,
+  custom architecture tests), the `missing_architecture_evidence` gate, and the policy file.
 
 ## Accepted risks
 - [`accepted-risk-suppression.md`](accepted-risk-suppression.md) — finding-scoped suppression rules.

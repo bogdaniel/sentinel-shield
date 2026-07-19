@@ -17,6 +17,7 @@ authoritative mechanics rather than restating them.
 - [`accepted-risk-suppression.md`](accepted-risk-suppression.md) / [`exception-policy.md`](exception-policy.md) — accepted-risk mechanics and policy.
 - [`gate-resolution.md`](gate-resolution.md) — mode → enforced gate-threshold mapping.
 - [`strict-mode-readiness.md`](strict-mode-readiness.md) / [`regulated-mode-readiness.md`](regulated-mode-readiness.md) — the strict/regulated pre-flights.
+- [`architecture-governance.md`](architecture-governance.md) — architecture evidence contract, producers, policy file, style templates.
 - [`v1.1-onboarding-and-migration.md`](v1.1-onboarding-and-migration.md) — version pinning, upgrade, rollback.
 - [`install-sync-guide.md`](install-sync-guide.md) — install/sync mechanics, rollback, troubleshooting.
 
@@ -67,6 +68,30 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > `regulated` adds mutation + dead-code. It is **not** part of `v2.0.1`/`v2.0.0` and **not** a new
 > release claim (latest release remains `v2.0.1`); adopt it report-only-first via
 > `.sentinel-shield/quality-policy.yaml`. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
+
+> **Architecture Governance v2 (v2.1) — unreleased, additive engine capability.** Sentinel Shield
+> enforces architecture governance through normalized architecture evidence. Deptrac is the PHP
+> structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers. Custom
+> architecture tests can also emit the same contract. It follows the **same promotion path** as the
+> modes above: `architecture_violations` (summed across all producers) is non-blocking in report-only
+> and blocks from `baseline`; `strict` adds `missing_architecture_evidence`
+> (`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`), so absent/unavailable/errored expected
+> evidence blocks too; `regulated` keeps that and additionally requires the raw architecture reports to
+> be retained as evidence. It is **not** part of `v2.0.1`/`v2.0.0` and **not** a new release claim
+> (latest release remains `v2.0.1`); adopt it report-only-first via
+> `.sentinel-shield/architecture-policy.yaml`. See [`architecture-governance.md`](architecture-governance.md).
+
+Architecture-governance rollout ramp (same shape as every other gate):
+- **Report-only / baseline:** add a producer + config per stack (deptrac for `laravel`/`symfony`/
+  `php-library`; dependency-cruiser + eslint-boundaries for `node`/`react` — both fast enough for PRs)
+  and **observe the count**. Rule starting points live under `templates/architecture/`; the policy
+  template is `templates/architecture-policy.example.yaml`. Sentinel Shield never overwrites
+  project-owned architecture files.
+- **Fix or accept** what the producers find before tightening.
+- **Strict:** missing evidence starts blocking; opt out honestly with `architecture.enabled: false` or
+  `architecture.evidence_required: false` rather than faking a pass.
+- **Regulated:** retain the raw architecture reports (`reports/raw/*.json` per producer) with the
+  release evidence.
 
 Concrete triggers:
 - **Stay in report-only longer** for legacy repos with a large finding backlog — that is a legitimate
