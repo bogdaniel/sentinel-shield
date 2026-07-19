@@ -97,6 +97,8 @@ OV=$(jq 'if has("results") then
 			{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0),
 			 _results:null, _native:false}
 		 end' "$INPUT")
+# Fail closed on negative/float/non-numeric counts (v2.0.1); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities,.high_vulnerabilities,.medium_vulnerabilities]|add // 0')
 NATIVE=$(printf '%s' "$OV" | jq -r '._native')
 RC=$(printf '%s' "$OV" | jq -r '._results')

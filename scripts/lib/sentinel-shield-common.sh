@@ -212,3 +212,52 @@ ss_collector_guard() {
 		exit 2
 	fi
 }
+
+# ss_shape_or_fail <tool> <input> <jq-recognizer> [summary-overrides-json]
+# Fail closed when a scanner report is valid JSON but its SHAPE is not recognized.
+#
+# v2.0.1 security hotfix. The security collectors used to end their extraction with
+# `else 0 end`, or relied on jq's `?` operator, so a document whose top-level keys had
+# been renamed upstream produced ZERO findings and status=pass. A scanner version bump
+# could therefore convert every real finding into a clean gate silently. Unrecognized
+# output is untrusted evidence, not an absence of findings.
+#
+# <jq-recognizer> must evaluate truthy for a shape this collector genuinely understands.
+# Emits execution-error and exits 0 (the collector ran; its INPUT is the problem) so the
+# builder's per-tool policy records it and the evidence gates see a non-clean status.
+ss_shape_or_fail() {
+	_sot=$1; _soi=$2; _sor=$3; _sov=${4:-}; [ -n "$_sov" ] || _sov='{}'
+	_soo=$(jq -r "if ($_sor) then \"ok\" else \"unknown\" end" "$_soi" 2>/dev/null || printf 'unknown')
+	[ "$_soo" = "ok" ] && return 0
+	log_warn "$_sot: unrecognized report shape in '$_soi'; status=execution-error (never reported as clean)"
+	ss_emit_collector "$_sot" "execution-error" \
+		"$(jq -n --arg t "$_sot" '{status:"execution-error", reason:("unrecognized " + $t + " report shape")}')" \
+		"$_sov"
+	exit 0
+}
+
+# ss_counts_or_fail <tool> <counts-json> [summary-overrides-json]
+# Validate that every value in a collector's count object is a NON-NEGATIVE INTEGER.
+#
+# v2.0.1 security hotfix. Counts were passed through unvalidated and the builder SUMS
+# them across collectors, so one report carrying `critical: -99` cancelled another
+# scanner's real findings — exact cancellation to 0 produced a full PASS. Floats and
+# strings were equally unchecked. A malformed count is untrusted evidence.
+ss_counts_or_fail() {
+	_cot=$1; _coc=$2; _cov=${3:-}; [ -n "$_cov" ] || _cov='{}'
+	# Keys prefixed with "_" are the collectors' existing internal-metadata convention
+	# (grype/osv carry _native/_results alongside the counts); they are not gate counts.
+	_cobad=$(printf '%s' "$_coc" | jq -r '
+		[ to_entries[]
+		  | select(.key | startswith("_") | not)
+		  | select((.value | type) != "number"
+			or (.value < 0)
+			or ((.value | floor) != .value))
+		  | "\(.key)=\(.value)" ] | join(", ")' 2>/dev/null || printf 'unreadable')
+	[ -z "$_cobad" ] && return 0
+	log_warn "$_cot: invalid count(s) [$_cobad]; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$_cot" "execution-error" \
+		"$(jq -n --arg r "$_cobad" '{status:"execution-error", reason:("invalid counts: " + $r)}')" \
+		"$_cov"
+	exit 0
+}

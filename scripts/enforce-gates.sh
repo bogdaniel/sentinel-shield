@@ -208,15 +208,25 @@ done < "$GATES_ENV_FILE"
 env_get() { printf '%s\n' "$GATES_ENV" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,"");print;exit}'; }
 
 # gate_flag <gate_key> — resolved fail_on flag (true/false). Absent -> false+warn.
+# gate_flag <key> — resolved boolean for a gate, parsed CANONICALLY.
+#
+# FAIL CLOSED (v2.0.1 security hotfix). Two prior fail-open paths are closed here:
+#   * an ABSENT flag used to warn and disable the gate. A truncated, hand-edited or
+#     tampered gates.env therefore silently switched gates off — a gates.env with no
+#     FAIL_ON_ lines at all passed a summary carrying secrets and criticals.
+#   * a NON-CANONICAL value ("TRUE", "yes", "1") was compared literally against the
+#     string "true", so it disabled the gate with NO warning at all.
+# Both are now configuration errors. bool_value() is the engine-wide parser and accepts
+# the documented spellings; anything else is rejected rather than guessed at.
 gate_flag() {
 	_suffix=$(upper "$1")
 	_v=$(env_get "SENTINEL_SHIELD_FAIL_ON_$_suffix")
 	if [ -z "$_v" ]; then
-		log_warn "gates env missing SENTINEL_SHIELD_FAIL_ON_$_suffix; treating gate '$1' as disabled"
-		printf 'false'
-	else
-		printf '%s' "$_v"
+		die_cfg "gates env is missing SENTINEL_SHIELD_FAIL_ON_$_suffix. A gate flag that cannot be read is a configuration error, never a disabled gate — regenerate it with scripts/resolve-gates.sh."
 	fi
+	_n=$(bool_value "$_v" 2>/dev/null) \
+		|| die_cfg "SENTINEL_SHIELD_FAIL_ON_$_suffix must be a boolean, got '$_v' (use true/false)"
+	printf '%s' "$_n"
 }
 
 MODE=$(env_get "SENTINEL_SHIELD_MODE"); [ -n "$MODE" ] || MODE="unknown"
@@ -258,6 +268,55 @@ for _k in missing_sbom missing_release_evidence; do
 		*) die_cfg "summary.$_k must be a boolean, got '$_v'" ;;
 	esac
 done
+
+# --- evidence-integrity precondition for strict/regulated (v2.0.1 hotfix) ----
+# THE INVARIANT: "no scanner ran" must never read as "we are clean".
+#
+# It previously did. build-security-summary.sh invokes every collector even when its raw
+# report is absent; each returns status=unavailable with a fully ZEROED summary, and the
+# merge sums those zeros into a pristine-looking document. Nothing downstream consulted
+# .tools[].status unless the builder had been run with --profile. So an EMPTY reports/raw
+# — zero scanners executed — produced a summary that passed `regulated`, which is the
+# highest-assurance mode this engine offers.
+#
+# The builder cannot decide this alone: without a profile it has no way to know which
+# tools were APPLICABLE (a PHP project legitimately has no npm-audit report), so counting
+# every unavailable collector would fail every project. Applicability lives in the
+# effective profile. Therefore strict/regulated now REQUIRE a policy-bearing summary —
+# option A of the remediation plan, PROFILE_REQUIRED_FOR_REGULATED.
+#
+# report-only/baseline are unchanged: they are visibility/migration modes and are not
+# claimed to prove evidence completeness.
+# The trigger is deliberately NARROW: .tools is populated but NOT ONE entry carries an
+# evidence-bearing status. That is exactly the reproduced vulnerability — the builder ran
+# every collector, each returned `unavailable` over an absent report, and the merged
+# document looked pristine. It is not merely "no profile was passed":
+#   * a summary whose .tools is EMPTY (hand-built, or produced by an external pipeline)
+#     is left alone — its author is asserting their own evidence, and silently refusing to
+#     enforce it would break a documented capability rather than close a hole;
+#   * a run where even one scanner produced pass/findings/fail/warn proceeds to the normal
+#     gates, which is where real findings are judged.
+# Residual gap, stated plainly rather than papered over: a caller who hand-writes
+# `"tools": {}` still bypasses this. Closing that needs the evidence-completeness policy
+# work tracked separately — it is not a hotfix-sized change.
+case "$MODE" in
+	strict | regulated)
+		_evi=$(jq -r '
+			((.tools // {}) | to_entries) as $t
+			| if ($t | length) == 0 then "no-tools"
+			  elif ($t | any(.value | (type=="object")
+					and ((.status // "") | IN("pass","findings","fail","warn")))) then "ok"
+			  else "none" end' "$SUMMARY" 2>/dev/null || printf 'ok')
+		if [ "$_evi" = "none" ]; then
+			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): every tool in this summary reports a non-evidence status."
+			log_error "  '$SUMMARY' lists $(jq -r '(.tools // {}) | length' "$SUMMARY" 2>/dev/null) tool(s) and NOT ONE of them ran:"
+			log_error "  $(jq -r '[(.tools // {}) | to_entries[] | .value.status // "?"] | group_by(.) | map("\(length)x \(.[0])") | join(", ")' "$SUMMARY" 2>/dev/null)"
+			log_error "  'no scanner ran' is not 'we are clean'. Produce real scanner reports in reports/raw/,"
+			log_error "  or build the summary with --profile so applicability is recorded honestly."
+			die_cfg "refusing to certify '$MODE' from a summary containing no scanner evidence"
+		fi
+		;;
+esac
 
 # Strict mode: validate optional-but-recommended structure.
 if [ "$STRICT_SUMMARY" -eq 1 ]; then
@@ -389,11 +448,25 @@ eval_count_gate() {
 	_key=$1
 	_flag=$(gate_flag "$_key")
 	_val=$(jqr ".summary.$_key")
-	# Null-safe: a key absent from the summary (e.g. third-party keys on an older
-	# summary) reads as "null"; treat any non-integer as 0 so we never error here.
-	case "$_val" in
-		'' | *[!0-9]*) _val=0 ;;
-	esac
+	# ABSENT is legitimately 0: an older summary predating a gate simply omits the key,
+	# and that back-compat promise is documented. Everything else is NOT.
+	#
+	# FAIL CLOSED (v2.0.1 security hotfix). This previously read
+	#   case "$_val" in '' | *[!0-9]*) _val=0 ;; esac
+	# which coerced EVERY malformed value to a clean 0: floats (3.5), negatives (-5),
+	# strings ("not-a-number") and jq errors all evaluated as `pass`. A count we cannot
+	# read is untrusted evidence, not an absence of findings, so it is now a hard
+	# configuration error. Negative counts additionally have to die here because the
+	# builder SUMS across collectors — one negative can cancel another scanner's real
+	# findings to zero.
+	if [ "$_val" = "null" ]; then
+		_val=0
+	else
+		case "$_val" in
+			'' | *[!0-9]*)
+				die_cfg "summary.$_key must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
+		esac
+	fi
 	if [ "$_flag" = "true" ]; then
 		if [ "$_val" -gt 0 ]; then
 			if is_gate_suppressed "$_key"; then

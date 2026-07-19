@@ -16,7 +16,8 @@
 #   command wrote <output> as JSON    -> preserved (normalized contract expected)
 #   command printed JSON on stdout    -> that JSON is the report
 #   command failed with no JSON       -> execution-error
-#   command succeeded with no JSON    -> pass, violations 0 (exit code is the evidence)
+#   command succeeded with no JSON    -> execution-error (an exit code is NOT evidence, v2.0.1)
+#   command from the scanned project.s policy -> refused unless --allow-project-command
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
@@ -28,6 +29,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 OUT="reports/raw/architecture-tests.json"
 CMD=""
+CMD_SOURCE=""          # operator | project — decides whether CMD may execute (v2.0.1)
+ALLOW_PROJECT_CMD=0    # --allow-project-command: explicit operator consent, off by default
 ENV_VAR="SENTINEL_SHIELD_ARCH_TEST_CMD"
 PRODUCER="architecture-tests"
 POLICY=".sentinel-shield/architecture-policy.yaml"
@@ -36,15 +39,22 @@ POLICY=".sentinel-shield/architecture-policy.yaml"
 usage() {
 	cat <<'EOF'
 Usage: architecture-tests.sh [--output <path>] [--command <cmd>] [--env-var <NAME>]
-                             [--producer <name>] [--policy <path>] [<output>]
+                             [--producer <name>] [--policy <path>]
+                             [--allow-project-command] [<output>]
 Run the project's architecture-test command and normalize the result.
+
+SECURITY (v2.0.1): a command taken from the SCANNED PROJECT's architecture-policy.yaml is
+NOT executed by default — that file is attacker-controlled input to a security gate. Pass
+--allow-project-command to opt in explicitly, or supply the command via --command / the
+$SENTINEL_SHIELD_ARCH_TEST_CMD env var, both of which are operator-controlled.
 EOF
 }
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--output) OUT="${2:?--output requires a value}"; shift 2 ;;
-		--command) CMD="${2:?--command requires a value}"; shift 2 ;;
+		--command) CMD="${2:?--command requires a value}"; CMD_SOURCE="operator"; shift 2 ;;
+		--allow-project-command) ALLOW_PROJECT_CMD=1; shift ;;
 		--env-var) ENV_VAR="${2:?--env-var requires a value}"; shift 2 ;;
 		--producer) PRODUCER="${2:?--producer requires a value}"; shift 2 ;;
 		--policy) POLICY="${2:?--policy requires a value}"; shift 2 ;;
@@ -66,7 +76,9 @@ fi
 # the indirect expansion, so a crafted --env-var value can never smuggle shell code into eval.
 if [ -z "$CMD" ]; then
 	case "$ENV_VAR" in
-		[A-Za-z_][A-Za-z0-9_]*) CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"") ;;
+		[A-Za-z_][A-Za-z0-9_]*)
+			CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"")
+			[ -n "$CMD" ] && CMD_SOURCE="operator" ;;
 		*)
 			log_error "invalid --env-var name '$ENV_VAR' (expected a POSIX shell identifier)"
 			exit 2 ;;
@@ -74,6 +86,24 @@ if [ -z "$CMD" ]; then
 fi
 if [ -z "$CMD" ] && ap_present; then
 	CMD=$(ap_get architecture.tools.architecture_tests.command)
+	[ -n "$CMD" ] && CMD_SOURCE="project"
+fi
+
+# REFUSE to execute a scanned-repo-supplied shell string (v2.0.1 security hotfix).
+#
+# `sh -c "$CMD"` below runs this verbatim. Sourced from the scanned project's
+# architecture-policy.yaml, that is arbitrary code execution in the gate runner, granted to
+# whoever can open a pull request — proven with `command: "id > /tmp/proof; true"`. Note the
+# contrast this fix removes: the --env-var NAME was already validated against eval injection
+# a few lines above, while the command VALUE went straight to a shell.
+#
+# Operator-supplied commands (--command, $SENTINEL_SHIELD_ARCH_TEST_CMD) are unchanged: the
+# person who wrote the CI workflow already controls the runner. Only the untrusted source is
+# gated, behind explicit --allow-project-command consent.
+if [ "$CMD_SOURCE" = "project" ] && [ "$ALLOW_PROJECT_CMD" -ne 1 ]; then
+	arch_write_status "$OUT" "$PRODUCER" execution-error \
+		"unsupported_project_command: refusing to execute an architecture-test command supplied by the scanned project's $POLICY. Pass --allow-project-command to opt in, or set the command via --command / \$$ENV_VAR (operator-controlled)."
+	exit 0
 fi
 if [ -z "$CMD" ]; then
 	arch_write_status "$OUT" "$PRODUCER" unavailable "no architecture-test command (\$$ENV_VAR unset and no architecture.tools.architecture_tests.command)"
@@ -111,13 +141,17 @@ if [ -s "$STDOUT_LOG" ]; then
 fi
 rm -f "$STDOUT_LOG"
 
-# 3) no JSON at all: the EXIT CODE is the only evidence. Success is an honest clean run;
-#    failure is an execution-error, never "violations: 1" invented from an unknown failure.
+# 3) no JSON at all. An exit code is NOT architecture evidence (v2.0.1 hotfix).
+#
+# This branch used to synthesise {status:"pass", violations:0} from `exit 0`, so any
+# command that merely succeeds — `true`, a no-op script, a suite that silently collected
+# zero rules — manufactured a clean architecture report. That single file then satisfied
+# BOTH architecture_violations and missing_architecture_evidence, defeating the evidence
+# chain the builder works to protect. "It exited 0" and "it checked the architecture and
+# found nothing wrong" are different claims and only the second is evidence.
 if [ "$RC" -eq 0 ]; then
-	jq -n --arg p "$PRODUCER" \
-		'{tool:"architecture", producer:$p, status:"pass", violations:0, rule_count:0, context_count:0, failures:[],
-		  message:"command exited 0 and emitted no JSON; exit code is the only evidence"}' > "$OUT"
-	log_info "$PRODUCER: command exited 0 with no JSON -> pass (violations=0)"
+	arch_write_status "$OUT" "$PRODUCER" execution-error \
+		"architecture-test command exited 0 but emitted no JSON contract; an exit code is not architecture evidence (write the normalized contract to \$SENTINEL_SHIELD_ARCH_OUT or stdout)"
 else
 	arch_write_status "$OUT" "$PRODUCER" execution-error "architecture-test command failed (exit $RC) without emitting the JSON contract"
 fi

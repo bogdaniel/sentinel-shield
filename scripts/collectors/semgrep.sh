@@ -30,6 +30,8 @@ while [ $# -gt 0 ]; do
 done
 
 ss_collector_guard "$TOOL" "$INPUT"
+# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.1).
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and ((.results? | type) == "array")' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 
 OV=$(jq '
 	[ .results[]?.extra.severity // empty | ascii_upcase ] as $s
@@ -49,7 +51,9 @@ OV=$(jq '
 		_informational:           ([ $s[] | select(. == "INFO" or . == "LOW") ] | length)
 	}' "$INPUT")
 
-# Status is derived from the GATING buckets only. Informational findings are reported but
+# Fail closed on negative/float/non-numeric counts (v2.0.1, #51); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# Status is derived from the GATING buckets only (#52). Informational findings are reported but
 # must never drive the status, or "1 INFO finding" would still fail the gate — exactly the
 # behavior docs/severity-policy.md says never happens.
 TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities, .high_vulnerabilities, .medium_vulnerabilities] | add // 0')

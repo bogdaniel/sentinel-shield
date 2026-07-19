@@ -616,6 +616,52 @@ only)` pinned the defect itself as expected behaviour.
 correctly needs a workflow-lint summary key that does not exist — a schema change, not a mapping
 fix.
 
+### Security — fail-closed evidence and gate integrity (engine-only hotfix)
+
+Restores the core product invariant: **absent, malformed, partial, unrecognized, negative or
+non-integer evidence fails closed.** "The scanner did not run" and "the scanner output could
+not be parsed" no longer read as "we are clean". Full write-up:
+[`docs/fail-closed-evidence.md`](docs/fail-closed-evidence.md); executable form:
+`tests/prod/266-fail-closed-evidence-integrity.sh` (48 checks, 28 of which fail against the
+pre-hotfix engine).
+
+- **An empty `reports/raw/` passed `regulated`.** Collectors return `unavailable` with a fully
+  zeroed summary and the merge summed those zeros, so the highest-assurance mode certified a
+  run in which no scanner executed. `enforce-gates.sh` now refuses a strict/regulated summary
+  whose tools are populated but carry no evidence-bearing status at all.
+- **Unrecognized scanner output became zero findings.** `gitleaks` ended in `else 0 end`;
+  `trivy`/`semgrep` relied on jq's `?`. New `ss_shape_or_fail` fails closed with
+  `execution-error` across gitleaks, trivy, semgrep, npm-audit, grype, osv-scanner,
+  composer-audit, codeql, dependency-check and tests. `{}` is no longer a clean report.
+- **Negative counts cancelled real findings.** Counts are summed across collectors, so
+  `critical: -99` erased a genuine Trivy CRITICAL. New `ss_counts_or_fail` rejects negative,
+  fractional and non-numeric counts; `eval_count_gate` no longer coerces malformed values to a
+  clean `0` (an ABSENT optional key still reads as 0, as documented).
+- **Gate flags failed open.** `FAIL_ON_SECRETS=TRUE` silently disabled the gate, and an absent
+  flag disabled it with only a warning. Both are now configuration errors, parsed through
+  `bool_value()`.
+- **The architecture runner executed scanned-repo shell strings.** `sh -c "$CMD"` where `CMD`
+  came from the scanned project's `architecture-policy.yaml` — code execution in the gate
+  runner for anyone who can open a PR. Project-sourced commands are now refused unless the
+  operator passes `--allow-project-command`.
+- **An exit code was treated as architecture evidence.** `command: "true"` manufactured a clean
+  architecture report satisfying both architecture gates; no JSON contract is now
+  `execution-error`.
+- **One-of groups were satisfied by file presence.** `printf '{}' > tests.json` certified a
+  project's tests as passing. Satisfaction now requires the group collector's real evidence
+  status.
+- **Collector-reported expired exceptions were discarded** by an unconditional overwrite from
+  `exceptions.json`; the two sources are now added.
+- **JSON persisted secrets unredacted.** The generic rule's value class excluded `"`, so it
+  could never match JSON — the format the summary, raw reports and event journal all use.
+  Three boundary-aware JSON rules added, with explicit no-over-redaction tests.
+- **e2e fixtures made realistic.** `tests/e2e/*/reports/raw/*.json` held `{}`, which no scanner
+  emits; they only passed because unrecognized documents read as clean-zero. They now carry
+  real clean shapes so the harness tests what it claims.
+- **Known gaps are documented, not hidden** — collector severity mappings, collector-less
+  required tools, and the absent baseline-comparison mechanism remain open and are listed in
+  `docs/fail-closed-evidence.md`.
+
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 
 
