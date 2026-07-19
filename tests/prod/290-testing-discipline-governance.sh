@@ -138,6 +138,55 @@ check "no git base -> unavailable + missing_test_change_evidence" \
 	"$(jq -r '"\(.status):\(.missing_test_change_evidence)"' "$WORK/t12.json")" "unavailable:true"
 cd "$ROOT"
 
+# --- (2b) policy fallback parser (no mikefarah yq) -----------------------------
+# Consumers are NOT required to install yq, so the awk fallback must read the same policy —
+# including LIST fields — and fail closed the same way. A shim that reports a non-mikefarah
+# version forces the fallback even on a machine where yq v4 is installed.
+SHIM="$WORK/shim"; mkdir -p "$SHIM"
+printf '#!/bin/sh\necho "yq version 3.4.1 (python)"\n' > "$SHIM/yq"
+chmod +x "$SHIM/yq"
+FB="$WORK/fallback"; mkdir -p "$FB/.sentinel-shield"
+(
+	cd "$FB" || exit 1
+	git init -q . && git config user.email t@example.com && git config user.name t
+	mkdir -p src tests packages
+	echo a > src/a.ts; echo t > tests/a.test.ts; echo p > packages/x.ts
+	git add -A && git commit -qm base
+) >/dev/null 2>&1
+cat > "$FB/.sentinel-shield/testing-discipline-policy.yaml" <<'EOF'
+testing_discipline:
+  enabled: true
+  tdd:
+    enabled: true
+    production_paths:
+      - packages
+    test_paths:
+      - tests
+EOF
+cd "$FB"
+# fb_run <out> — run the proxy with the yq shim first on PATH (fallback parser active).
+fb_run() {
+	PATH="$SHIM:$PATH" sh "$TCE" --output "$1" --base HEAD~1 >/dev/null 2>&1
+	jq -r '"\(.status):\(.production_change_without_test_change)"' "$1"
+}
+echo x >> src/a.ts; git commit -qam src-only
+check "fallback parser reads production_paths (src excluded)" "$(fb_run "$WORK/f1.json")" "pass:0"
+echo x >> packages/x.ts; git commit -qam pkg-only
+check "fallback parser: declared production path violates" "$(fb_run "$WORK/f2.json")" "findings:1"
+echo x >> packages/x.ts; echo x >> tests/a.test.ts; git commit -qam pkg+test
+check "fallback parser reads test_paths (test change clears)" "$(fb_run "$WORK/f3.json")" "pass:0"
+
+printf 'testing_discipline:\n  tdd:\n    enabled: maybe\n' > "$FB/.sentinel-shield/testing-discipline-policy.yaml"
+PATH="$SHIM:$PATH" sh "$TCE" --output "$WORK/f4.json" --base HEAD~1 >/dev/null 2>&1 && _rc=0 || _rc=$?
+check "fallback parser: malformed boolean exits 2" "$_rc" "2"
+printf 'testing_discipline:\n  tdd:\n    enabled: &a true\n' > "$FB/.sentinel-shield/testing-discipline-policy.yaml"
+PATH="$SHIM:$PATH" sh "$TCE" --output "$WORK/f5.json" --base HEAD~1 >/dev/null 2>&1 && _rc=0 || _rc=$?
+check "fallback parser: advanced YAML (anchor) exits 2" "$_rc" "2"
+printf 'testing_discipline:\n  tdd:\n    production_paths:\n' > "$FB/.sentinel-shield/testing-discipline-policy.yaml"
+PATH="$SHIM:$PATH" sh "$TCE" --output "$WORK/f6.json" --base HEAD~1 >/dev/null 2>&1 && _rc=0 || _rc=$?
+check "fallback parser: present-but-empty list exits 2" "$_rc" "2"
+cd "$ROOT"
+
 # --- (3) collectors -----------------------------------------------------------
 C="$WORK/coll"; mkdir -p "$C"
 echo '{"tool":"test-change-evidence","status":"findings","production_changed_files":3,"test_changed_files":0,"production_change_without_test_change":1,"missing_test_change_evidence":false}' > "$C/tce.json"
