@@ -84,7 +84,8 @@
     "composer-audit",
     "gitleaks",
     "semgrep",
-    "tests"
+    "tests",
+    "test-change-evidence"
   ],
   "recommended_main_gate_tools": [
     "codeql",
@@ -93,13 +94,15 @@
     "syft",
     "grype",
     "deptrac",
-    "dependency-check"
+    "dependency-check",
+    "behat-acceptance"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
     "scorecard",
     "dependency-check",
-    "grype"
+    "grype",
+    "behat-acceptance"
   ],
   "recommended_raw_reports": [
     "php-syntax.json",
@@ -117,7 +120,10 @@
     "php-diff-coverage.json",
     "focused-tests.json",
     "debug-code.json",
-    "source-size.json"
+    "source-size.json",
+    "test-change-evidence.json",
+    "behavior-specs.json",
+    "acceptance-tests.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -798,6 +804,72 @@
         "pr": false,
         "main": true,
         "scheduled": false
+      }
+    },
+    "test-change-evidence": {
+      "policy": "required",
+      "category": "testing-discipline",
+      "runner": "scripts/runners/test-change-evidence.sh",
+      "report": "reports/raw/test-change-evidence.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "behat": {
+      "policy": "optional",
+      "category": "bdd",
+      "packages": [
+        {
+          "name": "behat/behat",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/behat",
+        "behat"
+      ],
+      "runner": "scripts/runners/behat.sh",
+      "report": "reports/raw/behavior-specs.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "behat.yml",
+        "classification": "project-owned"
+      }
+    },
+    "behat-acceptance": {
+      "policy": "optional",
+      "category": "atdd",
+      "packages": [
+        {
+          "name": "behat/behat",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/behat",
+        "behat"
+      ],
+      "runner": "scripts/runners/behat-acceptance.sh",
+      "report": "reports/raw/acceptance-tests.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      },
+      "config": {
+        "path": "behat.yml",
+        "classification": "project-owned"
       }
     }
   }

@@ -434,3 +434,48 @@ Rules (fail closed on any violation):
 - A waiver **applies** only while `expires_at >= today` in **UTC** (a waiver expiring
   today is valid through the end of that UTC day); expired waivers validate but do not
   downgrade the control.
+
+## Testing Discipline Governance (v2.2.0)
+
+Sentinel Shield enforces test-first discipline through evidence:
+production-change-without-test-change detection, changed-line coverage, missing/empty test
+evidence, mutation testing, focused-test guards, BDD specification evidence, and ATDD
+acceptance-test evidence.
+
+Sentinel Shield does **not** claim that it proves true TDD, that it guarantees BDD quality,
+that it replaces product-owner acceptance, or that it understands business intent
+automatically. TDD cannot be proven from final code — it is a workflow, and a final snapshot
+does not record the order its lines were written.
+
+BDD/ATDD evidence is only required when configured or when an app profile enables it in
+strict/regulated mode. Libraries are not forced to carry BDD/ATDD by default.
+
+Full reference: [`testing-discipline-governance.md`](testing-discipline-governance.md).
+
+### Testing-discipline tool categories and scheduling
+
+Three new `category` values group the producers so the builder can decide expectation per
+channel:
+
+| Category | Producers | Default policy |
+| --- | --- | --- |
+| `testing-discipline` | `test-change-evidence` | `required` (needs only git — no project tooling) |
+| `bdd` | `behat`, `cucumber-js` | `optional` |
+| `atdd` | `behat-acceptance`, `cucumber-acceptance`, `playwright`, `cypress` | `optional` |
+
+Only a **required** producer makes its channel's evidence expected. BDD/ATDD producers ship as
+`optional` on every profile so a project that never adopted them is never failed for their
+absence; a project opts in via `.sentinel-shield/testing-discipline-policy.yaml` or by promoting
+the producer to `required` in a profile override.
+
+Recommended execution:
+
+```txt
+test-change-evidence: PR true, main true
+behavior-specs:       PR true if configured
+acceptance-tests:     PR true if fast; main true; scheduled optional
+Playwright/Cypress:   main true, scheduled true (too slow for every PR)
+```
+
+Do not make slow browser acceptance suites mandatory for every PR unless the profile or policy
+explicitly requires it.

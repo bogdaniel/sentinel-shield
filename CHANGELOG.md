@@ -776,6 +776,58 @@ this change.** (The CI workflow does emit `reports/scanner-manifest.json` and
 `reports/security-acceptance.json` as run artifacts for its own gating — those are CI
 evidence, not a release manifest or a published evidence bundle.)
 
+### Added — Testing Discipline Governance (v2.2.0)
+
+Producer-agnostic **testing-discipline** governance covering TDD evidence proxies, BDD executable
+specifications, and ATDD acceptance evidence. Fully additive and backward-compatible; **no release,
+tag, or runtime release evidence is produced by this change.**
+
+Sentinel Shield enforces test-first discipline through evidence: production-change-without-test-change
+detection, changed-line coverage, missing/empty test evidence, mutation testing, focused-test guards,
+BDD specification evidence, and ATDD acceptance-test evidence. It does **not** claim to prove true TDD,
+does not guarantee BDD quality, does not replace product-owner acceptance, and does not understand
+business intent automatically.
+
+- **New gates** (resolver + enforcer): `production_change_without_test_change`,
+  `missing_test_change_evidence`, `missing_behavior_specification`, `orphan_behavior_specifications`,
+  `acceptance_test_failures`, `missing_acceptance_evidence`, emitted as `SENTINEL_SHIELD_FAIL_ON_*`
+  and overridable via `gates.fail_on`. Mode defaults: baseline blocks only `acceptance_test_failures`;
+  strict adds the TDD proxy and missing changed-file evidence; regulated adds
+  `orphan_behavior_specifications`. `missing_behavior_specification` / `missing_acceptance_evidence`
+  default true in strict/regulated for **application profiles only** — libraries are never forced to
+  carry BDD/ATDD. Existing mode defaults are unchanged.
+- **New informational keys**: `behavior_spec_count`, `acceptance_test_count`. Never gated.
+- **New TDD proxy** (`scripts/runners/test-change-evidence.sh` + collector): computes changed-file
+  evidence from git (base-ref order `SENTINEL_SHIELD_DIFF_BASE`, `origin/main`, `origin/master`,
+  `main`, `master`, `HEAD~1`), classifying production / test / ignored paths. No resolvable diff base
+  yields `unavailable` + `missing_test_change_evidence`, never a clean zero.
+- **Test-discipline waivers** (`.sentinel-shield/test-discipline-waivers.json`): reason and expiry
+  mandatory; waivers narrow matching production paths only; **expired waivers suppress nothing** and
+  increment `expired_exceptions`; a malformed waivers file fails closed.
+- **New BDD producers/collector**: `behavior-specs` contract with `scripts/runners/behat.sh`,
+  `cucumber-js.sh` and adapters `behat-junit-to-behavior-specs.php`,
+  `cucumber-json-to-behavior-specs.mjs`. A producer reporting zero specs and zero scenarios is
+  recorded as missing evidence, not a clean pass.
+- **New ATDD producers/collector**: `acceptance-tests` contract with `scripts/runners/playwright.sh`,
+  `cypress.sh`, `behat-acceptance.sh`, `cucumber-acceptance.sh` and adapters
+  `playwright-json-to-acceptance-tests.mjs`, `junit-to-acceptance-tests.{php,mjs}`. **A report with
+  `tests: 0` is treated as MISSING acceptance evidence** — a suite that ran nothing proves nothing.
+- **New policy**: `.sentinel-shield/testing-discipline-policy.yaml`
+  (`scripts/lib/testing-discipline-policy.sh`, template in `templates/`). POSIX sh, mikefarah yq v4
+  when present with a canonical-YAML fallback; yq is not required. Fails closed on malformed
+  booleans, present-but-empty known fields, and advanced YAML. TDD on by default, BDD/ATDD off.
+- **Builder**: evidence is `missing` only when **expected** — a profile that declares a `required`
+  producer in that category, or a policy that explicitly requires it. Testing-discipline counters are
+  a separate channel and are never folded into vulnerability counters.
+- **Profiles**: `test-change-evidence` required across `laravel`, `symfony`, `node`, `react`,
+  `php-library`, `hardened-enterprise`; BDD/ATDD producers ship `optional` so nothing is forced.
+  Browser acceptance suites are scheduled on main/scheduled, not on every PR.
+- **Tests**: `tests/prod/290-testing-discipline-governance.sh` (69 checks) covering resolver mode
+  defaults, TDD-proxy classification and waivers, collector fail-closed behavior, builder expectation
+  logic, enforcer semantics, back-compatibility of pre-v2.2.0 summaries, and documentation honesty.
+- **Docs**: `docs/testing-discipline-governance.md`, `docs/tdd-evidence-policy.md`,
+  `docs/bdd-atdd-evidence.md`, `docs/acceptance-test-evidence.md`, `docs/test-discipline-waivers.md`.
+
 
 ### Added — Engineering Quality Gates (v2.1)
 

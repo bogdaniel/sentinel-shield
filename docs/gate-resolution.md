@@ -85,6 +85,12 @@ expired_exceptions
 | missing_sbom | ❌ | ❌ | ✅ | ✅ |
 | missing_release_evidence | ❌ | ❌ | ❌ | ✅ |
 | expired_exceptions | ✅ | ✅ | ✅ | ✅ |
+| production_change_without_test_change | ❌ | ❌ | ✅ | ✅ |
+| missing_test_change_evidence | ❌ | ❌ | ✅ | ✅ |
+| missing_behavior_specification | ❌ | ❌ | app only | app only |
+| orphan_behavior_specifications | ❌ | ❌ | ❌ | ✅ |
+| acceptance_test_failures | ❌ | ✅ | ✅ | ✅ |
+| missing_acceptance_evidence | ❌ | ❌ | app only | app only |
 | third_party_suspicious_code | ❌ | ❌ | ❌ | ✅ |
 | third_party_install_script_risk | ❌ | ❌ | ✅ | ✅ |
 | third_party_obfuscation | ❌ | ❌ | ❌ | ✅ |
@@ -411,3 +417,31 @@ sh scripts/resolve-gates.sh --profile ci/profile.yaml --output-dir build/gates
 # Fail if the profile is missing (CI hardening).
 sh scripts/resolve-gates.sh --require-profile
 ```
+
+---
+
+## Testing discipline gates (v2.2.0)
+
+> **Additive engine capability.** Six gates cover TDD proxies, BDD specification evidence and
+> ATDD acceptance evidence. All are optional: an older summary that omits them stays valid, and
+> an absent key reads as `0` / `false`.
+
+```txt
+production_change_without_test_change
+missing_test_change_evidence
+missing_behavior_specification
+orphan_behavior_specifications
+acceptance_test_failures
+missing_acceptance_evidence
+```
+
+`app only` in the matrix above means the gate defaults to `true` for **application** profiles
+(`laravel`, `symfony`, `node`, `react`, `laravel-react-docker`, `node-react`,
+`hardened-enterprise`, or an application `project.type`) and `false` otherwise. Libraries are
+not forced to carry BDD/ATDD by default; any project can opt in explicitly with
+`gates.fail_on.missing_behavior_specification: true`.
+
+`production_change_without_test_change` is a **TDD proxy**. TDD cannot be proven from final
+code — Sentinel Shield enforces TDD evidence proxies, not developer intent. See
+[`testing-discipline-governance.md`](testing-discipline-governance.md) and
+[`tdd-evidence-policy.md`](tdd-evidence-policy.md).

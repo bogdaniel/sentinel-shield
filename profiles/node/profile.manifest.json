@@ -40,7 +40,8 @@
     "typescript",
     "gitleaks",
     "semgrep",
-    "tests"
+    "tests",
+    "test-change-evidence"
   ],
   "recommended_main_gate_tools": [
     "codeql",
@@ -48,13 +49,15 @@
     "trivy-fs",
     "syft",
     "grype",
-    "dependency-check"
+    "dependency-check",
+    "playwright"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
     "scorecard",
     "dependency-check",
-    "grype"
+    "grype",
+    "playwright"
   ],
   "recommended_raw_reports": [
     "npm-audit.json",
@@ -66,7 +69,10 @@
     "js-diff-coverage.json",
     "focused-tests.json",
     "debug-code.json",
-    "source-size.json"
+    "source-size.json",
+    "test-change-evidence.json",
+    "behavior-specs.json",
+    "acceptance-tests.json"
   ],
   "tool_policy_version": 2,
   "tools": {
@@ -565,6 +571,92 @@
         "pr": false,
         "main": true,
         "scheduled": false
+      }
+    },
+    "test-change-evidence": {
+      "policy": "required",
+      "category": "testing-discipline",
+      "runner": "scripts/runners/test-change-evidence.sh",
+      "report": "reports/raw/test-change-evidence.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "cucumber-js": {
+      "policy": "optional",
+      "category": "bdd",
+      "packages": [
+        {
+          "name": "@cucumber/cucumber",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/cucumber-js"
+      ],
+      "runner": "scripts/runners/cucumber-js.sh",
+      "report": "reports/raw/behavior-specs.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "playwright": {
+      "policy": "optional",
+      "category": "atdd",
+      "packages": [
+        {
+          "name": "@playwright/test",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/playwright"
+      ],
+      "runner": "scripts/runners/playwright.sh",
+      "report": "reports/raw/acceptance-tests.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      },
+      "config": {
+        "path": "playwright.config.ts",
+        "classification": "project-owned"
+      }
+    },
+    "cypress": {
+      "policy": "optional",
+      "category": "atdd",
+      "packages": [
+        {
+          "name": "cypress",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "node_modules/.bin/cypress"
+      ],
+      "runner": "scripts/runners/cypress.sh",
+      "report": "reports/raw/acceptance-tests.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": true
+      },
+      "config": {
+        "path": "cypress.config.ts",
+        "classification": "project-owned"
       }
     }
   },

@@ -28,7 +28,7 @@ die_cfg() {
 }
 
 # Canonical fail_on keys, in stable output order.
-FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations missing_coverage_evidence changed_lines_coverage_violations missing_test_evidence empty_test_suite skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations missing_architecture_evidence"
+FAIL_ON_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior php_syntax_errors style_violations dependency_policy_violations iac_violations container_image_violations dast_findings repository_health_warnings ai_review_findings coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations missing_coverage_evidence changed_lines_coverage_violations missing_test_evidence empty_test_suite skipped_tests focused_test_violations skipped_test_marker_violations debug_code_violations large_file_violations large_function_violations missing_architecture_evidence production_change_without_test_change missing_test_change_evidence missing_behavior_specification orphan_behavior_specifications acceptance_test_failures missing_acceptance_evidence"
 
 VALID_MODES="report-only baseline strict regulated"
 
@@ -201,6 +201,26 @@ for _m in $VALID_MODES; do
 done
 [ "$_mode_ok" -eq 1 ] || die_cfg "invalid mode '$MODE' (expected one of: $VALID_MODES)"
 
+# --- app-profile detection (v2.2.0 testing discipline) -----------------------
+# BDD/ATDD evidence gates default ON in strict/regulated for APPLICATION profiles only. A
+# library must never be forced to carry Gherkin or a browser acceptance suite it never asked
+# for (docs/bdd-atdd-evidence.md). Detection reads the profile's declared `profiles:` list and
+# `project.type`; anything unrecognized (including a missing profile) is treated as NOT an app,
+# which is the conservative direction here — the gate stays off rather than demanding evidence
+# the project never opted into. The consuming project can always turn it on explicitly with
+# gates.fail_on.missing_behavior_specification: true.
+APP_PROFILES="laravel symfony node react laravel-react-docker node-react hardened-enterprise"
+IS_APP_PROFILE=0
+_p_list=$(get_list "profiles")
+for _pp in $_p_list; do
+	for _ap in $APP_PROFILES; do
+		[ "$_pp" = "$_ap" ] && IS_APP_PROFILE=1
+	done
+done
+case "$(get_scalar 'project.type')" in
+	laravel | symfony | node | react | app | application | service | web | spa | monolith) IS_APP_PROFILE=1 ;;
+esac
+
 # mode_description — human-readable description of an adoption mode.
 mode_description() {
 	case "$1" in
@@ -222,6 +242,14 @@ default_for() {
 			;;
 		baseline)
 			case "$2" in
+				# v2.2.0 testing discipline: baseline stays MIGRATION-friendly. Only
+				# acceptance_test_failures blocks (it falls through to *) — evidence that exists
+				# and reports failing acceptance tests is actionable today. The TDD proxy and the
+				# BDD/ATDD evidence gates wait until strict so an adopting project can wire the
+				# producers up first (docs/testing-discipline-governance.md).
+				production_change_without_test_change | missing_test_change_evidence \
+				| missing_behavior_specification | orphan_behavior_specifications \
+				| missing_acceptance_evidence) printf 'false' ;;
 				# v1: third-party supply-chain findings are visible but non-blocking
 				# in baseline (and report-only) — they need triage tuning first.
 				# v0.1.12: in baseline, php_syntax_errors + dependency_policy_violations DO
@@ -254,6 +282,14 @@ default_for() {
 				| dast_findings | repository_health_warnings | ai_review_findings \
 				| mutation_score_violations | dead_code_violations \
 				| skipped_tests) printf 'false' ;;
+				# v2.2.0: orphan behavior specs are regulated-only — the signal depends on a
+				# spec->implementation map most producers cannot build, so it stays advisory
+				# until the strictest mode.
+				orphan_behavior_specifications) printf 'false' ;;
+				# v2.2.0: BDD/ATDD evidence is demanded only from APPLICATION profiles. A
+				# library reaching strict is not asked for Gherkin or a browser suite.
+				missing_behavior_specification | missing_acceptance_evidence)
+					if [ "$IS_APP_PROFILE" -eq 1 ]; then printf 'true'; else printf 'false'; fi ;;
 				*) printf 'true' ;;
 			esac
 			;;
@@ -262,6 +298,11 @@ default_for() {
 				# v0.1.12: AI review findings stay NON-gating even in regulated unless the
 				# profile explicitly sets gates.fail_on.ai_review_findings: true.
 				ai_review_findings) printf 'false' ;;
+				# v2.2.0: even in regulated, BDD/ATDD evidence is an APPLICATION requirement.
+				# A regulated library still is not forced into BDD/ATDD (the project can opt in
+				# explicitly via gates.fail_on).
+				missing_behavior_specification | missing_acceptance_evidence)
+					if [ "$IS_APP_PROFILE" -eq 1 ]; then printf 'true'; else printf 'false'; fi ;;
 				*) printf 'true' ;;
 			esac
 			;;

@@ -1,0 +1,10 @@
+{
+  "tool": "behavior-specs",
+  "producer": "behat",
+  "status": "pass",
+  "spec_count": 12,
+  "scenario_count": 34,
+  "orphan_behavior_specifications": 0,
+  "missing_behavior_specification": false,
+  "failures": []
+}

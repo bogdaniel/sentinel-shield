@@ -1,0 +1,73 @@
+# Sentinel Shield — testing-discipline policy (v2.2.0)
+#
+# Copy to .sentinel-shield/testing-discipline-policy.yaml and edit.
+#
+# WHAT THIS DOES AND DOES NOT DO
+#
+# Sentinel Shield enforces test-first discipline through evidence:
+# production-change-without-test-change detection, changed-line coverage, missing/empty test
+# evidence, mutation testing, focused-test guards, BDD specification evidence, and ATDD
+# acceptance-test evidence.
+#
+# It does NOT claim to prove true TDD. TDD is a workflow; a final code snapshot does not record
+# the order in which its lines were written. Everything below is a PROXY or an EVIDENCE check.
+# See docs/testing-discipline-governance.md and docs/tdd-evidence-policy.md.
+#
+# Parsing: mikefarah yq v4 is used when installed; otherwise a limited parser reads THIS
+# canonical format (2-space indent, no anchors/aliases/inline collections/block scalars). yq is
+# NOT required. A malformed policy, a non-boolean flag, or a present-but-EMPTY known field
+# fails closed (exit 2). An ABSENT policy file means the documented defaults below.
+
+testing_discipline:
+  # Master switch. Default when this file is absent: true.
+  enabled: true
+
+  tdd:
+    # The changed-file TDD proxy. Default: true — it needs no extra tooling from the project.
+    enabled: true
+    # Count a violation when production code changed and no test/spec/feature/acceptance file
+    # changed in the same diff. Default: true.
+    require_test_change_for_production_change: true
+    # Trees whose changes count as PRODUCTION change. A list here REPLACES the built-in
+    # defaults (app, src, packages, lib, server, client). Only declared production paths can
+    # produce a violation, so widen this for a non-standard layout.
+    production_paths:
+      - app
+      - src
+      - packages
+    # Trees whose changes count as TEST evidence. Replaces the built-in defaults (tests, test,
+    # spec, __tests__, *.test.*, *.spec.*, *.feature, features, e2e, playwright, cypress).
+    test_paths:
+      - tests
+      - spec
+      - __tests__
+    # Trees excluded from the proxy entirely. Replaces the built-in defaults (docs, README*,
+    # CHANGELOG*, .github, config, database/migrations, dist, build, coverage, reports, vendor,
+    # node_modules, public/build).
+    ignore_paths:
+      - docs
+      - .github
+      - config
+      - database/migrations
+
+  bdd:
+    # BDD evidence is OFF by default. A library must never be forced to carry Gherkin it never
+    # asked for. Turn both flags on to make behavior-spec evidence EXPECTED — only then can
+    # missing_behavior_specification become true.
+    enabled: false
+    require_behavior_specs: false
+    spec_paths:
+      - features
+      - specs
+      - tests/Feature
+
+  atdd:
+    # ATDD acceptance evidence is OFF by default, for the same reason: a browser acceptance
+    # suite is an opt-in commitment, and it is usually too slow to demand on every PR.
+    enabled: false
+    require_acceptance_evidence: false
+    acceptance_paths:
+      - tests/Acceptance
+      - e2e
+      - playwright
+      - cypress

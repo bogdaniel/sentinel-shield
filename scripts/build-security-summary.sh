@@ -177,7 +177,10 @@ php-diff-coverage|php-diff-coverage.json|diff-coverage.sh|php_diff_coverage
 js-diff-coverage|js-diff-coverage.json|diff-coverage.sh|js_diff_coverage
 focused-tests|focused-tests.json|focused-tests.sh|focused_tests
 debug-code|debug-code.json|debug-code.sh|debug_code
-source-size|source-size.json|source-size.sh|source_size'
+source-size|source-size.json|source-size.sh|source_size
+test-change-evidence|test-change-evidence.json|test-change-evidence.sh|test_change_evidence
+behavior-specs|behavior-specs.json|behavior-specs.sh|behavior_specs
+acceptance-tests|acceptance-tests.json|acceptance-tests.sh|acceptance_tests'
 
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
@@ -323,9 +326,14 @@ ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 #     architecture_tool_count SUM across producers (Deptrac + dependency-cruiser + ... all
 #     contribute), while architecture_context_count takes the MAXIMUM — producers describe the
 #     SAME codebase, so summing bounded contexts would double-count them.
+#   - testing discipline (v2.2.0): the count keys SUM across producers (two BDD producers both
+#     contribute scenarios), while the three missing_* keys are BOOLEAN — they OR, because ANY
+#     producer that failed to produce expected evidence means evidence is missing. Adding a
+#     boolean to a number would be a jq type error, so they are handled in their own branch.
 COUNTS=$(printf '%s' "$ARR" | jq '
 	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent","changed_lines_coverage_percent"];
 	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines","architecture_context_count"];
+	def bools: ["missing_test_change_evidence","missing_behavior_specification","missing_acceptance_evidence"];
 	reduce .[] as $c (
 		{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
 		 medium_vulnerabilities:0, architecture_violations:0, type_errors:0,
@@ -341,10 +349,16 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 		 changed_lines_coverage_violations:0, skipped_tests:0, test_count:0,
 		 focused_test_violations:0, skipped_test_marker_violations:0,
 		 debug_code_violations:0, large_file_violations:0, large_function_violations:0,
-		 architecture_rule_count:0, architecture_tool_count:0, architecture_context_count:0};
+		 architecture_rule_count:0, architecture_tool_count:0, architecture_context_count:0,
+		 production_change_without_test_change:0, behavior_spec_count:0,
+		 orphan_behavior_specifications:0, acceptance_test_count:0, acceptance_test_failures:0,
+		 missing_test_change_evidence:false, missing_behavior_specification:false,
+		 missing_acceptance_evidence:false};
 		reduce ($c.summary | keys_unsorted[]) as $k (.;
 			($c.summary[$k]) as $v
-			| if (mins | index($k)) then
+			| if (bools | index($k)) then
+				.[$k] = (((.[$k] // false) or ($v == true)))
+			  elif (mins | index($k)) then
 				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | min) end)
 			  elif (maxs | index($k)) then
 				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | max) end)
@@ -371,6 +385,13 @@ MISSING_COV=false   # v2.1: an applicable coverage tool produced no valid report
 MISSING_TEST=false  # v2.1: an applicable test stack produced no valid test report
 EMPTY_SUITE=false   # v2.1: an applicable test report exists but ran zero tests
 MISSING_ARCH=false  # v2.1.0: an applicable architecture producer produced no valid evidence
+# v2.2.0 testing discipline. Like missing_architecture_evidence, these are FALSE unless the
+# evidence was EXPECTED for this profile/policy — a project that never opted into BDD/ATDD is
+# not "missing" it. Derived below, inside the --profile block, from the collector-derived tool
+# status plus the collector's own missing_* verdict.
+MISSING_TCE=false
+MISSING_BDD=false
+MISSING_ATDD=false
 if [ -n "$PROFILE_NAME" ]; then
 	HAVE_POLICY=1
 	RESOLVER="$SCRIPT_DIR/resolve-effective-profile.sh"
@@ -413,6 +434,13 @@ if [ -n "$PROFILE_NAME" ]; then
 	# rows, so the evidence gate below can read the COLLECTOR-derived status per tool instead of
 	# re-parsing raw reports. Space-padded for substring matching.
 	ARCH_EVIDENCE_EMITS=" "
+	# Emit-names of the testing-discipline producers declared by the profile (v2.2.0), split by
+	# channel so TDD / BDD / ATDD stay independently gated. Only REQUIRED producers make evidence
+	# expected: a recommended/optional BDD producer is an invitation, not a demand — a library
+	# that never opted in must never fail for missing Gherkin. Space-padded for matching.
+	TDD_EVIDENCE_EMITS=" "
+	BDD_EVIDENCE_EMITS=" "
+	ATDD_EVIDENCE_EMITS=" "
 	# Read in the CURRENT shell (here-doc, NOT a pipe) so counters/accumulators persist.
 	while IFS='|' read -r tkey tpol tappl trep texe tcfgp tcfgc tcat; do
 		[ -n "$tkey" ] || continue
@@ -437,6 +465,17 @@ if [ -n "$PROFILE_NAME" ]; then
 		# not-applicable stack is ignored entirely.
 		if [ "$tcat" = "architecture" ] && [ "$tappl" != "not-applicable" ] && [ "$tpol" != "optional" ]; then
 			ARCH_EVIDENCE_EMITS="${ARCH_EVIDENCE_EMITS}${emit} "
+		fi
+
+		# Testing-discipline producers whose evidence is EXPECTED (v2.2.0): REQUIRED only, and
+		# only for an applicable stack. `required` is the profile author's explicit statement
+		# that this channel must produce evidence here.
+		if [ "$tappl" != "not-applicable" ] && [ "$tpol" = "required" ]; then
+			case "$tcat" in
+				testing-discipline) TDD_EVIDENCE_EMITS="${TDD_EVIDENCE_EMITS}${emit} " ;;
+				bdd) BDD_EVIDENCE_EMITS="${BDD_EVIDENCE_EMITS}${emit} " ;;
+				atdd) ATDD_EVIDENCE_EMITS="${ATDD_EVIDENCE_EMITS}${emit} " ;;
+			esac
 		fi
 
 		# Reuse the collector's status when this tool has one (TOOL_TABLE), so the
@@ -684,6 +723,71 @@ EOF
 		esac
 	fi
 
+	# --- testing discipline: missing_* evidence gates (v2.2.0) -----------------
+	# Sentinel Shield enforces test-first discipline through EVIDENCE, never by claiming to know
+	# that tests were written first. Each channel is missing only when it was EXPECTED and no
+	# valid evidence exists — so a library is never failed for absent BDD/ATDD it never adopted.
+	#
+	# Expectation comes from two independent sources, either of which is sufficient:
+	#   1. the PROFILE declares a REQUIRED producer in that category, or
+	#   2. the consuming project's testing-discipline POLICY explicitly requires it
+	#      (testing_discipline.bdd.enabled + require_behavior_specs, and the ATDD equivalent).
+	# Policy can also switch a channel OFF honestly (testing_discipline.enabled=false, or the
+	# per-channel enabled flag) — an absent policy means TDD on, BDD/ATDD off.
+	_td_file="${TARGET_DIR:+$TARGET_DIR/}.sentinel-shield/testing-discipline-policy.yaml"
+	_td_on=1; _tdd_on=1; _bdd_req=0; _atdd_req=0
+	if [ -f "$_td_file" ]; then
+		# shellcheck source=scripts/lib/testing-discipline-policy.sh
+		. "$SCRIPT_DIR/lib/testing-discipline-policy.sh"
+		td_load "$_td_file"
+		td_enabled || _td_on=0
+		td_tdd_enabled || _tdd_on=0
+		td_bdd_required && _bdd_req=1
+		td_atdd_required && _atdd_req=1
+	fi
+
+	# td_missing_for <space-padded-emit-list> <report-flag> — "true" when ANY expected producer
+	# in that channel failed to produce valid evidence. Two independent signals are honoured:
+	#   * the collector-derived STATUS (unavailable / not-configured / execution-error /
+	#     disabled, or anything unrecognized) — "we never ran it", and
+	#   * the collector's own missing_* verdict in its tool_report — the case where a producer
+	#     DID run but knows its result is not evidence (0 acceptance tests, 0 behavior specs,
+	#     no resolvable diff base).
+	# The raw report is never re-parsed here: the collector is the component that understands
+	# each producer's shape, and re-reading the file would silently overrule it.
+	td_missing_for() {
+		printf '%s' "$TOOLSOBJ" | jq -r --arg emits "$1" --arg flag "$2" '
+			[ to_entries[]
+			  | . as $e
+			  | select($emits | contains(" " + $e.key + " "))
+			  | select(($e.value.status // "") != "not-applicable")
+			  | select((($e.value.status // "") | IN("pass","findings","fail","warn") | not)
+					or (($e.value[$flag] // false) == true)) ]
+			| length | if . > 0 then "true" else "false" end'
+	}
+
+	if [ "$_td_on" -eq 1 ] && [ "$_tdd_on" -eq 1 ] && [ "$TDD_EVIDENCE_EMITS" != " " ]; then
+		MISSING_TCE=$(td_missing_for "$TDD_EVIDENCE_EMITS" missing_test_change_evidence)
+	fi
+	if [ "$_td_on" -eq 1 ] && { [ "$BDD_EVIDENCE_EMITS" != " " ] || [ "$_bdd_req" -eq 1 ]; }; then
+		# A policy that REQUIRES behavior specs makes the evidence expected even when the profile
+		# only lists the producer as recommended/optional — the project asked for this.
+		_bdd_emits="$BDD_EVIDENCE_EMITS"
+		[ "$_bdd_req" -eq 1 ] && _bdd_emits=" behavior_specs "
+		MISSING_BDD=$(td_missing_for "$_bdd_emits" missing_behavior_specification)
+	fi
+	if [ "$_td_on" -eq 1 ] && { [ "$ATDD_EVIDENCE_EMITS" != " " ] || [ "$_atdd_req" -eq 1 ]; }; then
+		_atdd_emits="$ATDD_EVIDENCE_EMITS"
+		[ "$_atdd_req" -eq 1 ] && _atdd_emits=" acceptance_tests "
+		MISSING_ATDD=$(td_missing_for "$_atdd_emits" missing_acceptance_evidence)
+	fi
+	for _tdv in "$MISSING_TCE" "$MISSING_BDD" "$MISSING_ATDD"; do
+		case "$_tdv" in
+			true | false) : ;;
+			*) die_cfg "internal: could not derive a testing-discipline evidence flag from tool policy statuses" ;;
+		esac
+	done
+
 	# Merge policy objects onto the collector tool reports (policy fields win; the
 	# unavailable/etc. status overwrites any collector "unavailable"); detail kept.
 	TOOLSOBJ=$(jq -n --argjson base "$TOOLSOBJ" --argjson pol "$POLICY_TOOLS" '$base * $pol')
@@ -725,7 +829,8 @@ jq -n \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
 	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
 	--argjson misscov "$MISSING_COV" --argjson misstest "$MISSING_TEST" --argjson emptysuite "$EMPTY_SUITE" \
-	--argjson missarch "$MISSING_ARCH" '
+	--argjson missarch "$MISSING_ARCH" \
+	--argjson misstce "$MISSING_TCE" --argjson missbdd "$MISSING_BDD" --argjson missatdd "$MISSING_ATDD" '
 	{
 		version: $version,
 		project: { name: $pname, type: $ptype, criticality: $crit },
@@ -734,12 +839,12 @@ jq -n \
 		summary: ($counts
 			+ { missing_sbom: $ms, missing_release_evidence: $mr }
 			# expired_exceptions has TWO independent sources and both must survive
-			# (v2.0.2 hotfix). This previously read `expired_exceptions: $ee`, which
+			# (v2.0.2 hotfix, #51). This previously read `expired_exceptions: $ee`, which
 			# unconditionally OVERWROTE any collector-reported expiry with the count from
 			# reports/exceptions.json alone — so a collector that detected an expired
 			# waiver had its finding silently discarded on the way into the summary.
 			+ { expired_exceptions: (($counts.expired_exceptions // 0) + $ee) }
-			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch } else {} end)),
+			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch, missing_test_change_evidence: $misstce, missing_behavior_specification: $missbdd, missing_acceptance_evidence: $missatdd } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
 		evidence: {

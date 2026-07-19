@@ -769,3 +769,24 @@ Architecture tools detect dependency-boundary violations, not the quality of dom
 > **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
 > **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
 > [`docs/architecture-governance.md`](docs/architecture-governance.md).
+
+## Testing Discipline Governance (v2.2.0)
+Sentinel Shield enforces test-first discipline through **evidence**:
+production-change-without-test-change detection, changed-line coverage, missing/empty test evidence,
+mutation testing, focused-test guards, BDD specification evidence, and ATDD acceptance-test evidence.
+Six new gates ride along — `production_change_without_test_change`, `missing_test_change_evidence`,
+`missing_behavior_specification`, `orphan_behavior_specifications`, `acceptance_test_failures`,
+`missing_acceptance_evidence` — plus the informational `behavior_spec_count` /
+`acceptance_test_count`. All optional/additive, so older summaries stay valid. Mode defaults: the TDD
+proxy blocks from **strict**, acceptance failures block from **baseline** when evidence exists, orphan
+specs block in **regulated**, and BDD/ATDD evidence is demanded only from **application** profiles that
+opted in. Producers (Behat, Cucumber.js, Playwright, Cypress, or anything emitting the contract) are
+configured in `.sentinel-shield/testing-discipline-policy.yaml`.
+
+**TDD cannot be proven from final code.** TDD is a workflow, and a final snapshot does not record the
+order its lines were written — Sentinel Shield enforces TDD evidence proxies, not developer intent. It
+does not guarantee BDD quality and never replaces product-owner acceptance. **Libraries are not forced
+to carry BDD/ATDD by default.**
+> **Status: unreleased, additive engine capability.** This is **not** part of `v2.0.1`/`v2.0.0` and is
+> **not** a new release claim; latest release remains **`v2.0.1`** (engine-only). Full reference:
+> [`docs/testing-discipline-governance.md`](docs/testing-discipline-governance.md).
