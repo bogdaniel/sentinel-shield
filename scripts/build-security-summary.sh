@@ -377,18 +377,26 @@ if [ -n "$PROFILE_NAME" ]; then
 	# one-of group members (alternatives across all groups), space-padded.
 	ONEOF_MEMBERS=" $(printf '%s' "$EFF" | jq -r '[ (.one_of_groups // {})[].alternatives[]? ] | join(" ")') "
 
-	# Pipe-delimited rows (empty fields preserved): key|policy|applicability|report|exes|cfgpath|cfgclass
+	# Pipe-delimited rows (empty fields preserved):
+	#   key|policy|applicability|report|exes|cfgpath|cfgclass|category
+	# (category is appended LAST so the existing positional fields are untouched.)
 	_rows=$(printf '%s' "$EFF" | jq -r '
 		.tools | to_entries[]
 		| [ .key, .value.policy, (.value.applicability // "unknown"),
 			(.value.report // ""),
 			((.value.executable // []) | join(" ")),
-			(.value.config.path // ""), (.value.config.classification // "") ]
+			(.value.config.path // ""), (.value.config.classification // ""),
+			(.value.category // "") ]
 		| join("|")')
 
 	POLICY_COLLECTED=""
+	# Emit-names of the architecture producers whose EVIDENCE is expected (v2.1.0): category
+	# architecture, applicable, and not opt-in-only. Collected here, from the effective-profile
+	# rows, so the evidence gate below can read the COLLECTOR-derived status per tool instead of
+	# re-parsing raw reports. Space-padded for substring matching.
+	ARCH_EVIDENCE_EMITS=" "
 	# Read in the CURRENT shell (here-doc, NOT a pipe) so counters/accumulators persist.
-	while IFS='|' read -r tkey tpol tappl trep texe tcfgp tcfgc; do
+	while IFS='|' read -r tkey tpol tappl trep texe tcfgp tcfgc tcat; do
 		[ -n "$tkey" ] || continue
 
 		# Which tools get a per-tool object: required/recommended/optional always;
@@ -405,6 +413,13 @@ if [ -n "$PROFILE_NAME" ]; then
 		emit=$(emit_name_for "$tkey")
 		repfile=""
 		[ -n "$trep" ] && repfile="$RAW_DIR/$(basename -- "$trep")"
+
+		# Architecture producers whose evidence is EXPECTED (v2.1.0). Optional producers stay
+		# opt-in (a project that never asked for PHPArkitect is not missing evidence), and a
+		# not-applicable stack is ignored entirely.
+		if [ "$tcat" = "architecture" ] && [ "$tappl" != "not-applicable" ] && [ "$tpol" != "optional" ]; then
+			ARCH_EVIDENCE_EMITS="${ARCH_EVIDENCE_EMITS}${emit} "
+		fi
 
 		# Reuse the collector's status when this tool has one (TOOL_TABLE), so the
 		# findings/pass split matches the mapped summary counters. _hascol distinguishes
@@ -590,27 +605,29 @@ EOF
 			_arch_required=0
 		fi
 	fi
-	if [ "$_arch_required" -eq 1 ]; then
-		# OPTIONAL producers (PHPArkitect, custom architecture-test suites) are opt-in: a project
-		# that never asked for them is not missing evidence. Required/recommended/one-of producers
-		# ARE expected — that is what "applicable architecture tool" means here.
-		_arch_reports=$(printf '%s' "$EFF" | jq -r '
-			[ .tools[]? | select((.category // "") == "architecture")
-			  | select((.applicability // "unknown") != "not-applicable")
-			  | select((.policy // "") != "optional")
-			  | .report ] | map(select(. != null and . != "")) | unique[]' 2>/dev/null || true)
-		for _ar in $_arch_reports; do
-			_arf="$RAW_DIR/$(basename -- "$_ar")"
-			if [ -f "$_arf" ] && [ -s "$_arf" ] && jq -e . "$_arf" >/dev/null 2>&1; then
-				_ast=$(jq -r 'if type=="object" then (.status // "") else "" end' "$_arf" 2>/dev/null || printf '')
-				case "$_ast" in
-					unavailable | not-configured | execution-error | disabled) MISSING_ARCH=true ;;
-					*) : ;;   # pass / findings / legacy status-less report = evidence
-				esac
-			else
-				MISSING_ARCH=true
-			fi
-		done
+	if [ "$_arch_required" -eq 1 ] && [ "$ARCH_EVIDENCE_EMITS" != " " ]; then
+		# Evidence is decided by the COLLECTOR-derived per-tool status in POLICY_TOOLS — never by
+		# re-reading the raw report. The collector is the component that understands each
+		# producer's shape: it turns an unrecognized shape, an unknown status, or a malformed
+		# violation count into execution-error, and the policy overlay preserves that. Re-parsing
+		# the raw file here would silently overrule it, so a valid-JSON-but-unreadable report
+		# (e.g. {"some":"other","shape":true}) could satisfy strict/regulated. It must not.
+		#
+		#   pass | findings | fail | warn                              -> evidence exists
+		#   unavailable | not-configured | execution-error | disabled  -> MISSING evidence
+		#   not-applicable                                             -> ignored
+		#   anything else (unknown)                                    -> MISSING evidence (fail closed)
+		MISSING_ARCH=$(printf '%s' "$POLICY_TOOLS" | jq -r --arg emits "$ARCH_EVIDENCE_EMITS" '
+			[ to_entries[]
+			  | . as $e
+			  | select($emits | contains(" " + $e.key + " "))
+			  | select(($e.value.status // "") != "not-applicable")
+			  | select(($e.value.status // "") | IN("pass","findings","fail","warn") | not) ]
+			| length | if . > 0 then "true" else "false" end')
+		case "$MISSING_ARCH" in
+			true | false) : ;;
+			*) die_cfg "internal: could not derive missing_architecture_evidence from tool policy statuses" ;;
+		esac
 	fi
 
 	# Merge policy objects onto the collector tool reports (policy fields win; the

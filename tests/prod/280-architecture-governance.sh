@@ -348,6 +348,46 @@ if command -v php >/dev/null 2>&1; then
 	[ "$(jq -r '.summary.missing_architecture_evidence' "$MT/s.json")" = "false" ] \
 		&& pass "builder: missing_architecture_evidence=false once a producer emits real evidence" \
 		|| fail "builder should clear missing architecture evidence"
+	# --- BUILDER-level fail-closed: the evidence gate must follow the COLLECTOR status, not the
+	# raw file. A report that is present and valid JSON but that the collector could not read
+	# (unknown shape / unknown status / malformed count) is NOT evidence — re-parsing the raw file
+	# here would silently overrule the collector and let strict/regulated pass on garbage.
+	barch() { # barch <raw-json> -> "<tools.deptrac.status>|<missing_architecture_evidence>|<tool_count>|<violations>"
+		printf '%s' "$1" > "$MT/reports/raw/deptrac.json"
+		( cd "$MT" && sh "$BUILD" --profile laravel --target "$MT" --raw-dir "$MT/reports/raw" --output "$MT/s.json" ) >/dev/null 2>&1
+		jq -r '[ (.tools.deptrac.status // ""), (.summary.missing_architecture_evidence | tostring),
+		         (.summary.architecture_tool_count | tostring), (.summary.architecture_violations | tostring) ] | join("|")' "$MT/s.json"
+	}
+	# Test 1 — unknown Deptrac/native shape
+	[ "$(barch '{"some":"other","shape":true}')" = "execution-error|true|0|0" ] \
+		&& pass "builder: unknown Deptrac shape -> tools.deptrac=execution-error + missing evidence" \
+		|| fail "builder accepted an unknown-shape report as evidence: $(barch '{"some":"other","shape":true}')"
+	# Test 2 — unknown status
+	[ "$(barch '{"tool":"architecture","status":"totally-made-up","violations":9}')" = "execution-error|true|0|0" ] \
+		&& pass "builder: unknown architecture status -> execution-error + missing evidence" \
+		|| fail "builder accepted an unknown status as evidence"
+	# Test 3 — malformed violation counts (negative / fractional / non-numeric)
+	_bad=0
+	for _r in '{"report":{"violations":-3}}' \
+	          '{"tool":"architecture","status":"findings","violations":2.5}' \
+	          '{"tool":"architecture","status":"findings","violations":"many"}'; do
+		_got=$(barch "$_r")
+		[ "$_got" = "execution-error|true|0|0" ] || { _bad=1; echo "  ($_r -> $_got)"; }
+	done
+	[ "$_bad" -eq 0 ] \
+		&& pass "builder: negative/fractional/non-numeric counts -> execution-error, missing evidence, tool_count 0" \
+		|| fail "builder treated a malformed violation count as evidence"
+	# Test 4 — valid violating evidence still counts (fail/findings are both evidence)
+	_got=$(barch '{"report":{"violations":2}}')
+	case "$_got" in
+		findings\|false\|1\|2 | fail\|false\|1\|2) pass "builder: valid violating report is evidence (status=${_got%%|*}, violations=2)" ;;
+		*) fail "builder mishandled valid violating evidence: $_got" ;;
+	esac
+	# Test 5 — valid clean evidence still counts
+	[ "$(barch '{"report":{"violations":0}}')" = "pass|false|1|0" ] \
+		&& pass "builder: valid clean report is evidence (status=pass, 0 violations)" \
+		|| fail "builder mishandled valid clean evidence: $(barch '{"report":{"violations":0}}')"
+
 	# policy opt-out is honest and explicit
 	mkdir -p "$MT/.sentinel-shield"; rm -f "$MT/reports/raw/deptrac.json"
 	printf 'architecture:\n  enabled: false\n' > "$MT/.sentinel-shield/architecture-policy.yaml"
@@ -374,8 +414,17 @@ if command -v php >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
 	[ "$(bmae)" = "true" ] \
 		&& pass "combined profile: PHP architecture evidence alone does not satisfy the JS producers" \
 		|| fail "combined profile: JS architecture evidence should still be missing"
-	echo '{"summary":{"violations":[],"ruleSetUsed":{"forbidden":[1]}}}' > "$CR/dependency-cruiser.json"
+	# A JS report that is present and valid JSON but UNREADABLE by its collector is not evidence:
+	# valid PHP evidence must not paper over it, and the builder must follow the collector status.
+	echo '{"totally":"unknown"}' > "$CR/dependency-cruiser.json"
 	echo '{"tool":"architecture","status":"pass","violations":0}' > "$CR/eslint-boundaries.json"
+	_cm=$(bmae)
+	_cd=$(jq -r '.tools.dependency_cruiser.status' "$C/s.json")
+	_cp=$(jq -r '.tools.deptrac.status' "$C/s.json")
+	{ [ "$_cm" = "true" ] && [ "$_cd" = "execution-error" ] && [ "$_cp" != "execution-error" ]; } \
+		&& pass "combined profile: unknown-shape JS report -> execution-error + missing evidence (valid PHP evidence does not mask it)" \
+		|| fail "combined profile mishandled an unreadable JS report (missing=$_cm depcruise=$_cd deptrac=$_cp)"
+	echo '{"summary":{"violations":[],"ruleSetUsed":{"forbidden":[1]}}}' > "$CR/dependency-cruiser.json"
 	[ "$(bmae)" = "false" ] \
 		&& pass "combined profile: PHP + JS producers together satisfy architecture evidence" \
 		|| fail "combined profile should be satisfied once both stacks report"
