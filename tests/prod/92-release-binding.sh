@@ -57,6 +57,12 @@ EOF
 }
 
 # expect <code> <desc> <mode-args...> with env already exported by caller
+# NOTE: every VAR=value-prefixed call below is wrapped in a SUBSHELL on purpose.
+# POSIX leaves it unspecified whether an assignment prefix on a FUNCTION call persists
+# after the call; dash and bash discard it, macOS /bin/sh KEEPS it. Unwrapped, the first
+# `RUN_NAME=ci-docker expect ...` leaked into every subsequent assertion, so ~10 of them
+# passed because of that leak rather than the behaviour under test — and once FAIL_RUN=1
+# leaked, the artifact-ownership assertion could never fail. Do not unwrap them.
 expect() {
   _exp="$1"; _desc="$2"; shift 2
   _rc=0; GH_BIN="$BIN" sh "$VALIDATOR" "$@" >/dev/null 2>&1 || _rc=$?
@@ -109,13 +115,13 @@ expect 2 "F1 release_commit with engine_commit=unknown rejected" --file "$WORK/m
 # ---------- Finding 3: engine_ci GitHub identity (--verify-github, no stage gate) ----------
 mkev "$EV" "" "[]"
 expect 0 "F3 correct named push run on default branch accepted" --file "$EV" --verify-github
-RUN_NAME=ci-docker   expect 1 "F3 wrong workflow name rejected" --file "$EV" --verify-github
-RUN_EVENT=pull_request expect 1 "F3 PR run labeled push rejected (api event mismatch)" --file "$EV" --verify-github
-RUN_BRANCH=feature-x expect 1 "F3 non-default-branch run rejected" --file "$EV" --verify-github
-DEF_BRANCH=develop   expect 1 "F3 default-branch mismatch rejected" --file "$EV" --verify-github
-RUN_REPO=org/other   expect 1 "F3 repository.full_name mismatch rejected" --file "$EV" --verify-github
-FAIL_REPOMETA=1      expect 1 "F3 missing repository metadata rejected" --file "$EV" --verify-github
-FAIL_RUN=1           expect 1 "F3 nonexistent run rejected" --file "$EV" --verify-github
+( RUN_NAME=ci-docker expect 1 "F3 wrong workflow name rejected" --file "$EV" --verify-github )
+( RUN_EVENT=pull_request expect 1 "F3 PR run labeled push rejected (api event mismatch)" --file "$EV" --verify-github )
+( RUN_BRANCH=feature-x expect 1 "F3 non-default-branch run rejected" --file "$EV" --verify-github )
+( DEF_BRANCH=develop expect 1 "F3 default-branch mismatch rejected" --file "$EV" --verify-github )
+( RUN_REPO=org/other expect 1 "F3 repository.full_name mismatch rejected" --file "$EV" --verify-github )
+( FAIL_REPOMETA=1 expect 1 "F3 missing repository metadata rejected" --file "$EV" --verify-github )
+( FAIL_RUN=1 expect 1 "F3 nonexistent run rejected" --file "$EV" --verify-github )
 
 # declared event = schedule => rejected before API (must be push/workflow_dispatch)
 cat > "$WORK/sched.json" <<EOF

@@ -21,6 +21,11 @@ SYNC="$ROOT/scripts/sync-baseline.sh"
 MIGRATE="$ROOT/scripts/migrate-v1.sh"
 
 FAILS=0
+SKIPPED=0
+# skip <message> — record a check that could NOT run. Deliberately NOT `pass`: the suite
+# header says "a skip is not a pass", and under a root CI container these are exactly the
+# permission-failure paths the suite exists to prove.
+skip() { printf 'SKIP: %s\n' "$1"; SKIPPED=$((SKIPPED + 1)); }
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
@@ -172,7 +177,7 @@ if [ "$IS_ROOT" -eq 0 ]; then
 	[ "$(cat "$T/ro/mod.txt")" = NEW7 ] && pass "(7) live file not corrupted on restore failure" || fail "(7) live file not corrupted"
 	[ -f "$L" ] && pass "(7) lock retained on copy-restore failure" || fail "(7) lock retained on copy-restore failure"
 else
-	pass "(7) copy-restore failure -> exit 4 (SKIPPED as root)"
+	skip "(7) copy-restore failure -> exit 4 — permission-failure path is unreachable as root"
 fi
 
 # ============================================================================
@@ -194,7 +199,7 @@ if [ "$IS_ROOT" -eq 0 ]; then
 		&& pass "(8) created file survives a failed removal" || fail "(8) created file survives"
 	[ -f "$L" ] && pass "(8) lock retained on remove-created failure" || fail "(8) lock retained on remove-created failure"
 else
-	pass "(8) remove-created failure -> exit 4 (SKIPPED as root)"
+	skip "(8) remove-created failure -> exit 4 — permission-failure path is unreachable as root"
 fi
 
 # ============================================================================
@@ -214,7 +219,7 @@ if [ "$IS_ROOT" -eq 0 ]; then
 	[ ! -e "$T/gone.txt" ] && pass "(9) no partial write into read-only target" || fail "(9) no partial write into read-only target"
 	[ -f "$L" ] && pass "(9) lock retained on read-only target" || fail "(9) lock retained on read-only target"
 else
-	pass "(9) read-only target -> exit 4 (SKIPPED as root)"
+	skip "(9) read-only target -> exit 4 — permission-failure path is unreachable as root"
 fi
 
 # ============================================================================

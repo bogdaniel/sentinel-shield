@@ -228,6 +228,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          # Full history is REQUIRED here: the next step derives the changed-file
+          # inventory from a merge base. With the default depth-1 clone `git cat-file -e
+          # "$BASE"` always failed, `git diff HEAD~1...HEAD` always failed, and the chain
+          # fell through to `git ls-files` — the whole repo — which was then reviewed as
+          # "changed files" evidence. The evidence was therefore identical for every run.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Ensure jq + shellcheck
@@ -242,7 +248,10 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE" 2>/dev/null; then
             git diff --name-only "$BASE"...HEAD > changed-files.txt || git diff --name-only HEAD~1...HEAD > changed-files.txt
           else
-            git diff --name-only HEAD~1...HEAD > changed-files.txt 2>/dev/null || git ls-files > changed-files.txt
+            git diff --name-only HEAD~1...HEAD > changed-files.txt 2>/dev/null || {
+              echo "::warning::changed-file inventory fell back to the FULL repo (no usable diff base) — treat the changed-files evidence in this run as unscoped"
+              git ls-files > changed-files.txt
+            }
           fi
           echo "changed files:"; cat changed-files.txt
 

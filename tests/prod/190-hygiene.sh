@@ -27,6 +27,27 @@ FAILED=0
 ok()  { printf 'PASS: %s\n' "$1"; }
 bad() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
+# POSITIVE CONTROL. Every check below is `git ls-files | grep ... || true`, where the
+# `|| true` covers the WHOLE pipeline — so outside a work tree, or with git missing,
+# `git ls-files` exits 128, the output is empty, and all seven hygiene checks print PASS
+# having inspected nothing. A suite that cannot see the repository must fail loudly, not
+# certify it clean.
+if ! command -v git >/dev/null 2>&1; then
+	bad "git is not available — the hygiene checks cannot inspect the tree"
+	exit 1
+fi
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	bad "not inside a git work tree — the hygiene checks would pass vacuously"
+	exit 1
+fi
+_ctl=$(git ls-files | grep -c . 2>/dev/null || printf '')
+case "$_ctl" in
+	'' | 0)
+		bad "git ls-files returned no tracked files — the hygiene checks would pass vacuously"
+		exit 1 ;;
+esac
+ok "positive control: git ls-files sees $_ctl tracked file(s)"
+
 # A path segment that marks deliberate test/fixture/example material.
 FIXTURE_RE='(^|/)(tests?|fixtures?|examples?)(/|$)'
 
