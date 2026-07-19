@@ -66,6 +66,20 @@ fi
 
 REPORT=$(jq -n --arg s "$STATUS" --argjson e "$ERRORS" --argjson w "$WARNINGS" --argjson sec "$SEC" \
 	'{status: $s, errors: $e, warnings: $w, security_errors: $sec}')
-OV=$(jq -n --argjson e "$ERRORS" --argjson w "$WARNINGS" --argjson sec "$SEC" \
-	'{type_errors: $e, medium_vulnerabilities: $w, high_vulnerabilities: $sec}')
+# Channel separation, and no double counting.
+#
+# Two defects fixed here. (1) Every ESLint WARNING was mapped to
+# medium_vulnerabilities, which blocks in strict — a project with 50 unused-variable
+# warnings failed its release gate reporting "50 medium vulnerabilities". Lint quality is
+# not a vulnerability, and enforce-gates.sh states the doctrine explicitly: "quality
+# findings are never folded into vulnerability counts, and vice-versa".
+# (2) security_errors are severity-2 messages, i.e. a SUBSET of errorCount, so each
+# security finding was counted once in type_errors AND again in high_vulnerabilities.
+#
+# Security-rule findings remain in high_vulnerabilities (they are genuine security
+# findings); the remaining errors are lint and stay in type_errors, with the security
+# subset subtracted so the same finding is not counted twice.
+NONSEC=$((ERRORS - SEC)); [ "$NONSEC" -ge 0 ] || NONSEC=0
+OV=$(jq -n --argjson e "$NONSEC" --argjson sec "$SEC" \
+	'{type_errors: $e, high_vulnerabilities: $sec}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

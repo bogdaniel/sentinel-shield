@@ -748,8 +748,15 @@ run_scanner_matrix() {
 	sm_check "grype -> critical" "$(sh "$C/grype.sh" --input "$_r/grype.json" | jq '.summary.critical_vulnerabilities')" "1"
 	echo '{"details":[{"level":"FATAL"},{"level":"INFO"}]}' > "$_r/dockle.json"
 	sm_check "dockle -> container_image_violations" "$(sh "$C/dockle.sh" --input "$_r/dockle.json" | jq '.summary.container_image_violations')" "1"
+	# ASSERTION CHANGED (audit PR B), because the behaviour it pinned WAS the defect: the
+	# collector counted only Verified:true findings. TruffleHog reports unverified findings
+	# by default and non-verifiable custom detectors ALWAYS report Verified:false, so real
+	# leaked credentials contributed nothing to `secrets` — a gate that blocks in every
+	# mode, including report-only. Both findings must now be counted; the verified/
+	# unverified split is preserved in the tool_report for triage.
 	echo '[{"Verified":true},{"Verified":false}]' > "$_r/trufflehog.json"
-	sm_check "trufflehog -> secrets (verified only)" "$(sh "$C/trufflehog.sh" --input "$_r/trufflehog.json" | jq '.summary.secrets')" "1"
+	sm_check "trufflehog -> secrets (verified AND unverified)" "$(sh "$C/trufflehog.sh" --input "$_r/trufflehog.json" | jq '.summary.secrets')" "2"
+	sm_check "trufflehog -> verified/unverified split reported" "$(sh "$C/trufflehog.sh" --input "$_r/trufflehog.json" | jq -r '"\(.tool_report.verified):\(.tool_report.unverified)"')" "1:1"
 	echo '{"errors":3}' > "$_r/php-syntax.json"
 	sm_check "php-syntax -> php_syntax_errors" "$(sh "$C/php-syntax.sh" --input "$_r/php-syntax.json" | jq '.summary.php_syntax_errors')" "3"
 	echo '{"site":[{"alerts":[{"riskcode":"3"},{"riskcode":"1"}]}]}' > "$_r/zap.json"
@@ -1554,7 +1561,7 @@ run_v024_collectors() {
 	cl_check "exercised a meaningful number of collectors (>=30)" "$([ "$_n" -ge 30 ] && echo yes || echo no)" "yes"
 	# Spot-check a few representative mapped counts from the library.
 	cl_check "grype fixture -> some vuln count" "$([ "$(sh "$C/grype.sh" --input "$LIB/grype.json" 2>/dev/null | jq '[.summary.critical_vulnerabilities,.summary.high_vulnerabilities,.summary.medium_vulnerabilities]|add')" -ge 1 ] && echo yes || echo no)" "yes"
-	cl_check "trufflehog fixture -> secrets (verified only)" "$([ "$(sh "$C/trufflehog.sh" --input "$LIB/trufflehog.json" 2>/dev/null | jq '.summary.secrets')" -ge 1 ] && echo yes || echo no)" "yes"
+	cl_check "trufflehog fixture -> secrets (verified and unverified)" "$([ "$(sh "$C/trufflehog.sh" --input "$LIB/trufflehog.json" 2>/dev/null | jq '.summary.secrets')" -ge 1 ] && echo yes || echo no)" "yes"
 	if [ "$CL_FAILS" -ne 0 ]; then log_error "v024-collectors: $CL_FAILS case(s) failed"; return 1; fi
 	log_info "v024-collectors: OK (complete collector fixture library iterated; normalized output verified)"
 }

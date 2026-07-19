@@ -33,12 +33,24 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# An advisory with NO severity is still a vulnerability.
+#
+# `composer audit --format=json` advisory objects (advisoryId, packageName, title, cve,
+# link, sources) frequently carry no `severity` field at all. Those matched none of the
+# three buckets, so a PHP project with known CVEs in composer.lock reported
+# {critical:0, high:0, medium:0} and PASSED strict. There was no unknown-severity bucket
+# and no reconciliation against the advisory total.
+#
+# Unknown/absent severity is now counted as MEDIUM — visible and gated in strict — rather
+# than silently dropped. Under-classifying is a triage problem; dropping is a blind spot.
 OV=$(jq '
 	[ (.advisories // {}) | to_entries[] | .value[]? | (.severity // "") | ascii_downcase ] as $s
 	| {
 		critical_vulnerabilities: ([ $s[] | select(. == "critical") ] | length),
 		high_vulnerabilities:     ([ $s[] | select(. == "high") ] | length),
-		medium_vulnerabilities:   ([ $s[] | select(. == "medium" or . == "moderate") ] | length)
+		medium_vulnerabilities:   ([ $s[]
+			| select(. == "medium" or . == "moderate" or . == "low"
+				or (IN("critical","high","medium","moderate","low") | not)) ] | length)
 	}' "$INPUT")
 
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')

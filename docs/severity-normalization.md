@@ -17,7 +17,8 @@ plus count keys that are **not** CVSS-graded: `iac_violations`, `architecture_vi
 | `CRITICAL` | `critical_vulnerabilities` |
 | `HIGH` | `high_vulnerabilities` |
 | `MEDIUM` / **`MODERATE`** (npm) | `medium_vulnerabilities` |
-| `LOW` / `INFO` / `UNKNOWN` | not gated by default (advisory; review) |
+| `LOW` / `INFO` | reported as informational; **never gated** |
+| `UNKNOWN` / absent | counted as `medium_vulnerabilities` — an unclassifiable vulnerability is still a vulnerability |
 
 > **npm `MODERATE` → `medium`** is explicit (v0.1.27 fix): dropping it would hide real CVEs from the
 > strict `medium` gate. Guarded by `self-test`.
@@ -26,14 +27,14 @@ plus count keys that are **not** CVSS-graded: `iac_violations`, `architecture_vi
 
 | Scanner | Mapping | Caveat |
 |---|---|---|
-| composer audit / npm audit | native severity → `*_vulnerabilities` (npm `MODERATE`→medium) | npm online analyzer may rate-limit (partial) |
-| **OWASP Dependency-Check** | exact `.severity` STRING match → `critical/high/medium` | **no CVSS score is parsed** — the collector matches the severity label verbatim, so a non-standard label (e.g. from RetireJS) is not bucketed. An earlier revision described CVSS bucketing that does not exist. |
-| Trivy (fs/image) | native → `*_vulnerabilities` | fs-mode is the validated path |
+| composer audit / npm audit | native severity → `*_vulnerabilities` (npm `MODERATE`→medium) | an advisory carrying **no** `severity` is counted as medium, not dropped; npm online analyzer may rate-limit (partial) |
+| **OWASP Dependency-Check** | exact `.severity` STRING match → `critical/high/medium` | **no CVSS score is parsed** — the collector matches the severity label verbatim (`MODERATE`→medium), so a non-standard label (e.g. from RetireJS) is not bucketed. An earlier revision described CVSS bucketing that does not exist. |
+| Trivy (fs/image) | `Vulnerabilities[]`→`*_vulnerabilities`; `Misconfigurations[]`→`iac_violations`; `Secrets[]`→`secrets` | three separate channels — a misconfiguration is not a vulnerability; fs-mode is the validated path |
 | Grype | native → `critical/high/medium` | severity-mapped from match severity |
-| OSV-Scanner | **all → `high`** unless a normalized `{critical,high,medium}` is supplied | coarse — triage per project |
-| CodeQL | SARIF `level` (error→high, warning→medium) | not CVSS; JS/TS validated |
-| Semgrep | rule severity → `*_vulnerabilities` | curated SS rules; INFO→medium visible-for-triage |
-| **Checkov** | finding count → `iac_violations` | **count, not graded**; IaC stays `ci-validated (evidence-fixture)`, NOT live-validated |
+| OSV-Scanner | `database_specific.severity` → `critical/high/medium`; CVSS vector as fallback | an unlabelled vulnerability is counted as medium, never dropped |
+| CodeQL | `security-severity` (>=9 critical, >=7 high) else effective SARIF `level` (error→high, warning/note→medium) | the level is resolved from the RULE's `defaultConfiguration` when the result omits it |
+| Semgrep | `CRITICAL`→critical, `ERROR`/`HIGH`→high, `WARNING`/`MEDIUM`→medium | `INFO`/`LOW` are informational and **never gate** (docs/severity-policy.md) |
+| **Checkov** | failed-check count → `iac_violations` (per-framework ARRAY output is summed) | **count, not graded**; IaC stays `ci-validated (evidence-fixture)`, NOT live-validated |
 | **Terrascan** | violation count → `iac_violations` | **count, not graded**; same IaC maturity caveat |
 | **Conftest** | failure count → `iac_violations` | **count, not graded**; same IaC maturity caveat |
 | Deptrac | violation count → `architecture_violations` | **binary** severity (count), not graded |
@@ -42,9 +43,38 @@ plus count keys that are **not** CVSS-graded: `iac_violations`, `architecture_vi
 
 ## Unknown / unmapped severity
 
-A severity the collector doesn't recognize is **never silently dropped into `pass`**: it is counted
-into the safest available bucket or surfaced as advisory. A scanner that did not run maps to
-`unavailable` (not a fake clean). Collectors exit `2` on malformed input (no guessing).
+A severity the collector does not recognize is **never silently dropped into `pass`**: it is
+counted into the safest available bucket (medium) or surfaced as advisory. A scanner that did not
+run maps to `unavailable` (not a fake clean). Collectors exit `2` on malformed input (no guessing).
+
+Until the audit's collector fixes landed this paragraph was **not true** of several collectors —
+`osv-scanner` collapsed every severity into `high` with `critical` hardcoded to 0, `codeql` could
+never emit a critical at all, and `composer-audit` returned zero for advisories that carried no
+`severity` field. Those are corrected above; the statement now describes the code.
+
+## Channel separation
+
+Quality findings are never folded into vulnerability counters, and vice-versa
+(`scripts/enforce-gates.sh`). Two collectors used to violate this and no longer do:
+
+- **ESLint** mapped every lint WARNING to `medium_vulnerabilities` (blocking in strict), so 50
+  unused-variable warnings failed a release gate as "50 medium vulnerabilities". Lint findings are
+  `type_errors`; only `security/` and `no-unsanitized/` rule hits are `high_vulnerabilities`. Those
+  security findings were additionally **double-counted** into both keys, because they are a subset
+  of `errorCount` — they are now subtracted from the lint count.
+- **TruffleHog** dropped findings explicitly marked `Verified: false`. TruffleHog reports unverified
+  findings by default and non-verifiable custom detectors *always* do, so real leaked credentials
+  contributed nothing to a gate that blocks in every mode. All findings are counted; the
+  verified/unverified split is reported for triage.
+
+### Known remaining mismatch
+
+**actionlint** maps its finding count to `unsafe_github_actions`, the same key as `zizmor` and
+`github-actions-pins`. actionlint reports YAML/shellcheck/expression **lint** errors, so a style
+error blocks as an "unsafe GitHub Action" from baseline up. This is deliberately **not** changed
+here: unlike every other item in this pass it fails *safe* (over-blocking, not under-blocking), and
+routing it correctly needs a workflow-lint summary key that does not exist yet — a schema change,
+not a mapping fix.
 
 ## Notes
 

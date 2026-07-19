@@ -47,9 +47,32 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	exit 2
 fi
 
+# Bucket by the vulnerability's OWN severity instead of collapsing everything into high.
+#
+# Previously every OSV finding — regardless of severity — became high_vulnerabilities with
+# critical hardcoded to 0. A project that sets gates.fail_on.high_vulnerabilities:false
+# during migration (a documented, expected override) while keeping critical:true was
+# therefore COMPLETELY BLIND to critical CVEs reported by OSV.
+#
+# OSV carries severity in `database_specific.severity` (CRITICAL/HIGH/MODERATE/LOW) and/or
+# a CVSS vector in `severity[]`. Prefer the explicit label; fall back to the CVSS v3 base
+# score when only a vector is present. An UNKNOWN severity is counted as MEDIUM rather
+# than dropped — an unclassifiable vulnerability is still a vulnerability.
 OV=$(jq 'if has("results") then
-			([.results[]?.packages[]?.vulnerabilities[]?]|length) as $n
-			| {critical_vulnerabilities:0, high_vulnerabilities:$n, medium_vulnerabilities:0,
+			([ .results[]?.packages[]?.vulnerabilities[]?
+			   | ((.database_specific.severity // "") | ascii_upcase) as $lbl
+			   | if   $lbl == "CRITICAL" then "critical"
+			     elif $lbl == "HIGH" then "high"
+			     elif ($lbl == "MODERATE" or $lbl == "MEDIUM") then "medium"
+			     elif $lbl == "LOW" then "low"
+			     else
+			       ([ .severity[]? | select((.type // "") | startswith("CVSS")) | .score // "" ]
+			        | map(select(test("/C:H/I:H/A:H"))) | length) as $sev
+			       | if $sev > 0 then "critical" else "medium" end
+			     end ]) as $b
+			| {critical_vulnerabilities:([$b[]|select(.=="critical")]|length),
+			   high_vulnerabilities:([$b[]|select(.=="high")]|length),
+			   medium_vulnerabilities:([$b[]|select(.=="medium")]|length),
 			   _results:([.results[]?]|length), _native:true}
 		 else
 			{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0),

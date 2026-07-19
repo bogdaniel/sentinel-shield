@@ -31,15 +31,24 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# Trivy's single JSON carries THREE finding families and only one was being read.
+# `.Results[].Misconfigurations[]` (Dockerfile/IaC) and `.Results[].Secrets[]` were both
+# dropped, so a project using `trivy config` as its IaC producer or Trivy's secret scanner
+# got iac_violations:0 / secrets:0 from a report that contained findings.
+# Each family maps to its OWN channel — misconfigurations are not vulnerabilities.
 OV=$(jq '
 	[ .Results[]?.Vulnerabilities[]?.Severity // empty | ascii_upcase ] as $s
+	| ([ .Results[]?.Misconfigurations[]? | select((.Status // "FAIL") == "FAIL") ] | length) as $mis
+	| ([ .Results[]?.Secrets[]? ] | length) as $sec
 	| {
 		critical_vulnerabilities: ([ $s[] | select(. == "CRITICAL") ] | length),
 		high_vulnerabilities:     ([ $s[] | select(. == "HIGH") ] | length),
-		medium_vulnerabilities:   ([ $s[] | select(. == "MEDIUM") ] | length)
+		medium_vulnerabilities:   ([ $s[] | select(. == "MEDIUM") ] | length),
+		iac_violations:           $mis,
+		secrets:                  $sec
 	}' "$INPUT")
 
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
-REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities}')
+REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities, iac_violations: .iac_violations, secrets: .secrets}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"
