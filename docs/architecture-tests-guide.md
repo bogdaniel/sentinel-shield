@@ -233,7 +233,7 @@ Fixtures live in [`tests/fixtures/architecture-v025/`](../tests/fixtures/archite
 The values below are the **real** output of running the collector on each fixture
 (`status` + `summary.architecture_violations`), captured during v0.1.25 development.
 
-| Fixture | Raw | Command | `status` | `architecture_violations` |
+| Fixture | Raw | Command | Collector `status` | `architecture_violations` |
 |---|---|---|---|---|
 | `clean.json` | `violations: 0`, `failures: []` | `sh scripts/collectors/architecture-tests.sh --input tests/fixtures/architecture-v025/clean.json` | `pass` | **0** |
 | `violations.json` | `violations: 3` + 3 failure rows | `sh scripts/collectors/architecture-tests.sh --input tests/fixtures/architecture-v025/violations.json` | `fail` | **3** |

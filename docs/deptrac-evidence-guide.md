@@ -239,7 +239,7 @@ evidence pattern:
 [ ] composer require --dev deptrac/deptrac:^4  (vendor/bin/deptrac present)
 [ ] run scripts/runners/deptrac.sh -> reports/raw/deptrac.json (valid JSON; clean or real violations)
 [ ] scripts/collectors/deptrac.sh --input reports/raw/deptrac.json parses it
-[ ] summary mapping: architecture_violations = violation count; status pass/fail
+[ ] summary mapping: architecture_violations = violation count; COLLECTOR status pass/fail
 [ ] artifact uploaded if: always(); NO app code changed; findings NOT remediated/suppressed
 [ ] cite run ID + artifact (size, validity) in main-gate-live-evidence.md
 [ ] only AFTER the cited row exists: update product-status.md / enterprise-scanner-matrix.md
