@@ -25,6 +25,7 @@ OUT="reports/raw/php-arkitect.json"
 CONFIG=""
 POLICY=".sentinel-shield/architecture-policy.yaml"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: php-arkitect.sh [--output <path>] [--config <path>] [--policy <path>] [<output>]

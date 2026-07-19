@@ -26,6 +26,7 @@ OUT="reports/raw/deptrac.json"
 CONFIG=""
 POLICY=".sentinel-shield/architecture-policy.yaml"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: deptrac.sh [--output <path>] [--config <path>] [--policy <path>] [<output>]

@@ -27,6 +27,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="architecture"
 INPUT="reports/raw/architecture.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: architecture.sh [--input <path>] [--tool-name <name>]

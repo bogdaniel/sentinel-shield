@@ -20,6 +20,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="dependency-cruiser"
 INPUT="reports/raw/dependency-cruiser.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: dependency-cruiser.sh [--input <path>] [--tool-name <name>]

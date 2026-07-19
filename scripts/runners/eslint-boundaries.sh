@@ -22,6 +22,7 @@ POLICY=".sentinel-shield/architecture-policy.yaml"
 PATHS=""
 BOUNDARY_RULES='^boundaries/|^import/no-restricted-paths$|^no-restricted-imports$'
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: eslint-boundaries.sh [--output <path>] [--config <path>] [--policy <path>]

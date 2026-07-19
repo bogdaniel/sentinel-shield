@@ -16,7 +16,9 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 FAILED=0
+# pass <message> — record a passing check.
 pass() { printf 'PASS: %s\n' "$1"; }
+# fail <message> — record a failing check and mark the suite failed.
 fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
 command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
@@ -79,6 +81,7 @@ echo '{"tool":"architecture","status":"totally-made-up","violations":9}' > "$CT/
 echo '{"some":"other","shape":true}'                                 > "$CT/unknown-shape.json"
 echo 'not json {'                                                    > "$CT/bad.json"
 
+# cv <input> <jq-filter> — run the deptrac collector over <input> and read one field.
 cv() { sh "$COLL/deptrac.sh" --input "$1" 2>/dev/null | jq -r "$2"; }
 [ "$(cv "$CT/dep-clean.json" '.summary.architecture_violations')" = "0" ] \
 	&& [ "$(cv "$CT/dep-clean.json" '.status')" = "pass" ] \
@@ -148,6 +151,7 @@ cat > "$CT/dc-viol.json" <<'EOF'
 EOF
 echo '{"summary":{"violations":[],"error":0,"ruleSetUsed":{"forbidden":[1,2]}}}' > "$CT/dc-clean.json"
 echo '{"modules":[{"source":"a.ts"}]}' > "$CT/dc-unknown.json"
+# dcv <input> <jq-filter> — run the dependency-cruiser collector and read one field.
 dcv() { sh "$COLL/dependency-cruiser.sh" --input "$1" 2>/dev/null | jq -r "$2"; }
 [ "$(dcv "$CT/dc-viol.json" '.summary.architecture_violations')" = "2" ] \
 	&& [ "$(dcv "$CT/dc-viol.json" '.status')" = "fail" ] \
@@ -179,6 +183,7 @@ EOF
 echo '[{"filePath":"a.ts","messages":[{"ruleId":"no-unused-vars"}]}]' > "$CT/es-noise.json"
 echo '[]' > "$CT/es-empty.json"
 echo '{"not":"eslint"}' > "$CT/es-unknown.json"
+# ebv <input> <jq-filter> — run the eslint-boundaries collector and read one field.
 ebv() { sh "$COLL/eslint-boundaries.sh" --input "$1" 2>/dev/null | jq -r "$2"; }
 [ "$(ebv "$CT/es-mixed.json" '.summary.architecture_violations')" = "3" ] \
 	&& pass "eslint-boundaries collector: counts ONLY boundary rules (3 of 6 messages)" \
@@ -299,6 +304,7 @@ enf() { # enf <mode> <summary> -> exit code, enforcement json in $WORK/out-<mode
 		--output-dir "$WORK/out-$1" --format json >/dev/null 2>&1 || rc=$?
 	printf '%s' "$rc"
 }
+# failed_has <mode> <gate> — non-null when <gate> is in that mode's failed_gates list.
 failed_has() { jq -r --arg g "$2" '(.failed_gates // []) | index($g)' "$WORK/out-$1/sentinel-shield-enforcement.json"; }
 
 [ "$(enf report-only "$WORK/av.json")" = "0" ] \

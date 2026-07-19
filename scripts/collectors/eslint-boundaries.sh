@@ -24,6 +24,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 TOOL="eslint-boundaries"
 INPUT="reports/raw/eslint-boundaries.json"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: eslint-boundaries.sh [--input <path>] [--tool-name <name>]

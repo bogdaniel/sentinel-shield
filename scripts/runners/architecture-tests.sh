@@ -32,6 +32,7 @@ ENV_VAR="SENTINEL_SHIELD_ARCH_TEST_CMD"
 PRODUCER="architecture-tests"
 POLICY=".sentinel-shield/architecture-policy.yaml"
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: architecture-tests.sh [--output <path>] [--command <cmd>] [--env-var <NAME>]

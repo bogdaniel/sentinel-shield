@@ -23,6 +23,7 @@ CONFIG=""
 POLICY=".sentinel-shield/architecture-policy.yaml"
 PATHS=""
 
+# usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
 Usage: dependency-cruiser.sh [--output <path>] [--config <path>] [--policy <path>]
