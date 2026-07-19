@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
 done
 
 ss_collector_guard "$TOOL" "$INPUT"
-# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.1).
+# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2).
 ss_shape_or_fail "$TOOL" "$INPUT" '(type == "array") or (type == "object" and ((.findings? | type) == "array"))' '{"secrets":0}'
 
 N=$(jq '

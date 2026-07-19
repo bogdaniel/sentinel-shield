@@ -29,7 +29,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 OUT="reports/raw/architecture-tests.json"
 CMD=""
-CMD_SOURCE=""          # operator | project — decides whether CMD may execute (v2.0.1)
+CMD_SOURCE=""          # operator | project — decides whether CMD may execute (v2.0.2)
 ALLOW_PROJECT_CMD=0    # --allow-project-command: explicit operator consent, off by default
 ENV_VAR="SENTINEL_SHIELD_ARCH_TEST_CMD"
 PRODUCER="architecture-tests"
@@ -43,7 +43,7 @@ Usage: architecture-tests.sh [--output <path>] [--command <cmd>] [--env-var <NAM
                              [--allow-project-command] [<output>]
 Run the project's architecture-test command and normalize the result.
 
-SECURITY (v2.0.1): a command taken from the SCANNED PROJECT's architecture-policy.yaml is
+SECURITY (v2.0.2): a command taken from the SCANNED PROJECT's architecture-policy.yaml is
 NOT executed by default — that file is attacker-controlled input to a security gate. Pass
 --allow-project-command to opt in explicitly, or supply the command via --command / the
 $SENTINEL_SHIELD_ARCH_TEST_CMD env var, both of which are operator-controlled.

@@ -753,7 +753,7 @@ jq -e '
 	(.summary.missing_sbom == (.evidence.sbom.present | not))
 	and (.summary.missing_release_evidence == (.evidence.release_evidence.present | not))
 	# expired_exceptions aggregates the exceptions file AND any collector-reported
-	# expiry, so it must be >= the file count — never equal-by-construction (v2.0.1).
+	# expiry, so it must be >= the file count — never equal-by-construction (v2.0.2).
 	# The old `==` assertion is precisely what cemented the overwrite it was meant to
 	# verify: it could only hold if collector-reported expiries were discarded.
 	and (.summary.expired_exceptions >= .exceptions.expired)
