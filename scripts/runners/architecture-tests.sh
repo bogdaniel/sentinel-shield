@@ -16,7 +16,7 @@
 #   command wrote <output> as JSON    -> preserved (normalized contract expected)
 #   command printed JSON on stdout    -> that JSON is the report
 #   command failed with no JSON       -> execution-error
-#   command succeeded with no JSON    -> execution-error (an exit code is NOT evidence, v2.0.1)
+#   command succeeded with no JSON    -> execution-error (an exit code is NOT evidence, v2.0.2)
 #   command from the scanned project.s policy -> refused unless --allow-project-command
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)

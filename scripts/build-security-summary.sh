@@ -560,7 +560,7 @@ EOF
 		_gstatus=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].status // "unknown"')
 		if [ -n "$_grep" ]; then
 			_grf="$RAW_DIR/$(basename -- "$_grep")"
-			# A one-of group is satisfied by EVIDENCE, not by a file existing (v2.0.1
+			# A one-of group is satisfied by EVIDENCE, not by a file existing (v2.0.2
 			# hotfix). This previously accepted any present, valid-JSON report — so
 			# `printf '{}' > reports/raw/tests.json` marked the required test group
 			# satisfied without a single test having run. The group's own COLLECTOR
