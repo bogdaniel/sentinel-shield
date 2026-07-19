@@ -339,6 +339,21 @@ for f in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/
 done
 check "no profile declares two producers writing the same raw report" "${_dupe:-none}" "none"
 
+# Every declared testing-discipline producer's report must also appear in that profile's
+# recommended_raw_reports. That list is informational (install-baseline prints it as "artifacts
+# the pipeline produces"), so a declared producer missing from it silently under-describes the
+# pipeline to an adopting consumer.
+_outofsync=""
+for f in "$ROOT"/profiles/*/profile.manifest.json; do
+	_m=$(jq -r '
+		((.tools // {}) | to_entries[]
+		  | select((.value.category // "") | IN("bdd","atdd","testing-discipline"))
+		  | .value.report | sub("reports/raw/"; "")) as $r
+		| select((.recommended_raw_reports // []) | index($r) | not) | $r' "$f" | tr '\n' ',')
+	[ -n "$_m" ] && _outofsync="$_outofsync$(basename "$(dirname "$f")"):$_m "
+done
+check "every declared producer report is listed in recommended_raw_reports" "${_outofsync:-none}" "none"
+
 # The generic contract file stays supported for a custom/manual producer and must not collide
 # with any profile-declared producer path.
 _generic=$(for f in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.json; do

@@ -72,7 +72,8 @@
     "source-size.json",
     "test-change-evidence.json",
     "cucumber-specs.json",
-    "playwright-acceptance.json"
+    "playwright-acceptance.json",
+    "cypress-acceptance.json"
   ],
   "tool_policy_version": 2,
   "tools": {

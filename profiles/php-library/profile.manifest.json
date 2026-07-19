@@ -85,7 +85,8 @@
     "focused-tests.json",
     "debug-code.json",
     "source-size.json",
-    "test-change-evidence.json"
+    "test-change-evidence.json",
+    "behat-specs.json"
   ],
   "tools": {
     "php-syntax": {
