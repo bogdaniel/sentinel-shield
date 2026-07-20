@@ -71,6 +71,7 @@ New: `tests/prod/268-documentation-accuracy.sh` asserts that no doc claims a liv
 cannot run, that a zero-tool profile is marked non-operative, that the SHA-pinning claims match
 the workflows, that no doc pins actions for a deleted workflow, that the support policy tracks
 the current release, and that no stale literal gate count is asserted.
+
 ### Fixed — documentation reference integrity
 
 - **Documented release commands failed outright.** `docs/release-provenance.md` and
