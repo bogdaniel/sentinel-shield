@@ -328,7 +328,12 @@ jobs:
     # Release evidence is collected from default-branch push runs (Phase 2), so this heavy
     # 6-scanner job runs on push / schedule / manual dispatch — not on every PR. PR-time scanner
     # coverage is provided by the security-summary job above.
-    if: ${{ github.event_name != 'pull_request' }}
+    # PREVIOUSLY `github.event_name != 'pull_request'`, i.e. the blocking live acceptance gate
+    # NEVER ran on a PR: a change that broke build-scanner-manifest.sh or
+    # enforce-security-policy.sh showed every PR check green and only failed after merge — on
+    # the very run the release evidence is collected from. It now runs on PRs too. Forks are
+    # still excluded because the job needs repository-scoped credentials a fork PR cannot have.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -445,12 +450,20 @@ jobs:
           trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
           # Record the SAME version the trivy-action was pinned to above (env.TRIVY_VERSION),
           # not a separately-pulled container: the recorded version must be the one that
-          # actually generated reports/raw/trivy.json. Strip the leading "v" for the manifest.
+          # actually generated reports/raw/trivy.json. Strip the leading "v" for the manifest. (#55 pin)
           trivy_ver="${TRIVY_VERSION#v}"
           osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:v2.4.0 --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
-          # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness is the
-          # scan instant — recorded explicitly here as evidence, not defaulted inside the tool.
-          osv_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness IS the
+          # scan instant. Record it ONLY when the scan actually produced a valid report (#57
+          # fail-closed): a run where osv-scanner degraded, errored, or produced no report must
+          # NOT emit a perfect current freshness — leave it empty and let the acceptance gate
+          # apply its fail-closed null-freshness rule.
+          osv_ts=""
+          if [ -s reports/raw/osv-scanner.json ] && jq -e . reports/raw/osv-scanner.json >/dev/null 2>&1; then
+            osv_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          else
+            echo "::warning::osv-scanner produced no valid report; recording NULL db freshness (fail-closed) rather than the scan instant"
+          fi
           jq -n \
             --arg gv "$grype_ver" --arg gb "$grype_built" \
             --arg tv "$trivy_ver" --arg tu "$trivy_updated" \

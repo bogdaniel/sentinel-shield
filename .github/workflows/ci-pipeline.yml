@@ -60,7 +60,12 @@ jobs:
           set -eu
           mkdir -p reports
           # Reuse the resolver to read project metadata + mode (no YAML parsing here).
-          sh scripts/resolve-gates.sh --format env --output-dir reports || true
+          # `|| true` here masked a resolver FAILURE: the next steps then substituted defaults
+          # (project type "unknown", criticality "medium"), so a break in resolve-gates.sh on a
+          # CRITICAL-criticality project silently applied WEAKER thresholds than configured,
+          # with only a stderr line as evidence. The gate resolution is the input to every
+          # downstream decision — if it cannot be produced, the pipeline must stop.
+          sh scripts/resolve-gates.sh --format env --output-dir reports
           ENVF=reports/sentinel-shield-gates.env
           get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
           PN=$(get SENTINEL_SHIELD_PROJECT_NAME); [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"

@@ -26,7 +26,7 @@ jobs:
   # package.json). The engine ships only shell + a couple of eslint config files (no
   # analyzable source), so analyze skips (green) instead of the CodeQL "no source code
   # seen" fatal. Consumers with a JS/TS app run it normally.
-  detect:
+  detect-codeql:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -41,8 +41,8 @@ jobs:
         run: |
           if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   analyze:
-    needs: detect
-    if: ${{ needs.detect.outputs.present == 'true' }}
+    needs: detect-codeql
+    if: ${{ needs.detect-codeql.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

@@ -20,6 +20,10 @@
 #                          (ambiguous / collides on the same required check).
 #   unregistered-workflow— a shipped workflow file is absent from the registry.
 #   missing-workflow     — the registry references a workflow file not on disk.
+#   cross-workflow-duplicate — one check NAME is published by more than one workflow. Branch
+#                          protection matches required_status_checks contexts by NAME, so a
+#                          passing `detect` from one workflow satisfies a requirement that the
+#                          `detect` in another workflow never ran for — the gate rots open.
 #
 # Emits BOTH a human report (STDOUT) and a machine report
 # (reports/raw/required-checks-audit.json, per schemas/required-checks-audit.schema.json).
@@ -140,12 +144,26 @@ REPORT=$(jq -n \
 			| .[]
 		  end
 	  ] | flatten) as $violations
+	# CROSS-FILE duplicate check names. The rule above computes duplicates PER FILE, so it only
+	# catches two jobs colliding inside one workflow. Four workflows publish a check named
+	# `detect` and two publish `workflow-lint`; branch protection matches required contexts BY
+	# NAME, so the ci-docker `detect` can satisfy a requirement that the ci-codeql `detect` never
+	# ran for — the gate rots open, which is precisely what this registry exists to prevent.
+	# docs/branch-protection.md asserts GitHub distinguishes these by originating workflow;
+	# that is not how required_status_checks contexts work.
+	| ([ $R | to_entries[] | .key as $wf | (.value.checks[]? | {name: .name, file: $wf}) ]
+	   | group_by(.name)
+	   | map(select(length > 1))
+	   | map({type: "cross-workflow-duplicate",
+	          name: .[0].name,
+	          file: ([ .[].file ] | join(", "))})) as $xdups
+	| ($violations + $xdups) as $violations
 	| {
 		version: "1.0",
 		generated_at: $ts,
 		tool: "required-checks-audit",
 		files_scanned: $scanned,
-		checks: ["renamed","missing","unregistered","duplicate","unregistered-workflow","missing-workflow"],
+		checks: ["renamed","missing","unregistered","duplicate","cross-workflow-duplicate","unregistered-workflow","missing-workflow"],
 		status: (if ($violations | length) > 0 then "fail" else "pass" end),
 		violation_count: ($violations | length),
 		violations: ($violations | map(. + {from: (.from // null)}))
@@ -170,6 +188,8 @@ if [ "$VIOLATIONS" -gt 0 ]; then
 			"VIOLATION: [duplicate] \(.file): check name \"\(.name)\" is published by >1 job"
 		  elif .type == "unregistered-workflow" then
 			"VIOLATION: [unregistered-workflow] \(.file): workflow (check \"\(.name)\") is not in the registry"
+		  elif .type == "cross-workflow-duplicate" then
+			"VIOLATION: [cross-workflow-duplicate] check name \"\(.name)\" is published by MORE THAN ONE workflow (\(.file)); branch protection matches required contexts by NAME, so one can satisfy a requirement the other never ran for"
 		  else
 			"VIOLATION: [missing-workflow] \(.file): registry references a workflow file not on disk"
 		  end'

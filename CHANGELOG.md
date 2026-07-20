@@ -743,6 +743,34 @@ check that merely happened to pass.
   refusal broke", in which case the test itself does the damage and the following "did it
   survive?" lines are damage assessment, not prevention. Sandboxed.
 
+### Fixed — CI reliability
+
+- **Four workflows published a check named `detect`; two published `workflow-lint`.** Branch
+  protection matches `required_status_checks` contexts **by name**, so a passing `detect` from
+  `ci-docker` satisfied a requirement that the `detect` in `ci-codeql` never ran for — the gate
+  rots open. `docs/branch-protection.md` asserted GitHub distinguishes them by originating
+  workflow; it does not. Jobs renamed to `detect-codeql` / `detect-php` / `detect-node` /
+  `detect-docker` / `workflow-lint-readiness`, and the drift audit — whose duplicate rule was
+  computed **per file** and so was structurally blind to this — now detects cross-workflow
+  collisions. ⚠️ **Anyone with branch protection configured must update the required-check list
+  to the new names**; a migration note is in `docs/branch-protection.md`.
+- **The blocking live security-acceptance gate never ran on pull requests.** A change breaking
+  `build-scanner-manifest.sh` or `enforce-security-policy.sh` showed every PR green and failed
+  only after merge — on the very run the release evidence is collected from. It now runs on PRs
+  from the same repository (forks still excluded: the job needs credentials a fork cannot have).
+- **osv-scanner DB freshness was recorded unconditionally.** The rationale for using the scan
+  instant is sound (osv-scanner queries the live OSV database, so there is no local DB build
+  time) — but it was written even when the scan degraded or produced no report, contradicting
+  the promise four lines above it that the workflow "never fabricates a freshness it cannot
+  source". It is now recorded only when a valid report exists.
+- **`ci-pipeline` masked resolver failure with `|| true`**, then substituted defaults (type
+  `unknown`, criticality `medium`) — so a break in `resolve-gates.sh` on a *critical*-criticality
+  project silently applied weaker thresholds, with only a stderr line as evidence.
+- **`ci-node` detected its own test script from `npm run` output** (`grep -q "^  test"`), which
+  depends on npm's two-space listing format. If npm changes that presentation, `npm test` never
+  runs, the step exits 0 and the `node` check goes green having tested nothing. It now reads
+  `package.json`, and warns when no `test` script exists.
+
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 
 

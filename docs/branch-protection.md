@@ -55,12 +55,27 @@ Core gates:
 - `trivy-fs`
 - `security-summary`
 
+> ### ⚠️ REQUIRED SETTINGS CHANGE (audit)
+>
+> Four workflows used to publish a check named **`detect`**, and two published
+> **`workflow-lint`**. Branch protection matches `required_status_checks` contexts **by NAME**,
+> so a passing `detect` from `ci-docker` satisfied a requirement that the `detect` in
+> `ci-codeql` never ran for — the gate rots open. (An earlier revision of this document
+> asserted GitHub distinguishes them by originating workflow. It does not.)
+>
+> The jobs are now uniquely named: `detect-codeql`, `detect-php`, `detect-node`,
+> `detect-docker`, and `workflow-lint-readiness`.
+>
+> **Anyone with branch protection configured must update the required-check list to the new
+> names.** Until then the old contexts will never report and PRs may block. The drift audit
+> (`scripts/audits/required-checks-audit.sh`) now fails on any cross-workflow duplicate.
+
 Applicability / detect checks:
 
-- `ci-php` → `detect`
-- `ci-node` → `detect`
-- `ci-docker` → `detect`
-- `ci-codeql` → `detect`
+- `ci-php` → `detect-php`
+- `ci-node` → `detect-node`
+- `ci-docker` → `detect-docker`
+- `ci-codeql` → `detect-codeql`
 
 These `detect` jobs are the applicability gates that decide whether their heavy jobs
 (php, node, docker, analyze) need to run for a given change. Requiring the `detect`
