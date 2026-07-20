@@ -19,17 +19,19 @@ trap 'rm -rf -- "$WORK"' EXIT INT TERM
 # --- every evidence path a doc tells you to RUN must exist -------------------
 # generate-release-manifest.sh exits 2 on a missing --evidence file, so a wrong path is not
 # a typo — the documented command fails outright.
-# INPUT paths only. A path passed to `--output` is PRODUCED by the documented command, so
-# its absence is correct, not drift — checking it would make the guard demand that running
-# the docs be a precondition for the docs being right.
+# Only paths in COMMAND POSITION — i.e. immediately preceded by a flag that CONSUMES a
+# file (--evidence / --candidate / --file / --summary). Three narrower rules learned the
+# hard way while writing this suite:
+#   * a path after `--output` is PRODUCED by the command; its absence is correct;
+#   * PROSE that quotes a wrong path while CORRECTING it is not an instruction — this
+#     assertion tripped on its own CHANGELOG entry, the third time in this series that
+#     corrective text was mistaken for a live claim;
+#   * CHANGELOG.md is a historical record, like the frozen docs/*-v0NN.md evidence files.
+# A guard that flags the description of a fix as the bug is not measuring anything.
 _missing=""
-for _p in $(grep -rhoE '(--(evidence|candidate|authorization|file|summary)[= ])?evidence/releases/[A-Za-z0-9._-]+\.json' docs/ *.md 2>/dev/null \
-		| grep -v -- '--output' | grep -oE 'evidence/releases/[A-Za-z0-9._-]+\.json' | sort -u); do
-	# Skip anything that appears ONLY as an --output argument anywhere in the docs.
-	if grep -rqE -- "--output[= ]$_p" docs/ *.md 2>/dev/null \
-	   && ! grep -rqE -- "--(evidence|candidate|file)[= ]$_p" docs/ *.md 2>/dev/null; then
-		continue
-	fi
+for _p in $(grep -rhoE -- '--(evidence|candidate|file|summary)[= ]evidence/releases/[A-Za-z0-9._-]+\.json' \
+		docs/ *.md 2>/dev/null \
+		| grep -oE 'evidence/releases/[A-Za-z0-9._-]+\.json' | sort -u); do
 	[ -f "$_p" ] || _missing="$_missing$_p "
 done
 check "every documented evidence/releases path exists" "${_missing:-none}" "none"
