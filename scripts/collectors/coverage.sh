@@ -49,7 +49,23 @@ esac
 # num <key> — the numeric value of .<key>, or 0 for absent/non-numeric.
 num() { jq --arg k "$1" 'if ((.[$k]|type)=="number" and .[$k] >= 0) then .[$k] else 0 end' "$INPUT"; }
 
-V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+# The GATING count is never coerced. This read
+#   ((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)
+# which turned a negative, fractional or non-numeric .violations into a clean 0 — a
+# corrupted or truncated report reported PASS. docs/raw-report-contract.md states the
+# opposite rule verbatim, and lib/architecture-evidence.sh already implements it. An ABSENT
+# .violations still legitimately means 0; a present-but-malformed one does not.
+V=$(jq -r '
+	if (has("violations") | not) then "0"
+	elif ((.violations | type) == "number" and .violations >= 0 and (.violations | floor) == .violations)
+		then (.violations | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$V" = "invalid" ]; then
+	log_warn "$TOOL: .violations is malformed; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed violations count"}' '{"coverage_threshold_violations":0}'
+	exit 0
+fi
 REG=$(jq 'if (.regression == true) then 1 else 0 end' "$INPUT")
 LP=$(num line_percent); BP=$(num branch_percent); MP=$(num method_percent); CP=$(num class_percent)
 

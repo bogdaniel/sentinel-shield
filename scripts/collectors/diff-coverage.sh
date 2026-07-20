@@ -44,7 +44,23 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-V=$(jq '((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+# The GATING count is never coerced. This read
+#   ((.violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)
+# which turned a negative, fractional or non-numeric .violations into a clean 0 — a
+# corrupted or truncated report reported PASS. docs/raw-report-contract.md states the
+# opposite rule verbatim, and lib/architecture-evidence.sh already implements it. An ABSENT
+# .violations still legitimately means 0; a present-but-malformed one does not.
+V=$(jq -r '
+	if (has("violations") | not) then "0"
+	elif ((.violations | type) == "number" and .violations >= 0 and (.violations | floor) == .violations)
+		then (.violations | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$V" = "invalid" ]; then
+	log_warn "$TOOL: .violations is malformed; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed violations count"}' '{"changed_lines_coverage_violations":0}'
+	exit 0
+fi
 PCT=$(jq 'if ((.changed_lines_coverage_percent|type)=="number" and .changed_lines_coverage_percent >= 0) then .changed_lines_coverage_percent else 0 end' "$INPUT")
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
