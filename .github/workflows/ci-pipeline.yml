@@ -11,6 +11,14 @@
 # ACTION PINNING: `uses:` shows version tags for readability. Consuming projects
 # MUST pin third-party actions to verified commit SHAs before production
 # (docs/github-actions-security.md). Do not use pull_request_target. No broad writes.
+# SCANNER IMAGES ARE VERSION-PINNED, NEVER `:latest`.
+# A mutable tag in the job that produces release evidence means the scanner set can change
+# silently between two runs of the SAME commit — the acceptance artifact stops being
+# reproducible, and a republished upstream tag is code execution with the repo bind-mounted.
+# Versions below are the ones recorded in evidence/releases/*-security-acceptance.json, i.e.
+# the versions that actually produced the shipped evidence. Pin by @sha256 digest before
+# treating any of these as supply-chain-hardened; a version tag is still mutable in principle.
+
 name: ci-pipeline
 
 on:
@@ -261,7 +269,7 @@ jobs:
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true

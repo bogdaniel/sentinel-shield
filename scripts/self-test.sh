@@ -1965,7 +1965,7 @@ cs_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 
 # run_v029_clean_strict_ci — self-test group 'v029-clean-strict-ci' (wired into the dispatch + 'all').
 run_v029_clean_strict_ci() {
-	log_info "v029: clean strict CI — override precedence, evidence isolation, DC propertyfile container-readable"
+	log_info "v029: clean strict CI — override precedence, evidence isolation, DC propertyfile permissions"
 	C="$ROOT/scripts/collectors"; F="$ROOT/tests/fixtures"; A="$ROOT/scripts/audits/dependency-check.sh"
 	_d=$(mktemp -d); mkdir -p "$_d/ov" "$_d/pure"
 	jq '.summary.high_vulnerabilities=6 | .summary.medium_vulnerabilities=4' templates/security-summary.example.json > "$_d/sum.json"
@@ -1999,8 +1999,19 @@ YAML
 	cs_check "(58) real DC artifact parses pass:0/0/0" "$(sh "$C/dependency-check.sh" --input "$F/live-evidence/dependency-check-real.json" 2>/dev/null | jq -rc '"\(.status):\(.summary.critical_vulnerabilities)/\(.summary.high_vulnerabilities)/\(.summary.medium_vulnerabilities)"')" "pass:0/0/0"
 	cs_check "(58) npm-vocab parses c=1 h=2 m=2" "$(sh "$C/dependency-check.sh" --input "$F/dependency-check/npm-vocab.json" 2>/dev/null | jq -rc '"\(.tool_report.critical)/\(.tool_report.high)/\(.tool_report.medium)"')" "1/2/2"
 
-	# (60) DC propertyfile is container-readable (the v029 fix) AND key never echoed (no set -x).
-	cs_check "(60) audit makes propertyfile container-readable (chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	# (60) DC propertyfile permissions AND key never echoed (no set -x).
+	#
+	# ASSERTION INVERTED (security audit). This previously required `chmod 644` on the file
+	# holding the NVD API key, i.e. it pinned a live credential being made readable by EVERY
+	# local user for the duration of a documented "slow, hundreds of MB" NVD download. The
+	# v0.2.9 fix it encoded solved a real problem — a container running as a different UID
+	# could not read the mount — but by publishing the secret rather than by narrowing the
+	# UID gap. The container is now run with `--user "$(id -u):$(id -g)"`, so it reads the
+	# mount AS the host user and the file can stay 0600 in a 0700 dir.
+	cs_check "(60) NVD key file is NOT world-readable (no chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -eq 0 ] && echo yes || echo no)" "yes"
+	cs_check "(60) NVD key file is 0600" "$([ "$(grep -c 'chmod 600 "\$PROPDIR' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	cs_check "(60) NVD key dir is 0700" "$([ "$(grep -c 'chmod 700 "\$PROPDIR"' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	cs_check "(60) DC container runs as the host user" "$([ "$(grep -c 'user "\$(id -u):\$(id -g)"' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
 	cs_check "(60) audit never enables set -x" "$(grep -c 'set -x' "$A")" "0"
 	# (59,60) stub run: missing key/binary/image -> NO fake-clean report; with key -> key never in logs.
 	_bin="$_d/bin"; mkdir -p "$_bin"
@@ -2063,8 +2074,13 @@ STUB
 	cc_check "(56) key passed via --propertyfile" "$(grep -c -- '--propertyfile' "$_d/argv2.txt")" "1"
 	# (55) propertyfile dir removed after run.
 	cc_check "(55) propertyfile cleaned up after run" "$(find "$_d" -name 'dependency-check.properties' 2>/dev/null | wc -l | tr -d ' ')" "0"
-	# (54) container-readable propertyfile perms in the script.
-	cc_check "(54) propertyfile is container-readable (chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
+	# (54) propertyfile perms in the script.
+	#
+	# ASSERTION INVERTED (security audit) — the second copy of the same rule. It required
+	# `chmod 644` on the NVD API key file, pinning a live credential as readable by every
+	# local user. The container now runs as the host user, so the key stays 0600.
+	cc_check "(54) propertyfile is NOT world-readable (no chmod 644)" "$([ "$(grep -c 'chmod 644' "$A")" -eq 0 ] && echo yes || echo no)" "yes"
+	cc_check "(54) propertyfile is 0600" "$([ "$(grep -c 'chmod 600 "\$PROPDIR' "$A")" -ge 1 ] && echo yes || echo no)" "yes"
 
 	# (57) valid JSON preserved on NON-ZERO exit.
 	PATH="$_bin:$PATH" SS_T_JSON='{"dependencies":[{"vulnerabilities":[{"severity":"HIGH"}]}]}' SS_T_RC=1 \

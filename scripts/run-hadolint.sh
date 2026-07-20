@@ -129,7 +129,15 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 ANY_VALID=0
 FAILED=0
 i=0
+_ss_oifs=$IFS
+IFS='
+'
+_ss_oifs=$IFS
+IFS='
+'
 for f in $FILES; do
+	IFS=$_ss_oifs
+	IFS=$_ss_oifs
 	i=$((i + 1))
 	out=$(run_one "$f" || true)
 	if printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then

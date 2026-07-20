@@ -107,10 +107,28 @@ for f in "$WF_DIR"/*.yml; do
 done
 
 # Zero workflow files means zero assertions ran — an empty glob must be a FAILURE, not a
-# silent green. Without this the suite exits 0 having verified nothing.
+# silent green. Without this the suite exits 0 having verified nothing. (#53)
 if [ "$_seen" -eq 0 ]; then
 	fail "no workflow files found under $WF_DIR — the hardening invariants were not checked"
 fi
+
+# No scanner container image may use a MUTABLE `:latest` tag. A floating tag in the job that
+# produces release evidence means the scanner set can change silently between two runs of the
+# SAME commit — the acceptance artifact stops being reproducible — and a republished upstream
+# tag is code execution with the repository bind-mounted. The repo already enforces 40-hex SHA
+# pins on `uses:`; that discipline stopped at container images. (#55)
+_latest=0
+for _wf in "$WF_DIR"/*.yml "$ROOT"/.github/workflows/*.yml; do
+	[ -f "$_wf" ] || continue
+	# Executable positions only (`docker run …`, `image:`) — never prose in a comment.
+	_hits=$(grep -nE '^[^#]*(docker[[:space:]]+run|image:)[^#]*:latest' "$_wf" 2>/dev/null || true)
+	if [ -n "$_hits" ]; then
+		fail "$(basename "$_wf"): uses a mutable :latest scanner image"
+		printf '%s\n' "$_hits" | sed 's/^/    /'
+		_latest=$((_latest + 1))
+	fi
+done
+[ "$_latest" -eq 0 ] && pass "no workflow uses a mutable :latest scanner image"
 
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d assertion(s) failed\n' "$FAILS" >&2

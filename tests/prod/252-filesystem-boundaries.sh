@@ -317,13 +317,29 @@ fs_atomic_replace "$WORK/report-src.json" "$DEST_DIR/report.json" \
 # ============================================================================
 OWNED=$(mk_root); mkdir -p "$OWNED/sub/deep"       # a verified operation-owned root
 UNOWNED=$(mk_root)
-for spec in "slash:/" "empty:" "home:${HOME:-/nonexistent}" "repo:$ROOT" "unowned:$UNOWNED"; do
+
+# SANDBOXED HOME / REPO ROOT. The failure mode under test IS "the refusal broke" — and this
+# loop previously passed the REAL $HOME and the REAL repo root to fs_safe_rmtree. If the guard
+# ever regressed, the test itself would recursively delete the developer's home directory and
+# working tree, and the "did it survive?" assertions below are damage assessment, not
+# prevention. A test for a destructive guard must not be armed with a live target.
+#
+# The guard's own predicates are path-shape based (is-root / is-empty / equals $HOME / equals
+# the repo root / not operation-owned), so a SANDBOXED home and repo root exercise exactly the
+# same code paths without pointing the loaded weapon at anything real.
+FAKE_HOME=$(mk_root); mkdir -p "$FAKE_HOME/.config"
+FAKE_REPO=$(mk_root); mkdir -p "$FAKE_REPO/scripts/lib" "$FAKE_REPO/.git"
+for spec in "slash:/" "empty:" "home:$FAKE_HOME" "repo:$FAKE_REPO" "unowned:$UNOWNED"; do
 	_lbl=${spec%%:*}; _tgt=${spec#*:}
-	r=$(fs_safe_rmtree "$OWNED" "$_tgt") && rc=0 || rc=$?
+	# HOME is redirected for the duration of the call so the guard's $HOME comparison sees the
+	# sandbox, in a SUBSHELL so the surrounding suite keeps the real value.
+	r=$( HOME="$FAKE_HOME" fs_safe_rmtree "$OWNED" "$_tgt" ) && rc=0 || rc=$?
 	{ [ "$rc" != 0 ] && [ "$r" = "FS_REFUSE_DELETE" ]; } \
 		&& pass "(10) recursive delete of '$_lbl' is REFUSED (FS_REFUSE_DELETE)" || fail "(10) delete '$_lbl' refused (rc=$rc r=$r)"
 done
-[ -d "$ROOT/scripts/lib" ] && pass "(10) the repo root survived every refusal" || fail "(10) repo root survived"
+[ -d "$FAKE_HOME/.config" ] && pass "(10) the sandboxed home survived every refusal" || fail "(10) sandboxed home survived"
+[ -d "$FAKE_REPO/scripts/lib" ] && pass "(10) the sandboxed repo root survived every refusal" || fail "(10) sandboxed repo root survived"
+[ -d "$ROOT/scripts/lib" ] && pass "(10) the REAL repo root was never a delete target" || fail "(10) real repo root intact"
 [ -d "$UNOWNED" ] && pass "(10) the unowned dir survived the refusal" || fail "(10) unowned survived"
 # A symlinked target is refused (never followed into an unowned tree).
 ln -s "$UNOWNED" "$OWNED/linktgt"

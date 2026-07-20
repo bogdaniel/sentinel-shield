@@ -713,6 +713,36 @@ check that merely happened to pass.
   detect. And `grep -c … || echo 0` appended a **second** zero (`grep -c` prints 0 *and* exits
   1), producing `"0\n0"` and an "integer expression expected" false failure.
 
+### Security — hardening: credential exposure, permanent world-writable reports, mutable images
+
+- **The NVD API key was written world-readable into a shared temp dir.** `chmod 755` on the dir
+  plus `chmod 644` on the propertyfile published a live credential to every local user for the
+  duration of a documented "slow, hundreds of MB" NVD download. The relaxation existed to let a
+  container running as a *different UID* read the bind mount; the container now runs as the
+  **host user** (`--user "$(id -u):$(id -g)"`), so the key stays `0600` inside a `0700` dir.
+  **Two self-test assertions REQUIRED the insecure mode** (`chmod 644`) and are inverted.
+- **`reports/raw` was left world-writable permanently.** `chmod -R a+rwX` on the report dir was
+  never restored. Those reports are integrity-critical — the summary builder trusts them — so
+  any local user could rewrite a scanner report between the scan and the build. The original
+  modes are captured and restored from the EXIT trap; the relaxation is now opt-in
+  (`SENTINEL_SHIELD_DC_RELAX_PERMS=1`) and unnecessary in the common case.
+- **Scanner images were pinned to `:latest` in the job that produces release evidence** — 9
+  occurrences across `ci-security.yml`, `ci-pipeline.yml`, `ci-self-test.yml`, including
+  gitleaks, trivy, grype and osv-scanner run with the repository bind-mounted. Pinned to the
+  versions recorded in `evidence/releases/*-security-acceptance.json` (the versions that
+  actually produced the shipped evidence): gitleaks `v8.18.4`, osv-scanner `v2.4.0`, grype
+  `v0.115.0`, trivy `0.72.0`, actionlint `1.7.7`. `tests/prod/110-workflows.sh` now fails on any
+  `:latest` in an executable position.
+- **Two audit scripts failed OPEN on paths containing spaces.** `for f in $FILES` over a
+  space-joined accumulator split `docker/my app/Dockerfile` into fragments, every fragment
+  failed `[ -f ]`, and the audit reported **clean** while the real file went unscanned.
+  Demonstrated: master reports "scanned 2 Dockerfiles, 0 un-digested bases"; fixed reports
+  "scanned 1, 1 un-digested base".
+- **A test could delete the developer's home directory.** `252-filesystem-boundaries.sh` passed
+  the REAL `$HOME` and repo root to `fs_safe_rmtree`; the failure mode under test *is* "the
+  refusal broke", in which case the test itself does the damage and the following "did it
+  survive?" lines are damage assessment, not prevention. Sandboxed.
+
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 
 

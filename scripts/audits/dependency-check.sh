@@ -31,7 +31,30 @@ DC_TIMEOUT="${SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT:-}"
 # never appears in the process list either. Env var name is fixed by the v0.1.26 Lane A spec.
 NVD_API_KEY_VALUE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY:-}"
 PROPDIR=""
-cleanup_secret() { [ -n "$PROPDIR" ] && rm -rf "$PROPDIR" 2>/dev/null || true; }
+# _dc_mode_of <path> — octal mode of a path, portable across GNU and BSD stat. Empty when it
+# cannot be read, in which case no restore is attempted.
+_dc_mode_of() {
+	[ -e "$1" ] || return 0
+	stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null || true
+}
+
+# _dc_restore_perms — put the bind-mounted dirs back the way they were found. Called from the
+# EXIT trap so an interrupted or failed scan cannot leave reports/raw world-writable.
+#
+# DEFINED BEFORE cleanup_secret ON PURPOSE: the trap is registered immediately below and fires
+# on EVERY exit path, including the early `unavailable()` returns near the top of this script.
+# Defining these helpers further down made the trap call an undefined function on those paths,
+# which exits 127 and was reported by the main-gate harness as a wrapper failure.
+_dc_restore_perms() {
+	[ -n "${DC_MODE_CACHE:-}" ] && [ -n "${CACHE_ABS:-}" ] && chmod -R "$DC_MODE_CACHE" "$CACHE_ABS" 2>/dev/null || true
+	[ -n "${DC_MODE_OUT:-}" ] && [ -n "${OUTDIR:-}" ] && chmod -R "$DC_MODE_OUT" "$OUTDIR" 2>/dev/null || true
+	return 0
+}
+
+cleanup_secret() {
+	[ -n "$PROPDIR" ] && rm -rf "$PROPDIR" 2>/dev/null || true
+	_dc_restore_perms
+}
 trap cleanup_secret EXIT INT TERM
 
 unavailable() { echo "[sentinel-shield] dependency-check unavailable: $1 (no report written)." >&2; exit 0; }
@@ -79,18 +102,24 @@ TO=$(timeout_prefix)
 # v0.1.29: the file MUST be readable by the Dependency-Check CONTAINER, which runs as a different
 # UID than the host. A 0600 file in a 0700 dir is unreadable inside the container on Linux Docker/CI
 # (`FileNotFoundException ... Permission denied`) — that is why DC never ran in the v0.1.28 CI run.
-# We relax to a world-readable file in a traversable mktemp dir so the container user can read it.
-# The key stays OFF the command line / logs / report / commits; the only relaxation is that the key
-# is local-readable for the (short) life of an EPHEMERAL temp dir that is removed on exit (trap).
+# The key file is 0600 inside a 0700 mktemp dir and is NEVER relaxed: the container is run as
+# the HOST user (--user "$(id -u):$(id -g)"), so it can read the mount without the file being
+# readable by every other local user. The key stays OFF the command line / logs / report /
+# commits, and the temp dir is removed on exit (trap).
 DC_SECRET_ARG=""            # local-binary path: `--propertyfile <host-path>`
 DC_SECRET_MOUNT=""          # docker path: read-only bind mount `host:container:ro`
 DC_SECRET_CONTAINER_ARG=""  # docker path: `--propertyfile <container-path>`
 if [ -n "$NVD_API_KEY_VALUE" ]; then
 	PROPDIR=$(mktemp -d 2>/dev/null) || unavailable "could not create temp dir for the NVD API key"
+	# 0600 under a 0700 dir. This previously relaxed to 755/644 so a DIFFERENT container UID
+	# could read it — publishing a live credential to every local user for the duration of a
+	# documented "slow, hundreds of MB" NVD download. The container is instead run as the
+	# HOST user (--user below), so the default private mode is sufficient and no other user
+	# on the machine can read the key.
+	umask 077
 	printf 'nvd.api.key=%s\n' "$NVD_API_KEY_VALUE" > "$PROPDIR/dependency-check.properties"
-	# Container-readable (different UID): traversable dir + readable file. Ephemeral, removed on exit.
-	chmod 755 "$PROPDIR"
-	chmod 644 "$PROPDIR/dependency-check.properties"
+	chmod 700 "$PROPDIR"
+	chmod 600 "$PROPDIR/dependency-check.properties"
 	DC_SECRET_ARG="--propertyfile $PROPDIR/dependency-check.properties"
 	DC_SECRET_MOUNT="$PROPDIR:/ss-secret:ro"
 	DC_SECRET_CONTAINER_ARG="--propertyfile /ss-secret/dependency-check.properties"
@@ -114,9 +143,24 @@ elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	# or lock the H2 database — it fails with "Unable to obtain an exclusive lock on the H2 database"
 	# / "No documents exist" (the v0.1.29/30 CI failure) even on a fresh cache. Make both dirs
 	# container-writable (NVD data + reports are not secret; the key lives only in the propertyfile).
-	chmod -R a+rwX "$CACHE_ABS" "$OUTDIR" 2>/dev/null || true
+	# The container needs write access to the bind-mounted cache and report dirs. Two things
+	# changed here:
+	#   * it runs as the HOST user (--user below), so no permission relaxation is needed for
+	#     the common case at all; and
+	#   * when a relaxation IS still applied as a fallback, the ORIGINAL modes are captured
+	#     and RESTORED on exit. The previous code left `reports/raw` world-writable
+	#     PERMANENTLY. Those reports are integrity-critical — the summary builder trusts
+	#     them — so any local user could rewrite a scanner report between the scan and the
+	#     build. "Reports are not secret" was true about confidentiality and irrelevant to
+	#     the actual risk.
+	DC_MODE_CACHE=$(_dc_mode_of "$CACHE_ABS")
+	DC_MODE_OUT=$(_dc_mode_of "$OUTDIR")
+	if [ "${SENTINEL_SHIELD_DC_RELAX_PERMS:-0}" = "1" ]; then
+		chmod -R a+rwX "$CACHE_ABS" "$OUTDIR" 2>/dev/null || true
+	fi
 	# shellcheck disable=SC2086
-	$TO docker run --rm -v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" \
+	$TO docker run --rm --user "$(id -u):$(id -g)" \
+		-v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" \
 		${DC_SECRET_MOUNT:+-v} ${DC_SECRET_MOUNT:+$DC_SECRET_MOUNT} "$IMAGE" \
 		--scan /src --format JSON --out /report/"$(basename "$OUT")" --data /usr/share/dependency-check/data $DC_SECRET_CONTAINER_ARG || rc=$?
 else
