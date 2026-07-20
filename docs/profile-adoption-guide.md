@@ -114,7 +114,7 @@ shapes in [`raw-report-contract.md`](raw-report-contract.md). Per profile:
 
 ## 65 — Profile support matrix
 
-Eight manifests ship (six single-stack + two combinations). "Install command" uses
+Nine manifests ship (seven single-stack + two combinations). "Install command" uses
 `scripts/install-baseline.sh --profile <name>`.
 
 | Profile (`--profile`) | Manifest | Stacks | Project-local config installed | Combination? |

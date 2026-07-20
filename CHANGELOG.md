@@ -71,6 +71,33 @@ New: `tests/prod/268-documentation-accuracy.sh` asserts that no doc claims a liv
 cannot run, that a zero-tool profile is marked non-operative, that the SHA-pinning claims match
 the workflows, that no doc pins actions for a deleted workflow, that the support policy tracks
 the current release, and that no stale literal gate count is asserted.
+### Fixed — documentation reference integrity
+
+- **Documented release commands failed outright.** `docs/release-provenance.md` and
+  `docs/production-release-runbook.md` passed `evidence/releases/2.0.0-beta.2.json`; the real
+  file is `v2.0.0-beta.2.json`, and `generate-release-manifest.sh` **exits 2** on a missing
+  evidence file. Copy-pasting the documented procedure did not work.
+- **`RELEASE-GATES.md` contradicted itself** on `missing_sbom` in strict — one table blocking,
+  the other report-only, under a line asserting the two are kept consistent. Verified against
+  the resolver (`FAIL_ON_MISSING_SBOM=true` in strict); the second table was wrong.
+- **"Eight manifests ship"** in three docs; nine do (seven single-stack + two combinations).
+- **`strict-regulated-execution.md` arithmetic never reconciled** — "baseline blocks 13" while
+  its own list enumerated 9 additions. Replaced with counts verified against the resolver:
+  report-only 3, baseline 16, strict 32, regulated 40.
+- **`profile-compatibility.md` said php-library has no deptrac/psalm**; the manifest declares
+  both. This matters — skipping `deptrac.yaml` raises `missing_architecture_evidence`, which
+  blocks in strict/regulated.
+- **`severity-normalization.md` described parsing that does not happen**: Dependency-Check was
+  documented as CVSS-bucketing when the collector does an exact `.severity` **string** match
+  (so a non-standard label is not bucketed), and `dast_findings` was described as a raw finding
+  count when ZAP filters `riskcode >= 2` and Nuclei keeps critical/high/medium — so
+  `dast_findings: 0` means "no Medium+ finding", not "no findings".
+- **`v2-merge-commit-ci-evidence.md` asserted in the present tense** that v1.9.2 is the latest
+  supported tag, inside a frozen evidence record cited by `product-status.md` as current.
+
+New: `tests/prod/271-doc-reference-integrity.sh` — every documented evidence **input** path
+exists, documented manifest counts match the filesystem, the gate tables agree with the
+resolver, and no doc describes parsing the collectors do not perform. Verified falsifiable.
 
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 

@@ -252,8 +252,8 @@ A ✅ means the condition **blocks** (fails the gate). A ⚠️ means **report o
 | Test failures | ✅² | ✅ | ✅ | ✅ |
 | Unsafe Docker pattern | ⚠️ | ✅ new-only | ✅ | ✅ |
 | Unsafe GitHub Actions pattern | ⚠️ | ✅ new-only | ✅ | ✅ |
-| Missing SBOM | — | — | ⚠️ | ✅ |
-| Missing release evidence | — | — | ⚠️ | ✅ |
+| Missing SBOM | — | — | ✅ | ✅ |
+| Missing release evidence | — | — | ⚠️ | ✅ |  <!-- verified: strict resolves FAIL_ON_MISSING_RELEASE_EVIDENCE=false -->
 | Exception without owner/expiry/approval | ⚠️ | ✅ | ✅ | ✅ |
 | Missing rollback plan (high-risk change) | — | ⚠️ | ✅ | ✅ |
 | Missing security review (high-risk change) | — | ⚠️ | ✅ | ✅ |

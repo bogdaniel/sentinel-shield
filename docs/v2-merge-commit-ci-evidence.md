@@ -185,7 +185,7 @@ filesystem, security-summary, self-tests, workflow-lint, and the release gate.
   scope, which this candidate does not claim.
 - **Pre-release, not stable.** `v2.0.0-beta.1` is published as a GitHub pre-release
   (engine-only scope), superseding the `v2.0.0-alpha.1` candidate; it is **not** stable
-  and **not** the latest release. The latest stable, supported tag remains `v1.9.2`.
+  and **not** the latest release. At the time this evidence was captured the latest stable tag was `v1.9.2`. That is a HISTORICAL statement — this document is a frozen evidence record, not a status page. See [`product-status.md`](product-status.md) for current status; `v2.0.1` is the latest published release.
 
 ## Relationship to release evidence
 

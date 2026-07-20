@@ -40,7 +40,7 @@ WT=.   # repo root
 scripts/authorize-production-release.sh prepare \
   --version 2.0.0 --stage ga --scope engine-only \
   --source-commit <40hex> --tag v2.0.0 \
-  --evidence evidence/releases/2.0.0.json --manifest release/2.0.0-manifest.json \
+  --evidence evidence/releases/v2.0.0.json --manifest release/2.0.0-manifest.json \
   --artifacts release/2.0.0-artifacts.json --security-acceptance release/2.0.0-acceptance.json \
   --compat-matrix release/2.0.0-compat.json --adopter-scorecard release/2.0.0-scorecard.json \
   --upgrade-validation release/2.0.0-upgrade.json --rollback-validation release/2.0.0-rollback.json \

@@ -6,7 +6,7 @@ expected to produce, and the per-stage tool lists (`recommended_*_tools`, added 
 v0.1.22). This is descriptive — it reports what the manifests in `profiles/` actually
 declare. It does not change any gate.
 
-> **Scope honesty.** Eight manifests ship today: the single-stack profiles
+> **Scope honesty.** Nine manifests ship today: the single-stack profiles
 > **laravel, symfony, node, react, docker, php-library** and the combinations
 > **laravel-react-docker** and **node-react**. Stacks without a manifest (Go, Python,
 > Rust, …) are still **not** covered — onboarding for those is not solved.
@@ -139,7 +139,7 @@ Each profile's tool lists are verified against the stack it targets:
   `php-style` runner or its raw report, so neither appears in the tool lists above —
   listing them would over-claim what the profile actually runs.
 - **php-library** is framework-free PHP: `php-syntax`, `phpstan` (generic, not Larastan),
-  `composer-audit`, `gitleaks`, `semgrep`. No deptrac/psalm/Docker assumptions.
+  `composer-audit`, `gitleaks`, `semgrep`. It ALSO declares `deptrac` and `psalm` (both `recommended`) plus `php-arkitect` / `php-architecture-tests` — an earlier revision of this line denied both, which the manifest contradicts and which matters: skipping `deptrac.yaml` raises `missing_architecture_evidence`, and that BLOCKS in strict/regulated. No Docker assumptions is still accurate.
 - **node** / **react** / **node-react**: `npm-audit`, `eslint`, `typescript`, `tests`,
   `gitleaks`, `semgrep`. `react`/`node-react` add `.semgrepignore` excluding build/dist;
   `node` (library) installs no `.semgrepignore`.

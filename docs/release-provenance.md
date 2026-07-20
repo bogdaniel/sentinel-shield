@@ -133,10 +133,10 @@ in a different tool environment is legitimately different).
    manifest and the actual repo/evidence state.
 
 ```sh
-sh scripts/generate-release-manifest.sh --evidence evidence/releases/2.0.0-beta.2.json \
+sh scripts/generate-release-manifest.sh --evidence evidence/releases/v2.0.0-beta.2.json \
   --artifacts /tmp/artifact-verification.json --output /tmp/release-manifest.json
 sh scripts/verify-release-manifest.sh --manifest /tmp/release-manifest.json \
-  --evidence evidence/releases/2.0.0-beta.2.json
+  --evidence evidence/releases/v2.0.0-beta.2.json
 ```
 
 Exit codes: generate `0`/`2`/`3`; verify `0` verified, `1` tamper/drift, `2` malformed, `3`
@@ -164,10 +164,10 @@ planner that prints the exact target it would tag.
 
 ```sh
 # Plan (read-only) — prints the exact target, creates nothing:
-sh scripts/finalize-release-evidence.sh --evidence evidence/releases/2.0.0-beta.2.json \
+sh scripts/finalize-release-evidence.sh --evidence evidence/releases/v2.0.0-beta.2.json \
   --mode metadata-tag --tag v2.0.0-beta.2
 # Create the tag (explicit):
-sh scripts/finalize-release-evidence.sh --evidence evidence/releases/2.0.0-beta.2.json \
+sh scripts/finalize-release-evidence.sh --evidence evidence/releases/v2.0.0-beta.2.json \
   --mode metadata-tag --tag v2.0.0-beta.2 --execute
 ```
 
