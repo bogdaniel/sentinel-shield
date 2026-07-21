@@ -27,7 +27,7 @@ plus count keys that are **not** CVSS-graded: `iac_violations`, `architecture_vi
 | Scanner | Mapping | Caveat |
 |---|---|---|
 | composer audit / npm audit | native severity → `*_vulnerabilities` (npm `MODERATE`→medium) | npm online analyzer may rate-limit (partial) |
-| **OWASP Dependency-Check** | CVSS bucket → `critical/high/medium` | coarse; CVSS→bucket best-effort |
+| **OWASP Dependency-Check** | exact `.severity` STRING match → `critical/high/medium` | **no CVSS score is parsed** — the collector matches the severity label verbatim, so a non-standard label (e.g. from RetireJS) is not bucketed. An earlier revision described CVSS bucketing that does not exist. |
 | Trivy (fs/image) | native → `*_vulnerabilities` | fs-mode is the validated path |
 | Grype | native → `critical/high/medium` | severity-mapped from match severity |
 | OSV-Scanner | **all → `high`** unless a normalized `{critical,high,medium}` is supplied | coarse — triage per project |
@@ -37,7 +37,7 @@ plus count keys that are **not** CVSS-graded: `iac_violations`, `architecture_vi
 | **Terrascan** | violation count → `iac_violations` | **count, not graded**; same IaC maturity caveat |
 | **Conftest** | failure count → `iac_violations` | **count, not graded**; same IaC maturity caveat |
 | Deptrac | violation count → `architecture_violations` | **binary** severity (count), not graded |
-| ZAP / Nuclei | finding count → `dast_findings` | manual/non-default; never auto-run |
+| ZAP / Nuclei | **filtered** finding count → `dast_findings` | ZAP counts `riskcode >= 2`; Nuclei keeps `critical/high/medium` only. So `dast_findings: 0` means "no Medium+ finding", NOT "no findings". Manual/non-default; never auto-run. |
 | Claude Code review / Kuzushi | finding count → `ai_review_findings` | **non-gating**, non-deterministic |
 
 ## Unknown / unmapped severity

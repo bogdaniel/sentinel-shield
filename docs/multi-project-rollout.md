@@ -81,7 +81,7 @@ To select a profile for a project:
    ([`profile-compatibility.md`](profile-compatibility.md#tool-list-stack-correctness-notes-tasks-41-45)).
 4. **Pass the result explicitly:** `install-baseline.sh --target <project> --profile <name>`.
 
-Shipped profiles today (eight manifests: six single-stack + two combinations):
+Shipped profiles today (nine manifests: seven single-stack + two combinations):
 
 | `--profile` | Use when the repo ships… |
 | --- | --- |

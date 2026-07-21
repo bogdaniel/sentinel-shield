@@ -251,7 +251,7 @@ Blocking gate count and the gates each mode adds over the previous tier (from
 | Never gating by default | ai_review_findings | ai_review_findings | ai_review_findings | ai_review_findings (opt-in only) |
 | Intent | legacy visibility | migration: no new high-risk debt | production security + quality + SBOM | compliance: evidence + DAST + repo health |
 
-(Baseline blocks 13: the 2 always-on plus the 11 it adds. Strict adds 5 → 18. Regulated
+(Counts verified against `resolve-gates.sh` on this revision: report-only blocks 3, baseline 16, strict 32, regulated 40. An earlier revision said "baseline blocks 13" while its own list enumerated 9 additions — the arithmetic never reconciled. Regulated
 adds 5 → 23. `ai_review_findings` is the only gate never on by default.)
 
 ## 100 — Note for release-gates docs
