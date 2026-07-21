@@ -1,5 +1,21 @@
 # Install / Sync Consumer-Safety Guide (v0.1.25)
 
+> ## CORRECTION (audit)
+>
+> **The recovery advice below was actively wrong.** For "Partial write (interrupted)" it said
+> to "re-run dry-run … then re-apply" — but `tx_detect_stale` refuses to mutate and **exits 4**
+> while a prior operation lock exists. Following the documented procedure fails. Use
+> `scripts/recover-operation.sh` first; see [`recovery.md`](recovery.md).
+>
+> The "Honesty banner" below was also inaccurate — it claimed the scripts take no backup and
+> that manifest modes were the only safety. `install-baseline.sh`, `sync-baseline.sh` and
+> `migrate-v1.sh` all use `scripts/lib/transaction.sh` (12 / 12 / 9 call sites): an operation
+> lock, a per-file snapshot taken **before** each write (`tx_install_file`), rollback on
+> failure, and `scripts/recover-operation.sh` for a stale lock. **The banner has now been
+> rewritten** to describe that transaction accurately, so this note is history rather than an
+> outstanding contradiction.
+
+
 Operator-facing safety playbook for adopting and upgrading Sentinel Shield in a consuming
 project: rollback recipes, the self-tests the captain should wire, safe-branch and PR workflow,
 version upgrades and pinning, multi-project rollout, and failure recovery.
@@ -10,19 +26,27 @@ Companion to [`install-sync-guide.md`](install-sync-guide.md),
 [`install-sync-status.md`](install-sync-status.md), and the
 [`managed-file-inventory.md`](managed-file-inventory.md).
 
-> **Honesty banner — read this first.** As of v0.1.25 the install/sync scripts implement their
-> safety purely through **manifest modes + a hard-coded protection list** (see the inventory).
-> They do **NOT**:
+> **Honesty banner — read this first.** The install/sync scripts implement their safety
+> through **manifest modes + a hard-coded protection list** (see the inventory) **and a
+> file-snapshot transaction** (`scripts/lib/transaction.sh`, sourced by
+> `install-baseline.sh`), which copies each managed file before overwriting it and restores
+> it if the operation fails partway.
+>
+> They still do **NOT**:
 > - check whether the target git working tree is clean (no dirty-tree guard),
-> - take any backup of files before overwriting managed files with `--force`,
 > - detect or special-case a pre-existing `.github/workflows/sentinel-shield.yml` collision
 >   beyond the normal managed-mode rules,
 > - run any git command against the target at all.
 >
-> Consequently **your safety net is git in the consuming project**, plus running scripts
-> dry-run first. Every rollback recipe below relies on the consuming project being a git repo
-> with your work committed before you `--apply`. This guide tells you to commit-first precisely
-> because the scripts do not protect you from a dirty tree.
+> So the transaction protects you from a **half-applied install**; it does not protect you
+> from a **dirty tree**, because it only snapshots the files it is about to manage. Anything
+> uncommitted elsewhere in your project is still yours to protect. Keep committing before
+> you `--apply` and keep running dry-run first — the rollback recipes below still assume the
+> consuming project is a git repo with your work committed.
+>
+> An earlier revision of this banner said the scripts take **no** backup at all and that git
+> was your only net. That predates the transaction layer and was wrong; an operator following
+> it would have skipped a recovery path that exists.
 
 ---
 

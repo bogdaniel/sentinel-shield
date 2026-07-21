@@ -24,6 +24,12 @@
 
 ## GitHub-maintained actions (`actions/*`, `github/*`)
 
+> **HISTORICAL — superseded.** The table(s) in this section are a point-in-time record and
+> are **not enforced**: no audit reads this document. The authoritative inventory is
+> ["Regenerated from the workflows (audit)"](#regenerated-from-the-workflows-audit)
+> below, which is generated from the current tree. Do not copy pins from here.
+
+
 | Action | Pinned SHA | Version | Used in |
 | --- | --- | --- | --- |
 | `actions/cache` | `0057852bfaa89a56745cba8c7296529d2fc39830` | v4 | sentinel-shield-dependency-check.yml, sentinel-shield-scheduled.yml (templates) |
@@ -62,3 +68,37 @@ explicit per-job `timeout-minutes`, a workflow-level `concurrency` group, and
 `if-no-files-found` on every `actions/upload-artifact` step. See
 `schemas/workflow-runtime-audit.schema.json` for the report contract and
 `tests/prod/220-workflow-runtime-audit.sh` for the positive/negative coverage.
+
+## Regenerated from the workflows (audit)
+
+The table(s) above were **stale and are not enforced**: neither
+`scripts/audits/audit-github-actions-pins.sh` nor `scripts/audits/workflow-runtime-audit.sh`
+ever reads this document — both inspect the workflows directly. Several documented SHAs
+appeared in no workflow, and several real pins were undocumented, while the header claimed the
+list was "asserted by two fail-closed gates". Treat the workflows as the source of truth.
+
+The following is generated from the current tree (18 pinned `uses:` refs, deduplicated):
+
+| Action | Pinned SHA |
+| --- | --- |
+| `actions/cache` | `0057852bfaa89a56745cba8c7296529d2fc39830` |
+| `actions/checkout` | `34e114876b0b11c390a56381ad16ebd13914f8d5` |
+| `actions/checkout` | `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` |
+| `actions/download-artifact` | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
+| `actions/setup-node` | `48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` |
+| `actions/setup-node` | `49933ea5288caeca8642d1e84afbd3f7d6820020` |
+| `actions/upload-artifact` | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| `actions/upload-artifact` | `ea165f8d65b6e75b540449e92b4886f43607fa02` |
+| `anchore/sbom-action` | `e22c389904149dbc22b58101806040fa8d37a610` |
+| `anchore/scan-action` | `e1165082ffb1fe366ebaf02d8526e7c4989ea9d2` |
+| `aquasecurity/trivy-action` | `ed142fd0673e97e23eac54620cfb913e5ce36c25` |
+| `github/codeql-action/analyze` | `54f647b7e1bb85c95cddabcd46b0c578ec92bc1a` |
+| `github/codeql-action/autobuild` | `8aad20d150bbac5944a9f9d289da16a4b0d87c1e` |
+| `github/codeql-action/init` | `54f647b7e1bb85c95cddabcd46b0c578ec92bc1a` |
+| `gitleaks/gitleaks-action` | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` |
+| `google/osv-scanner-action/osv-scanner-action` | `9a498708959aeaef5ef730655706c5a1df1edbc2` |
+| `shivammathur/setup-php` | `f3e473d116dcccaddc5834248c87452386958240` |
+| `zizmorcore/zizmor-action` | `192e21d79ab29983730a13d1382995c2307fbcaa` |
+
+**Verified:** every `uses:` line in `.github/workflows/` and `templates/workflows/` — 126 of
+126 — is pinned to a full 40-hex commit SHA.

@@ -315,3 +315,28 @@ THEN (every path):
 For the YAML override scenarios behind each mode (and DAST / AI opt-ins), see the example
 `profile.yaml` files in [`examples/profiles/`](examples/profiles/) and the resolver behaviour in
 [`gate-resolution.md`](gate-resolution.md).
+
+## The `docker` profile
+
+`profiles/docker/profile.manifest.json` declares a real `tools` map and resolves **13 tools**:
+
+```sh
+$ sh scripts/resolve-effective-profile.sh --profile docker --format json | jq '.tools|length'
+13
+```
+
+Policies follow **validated maturity** ([`scanner-maturity-policy.md`](scanner-maturity-policy.md)),
+not aspiration:
+
+| Policy | Tools | Why |
+| --- | --- | --- |
+| `required` | `hadolint`, `docker-base-digest`, `gitleaks`, `actionlint`, `zizmor`, `github-actions-pins`, `trivy-fs`, `syft`, `grype` | run from Sentinel Shield itself, or live-validated |
+| `recommended` | `checkov`, `terrascan`, `conftest` | **ci-validated (evidence-fixture) only** — requiring them would assert live IaC validation this project has not performed |
+| `optional` | `dockle` | live-validated, but needs a built image (`$SENTINEL_SHIELD_IMAGE`) a consumer may not produce |
+
+Nine tools are gate-enforced, so `required_tool_failures` fires when their evidence is absent.
+
+> **Previously this profile resolved ZERO tools** — it declared no `tools` map and no `extends`,
+> so every scanner these docs associated with it was never required, never run and never gated,
+> and `required_tool_failures` could not fire at all. Because `hardened-enterprise` **extends**
+> `docker`, that profile silently had no container or IaC coverage either.

@@ -14,6 +14,67 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — false claims and a non-operative profile (documentation accuracy)
+
+Docs asserting **more validation than the engine performs**, in the file set whose entire
+purpose is honest status reporting. Every claim below was verified against the code before
+being changed, and `tests/prod/268-documentation-accuracy.sh` now guards the class
+mechanically — nothing checked these before.
+
+- **`product-status.md` claimed three consumer rows were `yes (live)`** — "real lockfile,
+  `npm ci`, mutations caught, byte-for-byte rollback". The live tier is gated on
+  `SS_CONSUMER_LIVE=1` and **nothing in the repository sets it**, so the CI job labelled
+  "Consumer validation (BLOCKING)" runs the structural tier and emits `skip/LIVE_UNAVAILABLE`.
+  The same file already downgraded the php-library row for exactly this condition — the
+  standard was applied unevenly, in favour of the flattering rows. Downgraded to
+  `structural only`.
+- **The `docker` profile resolved ZERO tools — now 13.** It declared no `tools` map and no
+  `extends`, so `hadolint`, `docker-base-digest`, `trivy-fs`, `dockle`, `checkov`, `syft` and
+  `grype` were never required, never run and never gated, and `required_tool_failures` could not
+  fire. Worse than the docs suggested: `hardened-enterprise` **extends** `docker`, so the
+  maximum-hardening profile had no container or IaC coverage either (52 tools -> 59 now).
+  A real `tools` map is wired, with policies assigned by **validated maturity**
+  (`docs/scanner-maturity-policy.md`) rather than aspiration:
+  `required` for the nine that run from Sentinel Shield itself or are live-validated
+  (hadolint, docker-base-digest, gitleaks, actionlint, zizmor, github-actions-pins, trivy-fs,
+  syft, grype); `recommended` for Checkov/Terrascan/Conftest, which are **ci-validated against
+  evidence fixtures only** — requiring them would assert live IaC validation this project has
+  not performed; `optional` for Dockle, which needs a built image (`$SENTINEL_SHIELD_IMAGE`).
+  Nine tools are gate-enforced, verified end-to-end: `required_tool_failures` is 9 with no
+  reports and 0 with them.
+- **`install-sync-consumer-safety.md` was built on a false premise** — ~400 lines asserting the
+  scripts take "no backup" and have "no script-side backup or transaction". All three use
+  `lib/transaction.sh` (12/12/9 call sites): operation lock, per-file snapshot before write,
+  rollback. Worse, its documented recovery step ("re-run dry-run, then re-apply") **fails**:
+  `tx_detect_stale` exits 4 while a prior lock exists. Correction inserted at the top.
+- **Both SHA inventories were stale and unenforced.** Several documented SHAs appeared in no
+  workflow and several real pins were undocumented, under a header claiming the list was
+  "asserted by two fail-closed gates" — neither audit script ever reads those docs. Both are
+  regenerated from the tree, and the dead `zaproxy/*` rows are removed (no workflow has used
+  them since `ci-zap.yml` was deleted).
+- **Two docs understated the security posture**, claiming only `ci-self-test.yml` was SHA-pinned
+  and that other templates "must be pinned before production". **126 of 126** `uses:` lines
+  across all workflows and templates are pinned.
+- **`profile-compatibility.md` said Laravel deliberately omits style analysis**; the manifest
+  declares `pint` as `required` with `missing_behavior: fail` on PR and main. An adopter
+  trusting the doc and skipping Pint would hit a required-tool failure.
+- **`support-policy.md` still presented `v2.0.0` as latest** — zero mentions of `v2.0.1`. The
+  document governing customer entitlements was a release behind.
+- **`install-sync-status.md` listed two "known gaps (not fixed)" that are fixed** — the
+  `node-react` combination and `symfony` manifests both exist.
+- **"DAST is never a default gate"** appeared in several docs; `regulated` resolves
+  `FAIL_ON_DAST_FINDINGS=true`.
+- **Three different gate counts were each called "canonical"** (12 / 24 / the resolver's actual
+  41). `resolve-gates.sh` is now named as the only authority.
+
+New: `tests/prod/268-documentation-accuracy.sh` asserts that no doc claims a live tier that
+cannot run, that a zero-tool profile is marked non-operative, that the SHA-pinning claims match
+the workflows, that no doc pins actions for a deleted workflow, that the support policy tracks
+the current release, and that no stale literal gate count is asserted.
+
+**No tag, release, manifest, or evidence bundle is produced by this change.**
+
+
 ### Added — Engineering Quality Gates (v2.1)
 
 First-class **engineering-quality** gate family, extending Sentinel Shield from a security/

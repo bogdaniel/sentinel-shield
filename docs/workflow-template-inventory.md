@@ -7,7 +7,7 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 > **Pinning status (applies to all consumer templates):** third-party actions/images carry
 > version tags or `YOUR_ORG`/TODO placeholders by default — **not digest-pinned**. The consumer
 > must pin to SHAs/digests before production ([`pinned-tool-references.md`](pinned-tool-references.md)).
-> Only `.github/workflows/ci-self-test.yml` (the engine's own gate) is SHA-pinned today.
+> ALL workflows and templates are SHA-pinned: **126 of 126** `uses:` lines across `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). An earlier revision of this line claimed only `ci-self-test.yml` was pinned.
 
 ---
 

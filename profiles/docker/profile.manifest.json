@@ -1,23 +1,244 @@
 {
   "$schema": "../profile.manifest.schema.json",
   "profile": "docker",
-  "description": "Docker-only profile: containers and IaC, no application language. Multi-Dockerfile Hadolint + base-image digest audit run from Sentinel Shield, container image + filesystem scanning (Trivy/Dockle/Checkov). Dockerfiles + hadolint.yaml are project-local. Use this when the repo ships only container/IaC assets; pair with an app-language profile (or a combination) when it also ships application code.",
-  "stacks": ["docker"],
+  "description": "Docker-only profile: containers and IaC, no application language. Dockerfile lint (Hadolint) + base-image digest audit + CI-workflow hygiene run on PR; SBOM/SCA (Syft, Grype, Trivy-fs) on main. IaC scanners (Checkov, Terrascan, Conftest) are RECOMMENDED, not required: they are ci-validated against evidence fixtures, not live-validated, and requiring them would assert validation this project has not performed. Dockle is optional because it needs a built image ($SENTINEL_SHIELD_IMAGE).",
+  "stacks": [
+    "docker"
+  ],
   "files": [
-    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
-    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
-    { "source": "profiles/docker/hadolint.yaml", "target": "hadolint.yaml", "mode": "create-if-missing" }
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/accepted-risks.example.json",
+      "target": ".sentinel-shield/accepted-risks.example.json",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "profiles/docker/hadolint.yaml",
+      "target": "hadolint.yaml",
+      "mode": "create-if-missing"
+    }
   ],
   "workflows": [
-    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+    {
+      "source": "templates/workflows/sentinel-shield.yml",
+      "target": ".github/workflows/sentinel-shield.yml",
+      "mode": "overwrite-if-force"
+    }
   ],
   "docs": [
-    { "source": "templates/pinned-ci-references.md", "target": "docs/security/pinned-ci-references.md", "mode": "create-if-missing" }
+    {
+      "source": "templates/pinned-ci-references.md",
+      "target": "docs/security/pinned-ci-references.md",
+      "mode": "create-if-missing"
+    }
   ],
-  "never_touch": [".sentinel-shield/accepted-risks.json"],
-  "required_scripts": ["scripts/run-hadolint.sh", "scripts/audit-docker-base-digest.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["hadolint", "docker-base-digest", "gitleaks", "semgrep"],
-  "recommended_main_gate_tools": ["trivy-fs", "trivy-image", "syft", "grype", "checkov"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dockle", "grype-fs"],
-  "recommended_raw_reports": ["hadolint.json", "docker-base-digest.json", "trivy.json", "checkov.json", "dockle.json", "gitleaks.json", "semgrep.json"]
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json"
+  ],
+  "required_scripts": [
+    "scripts/run-hadolint.sh",
+    "scripts/audit-docker-base-digest.sh",
+    "scripts/build-security-summary.sh",
+    "scripts/enforce-gates.sh"
+  ],
+  "recommended_pr_fast_tools": [
+    "hadolint",
+    "docker-base-digest",
+    "gitleaks",
+    "actionlint",
+    "zizmor",
+    "github-actions-pins"
+  ],
+  "recommended_main_gate_tools": [
+    "trivy-fs",
+    "syft",
+    "grype",
+    "dockle",
+    "checkov",
+    "terrascan",
+    "conftest"
+  ],
+  "recommended_scheduled_tools": [
+    "trufflehog",
+    "scorecard",
+    "dockle",
+    "grype-fs"
+  ],
+  "recommended_raw_reports": [
+    "actionlint.json",
+    "checkov.json",
+    "conftest.json",
+    "docker-base-digest.json",
+    "dockle.json",
+    "github-actions-pins.json",
+    "gitleaks.json",
+    "grype.json",
+    "hadolint.json",
+    "syft.json",
+    "terrascan.json",
+    "trivy-fs.json",
+    "zizmor.json"
+  ],
+  "tools": {
+    "hadolint": {
+      "policy": "required",
+      "category": "container",
+      "runner": "scripts/run-hadolint.sh",
+      "report": "reports/raw/hadolint.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "docker-base-digest": {
+      "policy": "required",
+      "category": "supply-chain",
+      "audit": "scripts/audit-docker-base-digest.sh",
+      "report": "reports/raw/docker-base-digest.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "gitleaks": {
+      "policy": "required",
+      "category": "secrets",
+      "report": "reports/raw/gitleaks.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "actionlint": {
+      "policy": "required",
+      "category": "ci",
+      "runner": "scripts/runners/actionlint.sh",
+      "report": "reports/raw/actionlint.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "zizmor": {
+      "policy": "required",
+      "category": "ci",
+      "runner": "scripts/runners/zizmor.sh",
+      "report": "reports/raw/zizmor.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "github-actions-pins": {
+      "policy": "required",
+      "category": "supply-chain",
+      "audit": "scripts/audit-github-actions-pins.sh",
+      "report": "reports/raw/github-actions-pins.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "trivy-fs": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/trivy-fs.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "syft": {
+      "policy": "required",
+      "category": "supply-chain",
+      "report": "reports/raw/syft.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "grype": {
+      "policy": "required",
+      "category": "sca",
+      "report": "reports/raw/grype.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "dockle": {
+      "policy": "optional",
+      "category": "container",
+      "audit": "scripts/audits/dockle.sh",
+      "report": "reports/raw/dockle.json",
+      "missing_behavior": "info",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "notes": "requires $SENTINEL_SHIELD_IMAGE (a built image ref); unavailable without one"
+    },
+    "checkov": {
+      "policy": "recommended",
+      "category": "iac",
+      "audit": "scripts/audits/checkov.sh",
+      "report": "reports/raw/checkov.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "notes": "ci-validated (evidence-fixture), not live-validated"
+    },
+    "terrascan": {
+      "policy": "recommended",
+      "category": "iac",
+      "audit": "scripts/audits/terrascan.sh",
+      "report": "reports/raw/terrascan.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "notes": "ci-validated (evidence-fixture), not live-validated"
+    },
+    "conftest": {
+      "policy": "recommended",
+      "category": "iac",
+      "audit": "scripts/audits/conftest.sh",
+      "report": "reports/raw/conftest.json",
+      "missing_behavior": "warn",
+      "execution": {
+        "pr": false,
+        "main": true,
+        "scheduled": false
+      },
+      "notes": "ci-validated (evidence-fixture), not live-validated"
+    }
+  }
 }
