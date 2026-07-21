@@ -28,6 +28,10 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 # Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2).
+# This collector has NO pre-normalized fallback in its extraction, so the recognizer
+# deliberately matches the NATIVE shape ONLY. Widening it to accept {critical:N}
+# would ACCEPT a document the extraction cannot read and report a clean 0 — a
+# fail-open strictly worse than rejecting the input.
 ss_shape_or_fail "$TOOL" "$INPUT" '(type == "array") or (type == "object" and ((.findings? | type) == "array"))' '{"secrets":0}'
 
 N=$(jq '

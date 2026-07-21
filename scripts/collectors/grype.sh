@@ -53,6 +53,12 @@ NV=$(jq -r '.descriptor.version // ""' "$INPUT" 2>/dev/null) || NV=""
 NDB=$(jq -r '.descriptor.db.built // ""' "$INPUT" 2>/dev/null) || NDB=""
 PROV=$(ss_provenance_object "$PROVENANCE" "$NV" "$NDB")
 
+# Fail closed on an unrecognized SHAPE (v2.0.2). Without this the `else` branch of the
+# extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
+# valid non-negative integers, and an unreadable report produced a clean PASS — the
+# exact fail-open this hotfix exists to close.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.matches? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+
 OV=$(jq 'if has("matches") then
 			([.matches[]?.vulnerability.severity // empty | ascii_upcase]) as $s
 			| {critical_vulnerabilities:([$s[]|select(.=="CRITICAL")]|length),

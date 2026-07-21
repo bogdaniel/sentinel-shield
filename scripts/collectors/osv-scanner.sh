@@ -47,7 +47,12 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	exit 2
 fi
 
-# Bucket by the vulnerability's OWN severity instead of collapsing everything into high.
+# Fail closed on an unrecognized SHAPE (v2.0.2, #51). Without this the `else` branch of the
+# extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
+# valid non-negative integers, and an unreadable report produced a clean PASS — the
+# exact fail-open this hotfix exists to close.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.results? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# Bucket by the vulnerability's OWN severity instead of collapsing everything into high (#52).
 #
 # Previously every OSV finding — regardless of severity — became high_vulnerabilities with
 # critical hardcoded to 0. A project that sets gates.fail_on.high_vulnerabilities:false

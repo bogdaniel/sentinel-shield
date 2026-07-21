@@ -30,6 +30,9 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 # Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2).
+# NATIVE shape only. The extraction reads `.metadata.vulnerabilities.critical`, NOT a
+# top-level `.critical`, so accepting a normalized {critical:N} document here would report
+# a clean 0 for a report claiming findings.
 ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and ((.metadata?.vulnerabilities? | type) == "object")' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 
 OV=$(jq '

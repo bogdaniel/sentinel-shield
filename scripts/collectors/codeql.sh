@@ -16,7 +16,11 @@ while [ $# -gt 0 ]; do case "$1" in
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
 # Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2, #51).
-ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and ((.runs? | type) == "array")' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# The recognizer accepts BOTH the native tool shape AND the pre-normalized
+# {critical,high,medium} object the extraction below already falls back to — an
+# earlier revision only matched the native form, turning that supported input into a
+# hard execution-error.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.runs? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 # Resolve each result's effective SARIF level, then map security-severity to a bucket (#52).
 #
 # Two defects fixed. (1) critical_vulnerabilities was hardcoded 0, so CodeQL alone could

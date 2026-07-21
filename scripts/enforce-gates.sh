@@ -306,7 +306,16 @@ case "$MODE" in
 			| if ($t | length) == 0 then "no-tools"
 			  elif ($t | any(.value | (type=="object")
 					and ((.status // "") | IN("pass","findings","fail","warn")))) then "ok"
-			  else "none" end' "$SUMMARY" 2>/dev/null || printf 'ok')
+			  else "none" end' "$SUMMARY" 2>/dev/null || printf 'unreadable')
+		# A summary this precondition cannot even PARSE is untrusted evidence, not proof of
+		# cleanliness. The fallback here used to be `printf 'ok'`, so a malformed, truncated
+		# or unreadable $SUMMARY skipped the check entirely and certified strict/regulated
+		# exactly as if evidence were present — re-opening the hole this whole change closes.
+		if [ "$_evi" = "unreadable" ]; then
+			log_error "the summary at '$SUMMARY' could not be inspected for scanner evidence."
+			log_error "  An unparseable summary is untrusted evidence, never a clean result."
+			die_cfg "refusing to certify '$MODE' from a summary that cannot be read"
+		fi
 		if [ "$_evi" = "none" ]; then
 			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): every tool in this summary reports a non-evidence status."
 			log_error "  '$SUMMARY' lists $(jq -r '(.tools // {}) | length' "$SUMMARY" 2>/dev/null) tool(s) and NOT ONE of them ran:"
