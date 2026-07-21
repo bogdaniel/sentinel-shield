@@ -46,8 +46,25 @@ _dc_mode_of() {
 # Defining these helpers further down made the trap call an undefined function on those paths,
 # which exits 127 and was reported by the main-gate harness as a wrapper failure.
 _dc_restore_perms() {
-	[ -n "${DC_MODE_CACHE:-}" ] && [ -n "${CACHE_ABS:-}" ] && chmod -R "$DC_MODE_CACHE" "$CACHE_ABS" 2>/dev/null || true
-	[ -n "${DC_MODE_OUT:-}" ] && [ -n "${OUTDIR:-}" ] && chmod -R "$DC_MODE_OUT" "$OUTDIR" 2>/dev/null || true
+	# NOT `chmod -R "$mode"`: the captured mode is the ROOT DIRECTORY's (e.g. 755), and
+	# applying it recursively would mark every FILE inside executable and overwrite its real
+	# permissions — corrupting the cache to undo a relaxation. Restore the root itself
+	# directly, then strip ONLY the `other`-write bit the relaxation added.
+	[ -n "${DC_MODE_CACHE:-}" ] && [ -n "${CACHE_ABS:-}" ] && chmod "$DC_MODE_CACHE" "$CACHE_ABS" 2>/dev/null || true
+	[ -n "${DC_MODE_OUT:-}" ] && [ -n "${OUTDIR:-}" ] && chmod "$DC_MODE_OUT" "$OUTDIR" 2>/dev/null || true
+	if [ "${SENTINEL_SHIELD_DC_RELAX_PERMS:-0}" = "1" ]; then
+		# `o-w` undoes the security-relevant part of `a+rwX`: WORLD-writable reports, which
+		# is the actual defect (the summary builder trusts reports/raw, so a world-writable
+		# report dir lets any local user forge evidence between scan and build).
+		# Residual, stated rather than hidden: per-file modes were not captured before the
+		# relaxation, so a file that was 0644 comes back 0664 — the GROUP-write bit can
+		# survive. Stripping `g-w` unconditionally would break a legitimately
+		# group-writable shared cache, which is a real CI setup. This path is opt-in and
+		# unnecessary in the default configuration (the container runs as the host user),
+		# so the narrow undo is the right trade.
+		[ -n "${CACHE_ABS:-}" ] && chmod -R o-w "$CACHE_ABS" 2>/dev/null || true
+		[ -n "${OUTDIR:-}" ] && chmod -R o-w "$OUTDIR" 2>/dev/null || true
+	fi
 	return 0
 }
 

@@ -54,11 +54,7 @@ STAGES=" "
 _ss_oifs=$IFS
 IFS='
 '
-_ss_oifs=$IFS
-IFS='
-'
 for f in $FILES; do
-	IFS=$_ss_oifs
 	IFS=$_ss_oifs
 	[ -f "$f" ] || continue
 	while IFS= read -r a; do

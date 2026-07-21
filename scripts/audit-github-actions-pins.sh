@@ -61,11 +61,7 @@ is_sha() { # 40-char lowercase hex
 _ss_oifs=$IFS
 IFS='
 '
-_ss_oifs=$IFS
-IFS='
-'
 for f in $FILES; do
-	IFS=$_ss_oifs
 	IFS=$_ss_oifs
 	[ -f "$f" ] || continue
 	_ln=0

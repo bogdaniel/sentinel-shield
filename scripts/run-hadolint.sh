@@ -132,11 +132,7 @@ i=0
 _ss_oifs=$IFS
 IFS='
 '
-_ss_oifs=$IFS
-IFS='
-'
 for f in $FILES; do
-	IFS=$_ss_oifs
 	IFS=$_ss_oifs
 	i=$((i + 1))
 	out=$(run_one "$f" || true)
