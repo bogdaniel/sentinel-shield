@@ -59,14 +59,14 @@ repo emits an honest empty/clean report, never a fabricated one.
 
 | Profile | `recommended_raw_reports` |
 |---|---|
-| laravel | `phpstan.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json`, `deptrac.json` |
-| node | `npm-audit.json`, `tests.json`, `gitleaks.json`, `semgrep.json` |
-| react | `npm-audit.json`, `tests.json`, `typescript.json`, `eslint.json`, `gitleaks.json`, `semgrep.json` |
-| docker | `hadolint.json`, `docker-base-digest.json`, `trivy.json`, `checkov.json`, `dockle.json`, `gitleaks.json`, `semgrep.json` |
-| php-library | `php-syntax.json`, `phpstan.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json` |
-| symfony | `php-syntax.json`, `phpstan.json`, `psalm.json`, `deptrac.json`, `php-style.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json` |
-| laravel-react-docker | `gitleaks.json`, `semgrep.json`, `trivy.json`, `composer-audit.json`, `npm-audit.json`, `phpstan.json`, `tests.json`, `hadolint.json`, `docker-base-digest.json`, `github-actions-pins.json`, `codeql.json`, `osv-scanner.json`, `grype.json`, `dependency-check.json`, `checkov.json`, `dockle.json`, `scorecard.json`, `trufflehog.json`, `php-syntax.json`, `php-style.json`, `psalm.json`, `zap.json`, `nuclei.json`, `ai-security-review.json`, `dependency-policy.json`, `architecture-tests.json`, `deptrac.json`, `sbom.spdx.json` |
-| node-react | `npm-audit.json`, `tests.json`, `typescript.json`, `eslint.json`, `gitleaks.json`, `semgrep.json` |
+| laravel | `phpstan.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json`, `deptrac.json`, `php-coverage.json`, `php-complexity.json`, `php-duplication.json`, `php-diff-coverage.json`, `focused-tests.json`, `debug-code.json`, `source-size.json` |
+| node | `npm-audit.json`, `tests.json`, `gitleaks.json`, `semgrep.json`, `js-coverage.json`, `js-duplication.json`, `js-diff-coverage.json`, `focused-tests.json`, `debug-code.json`, `source-size.json` |
+| react | `npm-audit.json`, `tests.json`, `typescript.json`, `eslint.json`, `gitleaks.json`, `semgrep.json`, `js-coverage.json`, `js-duplication.json`, `js-diff-coverage.json`, `focused-tests.json`, `debug-code.json`, `source-size.json` |
+| docker | `actionlint.json`, `checkov.json`, `conftest.json`, `docker-base-digest.json`, `dockle.json`, `github-actions-pins.json`, `gitleaks.json`, `grype.json`, `hadolint.json`, `syft.json`, `terrascan.json`, `trivy-fs.json`, `zizmor.json` |
+| php-library | `php-syntax.json`, `phpstan.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json`, `php-coverage.json`, `php-complexity.json`, `php-duplication.json`, `php-diff-coverage.json`, `focused-tests.json`, `debug-code.json`, `source-size.json` |
+| symfony | `php-syntax.json`, `phpstan.json`, `psalm.json`, `deptrac.json`, `php-style.json`, `tests.json`, `composer-audit.json`, `gitleaks.json`, `semgrep.json`, `php-coverage.json`, `php-complexity.json`, `php-duplication.json`, `php-diff-coverage.json`, `focused-tests.json`, `debug-code.json`, `source-size.json` |
+| laravel-react-docker | `gitleaks.json`, `semgrep.json`, `trivy.json`, `composer-audit.json`, `npm-audit.json`, `phpstan.json`, `tests.json`, `hadolint.json`, `docker-base-digest.json`, `github-actions-pins.json`, `codeql.json`, `osv-scanner.json`, `grype.json`, `dependency-check.json`, `checkov.json`, `dockle.json`, `scorecard.json`, `trufflehog.json`, `php-syntax.json`, `php-style.json`, `psalm.json`, `zap.json`, `nuclei.json`, `ai-security-review.json`, `dependency-policy.json`, `architecture-tests.json`, `deptrac.json`, `sbom.spdx.json`, `dependency-cruiser.json`, `eslint-boundaries.json`, `php-arkitect.json` |
+| node-react | `npm-audit.json`, `tests.json`, `typescript.json`, `eslint.json`, `gitleaks.json`, `semgrep.json`, `dependency-cruiser.json`, `eslint-boundaries.json` |
 
 ## 38. Workflow-template reference
 
@@ -107,14 +107,14 @@ all `create-if-missing`). `node` and `react` install no doc templates.
 
 | Profile | Stack(s) | Install command | PR-fast tools | Main-gate tools | Scheduled tools | Raw reports (count) |
 |---|---|---|---|---|---|---|
-| laravel | laravel | `install-baseline.sh --target <dir> --profile laravel` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 6 |
-| symfony | symfony, php | `install-baseline.sh --target <dir> --profile symfony` | php-syntax, phpstan, psalm, php-style, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 9 |
-| node | node | `install-baseline.sh --target <dir> --profile node` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 4 |
-| react | react, node | `install-baseline.sh --target <dir> --profile react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 6 |
-| docker | docker | `install-baseline.sh --target <dir> --profile docker` | hadolint, docker-base-digest, gitleaks, semgrep | trivy-fs, trivy-image, syft, grype, checkov | trufflehog, scorecard, dockle, grype-fs | 7 |
-| php-library | php | `install-baseline.sh --target <dir> --profile php-library` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 6 |
-| laravel-react-docker | laravel, react, node, docker | `install-baseline.sh --target <dir> --profile laravel-react-docker` | php-syntax, phpstan, composer-audit, npm-audit, eslint, typescript, hadolint, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, trivy-image, syft, grype, deptrac, checkov, dependency-check | trufflehog, scorecard, dockle, dependency-check, grype-fs | 28 |
-| node-react | node, react | `install-baseline.sh --target <dir> --profile node-react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 6 |
+| laravel | laravel | `install-baseline.sh --target <dir> --profile laravel` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 13 |
+| symfony | symfony, php | `install-baseline.sh --target <dir> --profile symfony` | php-syntax, phpstan, psalm, php-style, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 16 |
+| node | node | `install-baseline.sh --target <dir> --profile node` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 10 |
+| react | react, node | `install-baseline.sh --target <dir> --profile react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 12 |
+| docker | docker | `install-baseline.sh --target <dir> --profile docker` | hadolint, docker-base-digest, gitleaks, actionlint, zizmor, github-actions-pins | trivy-fs, syft, grype, dockle, checkov, terrascan, conftest | trufflehog, scorecard, dockle, grype-fs | 13 |
+| php-library | php | `install-baseline.sh --target <dir> --profile php-library` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 13 |
+| laravel-react-docker | laravel, react, node, docker | `install-baseline.sh --target <dir> --profile laravel-react-docker` | php-syntax, phpstan, composer-audit, npm-audit, eslint, typescript, hadolint, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, trivy-image, syft, grype, deptrac, checkov, dependency-check | trufflehog, scorecard, dockle, dependency-check, grype-fs | 31 |
+| node-react | node, react | `install-baseline.sh --target <dir> --profile node-react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype-fs | 8 |
 
 `install-baseline.sh` resolves `--profile <name>` from `profiles/<name>/profile.manifest.json`
 first, then `profiles/combinations/<name>.manifest.json`. Default profile is
@@ -132,20 +132,23 @@ Each profile's tool lists are verified against the stack it targets:
   In v0.1.23, `php-style` was added to `recommended_pr_fast_tools`: the manifest already
   declared `scripts/runners/php-style.sh` and `php-style.json`, so the tool ran but was
   missing from the PR-fast list. That gap is now closed.
-- **laravel** intentionally runs a leaner analysis set in CI — `phpstan` (Larastan via
-  `scripts/runners/laravel-phpstan.sh`) + `deptrac` (main-gate). The profile *ships*
-  `psalm.xml`/`pint.json`/`rector.php` as reference configs for manual project adoption,
-  but wires `pint` as a **required** tool (`missing_behavior: fail`, PR + main) and `psalm` as recommended — an earlier revision of this line claimed it deliberately did not wire style analysis, which the manifest contradicts; it does not wire the `php-style` runner specifically or raw reports, so they are deliberately
-  absent from the tool lists (adding them would over-claim).
+- **laravel** wires `phpstan` (Larastan via `scripts/runners/laravel-phpstan.sh`) and
+  `pint` as **required** (`missing_behavior: fail`, PR + main), plus `psalm`, `deptrac`
+  and `rector` as recommended (`missing_behavior: warn`, main-gate only) with `psalm.xml`
+  / `pint.json` / `rector.php` shipped as their configs. What it does not wire is the
+  `php-style` runner or its raw report, so neither appears in the tool lists above —
+  listing them would over-claim what the profile actually runs.
 - **php-library** is framework-free PHP: `php-syntax`, `phpstan` (generic, not Larastan),
   `composer-audit`, `gitleaks`, `semgrep`. No deptrac/psalm/Docker assumptions.
 - **node** / **react** / **node-react**: `npm-audit`, `eslint`, `typescript`, `tests`,
   `gitleaks`, `semgrep`. `react`/`node-react` add `.semgrepignore` excluding build/dist;
   `node` (library) installs no `.semgrepignore`.
-- **docker** (docker-only): `hadolint`, `docker-base-digest`, `trivy-fs`, `trivy-image`,
-  `dockle`, `checkov` spread across PR-fast / main-gate / scheduled, plus
-  `gitleaks`/`semgrep`. No application-language tools — pair with an app-language profile
-  (or the laravel-react-docker combination) for repos that also ship code.
+- **docker** (docker-only): `hadolint`, `docker-base-digest`, `gitleaks`, `actionlint`,
+  `zizmor`, `github-actions-pins` on PR-fast; `trivy-fs`, `syft`, `grype`, `dockle`,
+  `checkov`, `terrascan`, `conftest` on main-gate. The profile recommends no `semgrep` or
+  `trivy-image`: container image scanning needs a built image, which this profile does not
+  assume. No application-language tools — pair with an app-language profile (or the
+  laravel-react-docker combination) for repos that also ship code.
 - **laravel-react-docker** unions the Laravel (PHP), React/Node (JS) and Docker tool
   surfaces and is the only profile that references the split per-stage workflows.
 
@@ -176,25 +179,11 @@ policy rule implemented today). `src/Kernel.php` mirrors a real Symfony app layo
 
 ## The `docker` profile
 
-`profiles/docker/profile.manifest.json` declares a real `tools` map and resolves **13 tools**:
+`profiles/docker/profile.manifest.json` declares a real `tools` map and resolves **13 tools**,
+nine of them `required` (so `required_tool_failures` fires when their evidence is absent).
 
-```sh
-$ sh scripts/resolve-effective-profile.sh --profile docker --format json | jq '.tools|length'
-13
-```
-
-Policies follow **validated maturity** ([`scanner-maturity-policy.md`](scanner-maturity-policy.md)),
-not aspiration:
-
-| Policy | Tools | Why |
-| --- | --- | --- |
-| `required` | `hadolint`, `docker-base-digest`, `gitleaks`, `actionlint`, `zizmor`, `github-actions-pins`, `trivy-fs`, `syft`, `grype` | run from Sentinel Shield itself, or live-validated |
-| `recommended` | `checkov`, `terrascan`, `conftest` | **ci-validated (evidence-fixture) only** — requiring them would assert live IaC validation this project has not performed |
-| `optional` | `dockle` | live-validated, but needs a built image (`$SENTINEL_SHIELD_IMAGE`) a consumer may not produce |
-
-Nine tools are gate-enforced, so `required_tool_failures` fires when their evidence is absent.
-
-> **Previously this profile resolved ZERO tools** — it declared no `tools` map and no `extends`,
-> so every scanner these docs associated with it was never required, never run and never gated,
-> and `required_tool_failures` could not fire at all. Because `hardened-enterprise` **extends**
-> `docker`, that profile silently had no container or IaC coverage either.
+The per-tool policy breakdown, the maturity rationale for each bucket, and the history of
+this profile previously resolving ZERO tools are documented once in
+[`profile-adoption-guide.md`](profile-adoption-guide.md#the-docker-profile) — not repeated
+here. Two copies of the same table is exactly the unlinked duplication that lets one drift
+out of date while the other keeps asserting the old numbers.
