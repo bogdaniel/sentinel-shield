@@ -52,11 +52,38 @@ pass "TOOL_TABLE parsed ($(printf '%s\n' "$CANON_KEYS" | grep -c .) canonical ke
 # has_line <haystack> <needle> — exact whole-line match.
 has_line() { printf '%s\n' "$1" | grep -qxF "$2"; }
 
-# Tools executed by an installed workflow template rather than a profile .tools entry
-# (e.g. scorecard and trufflehog run as scheduled GitHub Actions). These are legitimately
-# recommendable: the generated CI really does run them.
+# workflow_runs <key> <manifest>
+# True when the profile's OWN installed workflow templates invoke <key> as a tool.
+#
+# The first version was `grep -rql -- "$key" templates/workflows/`, which was wrong twice
+# over: it scanned EVERY template (so a profile passed because some other profile's
+# workflow mentioned the key) and it matched any SUBSTRING (so the bogus keys `gryp`,
+# `scorecar` and `tes` all resolved against grype/scorecard/tests and the audit reported
+# a clean repo). A permissive resolver in a fail-closed audit is a false negative factory.
+#
+# Now: read the workflow sources from the manifest being checked, and require the key to
+# appear as an actual invocation token — a runner/collector script name, a raw report
+# filename, or a whole-word occurrence — not an arbitrary substring.
 workflow_runs() {
-	grep -rql -- "$1" templates/workflows/ 2>/dev/null
+	_wr_key=$1
+	_wr_manifest=$2
+	_wr_srcs=$(jq -r '[(.workflows // [])[] | .source] | .[]?' "$_wr_manifest" 2>/dev/null)
+	[ -n "$_wr_srcs" ] || return 1
+	for _wr_s in $_wr_srcs; do
+		_wr_f="templates/$_wr_s"
+		[ -f "$_wr_f" ] || _wr_f="$_wr_s"
+		[ -f "$_wr_f" ] || continue
+		# An invocation looks like `runners/<key>.sh`, `collectors/<key>.sh`,
+		# `<key>.json`, or the key as a standalone word (e.g. a `tool: <key>` input).
+		if grep -qE "(runners/${_wr_key}\.sh|collectors/${_wr_key}\.sh|[/\"' ]${_wr_key}\.json|[[:<:]]${_wr_key}[[:>:]])" "$_wr_f" 2>/dev/null; then
+			return 0
+		fi
+		# BSD/GNU word-boundary syntax differs; retry with the GNU spelling.
+		if grep -qE "(runners/${_wr_key}\.sh|collectors/${_wr_key}\.sh|[/\"' ]${_wr_key}\.json|\\b${_wr_key}\\b)" "$_wr_f" 2>/dev/null; then
+			return 0
+		fi
+	done
+	return 1
 }
 
 for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json; do
@@ -75,18 +102,42 @@ for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json;
 	done
 
 	# 2. Every RECOMMENDED key must resolve: canonical key, or a declared tool, or a tool
-	#    the installed workflow template actually runs.
+	#    the profile's own installed workflow actually runs.
 	jq -r '((.recommended_pr_fast_tools // []) + (.recommended_main_gate_tools // []) + (.recommended_scheduled_tools // []))[]' "$f" \
 	| sort -u | while read -r key; do
 		[ -n "$key" ] || continue
 		has_line "$CANON_KEYS" "$key" && continue
 		jq -e --arg k "$key" '(.tools // {}) | has($k)' "$f" >/dev/null 2>&1 && continue
-		workflow_runs "$key" >/dev/null 2>&1 && continue
+		workflow_runs "$key" "$f" && continue
 		fail "$prof: recommends '$key', which resolves to no TOOL_TABLE row, no declared tool, and no workflow step"
+	done
+
+	# 3. Every DECLARED key must resolve too — including entries with no `report`.
+	#    Check 1 only inspects report-bearing tools, so a declared key with no report was
+	#    validated by nothing at all: a bogus `.tools` entry passed the whole audit. A
+	#    declared tool is a stronger claim than a recommendation and must resolve at least
+	#    as strictly. Producers legitimately have no report of their own (they write into
+	#    another tool's, e.g. pest -> tests.json), so a declared `report`, an `alternatives`
+	#    group, or a runner on disk all count as resolution.
+	#
+	#    PRECONDITION tools are the other legitimate reportless case: `deps-install` is
+	#    `category: setup` and declares `executable: [npm, pnpm, yarn]`. Its contract is
+	#    "this executable exists", verified by run-tool-plan.sh, and build-security-summary
+	#    handles it explicitly as a "Precondition tool (no report declared)". Demanding
+	#    evidence from it would reject a tool that is working as designed.
+	jq -r '(.tools // {}) | keys[]' "$f" 2>/dev/null | while read -r key; do
+		[ -n "$key" ] || continue
+		has_line "$CANON_KEYS" "$key" && continue
+		jq -e --arg k "$key" '((.tools[$k].report // "") != "") or (((.tools[$k].alternatives // []) | length) > 0)' "$f" >/dev/null 2>&1 && continue
+		jq -e --arg k "$key" '((.tools[$k].category // "") == "setup") and (((.tools[$k].executable // []) | length) > 0)' "$f" >/dev/null 2>&1 && continue
+		[ -f "scripts/runners/$key.sh" ] && continue
+		[ -f "scripts/collectors/$key.sh" ] && continue
+		workflow_runs "$key" "$f" && continue
+		fail "$prof: declares tool '$key', which has no TOOL_TABLE row, no report, no alternatives, no runner, no collector and no workflow step"
 	done
 done
 
-# 3. Every TOOL_TABLE row must name a collector that exists on disk.
+# 4. Every TOOL_TABLE row must name a collector that exists on disk.
 printf '%s\n' "$_tbl" | awk -F'|' 'NF>=4{print $1"\t"$3}' | while IFS="$(printf '\t')" read -r key coll; do
 	[ -n "$coll" ] || continue
 	[ -f "scripts/collectors/$coll" ] && continue
