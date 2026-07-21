@@ -52,7 +52,11 @@ if ($doc === false) {
     fail('input is not valid JUnit XML');
 }
 
-$suites = $doc->getName() === 'testsuite' ? [$doc] : iterator_to_array($doc->testsuite);
+// iterator_to_array() defaults to PRESERVING KEYS, and SimpleXML uses the ELEMENT NAME as
+// the key — so every <testsuite> child collapses onto the single key "testsuite" and only
+// the LAST feature survives. A 2-feature report reported 1 spec, 3 scenarios and ZERO
+// failures: a failing Behat suite read as clean. Pass false to index numerically.
+$suites = $doc->getName() === 'testsuite' ? [$doc] : iterator_to_array($doc->testsuite, false);
 
 $specCount = 0;
 $scenarioCount = 0;

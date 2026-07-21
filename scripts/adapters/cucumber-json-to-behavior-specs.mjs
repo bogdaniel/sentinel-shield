@@ -56,7 +56,12 @@ for (const feature of doc) {
     // Backgrounds are setup, not behavior descriptions — they must not inflate the count.
     if (el?.type === 'background') continue;
     scenarioCount += 1;
-    const failed = (el?.steps ?? []).some((s) => s?.result?.status === 'failed');
+    // A scenario is a FAILURE unless every step actually passed (or was deliberately
+    // skipped). Matching only 'failed' let `undefined` (no step definition), `pending`
+    // (unimplemented) and `ambiguous` (multiple matching definitions) report as PASSING —
+    // so a feature file whose steps were never implemented read as a green suite.
+    const NOT_PASSED = new Set(['failed', 'undefined', 'pending', 'ambiguous']);
+    const failed = (el?.steps ?? []).some((s) => NOT_PASSED.has(s?.result?.status));
     if (failed) failures.push(`${feature?.name ?? 'unknown feature'}: ${el?.name ?? 'unnamed scenario'}`);
   }
 }

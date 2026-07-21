@@ -92,7 +92,9 @@ if ! jq -e '
 	def scenarios: [ .[]? | (.elements // [])[] | select((.type // "") != "background") ];
 	{ tool:"acceptance-tests", producer:"cucumber-acceptance",
 	  tests: (scenarios | length),
-	  failures: ([ scenarios[] | select(any((.steps // [])[]; (.result.status // "") == "failed")) ] | length),
+	  failures: ([ scenarios[]
+	               | select(any((.steps // [])[];
+	                   (.result.status // "") | IN("failed","undefined","pending","ambiguous"))) ] | length),
 	  skipped: ([ scenarios[] | select(all((.steps // [])[]; (.result.status // "") == "skipped")) ] | length) }
 	| . + { status: (if .failures > 0 then "findings" else "pass" end),
 	        missing_acceptance_evidence: (.tests == 0) }' "$TMP" > "$OUT" 2>/dev/null; then

@@ -210,16 +210,30 @@ done
 # the project never opted into. The consuming project can always turn it on explicitly with
 # gates.fail_on.missing_behavior_specification: true.
 APP_PROFILES="laravel symfony node react laravel-react-docker node-react hardened-enterprise"
+# LIBRARY profiles veto app-ness. `profiles:` is a free-form list, so a consumer can pair a
+# library with an overlay — `profiles: [php-library, hardened-enterprise]` — and
+# hardened-enterprise alone would have flipped this to "app", enabling BDD/ATDD gate defaults
+# against a library. That is the exact outcome this detection exists to prevent, so a declared
+# library wins over any app/overlay entry alongside it. hardened-enterprise stays in the app
+# list because on its own it IS an application profile (it extends laravel + node + docker).
+LIB_PROFILES="php-library library package sdk"
 IS_APP_PROFILE=0
+IS_LIB_PROFILE=0
 _p_list=$(get_list "profiles")
 for _pp in $_p_list; do
 	for _ap in $APP_PROFILES; do
 		[ "$_pp" = "$_ap" ] && IS_APP_PROFILE=1
 	done
+	for _lp in $LIB_PROFILES; do
+		[ "$_pp" = "$_lp" ] && IS_LIB_PROFILE=1
+	done
 done
 case "$(get_scalar 'project.type')" in
 	laravel | symfony | node | react | app | application | service | web | spa | monolith) IS_APP_PROFILE=1 ;;
+	php-library | library | package | sdk) IS_LIB_PROFILE=1 ;;
 esac
+# A declared library is never treated as an app, whatever else is listed alongside it.
+[ "$IS_LIB_PROFILE" -eq 1 ] && IS_APP_PROFILE=0
 
 # mode_description — human-readable description of an adoption mode.
 mode_description() {
