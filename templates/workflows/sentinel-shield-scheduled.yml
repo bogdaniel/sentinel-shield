@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Digest-pinned scanner images (resolved 2026-06-10; see docs/scanner-image-digest-pinning.md).
   # Templates keep readable tags by default; override with the digest pins below before production.

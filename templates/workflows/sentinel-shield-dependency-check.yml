@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v1.1.0                             # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                             # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # --- Transitive-scan knobs (v1.1.0; ADDITIVE, default OFF = committed-surface scan) -------------
   # Dependency-Check reads committed manifests (composer.json / package-lock.json) by default. To scan

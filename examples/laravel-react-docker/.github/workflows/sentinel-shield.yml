@@ -24,7 +24,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - master   # set to YOUR default branch (e.g. main) — a wrong name silently skips the gate on merges
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,7 @@ concurrency:
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO: set your Sentinel Shield repository
   # v0.1.0 is acceptable for first adoption; pin to a FULL COMMIT SHA before production.
-  SENTINEL_SHIELD_REF: v0.1.0
+  SENTINEL_SHIELD_REF: v2.0.1
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
 
 jobs:
@@ -50,11 +50,11 @@ jobs:
       criticality: ${{ steps.meta.outputs.criticality }}
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Checkout Sentinel Shield
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -84,7 +84,7 @@ jobs:
             --profile .sentinel-shield/profile.yaml --output-dir reports --format all
       - name: Upload gate resolution
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-gate-resolution
           path: |
@@ -100,11 +100,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.3"
           coverage: none
@@ -112,7 +112,7 @@ jobs:
           # Add the extensions your app needs so composer install + Larastan boot.
           extensions: intl, gd, zip, bcmath, mbstring, pdo_pgsql, redis, sockets
       - name: Checkout Sentinel Shield (PHPStan runner + test adapter)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -150,7 +150,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
       - name: Upload PHP raw reports
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-php
           path: reports/raw/*.json
@@ -163,15 +163,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
       - name: Checkout Sentinel Shield (Vitest test adapter)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -197,7 +197,7 @@ jobs:
           ls -1 reports/raw 2>/dev/null || true
       - name: Upload Node raw reports
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-node
           path: reports/raw/*.json
@@ -210,11 +210,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Checkout Sentinel Shield (for the Hadolint runner script)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -249,7 +249,7 @@ jobs:
         run: sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-github-actions-pins.sh --output reports/raw/github-actions-pins.json
       - name: Trivy filesystem (JSON)
         if: steps.detect.outputs.present == 'true'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -259,7 +259,7 @@ jobs:
         continue-on-error: true
       - name: Upload Docker raw reports
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-docker
           path: reports/raw/*.json
@@ -272,12 +272,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout Sentinel Shield (for bundled Semgrep rules)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -326,7 +326,7 @@ jobs:
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
       - name: Trivy filesystem (JSON)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -336,7 +336,7 @@ jobs:
         continue-on-error: true
       - name: SBOM (SPDX → reports/sbom.spdx.json)
         # If skipped/failed, missing_sbom stays true and strict/regulated fail later.
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
@@ -344,7 +344,7 @@ jobs:
         continue-on-error: true
       - name: Upload generic raw reports
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security
           path: reports/raw/*.json
@@ -352,7 +352,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload SBOM
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-sbom
           path: reports/sbom.spdx.json
@@ -365,11 +365,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Checkout Sentinel Shield
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -378,14 +378,14 @@ jobs:
       - name: Prepare dirs
         run: mkdir -p reports/raw
       - name: Download all raw artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
           merge-multiple: true
         continue-on-error: true
       - name: Download SBOM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sentinel-shield-sbom
           path: reports
@@ -406,7 +406,7 @@ jobs:
             --workflow "${GITHUB_WORKFLOW}"
       - name: Upload security summary
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-security-summary
           path: reports/security-summary.json
@@ -414,7 +414,7 @@ jobs:
           if-no-files-found: error
       - name: Upload merged raw artifacts
         if: always()   # evidence-only: scanner failure/findings must NOT erase raw reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-raw-security-merged
           path: reports/raw/*.json
@@ -428,11 +428,11 @@ jobs:
     # environment: production   # uncomment to require reviewers for tag/release gating
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
       - name: Checkout Sentinel Shield
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
           ref: ${{ env.SENTINEL_SHIELD_REF }}
@@ -441,7 +441,7 @@ jobs:
       - name: Prepare dirs
         run: mkdir -p reports
       - name: Download security summary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: sentinel-shield-security-summary
           path: reports
@@ -449,7 +449,7 @@ jobs:
         # v0.1.10: enforce-gates.sh matches unsafe_docker findings against the raw reports
         # (reports/raw/hadolint.json + reports/raw/docker-base-digest.json). Without them,
         # finding-scope records cannot match and the gate fails closed. Best-effort.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: sentinel-shield-raw-security*
           path: reports/raw
@@ -498,7 +498,7 @@ jobs:
       # it (it re-resolves locally only to drive select/enforce).
       - name: Upload enforcement
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-enforcement
           path: |
@@ -508,7 +508,7 @@ jobs:
           if-no-files-found: warn
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sentinel-shield-release-evidence
           path: reports/release-evidence.md

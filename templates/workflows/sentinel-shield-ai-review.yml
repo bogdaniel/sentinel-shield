@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.12                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
 jobs:
   ai-review:

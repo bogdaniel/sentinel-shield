@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Semgrep scanner image — readable tag by default; pin by digest in production (see
   # docs/scanner-image-digest-pinning.md). Override with the digest form to harden supply chain:

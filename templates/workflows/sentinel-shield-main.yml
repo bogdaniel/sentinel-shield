@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Scanner images — readable tags by default; pin by digest in production
   # (see docs/scanner-image-digest-pinning.md). Override with the digest form:
@@ -56,6 +56,8 @@ jobs:
           SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: disabled
         run: |
           mkdir -p reports/raw
+          # Syft SBOM first: grype runs in sbom mode against reports/sbom.spdx.json below.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/syft.sh reports/sbom.spdx.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/osv-scanner.sh reports/raw/osv-scanner.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true

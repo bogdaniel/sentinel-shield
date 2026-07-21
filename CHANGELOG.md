@@ -14,6 +14,37 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 2: stale template pins, unpinned example actions, config hygiene (7 findings)
+
+- **All shipped workflow templates now pin `SENTINEL_SHIELD_REF: v2.0.1`** (the latest
+  published release). The template set a consumer installs together carried four different
+  stale refs (v0.1.0 / v0.1.12 / v0.1.21 / v1.1.0) — consumers fetched an engine two major
+  versions old with none of the v2 gate fixes. The "pin to a full SHA before production"
+  guidance is retained.
+- **`templates/workflows/sentinel-shield-main.yml` grype sbom mode now has an SBOM.** The
+  template set `SENTINEL_SHIELD_GRYPE_MODE: sbom` pointing at `reports/sbom.spdx.json`, but
+  no step produced it (only a comment suggested Syft) — grype scanned nothing. A
+  `scripts/audits/syft.sh` step now writes the SBOM first.
+- **`examples/laravel-react-docker` workflow actions pinned to full commit SHAs** —
+  33 `uses:` references (checkout, upload/download-artifact, setup-node, setup-php,
+  trivy-action, sbom-action) now use the same verified SHAs as the canonical templates
+  (download-artifact v4 resolved via the GitHub API); the example previously shipped
+  floating version tags in the exact file consumers copy. The hardcoded `branches: [master]`
+  push trigger now carries a warning that a wrong default-branch name silently skips the
+  gate on merges.
+- **`.trivyignore` ceiling documented**: the plain format suppresses the three fixture CVEs
+  repo-wide (it cannot path-scope). Acceptable only while the engine has no production
+  dependency manifests; the migration path (path-scoped `.trivyignore.yaml`) is now recorded
+  in the file.
+- **`config/release-required-workflows.json`** dropped a dangling `$schema` URL pointing at
+  a schema file that does not exist (the config is validated structurally by
+  `scripts/lib/release-authz.sh`; prod test 262 still passes).
+- **CONTRIBUTING.md** semgrep layout corrected: rules live under `semgrep/app/<lang>/` and
+  `semgrep/supply-chain/`, not the documented `semgrep/<lang>/`.
+- Reviewed and **dismissed as false positive**: reported dead links in
+  `docs/maturity-audit-v024.md` are quoted defect examples inside an audit-findings table,
+  and the defects they describe were already fixed in the target docs.
+
 ### Fixed — full-repo review batch 1: fail-open policies, broken doc commands, portability (20 findings)
 
 Fixes from a systematic four-dimension review (scripts/lib, policies/schemas/config,

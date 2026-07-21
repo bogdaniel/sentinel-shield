@@ -8,6 +8,12 @@
 # updates, so these fixture-only findings are suppressed here (with justification) to keep the
 # engine fs scan meaningful for the engine's OWN dependencies.
 #
+# CEILING: the plain .trivyignore format cannot scope suppressions to a path, so these IDs
+# are suppressed REPO-WIDE. Acceptable only because the engine has no production
+# dependency manifests; if the engine ever gains a composer.lock/package-lock.json of its
+# own, migrate to a path-scoped .trivyignore.yaml (and update the ci-docker.yml
+# `trivyignores:` input) before adding any engine dependencies.
+#
 # symfony/yaml v7.0.0 (tests/fixtures/projects/symfony/composer.lock), new 2026 advisories:
 CVE-2026-45133
 CVE-2026-45304
