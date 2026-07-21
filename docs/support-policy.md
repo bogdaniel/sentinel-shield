@@ -6,8 +6,10 @@ the two carry different validation guarantees. Where this document and marketing
 prose disagree, [`product-status.md`](product-status.md) is the canonical maturity source
 and this file is the canonical support-scope source.
 
-> Version identifiers below use immutable examples. **`v2.0.1` is published as an engine-only
-> production release** (marked latest, tag target `13be630`). The **v1.x line (`v1.9.2`)
+> Version identifiers below use immutable examples.
+> **`v2.0.1` is the published engine-only production release**, marked latest, tag target `32812ed`.
+> `v2.0.0` remains an intact release, tag target `13be630`.
+> An earlier revision of this note attributed v2.0.0's tag to v2.0.1. The **v1.x line (`v1.9.2`)
 > remains supported**; framework live-validation is still excluded from the v2.0.0 scope.
 
 ## Supported lines
@@ -38,11 +40,15 @@ and this file is the canonical support-scope source.
   fixtures; framework-specific behavior in a real app that the engine does not model is
   **out of scope** until that profile is live-validated.
 
-Standalone-consumer status for v2 beta.2: **Node service + React app are live-tested**
-(real npm/pnpm/yarn); the **standalone PHP-library consumer is structural only** (its live
-composer/phpunit/phpstan/pint gates are CI-deferred SKIPs). Support follows that reality —
-issues in the live-tested paths are in scope; the PHP-library live-tooling path is
-best-effort until its gates run.
+Standalone-consumer status: **Node service, React app and the PHP-library consumer are all
+structural only.** The Node/React LIVE tier (real npm/pnpm/yarn) is gated on
+`SS_CONSUMER_LIVE=1`, which nothing in this repository sets, so CI records
+`skip/LIVE_UNAVAILABLE`; the PHP-library consumer's composer/phpunit/phpstan/pint gates are
+CI-deferred SKIPs. An earlier revision claimed Node + React were live-tested, contradicting
+[`product-status.md`](product-status.md).
+
+Support follows that reality: issues in the **structurally verified** paths are in scope;
+every live-tooling path is best-effort until its gates actually run.
 
 ## Beta support duration
 

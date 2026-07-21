@@ -89,7 +89,37 @@ if [ ! -f .github/workflows/ci-zap.yml ]; then
 	check "no doc pins zaproxy actions after ci-zap removal" "$_zap" "0"
 fi
 
-# --- the support policy must not lag the published release -------------------
+# --- a cited tag target must be the commit that tag actually points at -------
+# support-policy.md described v2.0.1 as "tag target 13be630" — that is v2.0.0's commit.
+# A wrong tag target sends someone auditing the wrong release; prose citing an immutable
+# identifier must be checked against the identifier, not merely against other prose.
+# Read the candidate lines from a here-doc, NOT a pipe: `cmd | while read` runs the loop in
+# a subshell, so `fail`'s FAILED=1 would be discarded and a mismatch would print but not fail.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+	# grep is line-based, so a claim wrapped across two lines matches nothing and the check
+	# silently covers less than it appears to. That already happened once here: the v2.0.1
+	# claim wrapped, only v2.0.0 was verified, and swapping v2.0.1's tag still "passed".
+	# Assert the claim count so under-coverage fails loudly instead of reading as clean.
+	_tagclaims=$(grep -ohE '`v[0-9]+\.[0-9]+\.[0-9]+`[^`]{0,120}tag target `[0-9a-f]{7,40}`' docs/support-policy.md 2>/dev/null | grep -c . || true)
+	case "$_tagclaims" in '' | *[!0-9]*) _tagclaims=0 ;; esac
+	check "support-policy.md states both tag-target claims on single lines (grep-visible)" "$_tagclaims" "2"
+
+	while IFS= read -r _line; do
+		[ -n "$_line" ] || continue
+		_ver=$(printf '%s' "$_line" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+		_cited=$(printf '%s' "$_line" | grep -oE 'tag target `[0-9a-f]{7,40}`' | grep -oE '[0-9a-f]{7,40}' | head -n1)
+		[ -n "$_ver" ] && [ -n "$_cited" ] || continue
+		_real=$(git rev-list -n1 "$_ver" 2>/dev/null || true)
+		if [ -z "$_real" ]; then
+			pass "support-policy.md cites $_ver (tag not present locally; not checkable)"
+		else
+			_short=$(printf '%s' "$_real" | cut -c1-"${#_cited}")
+			check "support-policy.md's tag target for $_ver matches the real tag" "$_cited" "$_short"
+		fi
+	done <<EOF
+$(grep -ohE '`v[0-9]+\.[0-9]+\.[0-9]+`[^\`]{0,120}tag target `[0-9a-f]{7,40}`' docs/support-policy.md 2>/dev/null)
+EOF
+fi
 _latest=$(grep -oE 'v2\.[0-9]+\.[0-9]+' CHANGELOG.md 2>/dev/null | head -n1 || true)
 if [ -n "$_latest" ]; then
 	if grep -q "$_latest" docs/support-policy.md 2>/dev/null; then

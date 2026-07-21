@@ -6,6 +6,12 @@ self-gate) is **pinned**. Other internal `.github/workflows/*` and all `template
 keep readable tags and are marked **template-only — must pin before production**.
 
 ## GitHub Actions (resolved SHAs)
+
+> **HISTORICAL — superseded.** The table(s) in this section are a point-in-time record and
+> are **not enforced**: no audit reads this document. The authoritative inventory is
+> ["Regenerated from the workflows (audit)"](#regenerated-from-the-workflows-audit)
+> below, which is generated from the current tree. Do not copy pins from here.
+
 | Action | Tag | Resolved SHA (2026-06-09) | Status |
 |---|---|---|---|
 | actions/checkout | v4.2.2 | `11bd71901bbe5b1630ceea73d27597364c9af683` | **pinned in ci-self-test.yml** |

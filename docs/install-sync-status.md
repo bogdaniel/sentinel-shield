@@ -34,24 +34,26 @@ stack-appropriate config). Dry-run output for each is reproducible via
 
 ## Known gaps (not fixed — TODO / roadmap)
 
-> **Two entries below are RESOLVED and kept only for history.**
-> `profiles/combinations/node-react.manifest.json` and `profiles/symfony/profile.manifest.json`
-> both EXIST; the gaps claiming they are missing are stale. The supported-profiles table above
-> lists four profiles — nine manifests ship. (Gaps about `sync-managed-block` still being an
-> alias for `overwrite-if-force` remain accurate.)
+These are the gaps that are **still open**. Resolved ones have been moved out of this list
+into "Previously listed gaps, now closed" below — a TODO that is already done reads as
+unfinished work and sends readers looking for a manifest that has shipped for months.
 
-1. **No dedicated `node-react` *combination* manifest.** Node+React installs via the `react`
-   profile today (which declares stacks `react, node`). It works but is non-obvious and does not
-   install a Node-test adapter doc set. *TODO: add `profiles/combinations/node-react.manifest.json`
-   and a fixture round-trip.* (Roadmap Phase 2.)
-2. **docker-only / php-library lack a full install→sync→resolve→enforce round-trip** in
+1. **docker-only / php-library lack a full install→sync→resolve→enforce round-trip** in
    `self-test fixtures` (only laravel-react-docker has one). They are dry-run validated only.
    *TODO: extend `run_fixtures()` to round-trip all four.* (Roadmap Phase 2.)
-3. **No install manifest for Symfony / Go / Python.** Symfony has a *config* profile
-   (`profiles/symfony/`) but no `profile.manifest.json`. *TODO if a consumer needs it.*
-4. **`sync-managed-block` mode is reserved**, not implemented — managed files are whole-file
+2. **`sync-managed-block` mode is reserved**, not implemented — managed files are whole-file
    `overwrite-if-force`, so a consumer cannot keep local edits inside a managed workflow. *TODO:
    implement an in-place marker-block updater.* (Roadmap Phase 2.)
+3. **No install manifest for Go / Python.** *TODO if a consumer needs it.*
+
+### Previously listed gaps, now closed
+
+Kept for history only. Neither is an outstanding TODO.
+
+- ~~**No dedicated `node-react` combination manifest.**~~ `profiles/combinations/node-react.manifest.json`
+  ships today; Node+React no longer installs via the `react` profile.
+- ~~**No install manifest for Symfony.**~~ `profiles/symfony/profile.manifest.json` ships today.
+  (The Go/Python half of that entry is still open and is listed above.)
 
 ## Manual steps still required after install
 

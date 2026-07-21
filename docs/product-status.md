@@ -91,7 +91,10 @@ third-party production adopter — which is **false for everything** this cycle.
 | Release evidence generator / manifest / finalization | yes | yes | yes | n/a | n/a | yes | `collect-release-evidence.sh`, `generate`/`verify-release-manifest.sh`, `finalize-release-evidence.sh` (`240`–`243`) |
 
 > **No external-production-adoption claim.** `External-production-tested = no` for every row.
-> The standalone Node/React consumers are **live-tested** (real package managers); the standalone
+> The standalone Node/React consumers are **structural only** — their LIVE tier (real package
+> managers) is gated on `SS_CONSUMER_LIVE=1`, which nothing in this repository sets, so CI
+> records `skip/LIVE_UNAVAILABLE`. An earlier revision of this line said "live-tested", which
+> contradicted the table above. The standalone
 > PHP-library consumer is **structural only** (its live tooling gates are CI-deferred). Laravel and
 > Symfony **framework live-validation is FALSE** and remains deferred (see
 > [`v2-release-scope.md`](v2-release-scope.md), [`consumer-validation-runbook.md`](consumer-validation-runbook.md)).

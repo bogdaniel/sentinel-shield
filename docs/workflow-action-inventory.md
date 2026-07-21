@@ -24,6 +24,12 @@
 
 ## GitHub-maintained actions (`actions/*`, `github/*`)
 
+> **HISTORICAL — superseded.** The table(s) in this section are a point-in-time record and
+> are **not enforced**: no audit reads this document. The authoritative inventory is
+> ["Regenerated from the workflows (audit)"](#regenerated-from-the-workflows-audit)
+> below, which is generated from the current tree. Do not copy pins from here.
+
+
 | Action | Pinned SHA | Version | Used in |
 | --- | --- | --- | --- |
 | `actions/cache` | `0057852bfaa89a56745cba8c7296529d2fc39830` | v4 | sentinel-shield-dependency-check.yml, sentinel-shield-scheduled.yml (templates) |

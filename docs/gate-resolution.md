@@ -50,7 +50,7 @@ reports:
 `profiles:` and `exceptions:` are read where useful (profiles appear in the report)
 but do not change gate resolution.
 
-The the schema-required subset of the canonical gate keys, in output order:
+The schema-required subset of the canonical gate keys, in output order:
 
 ```txt
 secrets
