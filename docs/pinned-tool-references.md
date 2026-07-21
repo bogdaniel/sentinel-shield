@@ -91,7 +91,7 @@ digest is resolved for an unvalidated image (see [`dependency-check-nightly-stra
 ## Regenerated from the workflows (audit)
 
 The table(s) above were **stale and are not enforced**: neither
-`scripts/audits/audit-github-actions-pins.sh` nor `scripts/audits/workflow-runtime-audit.sh`
+`scripts/audit-github-actions-pins.sh` nor `scripts/audits/workflow-runtime-audit.sh`
 ever reads this document — both inspect the workflows directly. Several documented SHAs
 appeared in no workflow, and several real pins were undocumented, while the header claimed the
 list was "asserted by two fail-closed gates". Treat the workflows as the source of truth.

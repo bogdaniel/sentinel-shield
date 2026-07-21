@@ -41,15 +41,17 @@ deny contains msg if {
 }
 
 # --- Insecure cookie flags ---
+# Bind the value first: `input.KEY` as a bare expression is falsy for boolean
+# false, which made the deny fail open in exactly the insecure state.
 deny contains msg if {
-	input.SESSION_SECURE_COOKIE
-	not is_truthy(val("SESSION_SECURE_COOKIE"))
+	v := input.SESSION_SECURE_COOKIE
+	not is_truthy(v)
 	msg := "SESSION_SECURE_COOKIE must be true in production"
 }
 
 deny contains msg if {
-	input.COOKIE_SECURE
-	not is_truthy(val("COOKIE_SECURE"))
+	v := input.COOKIE_SECURE
+	not is_truthy(v)
 	msg := "COOKIE_SECURE must be true in production"
 }
 

@@ -65,11 +65,13 @@ has_trigger(name) if {
 	t == name
 }
 
+# No `contains(uses, "@")` requirement: a ref-less `uses: foo/bar` resolves to
+# the default branch — the most dangerous unpinned form — and must still be flagged.
 is_third_party(uses) if {
 	not startswith(uses, "actions/")
 	not startswith(uses, "github/")
 	not startswith(uses, "./")
-	contains(uses, "@")
+	not startswith(uses, "docker://")
 }
 
 pinned_to_sha(uses) if {

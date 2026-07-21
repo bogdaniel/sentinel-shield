@@ -50,10 +50,12 @@ rules:
       sentinel_shield_category: third_party_suspicious_code
       confidence: LOW
       cwe: "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
-    pattern-either:
-      - pattern: require($X)
-      - pattern: import($X)
-    pattern-not: require("...")
+    patterns:
+      - pattern-either:
+          - pattern: require($X)
+          - pattern: import($X)
+      - pattern-not: require("...")
+      - pattern-not: import("...")
 
   - id: ss-tp-js-env-read
     languages: [javascript, typescript]

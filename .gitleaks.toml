@@ -10,6 +10,6 @@ useDefault = true
 [allowlist]
 description = "Test fixtures and example projects are intentional sample data, not engine secrets"
 paths = [
-  '''tests/.*''',
-  '''examples/.*''',
+  '''^tests/.*''',
+  '''^examples/.*''',
 ]

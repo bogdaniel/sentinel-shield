@@ -14,6 +14,62 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 1: fail-open policies, broken doc commands, portability (20 findings)
+
+Fixes from a systematic four-dimension review (scripts/lib, policies/schemas/config,
+Makefile/templates/workflows, docs-vs-code), scoped to exclude everything already
+addressed by open PRs #49–#63. Every finding was verified against the code before the
+fix, and every policy fix was proven with positive/negative OPA eval fixtures.
+
+- **`policies/opa/production-env.rego` failed OPEN on boolean cookie flags.** The deny
+  bodies guarded on `input.SESSION_SECURE_COOKIE` / `input.COOKIE_SECURE` truthiness, so a
+  JSON/YAML boolean `false` — the exact insecure state — made the guard itself fail and the
+  deny never fired. The rules now bind the value first, then check truthiness (proven:
+  boolean `false` now denies).
+- **`policies/opa/github-actions.rego` missed fully-unpinned actions.** `is_third_party`
+  required `contains(uses, "@")`, so a ref-less `uses: foo/bar` (resolves to the default
+  branch — the most dangerous form) escaped the pin-to-SHA deny. The `@` requirement is
+  removed (`docker://` images excluded); ref-less third-party actions are now denied.
+- **`policies/opa/terraform.rego`** now actually checks RDP 3389 (header claimed "SSH/RDP",
+  only 22 was checked) and catches full-range openers (`from_port 0, to_port 65535`,
+  `protocol "-1"`) that the `== 0/== 0` unrestricted-ingress rule missed.
+- **`policies/opa/docker.rego`** untagged-image deny now evaluates the tag on the image's
+  last path segment, so untagged `registry:5000/app` no longer slips through on the
+  registry-port colon.
+- **`scripts/support-bundle.sh` could leak secrets on macOS.** The redaction `sed` used the
+  GNU-only `/gi` flag; BSD sed errors and the fallback copied the file **unredacted** into
+  the bundle. Case now folded into the pattern (portable), and the fallback fails closed
+  (omits content instead of copying raw).
+- **`scripts/health.sh` network probe always failed.** The default probe URL
+  (`github.com/anthropics/.git`) is not a repository, so `git ls-remote` returned 128 and
+  `--check-network` reported `network_unreachable` even fully online. Now probes a real
+  public repo.
+- **`Makefile` `validate` masked syntax errors** — the `sh -n` loop returned only the last
+  iteration's status; a broken non-last script still exited 0. Now exits 1 on the first
+  failure (regression-tested).
+- **README/`docs/compatibility.md` compatibility-gate examples were broken**: `health.sh`
+  shown without `--policy` runs the operational report (different exit codes), and
+  `--docker`/`--require-network` without `--policy` exit 64 "unknown argument". All
+  examples now pass `--policy config/compatibility-policy.json`.
+- **`.gitleaks.toml` allowlist anchored** (`^tests/`, `^examples/`) — unanchored regexes
+  also suppressed secrets in any path containing `tests/`/`examples/`.
+- **Semgrep rules**: `ss-tp-js-dynamic-require` had a top-level `pattern-not` beside
+  `pattern-either` (schema-invalid — the exclusion was silently dropped); now nested under
+  `patterns:`, with literal `import("...")` also excluded. `\bsh \b` in the js-install-scripts
+  high-confidence regex missed `sh -c`/`sh ./x`; now `\bsh\b`. The docker `:latest` rule
+  message no longer claims to catch untagged `FROM` (it cannot, without multi-stage
+  alias false positives).
+- **Example workflow images pinned** — `examples/laravel-react-docker` ran
+  `semgrep/semgrep:latest` and `zricethezav/gitleaks:latest`, contradicting the canonical
+  template's own "never `:latest`" rule; now pinned to the template's versions.
+- **`scripts/normalize-security-summary.sh`** built JSON scalars by hand-quoting
+  (`"\"$_ver\""`); a `"`/`\` in a version/timestamp/digest produced invalid JSON and
+  aborted under `set -e`. Scalars now pass through `jq --arg`.
+- **`scripts/generate-report.sh`** generated reports pointing users at the deprecated
+  `run-local-security.sh` shim; now references `run-local-scanner-sweep.sh`.
+- Stale README tool count ("Fourteen tools") corrected to the actual 30+ collector table;
+  wrong `scripts/audits/` path to `audit-github-actions-pins.sh` fixed in two docs.
+
 ### Fixed — false claims and a non-operative profile (documentation accuracy)
 
 Docs asserting **more validation than the engine performs**, in the file set whose entire

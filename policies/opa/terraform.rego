@@ -14,6 +14,8 @@ import rego.v1
 resources := input.resource_changes
 
 # --- 0.0.0.0/0 ingress on SSH (22) / RDP (3389) ---
+admin_ports := {22: "SSH", 3389: "RDP"}
+
 deny contains msg if {
 	some r in resources
 	r.type == "aws_security_group_rule"
@@ -21,9 +23,10 @@ deny contains msg if {
 	after.type == "ingress"
 	some cidr in after.cidr_blocks
 	cidr == "0.0.0.0/0"
-	after.from_port <= 22
-	after.to_port >= 22
-	msg := sprintf("security group rule '%s' exposes SSH to 0.0.0.0/0", [r.address])
+	some port, label in admin_ports
+	after.from_port <= port
+	after.to_port >= port
+	msg := sprintf("security group rule '%s' exposes %s (%d) to 0.0.0.0/0", [r.address, label, port])
 }
 
 # --- unrestricted ingress (any port from anywhere) ---
@@ -34,10 +37,15 @@ deny contains msg if {
 	after.type == "ingress"
 	some cidr in after.cidr_blocks
 	cidr == "0.0.0.0/0"
-	after.from_port == 0
-	after.to_port == 0
+	unrestricted_range(after)
 	msg := sprintf("security group rule '%s' allows unrestricted ingress from 0.0.0.0/0", [r.address])
 }
+
+unrestricted_range(after) if { after.from_port == 0; after.to_port == 0 }
+
+unrestricted_range(after) if { after.from_port == 0; after.to_port >= 65535 }
+
+unrestricted_range(after) if { after.protocol == "-1" }
 
 # --- publicly accessible database ---
 deny contains msg if {

@@ -291,7 +291,7 @@ jobs:
         # composer/npm audit, Trivy, Syft, Gitleaks, Hadolint are unaffected.
         # Pin the image to a digest before production.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:latest \
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.165.0 \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
         continue-on-error: true
@@ -314,14 +314,14 @@ jobs:
             echo "No dependency dirs present; skipping third-party scan (collector marks unavailable)."
             exit 0
           fi
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh semgrep/semgrep:latest -c \
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh semgrep/semgrep:1.165.0 -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true
         continue-on-error: true
       - name: Gitleaks (JSON)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true

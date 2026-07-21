@@ -95,7 +95,7 @@ cat > "$OUT_FILE" <<EOF
 - Adoption mode: $MODE
 
 > This is a generated baseline report. Populate the sections below from scanner
-> output (\`scripts/run-local-security.sh\`, CI artifacts) and triage per
+> output (\`scripts/run-local-scanner-sweep.sh\`, CI artifacts) and triage per
 > \`docs/severity-policy.md\`.
 
 ## Tool availability (local)
@@ -169,7 +169,7 @@ _Score against docs/project-readiness-checklist.md._
 
 ## Next steps
 
-1. Run \`scripts/run-local-security.sh\` and \`scripts/run-php-quality.sh\` /
+1. Run \`scripts/run-local-scanner-sweep.sh\` and \`scripts/run-php-quality.sh\` /
    \`scripts/run-node-quality.sh\` and paste results into the sections above.
 2. Triage findings with \`docs/severity-policy.md\`; assign owners to critical/high.
 3. Record any accepted risk via \`policies/exceptions/accepted-risk-template.md\`.

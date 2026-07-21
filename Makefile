@@ -64,7 +64,7 @@ self-test: ## Resolve baseline + enforce the example summary (expect pass)
 
 validate: ## Syntax-check all scripts and run the self-test
 	@echo "== sh -n =="
-	@for f in scripts/*.sh scripts/lib/*.sh; do sh -n "$$f" && echo "ok: $$f"; done
+	@for f in scripts/*.sh scripts/lib/*.sh; do sh -n "$$f" || exit 1; echo "ok: $$f"; done
 	@echo "== self-test =="
 	@$(MAKE) --no-print-directory self-test
 

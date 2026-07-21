@@ -137,7 +137,7 @@ done
 : "${SENTINEL_SHIELD_HEALTH_REPORT_MAX_AGE_DAYS:=7}"      # newest report older than this => stale.
 : "${SENTINEL_SHIELD_HEALTH_REQUIRED_TOOLS:=jq git}"      # required tools (space-separated).
 : "${SENTINEL_SHIELD_HEALTH_NET_TIMEOUT:=15}"             # bounded network-probe timeout (seconds).
-: "${SENTINEL_SHIELD_HEALTH_GITHUB_URL:=https://github.com/anthropics/.git}"  # probe URL.
+: "${SENTINEL_SHIELD_HEALTH_GITHUB_URL:=https://github.com/actions/checkout.git}"  # probe URL (must be a real public repo; ls-remote returns 128 otherwise).
 
 TARGET="."
 CHECK_NETWORK=0

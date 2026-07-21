@@ -19,8 +19,9 @@ rules:
       include: ["Dockerfile", "Dockerfile.*", "*.Dockerfile"]
     severity: ERROR
     message: >
-      Base image uses :latest (or no tag). Pin to a specific version/digest for
-      reproducibility.
+      Base image uses :latest. Pin to a specific version/digest for
+      reproducibility. (Untagged FROM lines are not flagged by this rule:
+      a bare name is usually a multi-stage build alias.)
     metadata:
       category: security
       cwe: "CWE-1357: Reliance on Insufficiently Trustworthy Component"

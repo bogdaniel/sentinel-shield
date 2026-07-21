@@ -40,4 +40,4 @@ rules:
       confidence: HIGH
       cwe: "CWE-506: Embedded Malicious Code"
     patterns:
-      - pattern-regex: '"(preinstall|install|postinstall)"\s*:\s*"[^"]*(curl |wget |\bbash\b|\bsh \b|powershell|node -e|child_process|https?://)[^"]*"'
+      - pattern-regex: '"(preinstall|install|postinstall)"\s*:\s*"[^"]*(curl |wget |\bbash\b|\bsh\b|powershell|node -e|child_process|https?://)[^"]*"'

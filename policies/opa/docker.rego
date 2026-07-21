@@ -42,12 +42,15 @@ deny contains msg if {
 	msg := sprintf("service '%s' uses ':latest' image tag; pin a version/digest", [name])
 }
 
+# Tag check on the LAST path segment: `registry:5000/app` contains a colon in the
+# registry host but still has no tag.
 deny contains msg if {
 	some name
 	svc := input.services[name]
 	img := svc.image
-	not contains(img, ":")
 	not contains(img, "@sha256:")
+	parts := split(img, "/")
+	not contains(parts[count(parts) - 1], ":")
 	msg := sprintf("service '%s' image '%s' has no version tag; pin a version/digest", [name, img])
 }
 

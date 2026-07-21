@@ -137,18 +137,17 @@ while [ "$_i" -lt "$_n" ]; do
 
 	_age=$(age_days "$_dbts")
 
-	_verjson=null; [ -n "$_ver" ] && _verjson="\"$_ver\""
-	_digjson=null; [ -n "$_digest" ] && _digjson="\"$_digest\""
-	_tsjson=null; [ -n "$_dbts" ] && _tsjson="\"$_dbts\""
 	case "$_tgt" in ''|null) _tgtjson=null ;; *[!0-9]*) _tgtjson=null ;; *) _tgtjson=$_tgt ;; esac
 	case "$_age" in ''|null) _agejson=null ;; *[!0-9]*) _agejson=null ;; *) _agejson=$_age ;; esac
 
+	# Strings pass through --arg (jq escapes quotes/backslashes); empty -> null in-filter.
 	jq -n --arg n "$_name" --arg c "$_cat" --argjson app "$_app" --arg st "$_status" \
-		--argjson v "$_verjson" --argjson ts "$_tsjson" --argjson age "$_agejson" \
-		--argjson tgt "$_tgtjson" --argjson dg "$_digjson" --argjson na "$_najson" '
-		{ name:$n, category:$c, applicable:$app, status:$st, version:$v,
-		  database:{ timestamp:$ts, age_days:$age },
-		  targets_scanned:$tgt, raw_report_digest:$dg }
+		--arg v "$_ver" --arg ts "$_dbts" --argjson age "$_agejson" \
+		--argjson tgt "$_tgtjson" --arg dg "$_digest" --argjson na "$_najson" '
+		def ornull: if . == "" then null else . end;
+		{ name:$n, category:$c, applicable:$app, status:$st, version:($v|ornull),
+		  database:{ timestamp:($ts|ornull), age_days:$age },
+		  targets_scanned:$tgt, raw_report_digest:($dg|ornull) }
 		+ (if $na != null then { non_applicability:$na } else {} end)' >> "$SCAN_ND"
 	_i=$((_i + 1))
 done
