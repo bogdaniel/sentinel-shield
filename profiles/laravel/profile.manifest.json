@@ -74,7 +74,7 @@
     "trufflehog",
     "scorecard",
     "dependency-check",
-    "grype-fs"
+    "grype"
   ],
   "recommended_raw_reports": [
     "phpstan.json",

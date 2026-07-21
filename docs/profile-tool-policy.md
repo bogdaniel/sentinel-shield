@@ -340,6 +340,69 @@ and JS architecture evidence are independent. Violations SUM across producers;
 
 ---
 
+## 4c. Key resolution — what a recommendation is allowed to mean
+
+A profile may only name a tool key that resolves to evidence something can actually
+produce and something else can actually read. Enforced by
+`scripts/audits/profile-tool-integrity.sh` (suite: `tests/prod/272-profile-tool-integrity.sh`),
+which fails closed on any unresolvable key.
+
+A key resolves three ways:
+
+| resolution | meaning | example |
+| --- | --- | --- |
+| **TOOL_TABLE row** | canonical key with a raw report and a collector | `phpstan`, `gitleaks` |
+| **declared tool with a collected `report`** | a producer whose `report` filename has a TOOL_TABLE row | `pest`/`phpunit` → `tests.json` |
+| **workflow-executed** | no `.tools` entry, but an installed workflow template runs it | `scorecard`, `trufflehog` |
+
+Two consequences worth stating plainly:
+
+**A producer does not need its own collector — it needs a collected report.** `pest` and
+`phpunit` both write `tests.json`, which the `tests` collector reads. That is why
+`php-tests` (a `one-of` group over pest/phpunit) is legitimate despite having no TOOL_TABLE
+row of its own.
+
+**A report nothing collects is worse than a missing tool.** Before v2.0.2, `pint`,
+`larastan`, `php-cs-fixer`, `phpstan-symfony`, `rector` and `syft` all ran and all wrote
+reports whose filenames had no TOOL_TABLE row. Four were `missing_behavior: fail`, so the
+gate demanded the file exist — and then nothing read it. A `larastan.json` reporting 47
+type errors and a `pint.json` listing style violations produced an **all-zero summary**.
+The tools appeared to be enforced and enforced nothing.
+
+Where a producer shares an existing parser, add a TOOL_TABLE row reusing that collector
+rather than duplicating logic — the established convention
+(`trivy-fs|trivy-fs.json|trivy.sh|trivy_fs`):
+
+```text
+larastan|larastan.json|phpstan.sh|larastan
+pint|pint.json|php-style.sh|pint
+```
+
+### Advisory collectors
+
+`rector` and `syft` are collected but contribute **0** to every gated counter, by design:
+
+- **rector** proposes refactors and framework upgrades. A large count is normal mid-upgrade,
+  not a defect. Folding it into `style_violations` would fail a strict style gate for
+  routine upgrade work. Every profile wires it `missing_behavior: warn` to match.
+- **syft** inventories packages; it does not judge them. The tools that judge an SBOM
+  (`grype`, `osv-scanner`, `trivy`) have their own channels. Counting packages as findings
+  would report an ordinary dependency list as a problem.
+
+Both still enforce that their report exists and parses. Gating either would need a
+dedicated counter — channel separation is deliberate, not an oversight.
+
+### Removed keys
+
+`grype-fs` (recommended by 8 profiles) and `trivy-image` (2) resolved to nothing at all:
+no TOOL_TABLE row, no `.tools` entry, no runner, no collector, no workflow step. They named
+scanners nothing could run. `grype-fs` is replaced by the canonical `grype`; `trivy-image`
+is removed outright, since image scanning requires a built image these profiles do not
+assume. Re-adding either requires a real evidence contract, and the audit will reject them
+until one exists.
+
+---
+
 ## 5. Control-waivers (`.sentinel-shield/control-waivers.json`)
 
 A control-waiver lets a **required** tool/control be temporarily absent without

@@ -102,6 +102,38 @@ resolver, and no doc describes parsing the collectors do not perform. Verified f
 
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 
+### Fixed — profile tool keys now resolve to real evidence contracts
+
+Profiles recommended and required tools that nothing could execute, and — worse — gated the
+*presence* of reports whose *contents* nothing ever read.
+
+- **Silent fail-open closed.** `pint`, `larastan`, `php-cs-fixer`, `phpstan-symfony`,
+  `phpstan-doctrine`, `rector` and `syft` ran and wrote raw reports whose filenames had no
+  `TOOL_TABLE` row, so `build-security-summary.sh` never read them. Five were
+  `missing_behavior: fail`: the gate demanded the file exist, then ignored what was in it.
+  A `larastan.json` reporting 47 type errors together with a `pint.json` listing style
+  violations produced an **all-zero summary**. Each now has a `TOOL_TABLE` row reusing the
+  existing parser for its format (`phpstan.sh`, `php-style.sh`), matching the established
+  `trivy-fs|trivy-fs.json|trivy.sh|trivy_fs` convention. The same inputs now yield
+  `type_errors=94`, `style_violations=3`.
+- **New collectors** `rector.sh` and `syft.sh`. Both are deliberately **advisory**:
+  they enforce that the report exists and parses but contribute 0 to every gated counter.
+  Rector proposes upgrades (a large count is normal mid-upgrade, not a defect); Syft
+  inventories packages and does not judge them. Gating either needs its own counter —
+  channel separation is deliberate.
+- **Dead keys removed.** `grype-fs` (8 profiles) and `trivy-image` (2) resolved to nothing:
+  no `TOOL_TABLE` row, no `.tools` entry, no runner, no collector, no workflow step.
+  `grype-fs` → canonical `grype`; `trivy-image` removed (image scanning needs a built image
+  these profiles do not assume).
+- **New audit** `scripts/audits/profile-tool-integrity.sh` + suite
+  `tests/prod/272-profile-tool-integrity.sh` enforce that every recommended, required or
+  declared key resolves — via a `TOOL_TABLE` row, a collected `report`, or execution by an
+  installed workflow template. Reverting the `TOOL_TABLE` rows reproduces all 17 original
+  holes; the audit fails closed with exit 1.
+
+Verified NOT dead, and left alone: `scorecard`, `trufflehog`, `dependency-check` and
+`tests` are executed by the installed workflow templates rather than `.tools`, and
+`php-tests` is a legitimate `one-of` group whose members write the collected `tests.json`.
 
 ### Added — Engineering Quality Gates (v2.1)
 

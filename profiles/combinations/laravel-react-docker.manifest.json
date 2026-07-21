@@ -124,7 +124,6 @@
     "codeql",
     "osv-scanner",
     "trivy-fs",
-    "trivy-image",
     "syft",
     "grype",
     "deptrac",
@@ -139,7 +138,7 @@
     "scorecard",
     "dockle",
     "dependency-check",
-    "grype-fs"
+    "grype"
   ],
   "recommended_raw_reports": [
     "gitleaks.json",
