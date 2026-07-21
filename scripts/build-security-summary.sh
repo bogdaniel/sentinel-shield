@@ -119,6 +119,13 @@ third-party-semgrep|third-party-semgrep.json|third-party-semgrep.sh|third_party_
 codeql|codeql.json|codeql.sh|codeql
 php-syntax|php-syntax.json|php-syntax.sh|php_syntax
 php-style|php-style.json|php-style.sh|php_style
+larastan|larastan.json|phpstan.sh|larastan
+phpstan-symfony|phpstan-symfony.json|phpstan.sh|phpstan_symfony
+phpstan-doctrine|phpstan-doctrine.json|phpstan.sh|phpstan_doctrine
+pint|pint.json|php-style.sh|pint
+php-cs-fixer|php-cs-fixer.json|php-style.sh|php_cs_fixer
+rector|rector.json|rector.sh|rector
+syft|syft.json|syft.sh|syft
 osv-scanner|osv-scanner.json|osv-scanner.sh|osv_scanner
 grype|grype.json|grype.sh|grype
 dependency-check|dependency-check.json|dependency-check.sh|dependency_check

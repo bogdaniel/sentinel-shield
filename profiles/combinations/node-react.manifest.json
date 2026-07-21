@@ -2,23 +2,88 @@
   "$schema": "../profile.manifest.schema.json",
   "profile": "node-react",
   "description": "Thin-consumer baseline for a Node + React (Vite) project. npm audit, ESLint, TypeScript, Vitest/Jest test adapters, .semgrepignore (excludes build/dist). tsconfig/eslint config are project-local. Project-local risk decisions (accepted-risks.json) are NEVER created or overwritten.",
-  "stacks": ["node", "react"],
-  "extends": ["node", "react"],
+  "stacks": [
+    "node",
+    "react"
+  ],
+  "extends": [
+    "node",
+    "react"
+  ],
   "files": [
-    { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
-    { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
-    { "source": "profiles/react/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" }
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "templates/accepted-risks.example.json",
+      "target": ".sentinel-shield/accepted-risks.example.json",
+      "mode": "create-if-missing"
+    },
+    {
+      "source": "profiles/react/.semgrepignore",
+      "target": ".semgrepignore",
+      "mode": "create-if-missing"
+    }
   ],
   "workflows": [
-    { "source": "templates/workflows/sentinel-shield.yml", "target": ".github/workflows/sentinel-shield.yml", "mode": "overwrite-if-force" }
+    {
+      "source": "templates/workflows/sentinel-shield.yml",
+      "target": ".github/workflows/sentinel-shield.yml",
+      "mode": "overwrite-if-force"
+    }
   ],
   "docs": [
-    { "source": "templates/security-debt-register.md", "target": "docs/security/security-debt-register.md", "mode": "create-if-missing" }
+    {
+      "source": "templates/security-debt-register.md",
+      "target": "docs/security/security-debt-register.md",
+      "mode": "create-if-missing"
+    }
   ],
-  "never_touch": [".sentinel-shield/accepted-risks.json"],
-  "required_scripts": ["scripts/adapters/vitest-to-tests-json.mjs", "scripts/adapters/jest-to-tests-json.mjs", "scripts/runners/eslint.sh", "scripts/runners/typescript.sh", "scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["npm-audit", "eslint", "typescript", "gitleaks", "semgrep", "tests", "dependency-cruiser", "eslint-boundaries"],
-  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "grype-fs"],
-  "recommended_raw_reports": ["npm-audit.json", "tests.json", "typescript.json", "eslint.json", "gitleaks.json", "semgrep.json", "dependency-cruiser.json", "eslint-boundaries.json"]
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json"
+  ],
+  "required_scripts": [
+    "scripts/adapters/vitest-to-tests-json.mjs",
+    "scripts/adapters/jest-to-tests-json.mjs",
+    "scripts/runners/eslint.sh",
+    "scripts/runners/typescript.sh",
+    "scripts/build-security-summary.sh",
+    "scripts/enforce-gates.sh"
+  ],
+  "recommended_pr_fast_tools": [
+    "npm-audit",
+    "eslint",
+    "typescript",
+    "gitleaks",
+    "semgrep",
+    "tests",
+    "dependency-cruiser",
+    "eslint-boundaries"
+  ],
+  "recommended_main_gate_tools": [
+    "codeql",
+    "osv-scanner",
+    "trivy-fs",
+    "syft",
+    "grype",
+    "dependency-check"
+  ],
+  "recommended_scheduled_tools": [
+    "trufflehog",
+    "scorecard",
+    "dependency-check",
+    "grype"
+  ],
+  "recommended_raw_reports": [
+    "npm-audit.json",
+    "tests.json",
+    "typescript.json",
+    "eslint.json",
+    "gitleaks.json",
+    "semgrep.json",
+    "dependency-cruiser.json",
+    "eslint-boundaries.json"
+  ]
 }

@@ -183,7 +183,7 @@ sh scripts/install-baseline.sh --target /path/to/project --profile symfony --app
 **Recommended tools** (from manifest):
 - PR-fast: `php-syntax, phpstan, psalm, php-style, composer-audit, gitleaks, semgrep, tests`
 - Main-gate: `codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check`
-- Scheduled: `trufflehog, scorecard, dependency-check, grype-fs`
+- Scheduled: `trufflehog, scorecard, dependency-check, grype`
 
 **Manual steps** (mode `manual` — never auto-written; installer prints them): copy
 `profiles/symfony/{phpstan.neon, psalm.xml, deptrac.yaml, php-cs-fixer.php → .php-cs-fixer.dist.php,
@@ -204,7 +204,7 @@ sh scripts/install-baseline.sh --target /path/to/project --profile laravel --app
 **Recommended tools:**
 - PR-fast: `php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests`
 - Main-gate: `codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check`
-- Scheduled: `trufflehog, scorecard, dependency-check, grype-fs`
+- Scheduled: `trufflehog, scorecard, dependency-check, grype`
 
 **Manual steps:** copy `profiles/laravel/phpstan.neon` (Larastan) into the project (mode
 `manual`); PHPStan runs via the upstream `scripts/runners/laravel-phpstan.sh`. `phpstan.neon`
@@ -225,7 +225,7 @@ managed `.github/workflows/sentinel-shield.yml`.
 **Recommended tools:**
 - PR-fast: `npm-audit, eslint, typescript, gitleaks, semgrep, tests`
 - Main-gate: `codeql, osv-scanner, trivy-fs, syft, grype, dependency-check`
-- Scheduled: `trufflehog, scorecard, dependency-check, grype-fs`
+- Scheduled: `trufflehog, scorecard, dependency-check, grype`
 
 **Manual steps:** `tsconfig`/`eslint` config stay project-local (not installed) — keep your own.
 The Vitest/Jest adapters and ESLint/TypeScript runners are called from Sentinel Shield. For a
@@ -246,8 +246,8 @@ sh scripts/install-baseline.sh --target /path/to/project --profile docker --appl
 
 **Recommended tools:**
 - PR-fast: `hadolint, docker-base-digest, gitleaks, semgrep`
-- Main-gate: `trivy-fs, trivy-image, syft, grype, checkov`
-- Scheduled: `trufflehog, scorecard, dockle, grype-fs`
+- Main-gate: `trivy-fs, syft, grype, checkov`
+- Scheduled: `trufflehog, scorecard, dockle, grype`
 
 **Manual steps:** keep Dockerfiles project-local; multi-Dockerfile Hadolint + base-image digest
 audit run from Sentinel Shield (`scripts/run-hadolint.sh`, `scripts/audit-docker-base-digest.sh`).
@@ -269,7 +269,7 @@ sh scripts/install-baseline.sh --target /path/to/project --profile php-library -
 **Recommended tools:**
 - PR-fast: `php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests`
 - Main-gate: `codeql, osv-scanner, trivy-fs, syft, grype, dependency-check`
-- Scheduled: `trufflehog, scorecard, dependency-check, grype-fs`
+- Scheduled: `trufflehog, scorecard, dependency-check, grype`
 
 **Manual steps:** PHPStan is **generic** (not Larastan) — supply your own `phpstan.neon` tuned
 to the library; it is never overwritten. No Docker or Laravel-runner assumptions apply.
