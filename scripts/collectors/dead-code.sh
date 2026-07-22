@@ -43,7 +43,21 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-DCC=$(jq '((.dead_code_count // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+# dead_code_count is the gating count whenever .violations is absent, so it must be held to
+# the SAME fail-closed standard as .violations: `((.dead_code_count // 0) | if number...)`
+# coerced a malformed value (e.g. "abc", -1, 1.5) to 0 — read as a clean pass. Distinguish
+# ABSENT (legitimately 0, no count reported) from PRESENT-BUT-MALFORMED (untrusted -> reject).
+DCC=$(jq -r '
+	if (has("dead_code_count") | not) then "0"
+	elif ((.dead_code_count | type) == "number" and .dead_code_count >= 0 and (.dead_code_count | floor) == .dead_code_count)
+		then (.dead_code_count | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$DCC" = "invalid" ]; then
+	log_warn "$TOOL: .dead_code_count is malformed; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed dead_code_count"}' '{"dead_code_violations":0}'
+	exit 0
+fi
 # .violations wins when present and VALID. Two behaviours changed here:
 #   * a present-but-MALFORMED .violations used to fall back to .dead_code_count — so
 #     {"violations":"abc","dead_code_count":7} reported 7 violations, a number the report

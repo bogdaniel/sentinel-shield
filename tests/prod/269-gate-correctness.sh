@@ -40,6 +40,15 @@ check "dead-code: malformed .violations does not fall back to dead_code_count" \
 check "dead-code: negative .violations fails closed" "$(c dead-code.sh '{"violations":-3}')" "execution-error"
 check "dead-code: .dead_code_count is still used when .violations is ABSENT" \
 	"$(c dead-code.sh '{"dead_code_count":2}')" "findings"
+# When .violations is absent, dead_code_count IS the gating count, so it must fail closed on
+# malformed input too — coercing "abc"/-1/1.5 to 0 read as a clean pass (the same fail-open
+# the .violations checks above prevent). An ABSENT count is still a legitimate 0.
+check "dead-code: malformed .dead_code_count fails closed (no clean-pass coercion)" \
+	"$(c dead-code.sh '{"dead_code_count":"abc"}')" "execution-error"
+check "dead-code: negative .dead_code_count fails closed" \
+	"$(c dead-code.sh '{"dead_code_count":-1}')" "execution-error"
+check "dead-code: absent count is a legitimate pass (0)" \
+	"$(c dead-code.sh '{}')" "pass"
 
 # --- --strict-summary must accept the schema's own status values ------------
 # The enforcer allowed 5 values; the schema (and every v1.10+ collector) emits 10. So the
