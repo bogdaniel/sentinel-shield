@@ -119,8 +119,7 @@ _rc=0
 #   1. whole stdout is a JSON object  -> use as-is
 #   2. slice from the first '{' line to EOF (strip leading boot/deprecation noise) -> validate
 #   3. otherwise: do NOT fake — leave the report absent, keep debug artifacts.
-write_report() { # write_report <json-text>
-	printf '%s' "$1" > "$OUTPUT"
+finalize_report() { # $OUTPUT already holds the validated JSON object
 	_n=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0))' "$OUTPUT" 2>/dev/null || echo '?')
 	log_info "laravel-phpstan: wrote $OUTPUT (errors=$_n)."
 	# Clean debug artifacts on success to keep reports/raw tidy.
@@ -129,13 +128,16 @@ write_report() { # write_report <json-text>
 }
 
 if jq -e 'type == "object"' "$_raw" >/dev/null 2>&1; then
-	write_report "$(cat "$_raw")"
+	# cp the raw file verbatim — a command-substitution round-trip would strip trailing newlines.
+	cp "$_raw" "$OUTPUT"
+	finalize_report
 fi
 # Slice from the first line containing '{' to EOF, then validate.
 _sliced=$(awk 'f==0 && index($0,"{")>0 {f=1} f' "$_raw")
 if [ -n "$_sliced" ] && printf '%s' "$_sliced" | jq -e 'type == "object"' >/dev/null 2>&1; then
 	log_warn "laravel-phpstan: PHPStan stdout had leading noise; extracted the JSON object (see $_raw / $_err)."
-	write_report "$_sliced"
+	printf '%s\n' "$_sliced" > "$OUTPUT"
+	finalize_report
 fi
 
 log_warn "laravel-phpstan: PHPStan produced no valid JSON object on stdout (exit ${_rc:-?}); leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_raw, $_err."

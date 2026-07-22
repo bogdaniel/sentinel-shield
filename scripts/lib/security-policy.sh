@@ -311,7 +311,11 @@ sp_validate_waivers() {
 		  elif ($scope != "finding") then "record \($i): scope \"\($scope)\" is blanket suppression (only finding scope allowed)"
 		  elif ($emg == true and (($w.incident // "") | (type != "string") or (length == 0))) then "record \($i): emergency record missing incident reference"
 		  else empty end
-	' "$_wvf" 2>/dev/null || true)
+	' "$_wvf" 2>/dev/null) || {
+		# Fail closed: a jq evaluation crash must not be read as "no structural problems".
+		log_error "sp_validate_waivers: structural validation could not be evaluated (jq error): $_wvf"
+		return 2
+	}
 	if [ -n "$_wvbad" ]; then
 		printf '%s\n' "$_wvbad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "sp_validate_waivers: $_l"; done
 		return 2
@@ -328,7 +332,11 @@ sp_validate_waivers() {
 	fi
 
 	# Date validity + max-lifetime, per record (finite loop over a here-doc).
-	_wvrecs=$(jq -r '.risks[] | "\(.id)\t\(.created_at)\t\(.expires_at)\t\(.emergency // false)"' "$_wvf" 2>/dev/null || true)
+	_wvrecs=$(jq -r '.risks[] | "\(.id)\t\(.created_at)\t\(.expires_at)\t\(.emergency // false)"' "$_wvf" 2>/dev/null) || {
+		# Fail closed: an unparseable date stream from a jq crash must not skip lifetime checks.
+		log_error "sp_validate_waivers: date extraction could not be evaluated (jq error): $_wvf"
+		return 2
+	}
 	_wvrc=0
 	_wvtab="$(printf '\t')"
 	while IFS="$_wvtab" read -r _wid _wcre _wexp _wemg; do

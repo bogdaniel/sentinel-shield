@@ -63,11 +63,14 @@ jobs:
       - name: composer install (optional; transitive PHP surface)
         if: ${{ inputs.install_php == 'true' || env.SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_PHP == 'true' }}
         continue-on-error: true
-        run: ${{ env.SENTINEL_SHIELD_DEPENDENCY_CHECK_PHP_COMMAND }} || echo "composer install failed — DC falls back to the committed surface"
+        # Expand the command through the SHELL (never ${{ }} inside run:) so a consumer who wires
+        # this value from an input cannot inject workflow-template syntax — see ci-production-readiness.yml.
+        run: $SENTINEL_SHIELD_DEPENDENCY_CHECK_PHP_COMMAND || echo "composer install failed — DC falls back to the committed surface"
       - name: npm ci (optional; transitive Node surface)
         if: ${{ inputs.install_node == 'true' || env.SENTINEL_SHIELD_DEPENDENCY_CHECK_INSTALL_NODE == 'true' }}
         continue-on-error: true
-        run: ${{ env.SENTINEL_SHIELD_DEPENDENCY_CHECK_NODE_COMMAND }} || echo "npm ci failed — DC falls back to the committed surface"
+        # Shell expansion, not ${{ }} — same injection-hygiene reason as the composer step above.
+        run: $SENTINEL_SHIELD_DEPENDENCY_CHECK_NODE_COMMAND || echo "npm ci failed — DC falls back to the committed surface"
       - name: Compute NVD cache month stamp
         id: month
         run: echo "ym=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "profile": "laravel",
   "profile_schema": 2,
   "tool_mode": "require-existing",

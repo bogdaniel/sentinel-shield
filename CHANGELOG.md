@@ -14,6 +14,76 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 9: MED/LOW correctness sweep (~90 findings, 88 files)
+
+The objective-correctness subset of the census MED/LOW tail, applied across the whole engine
+in one pass (excluding the 166 files owned by open PRs #49–#63 and everything already fixed in
+batches 1–8). Verified end-to-end on the settled tree: `dash -n` on every changed script,
+`jq`/YAML parse on every changed JSON/YAML, `opa check` on the policies, `make validate`
+self-test PASS, and 34 change-relevant prod tests + the adopter suite + the six regression
+tests (273–277, 290) all green.
+
+**Runners (17 files).** DAST host comparison now normalizes case + trailing FQDN dot (legit
+targets no longer fail closed); `codeql-export`/`phpstan-doctrine`/`phpstan-symfony`/`focused-tests`
+gained real arg loops that reject unknown flags; `zap-baseline` now invokes the entrypoint it
+actually probed for; `laravel-phpstan`/`phpstan`/`larastan` extract+validate the JSON object
+(stdout noise no longer corrupts the report) and `cp` instead of a newline-stripping
+command-substitution; `deptrac`/`dependency-cruiser`/`eslint-boundaries`/`php-arkitect` keep
+stderr as a referenced debug artifact instead of discarding it, and `php-arkitect` emits
+`execution-error` instead of a fabricated finding count; `js-coverage` clears a stale summary
+pre-run; `source-size`/`php-diff-coverage` parse newline-/space-bearing paths safely (the latter
+fixing a possible false pass); `infection` derives artifact names from `$OUTPUT` so parallel runs
+don't collide.
+
+**Libraries & scripts (15 files).** `archive-safety` no longer coerces an unparseable size total
+to 0 (emits `size-unverifiable`) and fails closed when the collision primitive is missing;
+`security-policy` returns 2 on a jq crash instead of `|| true` → PASS; `transaction` routes failed
+restores through the recovery path, wipes a reused stale txn dir, and refuses a foreign-host lock
+unless forced; `filesystem-safety` replaces a non-POSIX `\|` sed BRE; `workflow-runtime-audit`
+uses an integer date compare instead of the dash-breaking `[ x \> y ]`; `acquire`/
+`validate-release-evidence`/`verify-release-artifacts`/`tool-provenance-audit`/`source-verification`
+bound their network/tool calls via the existing bounded-process machinery (with a download-size
+ceiling); `run-local-pipeline` reclaims a stale `.pipeline-lock`; `detect-stack` exits 2 on a
+missing target; `resolve-effective-profile` cleans its temp on non-zero exit.
+
+**Collectors (4 files).** `ai-security-review`, `kuzushi`, `scorecard`, `zizmor` gained the
+established shape/integer fail-closed guard (unknown shape / negative / fractional counts no longer
+derive a clean pass or crash the dash test).
+
+**Semgrep rules (12 files).** Root-user rule catches `USER 0`/`0:0`/`root:root`; `:latest`
+allows `--platform` flags; privileged-compose covers `compose.yml`/`docker-compose.yaml`/etc.;
+`unserialize(...)` (revived dead `pattern-not`, flags the unsafe 2-arg form) across generic-php +
+symfony; hardcoded-secret rules use `metavariable-regex` over credential-like names; `$CP.exec`
+is bound to a real `child_process` import (kills the `RegExp.exec` false-positive class); install-
+script rules add the `prepare` lifecycle hook and handle escaped quotes; several path/anchor scoping
+fixes.
+
+**Policies (3 rego files).** terraform ingress now normalizes all three resource shapes
+(`aws_security_group_rule`, inline `aws_security_group` ingress, `aws_vpc_security_group_ingress_rule`)
+and treats IPv6 `::/0` as world-open; github-actions flags unpinned third-party **reusable
+workflows** and warns on secrets under `pull_request_target` and in step `env:`; docker catches
+root UID `0` in all forms. (`opa check --v1-compatible` passes; every new rule was `opa eval`-confirmed.)
+
+**Docs (16 edits/15 files).** report-only gate list corrected to include `focused_test_violations`;
+gate counts updated to the 41-key resolver (was 24-era); `140/140` pin count; remaining `0600
+--propertyfile` wording; a dead anchor, a deprecated-script reference, drifting line citations, and
+several stray paste-cruft (`</content>`/`</invoke>`) tags removed. **Schema:** `consumer-validation`
+dropped its "ajv-validated in CI" overclaim (no ajv exists; validation is jq-structural).
+
+**Tests & templates (18 files).** `adopter-scenarios` no longer has a tautological pass (asserts no
+injected failure exited 0; adds an IS_ROOT guard; portable sha256); `111-workflow-timeouts` parses
+`*.yaml` and comment-trailing job keys; several suites exit 2 on a missing hard prereq instead of a
+false green; `Makefile` dropped a misleading `.POSIX:`; the `main`/`pr-fast`/`scheduled`/`ai-review`/
+`dependency-check` templates had honest-tooling and template-injection-hygiene fixes (dead
+disabled DC call removed, unimplemented stubs marked, `${{ }}` → shell `$VAR` for user-influenced
+values, no fabricated `{"findings":[]}`); example hardened snippet pins refreshed.
+
+**Deliberately NOT changed** (reported, not silently dropped): the ~75 pure
+optimization/deduplication/refactor findings (no correctness impact — changing them risks
+regressions for style), risky edits to widely-sourced hot libraries flagged "only if truly safe",
+and everything owned by the open PRs #49–#63. The jq-missing exit-code 2-vs-3 convention is left
+as-is (cosmetic; changing the release scripts would risk their passing tests).
+
 ### Fixed — full-repo review batch 8: quality-collector fail-closed (focused-tests + source-size)
 
 The quality collectors already failed closed on an *unknown* `.status`, but had a residual hole:

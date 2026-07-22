@@ -420,10 +420,13 @@ TOUCHED_COMPOSER=0; TOUCHED_NPM=0; ROLLBACK_INCOMPLETE=0
 rollback() {
 	log_warn "bootstrap: restoring dependency-declaration + lock files to their prior state."
 	for _f in $SNAP_FILES; do
+		# Under `set -e` an unchecked cp/rm failure would abort rollback mid-loop, skipping the
+		# remaining files AND the ROLLBACK-INCOMPLETE reporting below (silent partial rollback).
+		# Record the failure and continue so every file is attempted and the operator is warned.
 		if [ -f "$BACKUP/$_f" ]; then
-			cp "$BACKUP/$_f" "$TARGET/$_f"
+			cp "$BACKUP/$_f" "$TARGET/$_f" || ROLLBACK_INCOMPLETE=1
 		elif [ -f "$TARGET/$_f" ]; then
-			rm -f "$TARGET/$_f"
+			rm -f "$TARGET/$_f" || ROLLBACK_INCOMPLETE=1
 		fi
 	done
 	# Reconstruct a lock-consistent installed tree wherever one existed before.

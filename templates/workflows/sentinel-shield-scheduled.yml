@@ -1,5 +1,6 @@
 # Sentinel Shield — SCHEDULED / NIGHTLY (v0.1.21). Heavier deep scans; report-only by default.
-# Job `nightly`: Trivy image, Grype SBOM/fs, OpenSSF Scorecard, TruffleHog deep, Dockle.
+# Job `nightly`: TruffleHog (filesystem), OpenSSF Scorecard, Grype (fs mode), and Dockle
+#   (image scan, only when SENTINEL_SHIELD_IMAGE is set). No Trivy step is wired here.
 # Job `dependency-check`: the slow NVD-backed OWASP Dependency-Check — RECOMMENDED home, with a
 #   persisted monthly NVD cache (actions/cache). Foreground only; never `docker run -d` (a detached
 #   container ignores step timeouts). See docs/dependency-check-nightly-strategy.md.
@@ -89,7 +90,9 @@ jobs:
         env:
           SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: enabled
           SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE: .sentinel-shield/cache/dependency-check
-          # No validated Dependency-Check digest yet — readable tag; pin by digest before production.
+          # Production: pin by digest (validated v0.1.30: owasp/dependency-check@sha256:ad169904…cc77b9).
+          # Dependency-Check keeps the readable :latest tag as the single documented, pin-before-prod
+          # exception (see docs/supply-chain-reproducibility-v025.md); override with the digest above.
           SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
           SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT: 40m
         run: |

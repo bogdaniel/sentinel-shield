@@ -94,18 +94,20 @@ if [ -z "$PATHS" ]; then
 fi
 
 TMP="$OUT.tmp"
+_err="$OUT.stderr.log"
 # depcruise exits non-zero when it FINDS violations — validity of the JSON decides evidence.
+# Keep stderr as a debug artifact so an execution-error carries diagnostics.
 # shellcheck disable=SC2086  # RUN and PATHS are intentionally word-split argument lists
-$RUN $PATHS --config "$CONFIG" --output-type json > "$TMP" 2>/dev/null || true
+$RUN $PATHS --config "$CONFIG" --output-type json > "$TMP" 2>"$_err" || true
 
 if [ ! -s "$TMP" ] || ! jq -e . "$TMP" >/dev/null 2>&1; then
 	rm -f "$TMP"
-	arch_write_status "$OUT" dependency-cruiser execution-error "dependency-cruiser ran but produced no valid JSON report"
+	arch_write_status "$OUT" dependency-cruiser execution-error "dependency-cruiser ran but produced no valid JSON report (see $_err)"
 	exit 0
 fi
 
 jq --arg c "$CONFIG" 'if type=="object" then . + {producer:"dependency-cruiser", config:$c} else . end' "$TMP" > "$OUT" 2>/dev/null \
 	|| mv "$TMP" "$OUT"
-rm -f "$TMP"
+rm -f "$TMP" "$_err"
 log_info "dependency-cruiser: report written to $OUT (config=$CONFIG, paths=$PATHS)"
 exit 0

@@ -659,11 +659,11 @@ tx_rollback() {
 				|| _tx_recover_fail "$_rel" "rollback-snapshot" "$_rb_r: snapshot entry escapes the snapshot dir via a symlinked parent"
 			{ [ -f "$TX_SNAP/snap/$_rel" ] && [ ! -L "$TX_SNAP/snap/$_rel" ]; } \
 				|| _tx_recover_fail "$_rel" "rollback-snapshot" "SNAPSHOT_SYMLINK: snapshot entry is not a regular file — refusing to follow it"
-			ensure_dir "$TARGET/$(dirname -- "$_rel")"
-			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
+			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
 			tx_journal "rollback-step" "$_rel" "restored pre-write copy"
 		else
-			rm -f "$TARGET/$_rel"
+			rm -f "$TARGET/$_rel" || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
 			tx_journal "rollback-step" "$_rel" "removed newly-created file"
 		fi
 	done < "$TX_SNAP/touched"
@@ -678,6 +678,11 @@ tx_rollback() {
 tx_begin() {
 	ensure_dir "$SS_DIR"
 	TX_SNAP="$SS_DIR/.txn-$$"
+	# A prior process with THIS pid may have left a stale snapshot dir behind (PID reuse).
+	# Truncating only 'touched' would leave stale 'created' entries and snap/ copies that later
+	# make _tx_manifest_check reject recovery (created not a subset of touched) — remove any
+	# leftover dir wholesale so the transaction starts from clean state.
+	_tx_rm "$TX_SNAP"
 	ensure_dir "$TX_SNAP"
 	: > "$TX_SNAP/touched"
 	_tx_ld=$(_tx_lockdir)
@@ -876,6 +881,19 @@ tx_recover() {
 		exit 0
 	fi
 	unset _rc_state
+	# FOREIGN-HOST GUARD: on a shared filesystem the lock may belong to a DIFFERENT host whose
+	# liveness cannot be assessed here (see _tx_owner_classify). Rolling it back could UNDO a live
+	# remote operation, so refuse unless the operator explicitly overrides after confirming the
+	# remote owner is dead (TX_RECOVER_FORCE_FOREIGN=1).
+	if [ "$(_tx_owner_classify)" = "foreign" ] && [ "${TX_RECOVER_FORCE_FOREIGN:-0}" != "1" ]; then
+		_rc_fhost=$(jq -r '.hostname // "?"' "$LOCK" 2>/dev/null || printf '?')
+		echo "error: the operation-lock was created on a different host ('$_rc_fhost'); its liveness" >&2
+		echo "       cannot be assessed from here. Refusing to roll back — this could undo a live" >&2
+		echo "       remote operation. If that host's operation is truly dead, override with:" >&2
+		echo "         TX_RECOVER_FORCE_FOREIGN=1 sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
+		unset _rc_fhost
+		exit 4
+	fi
 	_snap=$(jq -r '.snapshot_dir' "$LOCK" 2>/dev/null || true)
 	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
 	# (2) lock.target must equal the current canonical target.

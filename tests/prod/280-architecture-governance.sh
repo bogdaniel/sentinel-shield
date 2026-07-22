@@ -100,6 +100,7 @@ if [ "$(printf '%s' "$o" | jq -r '.summary.architecture_violations')" = "2" ] \
 else
 	fail "deptrac normalized mapping wrong: $(printf '%s' "$o" | jq -c .summary)"
 fi
+_status_ok=1
 for s in unavailable not-configured execution-error disabled; do
 	case "$s" in
 		unavailable) f="$CT/unavail.json" ;;
@@ -108,9 +109,9 @@ for s in unavailable not-configured execution-error disabled; do
 		disabled) f="$CT/disabled.json" ;;
 	esac
 	got=$(cv "$f" '.status')
-	[ "$got" = "$s" ] || fail "deptrac collector: status '$s' not preserved (got '$got')"
+	[ "$got" = "$s" ] || { fail "deptrac collector: status '$s' not preserved (got '$got')"; _status_ok=0; }
 done
-pass "deptrac collector: unavailable / not-configured / execution-error / disabled preserved"
+[ "$_status_ok" = 1 ] && pass "deptrac collector: unavailable / not-configured / execution-error / disabled preserved"
 # a non-evidence status must NOT credit architecture_tool_count (no evidence was produced)
 [ "$(cv "$CT/unavail.json" '.summary.architecture_tool_count // 0')" = "0" ] \
 	&& pass "deptrac collector: unavailable contributes no evidence (tool_count 0)" \

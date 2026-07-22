@@ -16,6 +16,12 @@ ss_dast_host_of() {
 	_h=${1#*://}; _h=${_h%%/*}; _h=${_h%%\?*}; _h=${_h##*@}; _h=${_h%%:*}
 	printf '%s' "$_h"
 }
+# ss_dast_norm_host — normalize a hostname for comparison: lowercase (DNS is
+# case-insensitive) and strip a single trailing dot (FQDN root is equivalent).
+ss_dast_norm_host() {
+	_n=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+	printf '%s' "${_n%.}"
+}
 # ss_dast_check — guarded DAST preflight check (target/host validation).
 ss_dast_check() {
 	_url="${SENTINEL_SHIELD_DAST_TARGET_URL:-}"
@@ -32,7 +38,8 @@ ss_dast_check() {
 		echo "[sentinel-shield][dast] SENTINEL_SHIELD_DAST_ALLOWED_HOST not set; FAIL CLOSED (refusing to scan an un-allowlisted target)." >&2
 		return 3
 	fi
-	_host=$(ss_dast_host_of "$_url")
+	_host=$(ss_dast_norm_host "$(ss_dast_host_of "$_url")")
+	_allow=$(ss_dast_norm_host "$_allow")
 	if [ "$_host" != "$_allow" ]; then
 		echo "[sentinel-shield][dast] target host '$_host' is not the allowed host '$_allow'; FAIL CLOSED (no scan)." >&2
 		return 3

@@ -29,12 +29,20 @@ deny contains msg if {
 }
 
 # --- Compose: root user ---
+# `user` may be "root", "0", or a "<uid>:<gid>" form (e.g. "0:0", "root:root",
+# "root:0") — all of which run as UID 0. Compare the UID part (before any colon).
 deny contains msg if {
 	some name
 	svc := input.services[name]
-	svc.user == "root"
+	is_root_user(svc.user)
 	msg := sprintf("service '%s' must not run as root user", [name])
 }
+
+user_str(u) := u if is_string(u)
+user_str(u) := sprintf("%v", [u]) if is_number(u)
+
+is_root_user(u) if { split(user_str(u), ":")[0] == "root" }
+is_root_user(u) if { split(user_str(u), ":")[0] == "0" }
 
 # --- Compose: latest image tag (or missing tag) ---
 deny contains msg if {

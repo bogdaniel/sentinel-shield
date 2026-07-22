@@ -82,11 +82,22 @@ LOG=$(mktemp 2>/dev/null || mktemp -t ss-arkitect)
 RC=0
 "$BIN" check --config="$CONFIG" --no-interaction > "$LOG" 2>&1 || RC=$?
 
-# Count reported violations; "ERRORS!"/violation lines are the stable markers across versions.
+# Count reported violations from the per-violation output lines (the "violat/depends on/
+# should not depend/must not depend" phrasings are the stable markers the count is parsed from
+# across versions — there is no machine-readable formatter).
 V=$(grep -Ec '^[[:space:]]*(-[[:space:]]+)?.*(violat|depends on|should not depend|must not depend)' "$LOG" 2>/dev/null || true)
 case "$V" in '' | *[!0-9]*) V=0 ;; esac
-if [ "$RC" -ne 0 ] && [ "$V" -eq 0 ]; then V=1; fi          # non-zero exit is never a clean 0
-if [ "$RC" -eq 0 ]; then V=0; fi                             # clean exit is authoritative
+if [ "$RC" -eq 0 ]; then
+	V=0                                                      # clean exit is authoritative
+elif [ "$V" -eq 0 ]; then
+	# Non-zero exit with NO parseable violation line means PHPArkitect itself failed (config
+	# parse error, PHP fatal, missing rule class) — an execution-error on the health channel,
+	# NOT a fabricated violations:1/"findings" that would pollute the architecture-violations
+	# channel with a run that never produced real evidence.
+	arch_write_status "$OUT" php-arkitect execution-error "phparkitect exited $RC with no parseable violation output (see run log for the failure)"
+	rm -f "$LOG"
+	exit 0
+fi
 
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 jq -n --arg s "$STATUS" --argjson v "$V" --arg c "$CONFIG" --arg ver "$VERSION" \

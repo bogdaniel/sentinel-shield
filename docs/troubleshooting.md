@@ -22,7 +22,7 @@ triage the finding"; `2` means "fix the input/config".
 | `0` | Success | Nothing — proceed. |
 | `1` | Gate failed (findings block) | Triage the finding; accept-risk if justified. **Do not suppress.** |
 | `2` | Config / input error | Fix the input, env var, or JSON. Re-run. |
-| `3` | DAST guard fail-closed (runners) | Set target/allowlist correctly — see DAST section. |
+| `3` | Preflight/guard fail-closed: DAST guard (runners), `health.sh --policy` unsupported/incompatible host, or `doctor.sh` profile-required tool absent under an enforced tool-mode | Fix the flagged precondition — set target/allowlist (DAST), run on a supported host (`health.sh --policy`), or install the required tool (`doctor.sh`). |
 
 ---
 

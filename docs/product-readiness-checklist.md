@@ -186,4 +186,3 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
 - [x] `recommended` — **`v1.0.0-rc.1` is the next release.** Soft/known limitations carried into rc.1:
   strict opt-in (fails on real findings); DC CI committed-surface (add install step for transitive);
   digest pinning opt-in; NVD key rotation pending. Final `v1.0.0` after the rc soak.
-</content>

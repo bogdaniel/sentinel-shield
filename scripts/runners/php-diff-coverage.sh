@@ -73,16 +73,28 @@ _err="$_dir/php-diff-coverage.stderr.log"
 rm -f "$_clover" "$_changed" 2>/dev/null || true
 
 # Changed (added) PHP lines: parse `git diff --unified=0` hunks (+c,d -> lines c..c+d-1).
-git diff --unified=0 "$BASE" -- '*.php' 2>>"$_err" | awk '
-	/^\+\+\+ /{ f=$2; sub(/^b\//,"",f); next }
+# --no-prefix drops the a//b/ prefix and the '+++ ' header path is taken as the WHOLE remainder
+# of the line (substr from col 5), so paths containing spaces are not truncated at the first
+# field. core.quotePath=false keeps non-ASCII paths verbatim rather than octal-quoted.
+git -c core.quotePath=false diff --unified=0 --no-prefix "$BASE" -- '*.php' 2>>"$_err" | awk '
+	/^\+\+\+ /{ f=substr($0,5); next }
 	/^@@ /{ t=$3; sub(/^\+/,"",t); n=split(t,a,","); s=a[1]; c=(n>1)?a[2]:1;
 		for(i=0;i<c;i++) print f ":" (s+i) }
 ' > "$_changed" 2>>"$_err" || true
 
 if [ ! -s "$_changed" ]; then
-	# No changed PHP lines -> diff coverage is vacuously 100 (nothing new to cover).
+	# No changed PHP lines -> diff coverage is vacuously 100 (nothing new to cover). This branch
+	# ALWAYS exits: it must never fall through into a full coverage run against an empty
+	# changed-lines file.
 	jq -n --argjson thr "$THRESH" '{tool:"diff-coverage", status:"pass", changed_lines_coverage_percent:100, threshold:$thr, changed_executable_lines:0, covered_changed_lines:0, violations:0}' > "$OUTPUT"
-	jq -e . "$OUTPUT" >/dev/null 2>&1 && { log_info "php-diff-coverage: no changed PHP lines vs $BASE; wrote 100% ($OUTPUT)."; rm -f "$_err" 2>/dev/null; exit 0; }
+	if jq -e . "$OUTPUT" >/dev/null 2>&1; then
+		log_info "php-diff-coverage: no changed PHP lines vs $BASE; wrote 100% ($OUTPUT)."
+		rm -f "$_err" 2>/dev/null || true
+		exit 0
+	fi
+	rm -f "$OUTPUT" 2>/dev/null || true
+	log_warn "php-diff-coverage: no changed PHP lines vs $BASE but could not write the vacuous-100 report; leaving '$OUTPUT' absent."
+	exit 0
 fi
 
 log_info "php-diff-coverage: $BIN --coverage-clover $_clover (base $BASE)"

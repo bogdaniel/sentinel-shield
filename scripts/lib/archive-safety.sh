@@ -47,7 +47,9 @@ archive_safety_tools_ok() {
 archive_safety_case_scan() {
 	_ac_zip="$1"
 	{ [ -f "$_ac_zip" ] && zipinfo -1 "$_ac_zip" >/dev/null 2>&1; } || { printf 'unreadable-archive\n'; unset _ac_zip; return 0; }
-	command -v fs_casefold_collisions >/dev/null 2>&1 || { unset _ac_zip; return 0; }
+	# Fail closed: if the collision primitive is unavailable we cannot assert the archive is
+	# free of case-fold collisions, so signal that rather than returning a false 'clean'.
+	command -v fs_casefold_collisions >/dev/null 2>&1 || { printf 'case-scan-unavailable\n'; unset _ac_zip; return 0; }
 	zipinfo -1 "$_ac_zip" 2>/dev/null | sed '/^$/d' | fs_casefold_collisions | sed '/^$/d' | while IFS= read -r _ac_e; do
 		printf 'case-collision:%s\n' "$_ac_e"
 	done
@@ -66,6 +68,7 @@ archive_safety_case_scan() {
 #   symlink:<entry>              a symlink entry (never allowed in an artifact)
 #   too-many-entries:<n>/<max>   entry count exceeds the cap
 #   oversize:<bytes>/<max>       total uncompressed size exceeds the cap (zip bomb)
+#   size-unverifiable            a non-empty archive whose uncompressed total cannot be parsed
 archive_safety_scan() {
 	_as_zip="$1"; _as_max_bytes="$2"; _as_max_entries="$3"
 
@@ -110,9 +113,15 @@ archive_safety_scan() {
 	# "<n> files, <bytes> bytes uncompressed, <bytes> bytes compressed: ...".
 	_as_total=$(zipinfo "$_as_zip" 2>/dev/null | awk '
 		/ bytes uncompressed/ { for (i=1;i<=NF;i++) if ($i ~ /^uncompressed/) { v=$(i-2); gsub(/,/,"",v); print v } }' | tail -n1)
-	[ -n "$_as_total" ] || _as_total=0
 	case "$_as_total" in
-		''|*[!0-9]*) _as_total=0 ;;
+		''|*[!0-9]*)
+			# Fail closed: a non-empty archive whose uncompressed total we cannot parse must
+			# not silently pass the zip-bomb cap by being coerced to 0. Emit a distinct token.
+			if [ "$_as_count" -gt 0 ]; then
+				printf 'size-unverifiable\n'
+			fi
+			_as_total=0
+			;;
 	esac
 	if [ "$_as_total" -gt "$_as_max_bytes" ]; then
 		printf 'oversize:%s/%s\n' "$_as_total" "$_as_max_bytes"

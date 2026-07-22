@@ -44,12 +44,14 @@ jobs:
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
-          # Psalm / Pint / PHP-CS-Fixer: run if configured, write reports/raw/{psalm,php-style}.json
+          # TODO (optional, NOT wired): Psalm / Pint / PHP-CS-Fixer — add the runner calls here if
+          # your project configures them; write reports/raw/{psalm,php-style}.json.
       - name: Node fast checks
         run: |
           npm ci || true
           npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
-          # tsc --noEmit + eslint -> reports/raw/{typescript,eslint}.json
+          # TODO (optional, NOT wired): tsc --noEmit + eslint — add the commands here if your
+          # project configures them; write reports/raw/{typescript,eslint}.json.
       - name: GH Actions + Docker lint + dependency policy
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-hadolint.sh || true
@@ -65,7 +67,7 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
-          # gitleaks + actionlint + zizmor via their pinned actions/containers (see ci-security.yml)
+          # NOTE: gitleaks + actionlint + zizmor are NOT run here — they run in ci-security.yml.
       - name: Build summary + enforce
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json

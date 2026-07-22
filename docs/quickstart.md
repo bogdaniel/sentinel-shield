@@ -62,7 +62,7 @@ writes nothing until `--apply`.
 # 1. DRY-RUN — preview every file install would write; writes NOTHING
 sh scripts/install-baseline.sh --target /path/to/project --profile laravel-react-docker
 
-# 2. APPLY — start in the safest mode (report-only); only secrets + expired exceptions block
+# 2. APPLY — start in the safest mode (report-only); only secrets, expired exceptions, and focused-test markers block
 sh scripts/install-baseline.sh --target /path/to/project --profile laravel-react-docker \
    --apply --mode report-only
 ```
@@ -158,8 +158,8 @@ jq '{result, failed_gates}' reports/sentinel-shield-enforcement.json
 - **Fail** (`result: "fail"`, exit `1`): at least one enabled gate has findings.
   `failed_gates` lists exactly which.
 
-In `report-only`, expect **pass** unless you have leaked secrets or expired exceptions
-(only those two gates are enabled). In `baseline`, new high-risk findings (criticals/highs,
+In `report-only`, expect **pass** unless you have leaked secrets, expired exceptions, or
+focused-test markers (only those three gates are enabled). In `baseline`, new high-risk findings (criticals/highs,
 syntax errors, dependency-policy violations, …) will flip it to **fail** — that is correct.
 
 ---
@@ -218,7 +218,7 @@ Adoption is reversible without losing your risk decisions.
 
 ```sh
 # Lower the mode — edit .sentinel-shield/profile.yaml:  gates.mode: report-only
-# (resolve-gates re-reads it on the next run; report-only blocks only secrets + expired exceptions)
+# (resolve-gates re-reads it on the next run; report-only blocks only secrets, expired exceptions, and focused-test markers)
 
 # Roll back the managed workflow to a known-good commit
 git -C /path/to/project checkout <good-commit> -- .github/workflows/sentinel-shield.yml

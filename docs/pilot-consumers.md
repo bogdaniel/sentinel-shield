@@ -59,7 +59,6 @@ A second consumer is what promotes `supported` tools to `proven`. To onboard one
 [`profile-driven-adoption.md`](profile-driven-adoption.md) and
 [`product-readiness-checklist.md`](product-readiness-checklist.md), run a tool that is currently
 `supported`/`experimental`, and record the run ID + raw→summary-key evidence here.
-</content>
 
 ## zenchron-tools — main-gate live validation (2026-06-09)
 

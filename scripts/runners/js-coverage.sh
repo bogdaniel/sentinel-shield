@@ -70,6 +70,9 @@ ensure_dir "$(dirname "$OUTPUT")"
 # Run the coverage script when we can (best-effort; findings are the signal, not the rc).
 if [ -n "$COV_SCRIPT" ] && [ -n "$PM" ] && command_exists "$PM"; then
 	log_info "js-coverage: $PM run $COV_SCRIPT"
+	# Clear any stale summary FIRST: if this run fails or emits a different reporter, a
+	# previous run's coverage-summary.json must not be normalized as current evidence.
+	rm -f -- "$SUMMARY" 2>/dev/null || true
 	case "$PM" in
 		yarn) yarn "$COV_SCRIPT" >"$(dirname "$OUTPUT")/js-coverage.run.log" 2>&1 || true ;;
 		*)    "$PM" run "$COV_SCRIPT" >"$(dirname "$OUTPUT")/js-coverage.run.log" 2>&1 || true ;;

@@ -15,10 +15,12 @@ rules:
       - pattern: $X::create($REQUEST->all())
       - pattern: $X::create(request()->all())
       - pattern: $MODEL->update($REQUEST->all())
+      - pattern: $MODEL->update(request()->all())
       - pattern: $MODEL->fill($REQUEST->all())
+      - pattern: $MODEL->fill(request()->all())
 
   # NOTE: the review-prompt rule `ss-laravel-missing-authorization-review` moved to
-  # semgrep/php/laravel-review-prompts.yml (opt-in, INFO severity) in v0.1.3 — it
+  # semgrep/app/php/laravel-review-prompts.yml (opt-in, INFO severity) in v0.1.3 — it
   # was a high-noise review prompt, not a confirmed bug, and was over-counted as
   # high. Include that file explicitly if you want authorization review prompts.
 
@@ -61,7 +63,7 @@ rules:
     metadata:
       category: security
       cwe: "CWE-489: Active Debug Code"
-    pattern-regex: 'APP_DEBUG\s*=\s*(true|1)'
+    pattern-regex: 'APP_DEBUG\s*=\s*(true|1)|[\x27"]debug[\x27"]\s*=>\s*true'
 
   - id: ss-laravel-unsafe-file-upload
     languages: [php]

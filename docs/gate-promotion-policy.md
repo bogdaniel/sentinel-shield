@@ -14,7 +14,7 @@
 >
 > **Source of truth for what each tier gates** is `default_for()` in
 > [`scripts/resolve-gates.sh`](../scripts/resolve-gates.sh). The
-> [readiness matrix](#readiness-matrix) below is derived from that function's resolved
+> [readiness matrix](#2-readiness-matrix) below is derived from that function's resolved
 > output, not hand-authored. Maturity claims follow
 > [`product-status.md`](product-status.md) (canonical — it wins on any disagreement).
 >

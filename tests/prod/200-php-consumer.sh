@@ -304,7 +304,7 @@ check "record: static-analysis mutation caught (STATIC_ANALYSIS_TOOL_MISSING)" "
 printf '\n--- consumer-validation records (php-library) ---\n' >&2
 jq -c . "$REC" >&2
 
-_total=$(grep -c . "$REC" 2>/dev/null || echo 0)
+_total=$(grep -c . "$REC" 2>/dev/null || :)
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n200-php-consumer: %s record(s) emitted, %d skip(s), %d failure(s)\n' "$_total" "$_skips" "$FAILS"
 	printf '%d assertion(s) FAILED\n' "$FAILS"

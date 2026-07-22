@@ -45,13 +45,17 @@ MIN=$(qp_num quality.mutation.min_score 70)
 
 ensure_dir "$(dirname "$OUTPUT")"
 _dir=$(dirname "$OUTPUT")
-_json="$_dir/infection.json"
-_err="$_dir/infection.stderr.log"
+# Derive artifact names from $OUTPUT's basename so a custom --output (parallel invocations
+# writing to the same reports dir) does not collide on fixed infection.json/stdout.raw names.
+_base=$(basename "$OUTPUT" .json)
+_json="$_dir/$_base.infection-log.json"
+_raw="$_dir/$_base.stdout.raw"
+_err="$_dir/$_base.stderr.log"
 rm -f "$_json" 2>/dev/null || true
 
 log_info "infection: $BIN --logger-json=$_json --min-msi=0 --no-progress --no-interaction"
 # --min-msi=0 so Infection itself never fails the run; Sentinel Shield does the thresholding.
-"$BIN" --logger-json="$_json" --min-msi=0 --no-progress --no-interaction >"$_dir/infection.stdout.raw" 2>"$_err" || true
+"$BIN" --logger-json="$_json" --min-msi=0 --no-progress --no-interaction >"$_raw" 2>"$_err" || true
 
 _msi=$(jq -r 'if (.stats.msi|type)=="number" then .stats.msi else empty end' "$_json" 2>/dev/null || true)
 if [ -z "$_msi" ]; then
@@ -67,7 +71,7 @@ jq -n --argjson score "$_msi" --argjson min "$MIN" '
 
 if jq -e . "$OUTPUT" >/dev/null 2>&1; then
 	log_info "infection: wrote $OUTPUT (msi=$_msi, min=$MIN)."
-	rm -f "$_json" "$_dir/infection.stdout.raw" "$_err" 2>/dev/null || true
+	rm -f "$_json" "$_raw" "$_err" 2>/dev/null || true
 	exit 0
 fi
 rm -f "$OUTPUT" 2>/dev/null || true

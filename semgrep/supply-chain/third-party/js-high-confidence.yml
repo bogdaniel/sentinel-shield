@@ -40,3 +40,5 @@ rules:
           eval(...);
       - pattern: |
           $H.get(..., function($RES) { ...; eval(...); ... });
+      - pattern: |
+          $H.get(..., ($RES) => { ...; eval(...); ... });

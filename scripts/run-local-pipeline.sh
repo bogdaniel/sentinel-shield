@@ -250,13 +250,38 @@ release_lock() {
 trap release_lock EXIT
 trap 'release_lock; exit 130' INT
 trap 'release_lock; exit 143' TERM
+LOCK_HOST=$(uname -n 2>/dev/null || printf '')
+write_lock_record() {
+	printf '{"pid":%s,"host":"%s","started_at":"%s","stage":"%s","target":"%s"}\n' \
+		"$$" "$LOCK_HOST" "$TS" "$STAGE" "$TARGET" > "$LOCK_DIR/lock.json" 2>/dev/null || true
+}
 if mkdir "$LOCK_DIR" 2>/dev/null; then
 	LOCK_HELD=1
-	printf '{"pid":%s,"started_at":"%s","stage":"%s","target":"%s"}\n' \
-		"$$" "$TS" "$STAGE" "$TARGET" > "$LOCK_DIR/lock.json" 2>/dev/null || true
+	write_lock_record
 else
-	log_error "another local pipeline run holds the lock ($LOCK_DIR); refusing to race (concurrent run)"
-	exit 4
+	# The lock dir already exists. Distinguish a LIVE run from a STALE lock left by a run that
+	# was SIGKILL'd (no cleanup ran). Reclaim ONLY when the recorded owner is on THIS host and its
+	# pid is no longer alive; a live pid, a foreign host, or an unreadable/pidless lock still fails
+	# closed. The reclaim is a rm+mkdir: mkdir is atomic, so two racers cannot both win.
+	_lp=$(jq -r '.pid // empty' "$LOCK_DIR/lock.json" 2>/dev/null || printf '')
+	_lh=$(jq -r '.host // empty' "$LOCK_DIR/lock.json" 2>/dev/null || printf '')
+	_reclaim=0
+	case "$_lp" in
+		'' | *[!0-9]*) : ;;  # no/malformed pid: liveness cannot be assessed — do not reclaim
+		*)
+			if { [ -z "$_lh" ] || [ "$_lh" = "$LOCK_HOST" ]; } && ! kill -0 "$_lp" 2>/dev/null; then
+				_reclaim=1
+			fi
+			;;
+	esac
+	if [ "$_reclaim" = 1 ] && rm -rf -- "$LOCK_DIR" 2>/dev/null && mkdir "$LOCK_DIR" 2>/dev/null; then
+		LOCK_HELD=1
+		log_warn "reclaimed a stale local pipeline lock (dead pid ${_lp:-?}) at $LOCK_DIR"
+		write_lock_record
+	else
+		log_error "another local pipeline run holds the lock ($LOCK_DIR); refusing to race (concurrent run)"
+		exit 4
+	fi
 fi
 
 # --- stage bookkeeping -------------------------------------------------------

@@ -11,7 +11,7 @@ rules:
     metadata:
       category: security
       cwe: "CWE-250: Execution with Unnecessary Privileges"
-    pattern-regex: '(?i)^\s*USER\s+root\s*$'
+    pattern-regex: '(?i)^\s*USER\s+(root|0)([:\s]|$)'
 
   - id: ss-docker-latest-tag
     languages: [generic]
@@ -25,7 +25,7 @@ rules:
     metadata:
       category: security
       cwe: "CWE-1357: Reliance on Insufficiently Trustworthy Component"
-    pattern-regex: '(?i)^\s*FROM\s+\S+:latest(\s|$)'
+    pattern-regex: '(?i)^\s*FROM\s+(--\S+\s+)*\S+:latest(\s|$)'
 
   - id: ss-docker-secret-in-env
     languages: [generic]
@@ -51,12 +51,12 @@ rules:
     metadata:
       category: security
       cwe: "CWE-494: Download of Code Without Integrity Check"
-    pattern-regex: '(?i)(curl|wget)\s+[^\n|]*\|\s*(sudo\s+)?(sh|bash)'
+    pattern-regex: '(?i)(curl|wget)\s+[^\n|]*\|\s*(sudo\s+)?(sh|bash|zsh|dash)\b'
 
   - id: ss-docker-privileged-compose
     languages: [generic]
     paths:
-      include: ["docker-compose.yml", "docker-compose.*.yml", "compose.yaml"]
+      include: ["docker-compose.yml", "docker-compose.yaml", "docker-compose.*.yml", "docker-compose.*.yaml", "compose.yaml", "compose.yml", "compose.*.yaml", "compose.*.yml"]
     severity: ERROR
     message: >
       privileged: true grants near-host access and defeats container isolation.

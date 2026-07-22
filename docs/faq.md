@@ -28,9 +28,11 @@ turnkey "all scanners proven" product. Several scanner integrations are `support
 [`product-status.md`](product-status.md).
 
 **Q: Which mode should I use?**
-Start in `baseline` (a migration aid that blocks on the highest-confidence findings). Move to
-`strict` only after completing the strict pre-flight. `regulated` adds further gates (e.g.
-`dast_findings`). See [`strict-mode-readiness.md`](strict-mode-readiness.md).
+Start in `report-only` for first-time adoption (scanners run; only secrets, expired exceptions,
+and focused-test markers block), then move to `baseline` as your steady state (a migration aid that
+blocks on the highest-confidence findings). Move to `strict` only after completing the strict
+pre-flight. `regulated` adds further gates (e.g. `dast_findings`). See
+[`strict-mode-readiness.md`](strict-mode-readiness.md).
 
 **Q: Is strict mode required?**
 No. Strict is **opt-in**. It turns Sentinel Shield from a migration aid into a production

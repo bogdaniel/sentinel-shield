@@ -38,7 +38,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/release-authz.sh
+. "$SCRIPT_DIR/lib/release-authz.sh"   # ra_bounded: cap gh API calls where timeout(1) exists
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+: "${GH_TIMEOUT:=120}"   # per-gh-api-call timeout (seconds) under --verify-github/--verify-binding
 
 # usage — print CLI usage/help to stdout.
 usage() {
@@ -340,7 +343,7 @@ verify_commit_binding() {
 	[ -n "$_brepo" ] || { log_error "commit-binding: cannot determine the engine repository (no --repo and no engine_ci[]/consumer_runs[] repository)"; return 2; }
 	: "${GH_BIN:=gh}"
 	command_exists "$GH_BIN" || { log_error "commit-binding: GitHub compare requested but '$GH_BIN' is not available"; return 3; }
-	_cmpj=$("$GH_BIN" api "repos/$_brepo/compare/$_enx...$_rcx" 2>/dev/null) || {
+	_cmpj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_brepo/compare/$_enx...$_rcx" 2>/dev/null) || {
 		log_error "commit-binding: compare $_enx...$_rcx not found on $_brepo (unknown/unreachable commit) — fail closed"; return 1; }
 	printf '%s' "$_cmpj" | jq -e . >/dev/null 2>&1 || { log_error "commit-binding: malformed compare response for $_brepo"; return 1; }
 	# The release_commit must be at/ahead of engine_commit (a descendant), never behind/diverged.
@@ -389,7 +392,7 @@ if [ "$MODE" = "verify-github" ]; then
 		_rid=$(jq -r ".consumer_runs[$_i].workflow_run_id | tostring" "$FILE")
 		_wurl=$(jq -r ".consumer_runs[$_i].workflow_url" "$FILE")
 		_result=$(jq -r ".consumer_runs[$_i].result" "$FILE")
-		_runj=$("$GH_BIN" api "repos/$_repo/actions/runs/$_rid" 2>/dev/null) || {
+		_runj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_repo/actions/runs/$_rid" 2>/dev/null) || {
 			log_error "GitHub verification: run not found: $_repo run $_rid"; exit 1; }
 		printf '%s' "$_runj" | jq -e . >/dev/null 2>&1 || {
 			log_error "GitHub verification: malformed run response for $_repo run $_rid"; exit 1; }
@@ -401,7 +404,7 @@ if [ "$MODE" = "verify-github" ]; then
 		[ "$_concl" = "$_result" ] || { log_error "GitHub verification: run $_rid conclusion ($_concl) != result ($_result)"; exit 1; }
 		[ "$_url" = "$_wurl" ] || { log_error "GitHub verification: run $_rid html_url ($_url) != workflow_url ($_wurl)"; exit 1; }
 		[ "$_idr" = "$_rid" ] || { log_error "GitHub verification: run id ($_idr) != workflow_run_id ($_rid)"; exit 1; }
-		_artj=$("$GH_BIN" api "repos/$_repo/actions/runs/$_rid/artifacts" 2>/dev/null) || {
+		_artj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_repo/actions/runs/$_rid/artifacts" 2>/dev/null) || {
 			log_error "GitHub verification: could not list artifacts for $_repo run $_rid"; exit 1; }
 		printf '%s' "$_artj" | jq -e . >/dev/null 2>&1 || {
 			log_error "GitHub verification: malformed artifacts response for $_repo run $_rid"; exit 1; }
@@ -440,7 +443,7 @@ if [ "$MODE" = "verify-github" ]; then
 		esac
 		# Default branch for this repo (cache per repo across the loop).
 		if [ "$_erepo" != "${_db_repo:-}" ]; then
-			_db_json=$("$GH_BIN" api "repos/$_erepo" 2>/dev/null) || {
+			_db_json=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_erepo" 2>/dev/null) || {
 				log_error "GitHub verification: could not fetch repository metadata for $_erepo (needed for default-branch check)"; exit 1; }
 			printf '%s' "$_db_json" | jq -e . >/dev/null 2>&1 || {
 				log_error "GitHub verification: malformed repository metadata for $_erepo"; exit 1; }
@@ -448,7 +451,7 @@ if [ "$MODE" = "verify-github" ]; then
 			[ -n "$_default_branch" ] || { log_error "GitHub verification: repository $_erepo reports no default_branch"; exit 1; }
 			_db_repo="$_erepo"
 		fi
-		_erunj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid" 2>/dev/null) || {
+		_erunj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_erepo/actions/runs/$_erid" 2>/dev/null) || {
 			log_error "GitHub verification: engine run not found: $_erepo run $_erid"; exit 1; }
 		printf '%s' "$_erunj" | jq -e . >/dev/null 2>&1 || {
 			log_error "GitHub verification: malformed engine run response for $_erepo run $_erid"; exit 1; }
@@ -469,7 +472,7 @@ if [ "$MODE" = "verify-github" ]; then
 		[ "$_eurl" = "$_ewurl" ] || { log_error "GitHub verification: engine run $_erid html_url ($_eurl) != workflow_url ($_ewurl)"; exit 1; }
 		[ "$_eidr" = "$_erid" ] || { log_error "GitHub verification: engine run id ($_eidr) != workflow_run_id ($_erid)"; exit 1; }
 		_ewant=$(jq -c ".engine_ci[$_ei].artifacts" "$FILE")
-		_eartj=$("$GH_BIN" api "repos/$_erepo/actions/runs/$_erid/artifacts" 2>/dev/null) || {
+		_eartj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_erepo/actions/runs/$_erid/artifacts" 2>/dev/null) || {
 			log_error "GitHub verification: could not list artifacts for engine $_erepo run $_erid"; exit 1; }
 		printf '%s' "$_eartj" | jq -e . >/dev/null 2>&1 || {
 			log_error "GitHub verification: malformed artifacts response for engine $_erepo run $_erid"; exit 1; }

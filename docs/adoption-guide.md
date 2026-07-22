@@ -112,9 +112,9 @@ gates:
   mode: report-only
 ```
 
-Only `secrets` and `expired_exceptions` block. Everything else is reported. This is
-the safe entry point for any legacy project — scanners run, nothing else breaks the
-build. Capture the current finding counts as your baseline.
+Only `secrets`, `expired_exceptions`, and `focused_test_violations` block. Everything else is
+reported. This is the safe entry point for any legacy project — scanners run, nothing else
+breaks the build. Capture the current finding counts as your baseline.
 
 ### Switch to `baseline`
 
@@ -136,9 +136,13 @@ gates:
   mode: strict
 ```
 
-Adds `medium_vulnerabilities` and `missing_sbom`. The whole codebase must meet the
-bar, not just new code — remove the baseline-comparison allowance in the scanner
-workflows. Do this only when a clean run is achievable on demand.
+Promotes a broad set of gates from advisory to blocking — among them
+`medium_vulnerabilities`, `missing_sbom`, `style_violations`, `iac_violations`,
+`container_image_violations`, the coverage/complexity/duplication quality gates, and the
+higher-confidence third-party signals (see the strict column in
+[`gate-resolution.md`](gate-resolution.md) for the authoritative list). The whole codebase
+must meet the bar, not just new code — remove the baseline-comparison allowance in the
+scanner workflows. Do this only when a clean run is achievable on demand.
 
 ### `regulated` and evidence requirements
 

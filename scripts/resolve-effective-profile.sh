@@ -65,6 +65,9 @@ if [ -n "$OVERRIDE" ]; then
 	[ -f "$OVERRIDE" ] || { log_error "override file not found: $OVERRIDE"; exit 2; }
 	command -v tpo_load >/dev/null 2>&1 || { log_error "tool-policy override validator (scripts/lib/tool-policy-override.sh: tpo_load) is unavailable; refusing to apply an unvalidated override"; exit 2; }
 	OVR_JSON=$(mktemp 2>/dev/null || mktemp -t ssovr)
+	# Clean the temp on ANY exit: ep_resolve/ep_resolve_manifest below can exit non-zero
+	# internally, which would otherwise leak this file (the success-path rm is never reached).
+	trap '[ -n "${OVR_JSON:-}" ] && [ "$OVR_JSON" != "${OVERRIDE:-}" ] && rm -f "$OVR_JSON" 2>/dev/null; true' EXIT INT TERM
 	tpo_load "$OVERRIDE" > "$OVR_JSON" || { log_error "invalid tool-policy override: $OVERRIDE"; rm -f "$OVR_JSON"; exit 2; }
 fi
 

@@ -41,26 +41,25 @@ qp_load "$POLICY"
 MAX_FILE=$(qp_num quality.maintainability.max_file_lines 500)
 MAX_FUNC=$(qp_num quality.maintainability.max_function_lines 80)
 
-# Directories excluded from every source scan (matched by name, anywhere in the tree).
-EXCLUDES="--exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=reports --exclude-dir=storage --exclude-dir=cache --exclude-dir=dist --exclude-dir=build --exclude-dir=coverage --exclude-dir=generated --exclude-dir=.git"
-
 ensure_dir "$(dirname "$OUTPUT")"
 _dir=$(dirname "$OUTPUT")
 _list="$_dir/source-size.filelist"
 
-# Enumerate source files: the empty fixed-string pattern matches every (non-empty, text) line,
-# so grep -l lists every PHP/JS/TS file that survives the --include/--exclude filters. Empty
-# files have no lines and are simply omitted (0 lines can never be a large-file violation).
-# shellcheck disable=SC2086
-grep -rIlF \
-	--include='*.php' --include='*.js' --include='*.jsx' --include='*.ts' --include='*.tsx' \
-	$EXCLUDES -e '' . > "$_list" 2>/dev/null || true
+# Enumerate source files with `find ... -exec wc -l` (not grep -l): filenames that contain a
+# newline would split a grep -l filelist into bogus paths and miscount. Each wc line is
+# "<lines> <path>", and we read ONLY the first field (the count) — a newline embedded in a
+# path merely yields extra non-numeric fragment lines that the numeric guard skips, so the
+# per-file count is never corrupted. EXCLUDES dir names are pruned anywhere in the tree.
+find . \
+	-type d \( -name node_modules -o -name vendor -o -name reports -o -name storage \
+		-o -name cache -o -name dist -o -name build -o -name coverage -o -name generated \
+		-o -name .git \) -prune \
+	-o -type f \( -name '*.php' -o -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \) \
+		-exec wc -l {} \; > "$_list" 2>/dev/null || true
 
 LARGE_FILE_VIOLATIONS=0
 MAX_FILE_LINES=0
-while IFS= read -r _f; do
-	[ -n "$_f" ] && [ -f "$_f" ] || continue
-	_lc=$(wc -l < "$_f" 2>/dev/null | tr -d '[:space:]')
+while read -r _lc _rest; do
 	case "$_lc" in '' | *[!0-9]*) continue ;; esac
 	if [ "$_lc" -gt "$MAX_FILE_LINES" ]; then MAX_FILE_LINES="$_lc"; fi
 	if [ "$_lc" -gt "$MAX_FILE" ]; then LARGE_FILE_VIOLATIONS=$((LARGE_FILE_VIOLATIONS + 1)); fi

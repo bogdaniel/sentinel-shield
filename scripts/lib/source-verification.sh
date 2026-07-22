@@ -124,10 +124,27 @@ sv_verify_signature() {
 		log_error "sv_verify_signature: '$2' is not an annotated tag in the checkout (lightweight, unsigned-as-such, or absent refs cannot be signature-verified)"; return 1; }
 	_sv_tagobj=$(sv_tag_object "$1" "$2")
 	_sv_peeled=$(sv_tag_peeled_commit "$1" "$2")
-	if ! git -C "$1" verify-tag "$2" >/dev/null 2>&1; then
-		log_error "sv_verify_signature: no good signature for annotated tag '$2' (unsigned, bad signature, or no verification material available) [tag_object=${_sv_tagobj:-unknown} peeled_commit=${_sv_peeled:-unknown}]"
+	# BOUNDED where bounded-process is available: a wedged gpg-agent/ssh signing helper can make
+	# `git verify-tag` hang forever, stalling acquire/verify. Cap it via the git-verify category
+	# (a timeout is non-zero rc -> treated as no-good-signature, i.e. fail closed). When the
+	# bounded-process lib is not sourced, fall back to a direct call (contract unchanged).
+	if command -v bp_run >/dev/null 2>&1; then
+		_sv_vto=$(bp_timeout git-verify 2>/dev/null) || _sv_vto=60
+		_sv_vout=$(mktemp); _sv_verr=$(mktemp)
+		bp_run git-verify "$_sv_vto" "$_sv_vout" "$_sv_verr" -- git -C "$1" verify-tag "$2"
+		_sv_vrc=$?
+		rm -f "$_sv_vout" "$_sv_verr"
+		unset _sv_vto _sv_vout _sv_verr
+	else
+		git -C "$1" verify-tag "$2" >/dev/null 2>&1
+		_sv_vrc=$?
+	fi
+	if [ "$_sv_vrc" -ne 0 ]; then
+		log_error "sv_verify_signature: no good signature for annotated tag '$2' (unsigned, bad signature, unverifiable, or verification timed out) [tag_object=${_sv_tagobj:-unknown} peeled_commit=${_sv_peeled:-unknown}]"
+		unset _sv_vrc
 		return 1
 	fi
+	unset _sv_vrc
 	# The signature is good; it MUST also target the expected commit (identity is never bypassed).
 	if [ -n "${3:-}" ]; then
 		if ! sv_is_hex40 "$3"; then

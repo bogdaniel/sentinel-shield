@@ -22,11 +22,14 @@ rules:
     metadata:
       category: security
       cwe: "CWE-798: Use of Hard-coded Credentials"
-    pattern-either:
-      - pattern: const apiKey = "..."
-      - pattern: const secret = "..."
-      - pattern: const password = "..."
-      - pattern: const token = "..."
+    patterns:
+      - pattern-either:
+          - pattern: const $NAME = "..."
+          - pattern: let $NAME = "..."
+          - pattern: var $NAME = "..."
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i)(api_?key|secret|password|passwd|pwd|token|auth)
 
   - id: ss-js-insecure-random-security
     languages: [javascript, typescript]

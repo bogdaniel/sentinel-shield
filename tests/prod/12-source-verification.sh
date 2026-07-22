@@ -28,7 +28,7 @@ ok_if() { _d=$1; shift; if "$@" >/dev/null 2>&1; then pass "$_d"; else fail "$_d
 # fail_if <desc> <cmd...> — pass iff the command FAILS (non-zero) — fail-closed assertions.
 fail_if() { _d=$1; shift; if "$@" >/dev/null 2>&1; then fail "$_d (unexpectedly succeeded)"; else pass "$_d"; fi; }
 
-command_exists git || { note_skip "git unavailable — source-verification tests skipped"; exit 0; }
+command_exists git || { printf 'FAIL: git is required for the source-verification suite but is absent\n' >&2; exit 2; }
 
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t sssv)
 cleanup() { rm -rf -- "$WORK"; }

@@ -14,6 +14,10 @@ rules:
       - pattern: exec("..." + $X)
       - pattern: execSync(`...${$X}...`)
       - pattern: execSync("..." + $X)
+      - pattern: $CP.exec(`...${$X}...`)
+      - pattern: $CP.exec("..." + $X)
+      - pattern: $CP.execSync(`...${$X}...`)
+      - pattern: $CP.execSync("..." + $X)
 
   - id: ss-node-nosql-injection
     languages: [javascript, typescript]
@@ -39,7 +43,7 @@ rules:
       category: security
       cwe: "CWE-347: Improper Verification of Cryptographic Signature"
     pattern-either:
-      - pattern: jwt.decode($T)
+      - pattern: jwt.decode(...)
       - pattern: jwt.verify($T, $K)   # missing options/algorithms — review
 
   - id: ss-node-tls-verification-disabled
