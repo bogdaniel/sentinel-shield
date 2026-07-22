@@ -557,7 +557,7 @@ the reasoning (two in `270-quality-gates.sh`, plus the earlier ones in this seri
 
 Eleven collectors mapped real scanner output to the wrong gate, in both directions. Each item
 below produced a **wrong gate verdict** on realistic input. Proven by
-`tests/prod/267-collector-severity-mapping.sh` (43 checks, 27 of which fail against the
+`tests/prod/267-collector-severity-mapping.sh` (51 checks, 31 of which fail against the
 unfixed collectors).
 
 **Under-blocking — real findings that did not gate:**
@@ -565,15 +565,20 @@ unfixed collectors).
 - `osv-scanner` collapsed every severity into `high_vulnerabilities` with `critical` hardcoded
   to 0. A project that set `gates.fail_on.high_vulnerabilities: false` during migration — a
   documented, expected override — while keeping `critical: true` was **completely blind to
-  critical CVEs**. Now buckets by `database_specific.severity` with a CVSS-vector fallback; an
-  unlabelled vulnerability counts as medium rather than being dropped.
+  critical CVEs**. Now buckets by `database_specific.severity`. The CVSS-vector fallback (no
+  label) classifies by impact metrics — all-high → critical, any high impact → high, else
+  medium — so a genuine high/critical vector is never downgraded to medium and slipped past
+  the baseline gate; a vulnerability with no severity signal at all still counts as medium
+  rather than being dropped.
 - `codeql` hardcoded `critical_vulnerabilities: 0` and read only the per-result SARIF `level`.
   CodeQL commonly omits that and carries the level in the rule's `defaultConfiguration`, so
   error-level findings defaulted to medium — which does not block in baseline. Now resolves the
   rule-level severity and honours CodeQL's `security-severity` score (>=9 critical, >=7 high).
 - `composer-audit` returned zero when advisories carried no `severity` field, which they
   frequently do. A PHP project with known CVEs in `composer.lock` reported zero vulnerabilities
-  and passed strict. Unlabelled advisories now count as medium.
+  and passed strict. Unlabelled/unrecognized advisories now count as medium (fail-closed),
+  while an explicit `low` is dropped, not gated — the canonical `LOW/INFO → not gated` rule,
+  matching how `osv-scanner` already treats an explicit low.
 - `trufflehog` dropped every finding marked `Verified: false`. TruffleHog reports unverified
   findings by default and non-verifiable custom detectors always do, so real leaked credentials
   contributed nothing to `secrets` — the gate that blocks in **every** mode. All findings are

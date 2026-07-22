@@ -66,9 +66,28 @@ OV=$(jq 'if has("results") then
 			     elif ($lbl == "MODERATE" or $lbl == "MEDIUM") then "medium"
 			     elif $lbl == "LOW" then "low"
 			     else
-			       ([ .severity[]? | select((.type // "") | startswith("CVSS")) | .score // "" ]
-			        | map(select(test("/C:H/I:H/A:H"))) | length) as $sev
-			       | if $sev > 0 then "critical" else "medium" end
+			       # No usable label. Classify from the CVSS vector IMPACT metrics — not
+			       # a single all-high pattern. The old code matched only `/C:H/I:H/A:H` and
+			       # dumped everything else into `medium`, so a genuine HIGH or an
+			       # off-pattern CRITICAL was downgraded to medium — which does NOT gate in
+			       # baseline mode. A real critical escaping the baseline gate is a fail-open,
+			       # the exact defect these collector fixes target.
+			       #
+			       # Rule (fail-closed, impact-based): all three impacts High -> critical;
+			       # ANY impact High -> at least high; a CVSS vector with no High impact ->
+			       # medium; no CVSS vector at all -> medium (unknown, counted-not-dropped).
+			       # This never downgrades a high-impact vuln below `high`, so it can no
+			       # longer slip past baseline.
+			       # ponytail: heuristic, not the real CVSS base score (exploitability/scope
+			       # ignored) — it can over-classify a high-AC vuln, which is the safe
+			       # direction. Upgrade path: compute the v3.1 base score if precision is
+			       # ever needed.
+			       ([ .severity[]? | select((.type // "") | startswith("CVSS")) | .score // "" ]) as $vecs
+			       | ($vecs | any(test("/C:H/I:H/A:H"))) as $allhigh
+			       | ($vecs | any(test("/C:H|/I:H|/A:H"))) as $anyhigh
+			       | if   $allhigh then "critical"
+			         elif $anyhigh then "high"
+			         else "medium" end
 			     end ]) as $b
 			| {critical_vulnerabilities:([$b[]|select(.=="critical")]|length),
 			   high_vulnerabilities:([$b[]|select(.=="high")]|length),

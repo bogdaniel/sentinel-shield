@@ -41,15 +41,19 @@ ss_collector_guard "$TOOL" "$INPUT"
 # {critical:0, high:0, medium:0} and PASSED strict. There was no unknown-severity bucket
 # and no reconciliation against the advisory total.
 #
-# Unknown/absent severity is now counted as MEDIUM — visible and gated in strict — rather
-# than silently dropped. Under-classifying is a triage problem; dropping is a blind spot.
+# Unknown/absent severity is counted as MEDIUM — visible and gated in strict — rather than
+# silently dropped: an unclassifiable advisory is a blind spot. But an EXPLICIT `low` is not
+# unknown, and the canonical rule (docs/severity-normalization.md) is LOW/INFO → not gated.
+# So `low` is excluded from the medium bucket (matching osv-scanner, which buckets `low`
+# separately and never sums it), while it STAYS in the IN() list below so it is treated as a
+# recognized-and-dropped severity, NOT swept back into medium by the unknown catch-all.
 OV=$(jq '
 	[ (.advisories // {}) | to_entries[] | .value[]? | (.severity // "") | ascii_downcase ] as $s
 	| {
 		critical_vulnerabilities: ([ $s[] | select(. == "critical") ] | length),
 		high_vulnerabilities:     ([ $s[] | select(. == "high") ] | length),
 		medium_vulnerabilities:   ([ $s[]
-			| select(. == "medium" or . == "moderate" or . == "low"
+			| select(. == "medium" or . == "moderate"
 				or (IN("critical","high","medium","moderate","low") | not)) ] | length)
 	}' "$INPUT")
 

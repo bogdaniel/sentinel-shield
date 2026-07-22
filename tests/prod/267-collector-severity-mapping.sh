@@ -76,6 +76,15 @@ check "osv: HIGH and MODERATE land in their own buckets" \
 	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"database_specific":{"severity":"HIGH"}},{"database_specific":{"severity":"MODERATE"}}]}]}]}')" "0:1:1"
 check "osv: an unclassifiable vulnerability is counted, not dropped" \
 	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"id":"X"}]}]}]}')" "0:0:1"
+# CVSS-vector fallback (no database_specific.severity label). The old code matched only the
+# all-high pattern -> critical and dumped every other vector into medium, so a genuine HIGH
+# vector was downgraded below the baseline gate (a fail-open). Classify by impact metrics:
+check "osv: unlabelled all-high CVSS vector -> critical" \
+	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}]}]}]}')" "1:0:0"
+check "osv: unlabelled single-high-impact CVSS vector -> high, NOT medium (baseline fail-open)" \
+	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N"}]}]}]}]}')" "0:1:0"
+check "osv: unlabelled no-high-impact CVSS vector -> medium" \
+	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"}]}]}]}]}')" "0:0:1"
 check "osv: clean report passes" "$(m osv-scanner.sh '{"results":[]}' '.status')" "pass"
 
 # --- codeql: rule-level severity, and criticals are reachable ----------------
@@ -118,6 +127,12 @@ check "composer-audit: advisory with NO severity is counted (was 0)" \
 	"$(sev composer-audit.sh '{"advisories":{"pkg/a":[{"advisoryId":"X","cve":"CVE-1"}]}}')" "0:0:1"
 check "composer-audit: labelled severities still bucket correctly" \
 	"$(sev composer-audit.sh '{"advisories":{"p":[{"severity":"critical"},{"severity":"high"}]}}')" "1:1:0"
+# An EXPLICIT low is not unknown: the canonical rule (severity-normalization.md) is LOW/INFO
+# -> not gated. It must NOT land in medium (which gates in strict), unlike an ABSENT severity.
+check "composer-audit: explicit low is dropped, not counted as medium" \
+	"$(sev composer-audit.sh '{"advisories":{"p":[{"severity":"low"}]}}')" "0:0:0"
+check "composer-audit: explicit low alongside high -> only high gates" \
+	"$(sev composer-audit.sh '{"advisories":{"p":[{"severity":"low"},{"severity":"high"}]}}')" "0:1:0"
 check "composer-audit: clean report passes" \
 	"$(m composer-audit.sh '{"advisories":{}}' '.status')" "pass"
 
