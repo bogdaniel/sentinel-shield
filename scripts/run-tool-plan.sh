@@ -43,6 +43,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/bounded-process.sh
+. "$SCRIPT_DIR/lib/bounded-process.sh"   # bp_run/bp_timeout: bound each runner (category scanner-exec)
 
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
@@ -146,7 +148,19 @@ run_runner() {
 		[ -n "$_report" ] && rm -f -- "$_report"
 		_rc=0
 		STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-		sh "$REPO_ROOT/$_runner" >"$RAW_DIR/${_log}.run.log" 2>&1 || _rc=$?
+		# BOUNDED: a hung runner must not stall the stage forever (bounded-process.sh existed
+		# but the main execution path invoked runners unbounded). The cap is generous by design
+		# (default 30 min, override SENTINEL_SHIELD_RUNNER_TIMEOUT_SECONDS) so it kills a genuine
+		# hang without throttling a legitimately long test/mutation suite. A timeout yields a
+		# non-zero rc, which the classification below records as an execution error.
+		_to="${SENTINEL_SHIELD_RUNNER_TIMEOUT_SECONDS:-1800}"
+		case "$_to" in ''|*[!0-9]*) _to=1800 ;; esac
+		bp_run runner-exec "$_to" "$RAW_DIR/${_log}.run.out" "$RAW_DIR/${_log}.run.err" \
+			-- sh "$REPO_ROOT/$_runner" || _rc=$?
+		# Preserve the single combined .run.log debug artifact (out then err).
+		cat "$RAW_DIR/${_log}.run.out" "$RAW_DIR/${_log}.run.err" > "$RAW_DIR/${_log}.run.log" 2>/dev/null || true
+		rm -f -- "$RAW_DIR/${_log}.run.out" "$RAW_DIR/${_log}.run.err" 2>/dev/null || true
+		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "runner '$_runner' exceeded ${_to}s and was terminated (recorded as execution error)"
 		FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 		RC=$_rc
 	fi

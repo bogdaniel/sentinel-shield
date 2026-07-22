@@ -14,6 +14,25 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 6: bound the main tool-execution path (no more infinite runner hangs)
+
+Census HIGH/architecture gap: `run-tool-plan.sh` — the main tool-execution path — invoked each
+profile runner unbounded (`sh "$REPO_ROOT/$_runner" > log 2>&1`), so one hung scanner stalled the
+whole stage forever, and `scripts/lib/bounded-process.sh` (the timeout machinery) sat unused on
+that path. Local runs had no CI `timeout-minutes` backstop either.
+
+- Each runner invocation now runs under `bp_run` (the same bounded-process primitive the audit
+  wrappers use). A hung runner is terminated (TERM→KILL, process-group isolation) and recorded as
+  an **execution error**, which makes a required tool fail the stage honestly instead of hanging.
+- The cap is **generous by design** — default **30 min**, override
+  `SENTINEL_SHIELD_RUNNER_TIMEOUT_SECONDS` — so it kills a genuine hang without throttling a
+  legitimately long test or mutation suite (run-tool-plan runs those too).
+- The combined `.run.log` debug artifact is preserved (bp_run's separate stdout/stderr are
+  concatenated back).
+- New prod test `tests/prod/274-runner-execution-bounded.sh` guards both the wiring (bounded-process
+  sourced, runner invoked via `bp_run`, no bare unbounded `sh $runner >` remains) and the behavior
+  (a 60 s sleeper under a 2 s bound is killed in ~2 s, reports `timed-out`, and returns non-zero).
+
 ### Fixed — full-repo review batch 5: runner-generation backport (7 runners to the honest-absent contract)
 
 The census HIGH: two runner generations coexisted on live profile paths. Seven old-style
