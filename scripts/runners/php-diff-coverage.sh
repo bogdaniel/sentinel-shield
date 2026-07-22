@@ -97,7 +97,9 @@ if [ ! -s "$_changed" ]; then
 	exit 0
 fi
 
-log_info "php-diff-coverage: $BIN --coverage-clover $_clover (base $BASE)"
+# Xdebug 3 emits no coverage unless XDEBUG_MODE includes 'coverage' (PCOV ignores it).
+export XDEBUG_MODE=coverage
+log_info "php-diff-coverage: $BIN --coverage-clover $_clover (base $BASE, XDEBUG_MODE=coverage)"
 _rc=0
 "$BIN" --coverage-clover "$_clover" >"$_dir/php-diff-coverage.stdout.raw" 2>>"$_err" || _rc=$?
 if [ ! -s "$_clover" ]; then

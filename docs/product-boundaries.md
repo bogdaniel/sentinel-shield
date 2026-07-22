@@ -59,4 +59,3 @@ debt, baselines, and accepted risks stay in the project.
 
 See also [`architecture-boundaries.md`](architecture-boundaries.md) and
 [`profile-driven-adoption.md`](profile-driven-adoption.md).
-</content>

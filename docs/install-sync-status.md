@@ -74,4 +74,3 @@ Kept for history only. Neither is an outstanding TODO.
 
 - `sync-managed-block` in-place updater (Phase 2).
 - Symfony/Go/Python install manifests (Phase 2 / Phase 6).
-</content>

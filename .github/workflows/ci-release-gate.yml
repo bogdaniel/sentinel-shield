@@ -51,7 +51,9 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production   # protected: require reviewers before this gate releases
+    environment: production   # NOT protected by default: GitHub auto-creates this environment
+    # unprotected on first reference. To actually gate releases, configure required reviewers
+    # under Settings > Environments > production (see docs/branch-protection.md).
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

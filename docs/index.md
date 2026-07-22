@@ -86,6 +86,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`dast-staging-runbook.md`](dast-staging-runbook.md) — DAST manual/staging runbook **[reference]**
 - [`ai-security-review.md`](ai-security-review.md) — AI review non-gating contract **[reference]**
 - [`consumer-cleanup.md`](consumer-cleanup.md) — evidence branch/secret/artifact lifecycle **[reference]**
+- [`uninstall.md`](uninstall.md) — full offboarding: remove the gate, config, evidence, secrets **[reference]**
 - [`install-sync-ux.md`](install-sync-ux.md) — install/sync advanced UX **[reference]**
 - [`enterprise-buyer-pack.md`](enterprise-buyer-pack.md) — buyer/architect evaluation pack **[reference]**
 - [`install-sync-scale-v140.md`](install-sync-scale-v140.md) — 8-profile install/sync re-validation **[evidence]**

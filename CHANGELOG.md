@@ -14,6 +14,38 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 10: targeted robustness + offboarding (deferred-class, safe subset)
+
+The objective, low-risk items from the deferred optimization/improvement class — the ones with
+a real correctness or enterprise-readiness payoff, not the speculative refactors.
+
+- **`scripts/runners/php-coverage.sh` + `php-diff-coverage.sh` now `export XDEBUG_MODE=coverage`.**
+  On an Xdebug-3 host with the mode unset, the coverage run emits nothing and silently degrades
+  to `unavailable` even though a driver is installed — the gate loses coverage evidence for a
+  fully-capable host. PCOV ignores the variable, so the export is safe everywhere.
+- **`.github/workflows/ci-compatibility.yml` concurrency-cancellation bug.** The group was keyed
+  on `github.ref` only with `cancel-in-progress: true`, shared between master pushes and the
+  nightly `schedule` full runner-image matrix — a push could cancel the only nightly matrix run
+  (or vice versa), silently losing coverage. The group now includes `github.event_name`.
+- **`.github/workflows/ci-release-gate.yml`** corrected a misleading comment claiming
+  `environment: production` is "protected: require reviewers" — GitHub auto-creates the
+  environment *unprotected* on first reference; the comment now says protection must be configured.
+- **New `docs/uninstall.md`** (linked from `docs/index.md`) — a production adopter had no documented
+  full-removal path (existing docs cover mode-lowering and evidence cleanup only). Covers removing
+  the managed workflow, branch-protection checks, `.sentinel-shield/`, evidence, secrets, and
+  gitignore entries.
+- Removed three residual stray `</content>` paste-cruft tags (`main-gate-validation-strategy.md`,
+  `product-boundaries.md`, `install-sync-status.md`).
+
+**Deliberately NOT done** (reported): the over-engineering "shrink/merge" findings —
+`bounded-process.sh` is now used on the main runner path (batch 6), and merging the ~2.5k lines of
+release-verification scripts into a dispatcher is a high-risk refactor with no correctness gain;
+per-runner scan bounding for nuclei/zap/mutation is largely redundant now that `run-tool-plan`
+bounds every runner (batch 6) and the DAST workflow has a job `timeout-minutes` backstop; the
+`isolated_tool_fetch_verified` "dead code" finding was a **false positive** (it is called by
+`tests/prod/221`); and the enterprise "instrument the pipeline with the event sink" items are
+feature work, not cleanup.
+
 ### Fixed — full-repo review batch 9: MED/LOW correctness sweep (~90 findings, 88 files)
 
 The objective-correctness subset of the census MED/LOW tail, applied across the whole engine

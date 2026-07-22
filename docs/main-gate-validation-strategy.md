@@ -100,7 +100,6 @@ jobs:
 
 This runs every main-gate tool that the runner has installed, records the rest as `unavailable`,
 and uploads real evidence — all before `sentinel-shield-main.yml` is ever merged.
-</content>
 
 ## v0.1.19 — main-gate execution hardening
 Grype (SBOM-first/fs/container), Dependency-Check (disabled-default; nightly), Dockle (image-gated)
