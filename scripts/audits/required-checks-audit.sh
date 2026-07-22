@@ -153,10 +153,14 @@ REPORT=$(jq -n \
 	# that is not how required_status_checks contexts work.
 	| ([ $R | to_entries[] | .key as $wf | (.value.checks[]? | {name: .name, file: $wf}) ]
 	   | group_by(.name)
-	   | map(select(length > 1))
+	   # A name is a CROSS-workflow duplicate only when it spans >1 DISTINCT file. `length > 1`
+	   # also matched the same name listed twice inside ONE registry entry — a within-file dup,
+	   # which the per-file `duplicate` check above already reports — and then listed that single
+	   # file twice while claiming "more than one workflow". Count unique files, not entries.
+	   | map(select(([ .[].file ] | unique | length) > 1))
 	   | map({type: "cross-workflow-duplicate",
 	          name: .[0].name,
-	          file: ([ .[].file ] | join(", "))})) as $xdups
+	          file: ([ .[].file ] | unique | join(", "))})) as $xdups
 	| ($violations + $xdups) as $violations
 	| {
 		version: "1.0",

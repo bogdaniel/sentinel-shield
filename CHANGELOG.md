@@ -771,7 +771,10 @@ check that merely happened to pass.
   runs, the step exits 0 and the `node` check goes green having tested nothing. It now reads
   `package.json`, and warns when no `test` script exists.
 
-**No tag, release, manifest, or evidence bundle is produced by this change.**
+**No tag, GitHub release, *release* manifest, or *release* evidence bundle is produced by
+this change.** (The CI workflow does emit `reports/scanner-manifest.json` and
+`reports/security-acceptance.json` as run artifacts for its own gating — those are CI
+evidence, not a release manifest or a published evidence bundle.)
 
 
 ### Added — Engineering Quality Gates (v2.1)
