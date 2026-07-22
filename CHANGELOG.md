@@ -14,6 +14,41 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 5: runner-generation backport (7 runners to the honest-absent contract)
+
+The census HIGH: two runner generations coexisted on live profile paths. Seven old-style
+(v0.1.14) runners — `eslint`, `psalm`, `actionlint`, `zizmor`, `typescript`, `php-syntax`,
+`php-style` — did not source the common lib, wrote via positional `$1` only, discarded stderr
+(`2>/dev/null || true`), never cleared a stale report, and never validated the tool's JSON
+before publishing it. A direct invocation (e.g. the pr-fast template) could inherit a previous
+run's report and lost all diagnostics. All seven are backported to the hardened contract the
+`phpstan`/`npm-audit` family already use:
+
+- source `scripts/lib/sentinel-shield-common.sh` (structured `log_*`, `command_exists`, `ensure_dir`);
+- accept `--output <path>` (a bare positional path still works — the pr-fast template and other
+  callers are unchanged) and reject unknown `--flags` with exit 2;
+- clear a stale `$OUTPUT` up front (the "(Issue 7)" contract) so an unavailable/failed run cannot
+  be read as current evidence;
+- run the tool to a temp file, **validate the JSON shape** (array / object) before copying to
+  `$OUTPUT`, and otherwise leave the report **absent** (honest `unavailable`) rather than
+  publishing partial/garbage JSON that would make the collector exit 2;
+- keep stdout/stderr as debug artifacts on trouble instead of discarding them.
+
+Also fixed along the way:
+- **`php-syntax.sh` `set -e` abort (regression introduced in batch 3, caught before merge).**
+  `BAD=$(find app src Modules routes config database …)` aborted the runner (rc 1) whenever any
+  of those dirs was missing — common — which the gate reads as an execution error. Now scans
+  only existing dirs (and reports honest *not-applicable* when none exist).
+- **`actionlint.sh`** dropped the `.github/workflows/*.yml` glob that missed `*.yaml` workflows;
+  actionlint now auto-discovers both extensions.
+- **`php-style.sh`** no longer reruns the whole `pint --test` a second time on every violating
+  repo just to write a `.txt` file no collector reads; it accepts the JSON when valid, else absent.
+
+Verified: dash `-n` on all seven; hermetic-PATH proof that each leaves NO report and exits 0 when
+its tool is absent (stale report cleared, not resurrected); unknown-flag → exit 2; positional
+back-compat intact; `php-syntax` correct on paths with spaces and on repos missing source dirs;
+`make validate` self-test PASS; prod tests 273/290 still green.
+
 ### Fixed — full-repo review batch 4: collector fail-closed hardening + honest tooling claims (14 findings)
 
 Coherent fail-closed + honest-claim batch from the 475-finding census. `ss_collector_guard`
