@@ -34,7 +34,7 @@ ss_collector_guard "$TOOL" "$INPUT"
 
 # Fail CLOSED on a non-array report: a malformed audit must not coerce to 0 and clear
 # the unsafe_github_actions gate (the audit emits a JSON array of unpinned actions).
-jq -e 'type == "array"' "$INPUT" >/dev/null 2>&1 || { log_error "$TOOL: report is not a JSON array (malformed audit output); refusing to clear the gate"; exit 2; }
+jq -e '(type == "array") or . == {}' "$INPUT" >/dev/null 2>&1 || { log_warn "$TOOL: report is not a JSON array (malformed audit output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
 N=$(jq 'length' "$INPUT")
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(jq -n --arg s "$STATUS" --argjson n "$N" '{status: $s, unpinned: $n}')

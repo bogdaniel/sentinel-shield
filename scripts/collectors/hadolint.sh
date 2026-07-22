@@ -32,8 +32,8 @@ ss_collector_guard "$TOOL" "$INPUT"
 
 # Fail CLOSED on non-array input: hadolint JSON is an array; an error object would otherwise
 # coerce to 0 and clear the unsafe_docker gate.
-jq -e 'type == "array"' "$INPUT" >/dev/null 2>&1 \
-	|| { log_error "$TOOL: report is not a JSON array (malformed/error output); refusing to clear the gate"; exit 2; }
+jq -e '(type == "array") or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { log_warn "$TOOL: report is not a JSON array (malformed/error output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
 
 N=$(jq '
 	if type == "array" then

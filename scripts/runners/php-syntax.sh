@@ -32,7 +32,10 @@ fi
 _dirs=""
 for _d in app src Modules routes config database; do [ -d "$_d" ] && _dirs="$_dirs $_d"; done
 if [ -z "$_dirs" ]; then
-	log_warn "php-syntax: no PHP source dirs (app/src/Modules/routes/config/database); leaving '$OUTPUT' absent (not applicable)."
+	# php IS available and there is simply nothing to check -> vacuously 0 syntax errors (a
+	# clean result, NOT 'unavailable'; the tool ran, the input set was empty).
+	jq -n '{errors:0, files:[]}' > "$OUTPUT"
+	log_info "php-syntax: no PHP source dirs; 0 files to check -> clean ($OUTPUT)."
 	exit 0
 fi
 # -exec per file (no word-splitting): a path with spaces stays one argument, so php -l is not

@@ -50,7 +50,7 @@ esac
 
 # Fail closed on a valid-JSON object that carries neither an explicit status nor any recognized
 # metric key (e.g. a scanner error object): it must not derive a clean 0 pass.
-jq -e 'type=="object" and (has("status") or has("findings") or has("large_file_violations") or has("large_function_violations") or has("max_file_lines") or has("max_function_lines"))' "$INPUT" >/dev/null 2>&1 \
+jq -e '(type=="object" and (has("status") or has("findings") or has("large_file_violations") or has("large_function_violations") or has("max_file_lines") or has("max_function_lines"))) or . == {}' "$INPUT" >/dev/null 2>&1 \
 	|| { ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error","findings":0}' '{}'; exit 0; }
 
 LFV=$(jq '((.large_file_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")

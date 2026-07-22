@@ -26,10 +26,6 @@ if ! command_exists zizmor; then
 	log_warn "zizmor: not available; leaving '$OUTPUT' absent (tool unavailable)."
 	exit 0
 fi
-if [ ! -d .github/workflows ]; then
-	log_warn "zizmor: no .github/workflows directory; leaving '$OUTPUT' absent (not applicable)."
-	exit 0
-fi
 
 _dir=$(dirname "$OUTPUT"); _raw="$_dir/zizmor.stdout.raw"; _err="$_dir/zizmor.stderr.log"
 # Non-zero exit means findings — expected; the JSON is the signal.

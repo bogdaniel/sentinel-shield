@@ -26,10 +26,6 @@ if ! command_exists actionlint; then
 	log_warn "actionlint: not available; leaving '$OUTPUT' absent (tool unavailable)."
 	exit 0
 fi
-if [ ! -d .github/workflows ]; then
-	log_warn "actionlint: no .github/workflows directory; leaving '$OUTPUT' absent (not applicable)."
-	exit 0
-fi
 
 _dir=$(dirname "$OUTPUT"); _raw="$_dir/actionlint.stdout.raw"; _err="$_dir/actionlint.stderr.log"
 # No file glob: actionlint auto-discovers .github/workflows/*.yml AND *.yaml (the glob missed

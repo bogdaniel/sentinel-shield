@@ -29,22 +29,21 @@ run_case() {
 	_script="$COLLECTORS/$_c.sh"
 	[ -f "$_script" ] || { fail "$_c: collector script missing"; return; }
 
-	# (1) malformed shape -> fail closed (exit 2)
-	if sh "$_script" --input "$BAD" >/dev/null 2>&1; then
-		fail "$_c: malformed report did NOT fail closed (cleared the gate)"
-	else
-		_rc=$?
-		[ "$_rc" -eq 2 ] && pass "$_c: malformed -> exit 2 (fail closed)" \
-			|| fail "$_c: malformed -> exit $_rc (want 2)"
-	fi
+	# (1) malformed shape -> fail closed via status=execution-error (NOT a clean pass).
+	# Emitting execution-error + exit 0 (rather than a hard exit 2) keeps the tool fail-closed
+	# — a REQUIRED tool with execution-error fails the gate in enforce-gates — while letting
+	# build-security-summary aggregate the rest of the run instead of aborting the whole summary.
+	_st=$(sh "$_script" --input "$BAD" 2>/dev/null | jq -r '.status // "MISSING"' 2>/dev/null)
+	[ "$_st" = "execution-error" ] && pass "$_c: malformed -> execution-error (fail closed)" \
+		|| fail "$_c: malformed -> status '$_st' (want execution-error)"
 
-	# (2) well-typed clean report -> pass (exit 0)
+	# (2) well-typed clean report -> pass
 	_cf="$WORK/clean-$_c.json"; printf '%s' "$_clean" > "$_cf"
-	if sh "$_script" --input "$_cf" >/dev/null 2>&1; then
-		pass "$_c: clean-empty -> exit 0"
-	else
-		fail "$_c: clean-empty report was rejected (exit $?) — over-aggressive fail-closed"
-	fi
+	_st=$(sh "$_script" --input "$_cf" 2>/dev/null | jq -r '.status // "MISSING"' 2>/dev/null)
+	case "$_st" in
+		pass|fail) pass "$_c: clean-empty -> $_st (not a false error)" ;;
+		*) fail "$_c: clean-empty report -> status '$_st' (over-aggressive fail-closed)" ;;
+	esac
 }
 
 run_case actionlint            '[]'

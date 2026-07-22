@@ -29,7 +29,8 @@ fi
 
 _dir=$(dirname "$OUTPUT"); _raw="$_dir/eslint.stdout.raw"; _err="$_dir/eslint.stderr.log"
 # eslint exits non-zero when lint errors exist — expected; the JSON array is the signal.
-npx --no-install eslint . -f json >"$_raw" 2>"$_err" || true
+# Write via -o (eslint's file output) rather than stdout: -o is the standard invocation.
+npx --no-install eslint . -f json -o "$_raw" 2>"$_err" || true
 if jq -e 'type == "array"' "$_raw" >/dev/null 2>&1; then
 	cp "$_raw" "$OUTPUT"; rm -f "$_raw" "$_err" 2>/dev/null || true
 	log_info "eslint: wrote $OUTPUT."

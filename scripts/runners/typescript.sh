@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sentinel Shield runner — TypeScript --noEmit. Runs tsc if available and writes
-# reports/raw/typescript.json {errors:N}; if tsc is absent OR fails to run, leaves the report
-# ABSENT (collector reports 'unavailable') — never a fake clean report.
+# reports/raw/typescript.json {errors:N}; when tsc is not available OR fails to run, leaves the
+# report ABSENT (collector reports 'unavailable') — it does NOT fake a clean report.
 #
 # Usage: typescript.sh [--output <path>]   (bare positional path also accepted, back-compat)
 # Exit:  0 ran or honest unavailable; 2 config error.
