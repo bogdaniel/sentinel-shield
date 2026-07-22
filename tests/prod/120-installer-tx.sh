@@ -65,8 +65,14 @@ fi
 # `https://tok@host/o/r` would not have been detected.
 #
 # A positive control now proves the check can actually see a credential-bearing value.
-if jq -e 'has("repository")' "$INST" >/dev/null 2>&1; then
-	if jq -e '.repository | test("@")' "$INST" >/dev/null 2>&1; then
+if jq -e '(.repository // null) != null' "$INST" >/dev/null 2>&1; then
+	# repository present and non-null. `test("@")` ERRORS on a non-string (null slips past
+	# has("repository")), and that error, swallowed by `2>/dev/null`, made the `else` record
+	# a false "no credential" pass. Require a string first: a non-string repository is a
+	# malformed record and fails, never silently passes.
+	if jq -e '(.repository | type) != "string"' "$INST" >/dev/null 2>&1; then
+		fail "(a) repository is present but not a string (malformed record)"
+	elif jq -e '.repository | test("@")' "$INST" >/dev/null 2>&1; then
 		fail "(a) repository must not carry credentials ('@')"
 	else
 		pass "(a) repository carries no credential userinfo"
