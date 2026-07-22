@@ -1,6 +1,13 @@
 # Sentinel Shield — MANUAL / CONTROLLED DAST (v0.1.12). NOT a PR check. workflow_dispatch only.
 # OWASP ZAP baseline/full + Nuclei. FAIL CLOSED without an allowlisted target. NEVER scans an
-# arbitrary target. Requires a completed templates/dast-scan-approval.md + nuclei-target-allowlist.md.
+# arbitrary target.
+#
+# ALLOWLIST: the dispatch inputs (target_url + allowed_host) are self-attested by the dispatcher.
+# For a review-gated allowlist, commit `.sentinel-shield/dast-allowlist.txt` (one host per line,
+# `#` comments allowed) — dast-guard then requires the target host to appear in that COMMITTED
+# file (a change gated by branch protection), so dispatch rights alone cannot authorize a scan.
+# Override the path with SENTINEL_SHIELD_DAST_ALLOWLIST_FILE. The approval/target docs
+# (templates/dast-scan-approval.md, nuclei-target-allowlist.md) remain the human process record.
 name: sentinel-shield-dast
 on:
   workflow_dispatch:

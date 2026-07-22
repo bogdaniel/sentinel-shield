@@ -37,7 +37,29 @@ ss_dast_check() {
 		echo "[sentinel-shield][dast] target host '$_host' is not the allowed host '$_allow'; FAIL CLOSED (no scan)." >&2
 		return 3
 	fi
-	echo "[sentinel-shield][dast] target host '$_host' allowlisted; proceeding." >&2
+	# The dispatch input above is self-attested (target_url + allowed_host both come from the
+	# dispatcher). If a COMMITTED allowlist file is configured, the host must ALSO appear in it —
+	# a repo change gated by review/branch-protection, not a dispatch-time claim. Default path is
+	# checked when present; SENTINEL_SHIELD_DAST_ALLOWLIST_FILE overrides. Fail closed on a
+	# configured-but-missing file or an absent host.
+	_allowfile="${SENTINEL_SHIELD_DAST_ALLOWLIST_FILE:-}"
+	if [ -z "$_allowfile" ] && [ -f .sentinel-shield/dast-allowlist.txt ]; then
+		_allowfile=".sentinel-shield/dast-allowlist.txt"
+	fi
+	if [ -n "$_allowfile" ]; then
+		if [ ! -f "$_allowfile" ]; then
+			echo "[sentinel-shield][dast] committed allowlist '$_allowfile' configured but not found; FAIL CLOSED (no scan)." >&2
+			return 3
+		fi
+		# Exact, whole-line match; '#' comments and blank lines ignored.
+		if ! grep -q -x -F -e "$_host" -- "$_allowfile" 2>/dev/null; then
+			echo "[sentinel-shield][dast] target host '$_host' is not listed in the committed allowlist '$_allowfile'; FAIL CLOSED (no scan)." >&2
+			return 3
+		fi
+		echo "[sentinel-shield][dast] target host '$_host' present in committed allowlist '$_allowfile'; proceeding." >&2
+		return 0
+	fi
+	echo "[sentinel-shield][dast] target host '$_host' matches the dispatch allowed_host (no committed allowlist file present; consider committing .sentinel-shield/dast-allowlist.txt for review-gated targets); proceeding." >&2
 	return 0
 }
 

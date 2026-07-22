@@ -14,6 +14,24 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 7: DAST committed allowlist + tool-wiring integrity guard
+
+- **DAST allowlist was self-attested.** `scripts/runners/dast-guard.sh` compared the dispatch
+  `target_url` host against the dispatch `allowed_host` — both supplied by the same dispatcher —
+  so anyone with dispatch rights could scan any host. The guard now ALSO checks a **committed**
+  allowlist file when present (`.sentinel-shield/dast-allowlist.txt` by default, override
+  `SENTINEL_SHIELD_DAST_ALLOWLIST_FILE`): the target host must appear in that review-gated file
+  (exact whole-line match; `#` comments ignored), and a configured-but-missing file fails closed.
+  Dispatch rights alone can no longer authorize a scan. The `sentinel-shield-dast.yml` header and
+  the ZAP/nuclei runners inherit this via the shared guard. New prod test
+  `tests/prod/276-dast-allowlist.sh` (4 cases, incl. the batch-3 userinfo-bypass regression).
+- **Tool-wiring drift guard.** Two sources of truth wire the same tools — profile manifests
+  (`runner`/`report`) and `build-security-summary.sh`'s `TOOL_TABLE` (raw→collector) — and drift
+  only surfaced at runtime as "collector not found". New prod test
+  `tests/prod/275-tool-wiring-integrity.sh` asserts every manifest `runner` path and every
+  TOOL_TABLE collector script exists on disk (70 rows parsed, all present today), turning a
+  latent runtime failure into a CI-caught one.
+
 ### Fixed — full-repo review batch 6: bound the main tool-execution path (no more infinite runner hangs)
 
 Census HIGH/architecture gap: `run-tool-plan.sh` — the main tool-execution path — invoked each
