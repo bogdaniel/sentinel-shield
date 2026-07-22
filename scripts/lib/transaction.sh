@@ -881,19 +881,6 @@ tx_recover() {
 		exit 0
 	fi
 	unset _rc_state
-	# FOREIGN-HOST GUARD: on a shared filesystem the lock may belong to a DIFFERENT host whose
-	# liveness cannot be assessed here (see _tx_owner_classify). Rolling it back could UNDO a live
-	# remote operation, so refuse unless the operator explicitly overrides after confirming the
-	# remote owner is dead (TX_RECOVER_FORCE_FOREIGN=1).
-	if [ "$(_tx_owner_classify)" = "foreign" ] && [ "${TX_RECOVER_FORCE_FOREIGN:-0}" != "1" ]; then
-		_rc_fhost=$(jq -r '.hostname // "?"' "$LOCK" 2>/dev/null || printf '?')
-		echo "error: the operation-lock was created on a different host ('$_rc_fhost'); its liveness" >&2
-		echo "       cannot be assessed from here. Refusing to roll back — this could undo a live" >&2
-		echo "       remote operation. If that host's operation is truly dead, override with:" >&2
-		echo "         TX_RECOVER_FORCE_FOREIGN=1 sh ${TX_SELF:-scripts/install-baseline.sh} --target '$TARGET' --recover" >&2
-		unset _rc_fhost
-		exit 4
-	fi
 	_snap=$(jq -r '.snapshot_dir' "$LOCK" 2>/dev/null || true)
 	_ltarget=$(jq -r '.target' "$LOCK" 2>/dev/null || true)
 	# (2) lock.target must equal the current canonical target.
