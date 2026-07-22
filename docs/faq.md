@@ -71,7 +71,7 @@ NVD rate limit and is likely to fail. See
 
 **Q: How is the NVD key kept safe?**
 It is **consumer-provided** via a GitHub secret and handed to Dependency-Check only through a
-`0600 --propertyfile` — **never** on the command line, so it stays off process listings and CI
+`--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit) — **never** on the command line, so it stays off process listings and CI
 logs. **Never print, log, paste, or commit the value.** See
 [`security-hygiene.md`](security-hygiene.md).
 

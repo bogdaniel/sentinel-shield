@@ -14,6 +14,78 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 3: critical DAST/type-gate bypasses + fail-open collectors (20 findings)
+
+From the 475-finding full-repo census (7 parallel sweeps). This batch takes the 2 CRITICAL
+and 18 HIGH findings not owned by open PRs. Every fix verified against code; security fixes
+proven behaviorally.
+
+**Critical**
+
+- **DAST allowlist bypass (`scripts/runners/dast-guard.sh`).** The host parser stripped the
+  port before the userinfo, so `http://allowed.host:x@evil.com/` matched the allowed host
+  while ZAP/nuclei actually scanned `evil.com`. Userinfo (`*@`) is now stripped before the
+  port. *Proven: the bypass URL now fails closed (exit 3).*
+- **TypeScript gate fake clean pass (`scripts/runners/typescript.sh`).** When tsc could not
+  run, `grep -c "error TS"` counted 0 and the runner wrote `{errors:0}` — a fake pass on the
+  type gate. It now captures tsc's exit code and reports unavailable (writes nothing) when
+  tsc fails without emitting diagnostics; a stale report is cleared up front. *Proven both
+  paths.*
+
+**High — fake-clean / stale-evidence / fail-open**
+
+- `runners/knip.sh` — a ts-prune crash in the fallback path yielded `dead_code_count:0`
+  (fake pass); now reports unavailable on non-zero ts-prune exit.
+- `runners/laravel-phpstan.sh` — missing the stale-report `rm -f` the sibling PHPStan
+  runners have; a stale `phpstan.json` could be read as current evidence. Added.
+- `runners/zap-full.sh` — probed `zap-baseline.py`/`zap.sh` but executed
+  `zap-full-scan.py`; the active scan silently no-op'd. Now probes the binary it runs.
+- `runners/nuclei.sh` — wrote JSONL (`-jle`); the collector reads one JSON document and
+  exits 2 on multi-doc input, hard-erroring the DAST gate exactly when ≥2 findings exist.
+  Switched to `-je` (JSON array).
+- `runners/codeql-export.sh` — searched the whole repo for `*.sarif`, so a stray/fixture
+  SARIF (PR-influenceable) could be exported as the CodeQL evidence. Restricted to the
+  codeql-action output dir.
+- `runners/php-syntax.sh` — `for f in $(find …)` word-split filenames; paths with spaces
+  fragmented and inflated `php_syntax_errors` with false positives that block releases. Now
+  uses `find … -exec` per file.
+- `collectors/docker-base-digest.sh` + `collectors/github-actions-pins.sh` — a non-array
+  (malformed) audit report coerced to count 0 → clean pass, silently clearing the
+  `unsafe_docker` / `unsafe_github_actions` gates. Now fail closed (exit 2) on non-array
+  input. *Proven: malformed → exit 2, empty array → exit 0.*
+
+**High — durability / bounded execution**
+
+- `lib/transaction.sh` — the journal appended without healing a torn prior tail, so a
+  crash-truncated line got concatenated into by the next append, turning a tolerated
+  trailing artifact into prefix corruption that blocks recovery. A trailing newline is now
+  ensured before each append.
+- `audits/grype.sh` + `audits/osv-scanner.sh` — headers claimed hangs "can no longer stall
+  the scan"; only the version probe was bounded, the actual scan ran unbounded. The scan is
+  now wrapped in `bp_run` with a `*_SCAN_TIMEOUT_SECONDS` cap.
+
+**High — fail-open workflow templates**
+
+- `templates/workflows/sentinel-shield.yml` (and the `examples/` copy) — the prepare step's
+  `resolve-gates.sh … || true` and the main-gate `run-tool-plan.sh … || true` swallowed
+  resolver/runner failures (exit 3/4), letting the release gate enforce on partial evidence
+  or the wrong gate set. Both `|| true` removed.
+
+**High — false/ broken documentation**
+
+- `prompts/install-sentinel-shield.md` + `prompts/update-sentinel-shield.md` — the
+  authoritative-gate step ran `run-local-pipeline.sh --target .`, which exits 2 (missing
+  required `--profile`/`--stage`). Corrected to the full invocation.
+- False "`0600 --propertyfile`" NVD-key security claim corrected across six docs
+  (troubleshooting, faq, product-readiness-checklist, enterprise-scanner-matrix,
+  production-readiness-audit, dependency-check-consumer-evidence) — the wrapper deliberately
+  uses 644/755 (0600 was the container-unreadable bug); troubleshooting.md contradicted its
+  own correct statement.
+- `policies/opa/docker.rego` + `terraform.rego` — headers advertised `--parser dockerfile`
+  / hcl2 modes the rules do not support (they read Compose / plan-JSON only; other shapes
+  pass vacuously — fail-open for a documented mode). Scoped the headers to what the rules
+  actually consume.
+
 ### Fixed — full-repo review batch 2: stale template pins, unpinned example actions, config hygiene (7 findings)
 
 - **All shipped workflow templates now pin `SENTINEL_SHIELD_REF: v2.0.1`** (the latest

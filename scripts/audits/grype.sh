@@ -83,13 +83,17 @@ case "$MODE" in
 			unavailable "SBOM '$SBOM' not found (run Syft first, or set SENTINEL_SHIELD_GRYPE_MODE=fs)"
 		fi
 		echo "[sentinel-shield] grype: scanning SBOM $SBOM -> $OUT" >&2
+		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
 		# shellcheck disable=SC2086
-		$EXEC sbom:"$SBOM" -o json --file "$OUT" || true
+		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC sbom:"$SBOM" -o json --file "$OUT" || true
+		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: SBOM scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
 		;;
 	fs)
 		echo "[sentinel-shield] grype: filesystem scan (.) -> $OUT" >&2
+		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
 		# shellcheck disable=SC2086
-		$EXEC dir:. -o json --file "$OUT" || true
+		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC dir:. -o json --file "$OUT" || true
+		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: filesystem scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
 		;;
 	*) unavailable "invalid SENTINEL_SHIELD_GRYPE_MODE='$MODE' (use sbom|fs)" ;;
 esac

@@ -142,7 +142,7 @@ A/C grades above are unchanged.
 
 ## v0.1.26 — Dependency-Check C → A (live-validated, execution path)
 **OWASP Dependency-Check** moves **C → A / live-validated**: first real `dependency-check.json`
-(NVD-key authenticated, `0600 --propertyfile`), valid (5 deps, 0 vulns), collector → `pass` 0/0/0,
+(NVD-key authenticated, `--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit)), valid (5 deps, 0 vulns), collector → `pass` 0/0/0,
 153 s, no HTTP 429. Evidence: `tests/fixtures/live-evidence/dependency-check-real.json`;
 [`main-gate-live-evidence.md`](main-gate-live-evidence.md). **Caveat:** thin self-scan surface — the
 grade reflects a proven execution path, not non-zero severity proof on a dependency-rich consumer

@@ -51,7 +51,9 @@ elif [ -x node_modules/.bin/ts-prune ] || command_exists ts-prune; then
 	_TP="ts-prune"; [ -x node_modules/.bin/ts-prune ] && _TP="node_modules/.bin/ts-prune"
 	log_info "knip: falling back to $_TP (line count)"
 	# ts-prune prints one line per unused export; ignore "(used in module)" re-exports.
-	COUNT=$("$_TP" 2>"$_err" | grep -v '(used in module)' | grep -c ':' || true)
+	# Capture rc: a ts-prune crash must NOT be read as 0 dead code (fake clean pass).
+	_tp_out=$("$_TP" 2>"$_err") || { log_warn "knip: $_TP failed to run; leaving '$OUTPUT' absent (tool unavailable). NOT writing a fake clean report. Debug: $_err."; exit 0; }
+	COUNT=$(printf '%s\n' "$_tp_out" | grep -v '(used in module)' | grep -c ':' || true)
 else
 	log_warn "knip: no dead-code tool found (node_modules/.bin/knip or ts-prune); leaving '$OUTPUT' absent (tool unavailable). Install with 'npm i -D knip' or 'npm i -D ts-prune'."
 	exit 0

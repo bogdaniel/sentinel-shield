@@ -1,5 +1,9 @@
 # Sentinel Shield — Terraform OPA policy (Conftest against `terraform show -json`
-# plan output, or HCL via the conftest hcl2 parser).
+# plan output).
+#
+# SCOPE: these rules read plan-JSON (`input.resource_changes`) ONLY. Raw HCL parsed with the
+# hcl2 parser produces a different shape (top-level `resource` blocks) and matches nothing
+# here — always evaluate the plan JSON, not the .tf sources.
 #
 # Usage (plan JSON):
 #   terraform plan -out tfplan && terraform show -json tfplan > plan.json

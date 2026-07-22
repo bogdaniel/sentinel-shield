@@ -17,8 +17,8 @@ rc=0; ss_dast_check || rc=$?
 [ "$rc" -eq 10 ] && exit 0      # no target -> skip cleanly
 [ "$rc" -ne 0 ] && exit "$rc"   # allowlist violation -> fail closed
 mkdir -p "$(dirname "$OUT")"
-if ! command -v zap-baseline.py >/dev/null 2>&1 && ! command -v zap.sh >/dev/null 2>&1; then
-	echo "[sentinel-shield][dast] ZAP not installed locally; run via the sentinel-shield-dast.yml workflow (zaproxy container). No scan run." >&2
+if ! command -v zap-full-scan.py >/dev/null 2>&1; then
+	echo "[sentinel-shield][dast] zap-full-scan.py not installed locally; run via the sentinel-shield-dast.yml workflow (zaproxy container). No scan run." >&2
 	exit 0
 fi
 echo "[sentinel-shield][dast] running ZAP FULL (active) scan against $SENTINEL_SHIELD_DAST_TARGET_URL" >&2

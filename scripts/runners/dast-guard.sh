@@ -10,8 +10,10 @@
 # Usage in a runner:
 #   . "$SCRIPT_DIR/dast-guard.sh"; ss_dast_check || exit $?
 ss_dast_host_of() {
-	# strip scheme, then path, then port
-	_h=${1#*://}; _h=${_h%%/*}; _h=${_h%%\?*}; _h=${_h%%:*}
+	# strip scheme, then path/query, then USERINFO, then port. Userinfo must go before
+	# the port strip: 'http://allowed.host:x@evil.com/' would otherwise truncate at the
+	# first ':' and report 'allowed.host' while the scanner actually hits 'evil.com'.
+	_h=${1#*://}; _h=${_h%%/*}; _h=${_h%%\?*}; _h=${_h##*@}; _h=${_h%%:*}
 	printf '%s' "$_h"
 }
 # ss_dast_check — guarded DAST preflight check (target/host validation).

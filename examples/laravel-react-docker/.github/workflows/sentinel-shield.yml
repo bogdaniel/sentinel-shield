@@ -65,8 +65,9 @@ jobs:
         run: |
           set -eu
           mkdir -p reports
+          # No `|| true`: a resolver failure must fail this step, not fall back to defaults.
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
-            --profile .sentinel-shield/profile.yaml --format env --output-dir reports || true
+            --profile .sentinel-shield/profile.yaml --format env --output-dir reports
           ENVF=reports/sentinel-shield-gates.env
           get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
           PN=$(get SENTINEL_SHIELD_PROJECT_NAME); [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"

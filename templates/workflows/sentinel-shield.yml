@@ -91,8 +91,10 @@ jobs:
         run: |
           set -eu
           mkdir -p reports
+          # No `|| true`: a resolver failure must fail this step, not silently fall back to
+          # defaults and enforce the wrong gate set.
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
-            --profile .sentinel-shield/profile.yaml --format env --output-dir reports || true
+            --profile .sentinel-shield/profile.yaml --format env --output-dir reports
           ENVF=reports/sentinel-shield-gates.env
           get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
           PN=$(get SENTINEL_SHIELD_PROJECT_NAME); [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"
@@ -332,8 +334,10 @@ jobs:
       - name: Run the main tool plan (profile-driven)
         run: |
           set -eu
+          # No `|| true`: run-tool-plan exits 3/4 when a REQUIRED tool is unavailable or its
+          # runner crashed. Swallowing that lets the release gate enforce on partial evidence.
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-tool-plan.sh \
-            --profile "${PROFILE}" --target . --stage main --output-dir reports/raw || true
+            --profile "${PROFILE}" --target . --stage main --output-dir reports/raw
       - name: Build security summary
         env:
           PROJECT_NAME: ${{ needs.prepare.outputs.project_name }}

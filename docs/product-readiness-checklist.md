@@ -124,7 +124,7 @@ dispatchable validation strategy. Do not read a `partial`/`blocked` item as prod
 
 ## v0.1.26 — Dependency-Check live validation + strict consumer evidence
 - [x] `done` — **Dependency-Check live validation (execution path)**: first real `dependency-check.json`
-  produced with an **NVD API key** (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, `0600 --propertyfile`,
+  produced with an **NVD API key** (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, `--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit),
   key never logged/committed/in-artifact). Valid (5 deps, 0 vulns), collector → `pass` 0/0/0, 153 s, **no
   HTTP 429**. Evidence: `tests/fixtures/live-evidence/dependency-check-real.json`,
   [`main-gate-live-evidence.md`](main-gate-live-evidence.md). **Caveat:** thin self-scan surface.

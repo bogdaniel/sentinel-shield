@@ -2,7 +2,10 @@
 #
 # Usage:
 #   conftest test docker-compose.yml --policy policies/opa/docker.rego
-#   conftest test Dockerfile --parser dockerfile --policy policies/opa/docker.rego
+#
+# SCOPE: these rules read Compose input (`input.services`) ONLY. A Dockerfile parsed with
+# `--parser dockerfile` produces a different shape and matches nothing here (it would pass
+# vacuously) — use the `ss-docker-*` Semgrep rules in semgrep/app/docker/ for Dockerfiles.
 #
 # These are starter rules. Tune the package name and inputs to your Conftest setup.
 package sentinel.docker

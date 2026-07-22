@@ -47,5 +47,8 @@ else
 	VER=""
 fi
 write_prov "local-binary" "$VER" "$BINPATH"
-osv-scanner --format json --output "$OUT" -r . || true
+# BOUNDED scan (not only the version probe): a wedged scan must not stall the wrapper.
+STO=$(bp_timeout scanner-run SENTINEL_SHIELD_OSV_SCANNER_SCAN_TIMEOUT_SECONDS) || STO=900
+bp_run scanner-run "$STO" "$BP_TMP_OUT" "$BP_TMP_ERR" -- osv-scanner --format json --output "$OUT" -r . || true
+[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "osv-scanner: scan exceeded ${STO}s; report may be absent (collector reports unavailable)"
 exit 0

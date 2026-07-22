@@ -20,5 +20,7 @@ if ! command -v nuclei >/dev/null 2>&1; then
 	exit 0
 fi
 echo "[sentinel-shield][dast] running nuclei against $SENTINEL_SHIELD_DAST_TARGET_URL with curated templates $SENTINEL_SHIELD_NUCLEI_TEMPLATES" >&2
-nuclei -u "$SENTINEL_SHIELD_DAST_TARGET_URL" -t "$SENTINEL_SHIELD_NUCLEI_TEMPLATES" -jle "$OUT" -severity medium,high,critical || true
+# -je (JSON array), NOT -jle (JSONL): the collector reads one JSON document and exits 2
+# on multi-doc input, hard-erroring the gate exactly when >=2 findings exist.
+nuclei -u "$SENTINEL_SHIELD_DAST_TARGET_URL" -t "$SENTINEL_SHIELD_NUCLEI_TEMPLATES" -je "$OUT" -severity medium,high,critical || true
 exit 0

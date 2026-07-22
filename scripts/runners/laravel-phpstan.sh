@@ -38,6 +38,9 @@ while [ $# -gt 0 ]; do
 		*) log_error "unknown argument: $1"; exit 2 ;;
 	esac
 done
+# (Issue 7) Clear any STALE report up-front so an unavailable/failed run cannot inherit a
+# previous run's valid report as current evidence (parity with phpstan.sh/larastan.sh).
+rm -f -- "$OUTPUT" 2>/dev/null || true
 
 MEM="${SENTINEL_SHIELD_PHPSTAN_MEMORY_LIMIT:-2G}"
 CONFIG="${SENTINEL_SHIELD_PHPSTAN_CONFIG:-}"

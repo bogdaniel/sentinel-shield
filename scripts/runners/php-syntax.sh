@@ -8,11 +8,11 @@ if ! command -v php >/dev/null 2>&1; then
 	echo "[sentinel-shield] php not installed; skipping php-syntax (collector reports unavailable)." >&2
 	exit 0
 fi
-ERRORS=0; BAD=""
-for f in $(find app src Modules routes config database -name '*.php' 2>/dev/null); do
-	if ! php -l "$f" >/dev/null 2>&1; then ERRORS=$((ERRORS+1)); BAD="$BAD$f
-"; fi
-done
-printf '%s' "$BAD" | jq -R -s --argjson e "$ERRORS" 'split("\n")|map(select(length>0)) as $f | {errors:$e, files:$f}' > "$OUT"
+# -exec per file (no word-splitting): a path with spaces stays one argument, so php -l
+# is not run on filename fragments (which inflated php_syntax_errors with false positives).
+BAD=$(find app src Modules routes config database -name '*.php' 2>/dev/null \
+	-exec sh -c 'php -l "$1" >/dev/null 2>&1 || printf "%s\n" "$1"' _ {} \;)
+ERRORS=$(printf '%s' "$BAD" | grep -c . || true)
+printf '%s' "$BAD" | jq -R -s --argjson e "${ERRORS:-0}" 'split("\n")|map(select(length>0)) as $f | {errors:$e, files:$f}' > "$OUT"
 echo "[sentinel-shield] php-syntax: $ERRORS error(s) -> $OUT" >&2
 exit 0
