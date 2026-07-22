@@ -1,8 +1,11 @@
 # Sentinel Shield — PR FAST GATE (v0.1.12). Fast, deterministic, no external target scanning.
 # === MANAGED BY SENTINEL SHIELD === installed/synced via install-baseline.sh / sync-baseline.sh.
-# Tools: php -l, PHPStan, Psalm, Pint/PHP-CS-Fixer, ESLint, tsc --noEmit, Semgrep, Gitleaks,
-# composer audit, npm audit, actionlint, zizmor, GH Actions pin audit, Docker base digest,
-# Hadolint, unit/feature tests. Enforces the project's profile mode.
+# Tools ACTUALLY run by this workflow: php -l, PHPStan, npm audit, Semgrep (curated),
+# Hadolint, GH Actions pin audit, Docker base digest, dependency policy. Psalm/Pint/ESLint/
+# tsc run ONLY if the steps below are wired for a configured project.
+# NOTE: Gitleaks (secrets), actionlint and zizmor are NOT run here — they run in the separate
+# security workflow (ci-security.yml). This PR-fast gate is NOT the secrets gate.
+# Enforces the project's profile mode.
 name: sentinel-shield-pr-fast
 on:
   pull_request:

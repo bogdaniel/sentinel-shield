@@ -13,6 +13,8 @@ while [ $# -gt 0 ]; do case "$1" in
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
+jq -e 'type == "array" or (type == "object" and has("failures"))' "$INPUT" >/dev/null 2>&1 \
+	|| { log_error "$TOOL: unrecognized report shape (malformed/error output); refusing to clear the gate"; exit 2; }
 N=$(jq '([ (if type=="array" then .[] else . end) | (.failures // []) | length ] | add // 0) // 0 | floor' "$INPUT")
 case "$N" in ''|*[!0-9]*) log_error "$TOOL: non-integer count"; exit 2 ;; esac
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi

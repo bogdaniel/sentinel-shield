@@ -30,6 +30,8 @@ if [ -z "$TOOL" ]; then
   case "$KIND" in full) TOOL="zap-full" ;; *) TOOL="zap" ;; esac
 fi
 ss_collector_guard "$TOOL" "$INPUT"
+jq -e 'type == "object" and (has("site") or has("findings"))' "$INPUT" >/dev/null 2>&1 \
+	|| { log_error "$TOOL: unrecognized report shape (malformed/error output); refusing to clear the gate"; exit 2; }
 N=$(jq '(if has("site") then ([.site[]?.alerts[]? | select(((.riskcode // "0")|tonumber) >= 2)] | length) elif has("findings") then (if (.findings|type)=="array" then (.findings|length) else .findings end) else 0 end) // 0 | floor' "$INPUT")
 case "$N" in ''|*[!0-9]*) log_error "$TOOL: non-integer count"; exit 2 ;; esac
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi

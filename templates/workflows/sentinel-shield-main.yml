@@ -1,6 +1,8 @@
 # Sentinel Shield — MAIN BRANCH GATE (v0.1.12). Heavier but deterministic; trusted branch.
-# CodeQL, OSV-Scanner, Trivy fs, OWASP Dependency-Check, Grype, Deptrac, architecture tests,
-# Syft SBOM, and IaC (Checkov/Conftest/Terrascan) when IaC present.
+# Tools ACTUALLY run by this workflow: Syft SBOM, OSV-Scanner, Grype (SBOM mode), and IaC
+# (Checkov/Conftest/Terrascan) when IaC present. OWASP Dependency-Check is present but DISABLED
+# by default (enable on the nightly job). CodeQL (via github/codeql-action), Trivy fs, Deptrac
+# and architecture tests are NOT wired here — add the steps or run them in their own workflows.
 #
 # FIRST-TIME VALIDATION (v0.1.17). This workflow is workflow_dispatch + push only, so it cannot be
 # dispatched from a feature branch until it already exists on the default branch (chicken-and-egg).

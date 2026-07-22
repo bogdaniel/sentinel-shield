@@ -32,6 +32,11 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# Fail CLOSED on an unrecognized shape: a valid-JSON error object would otherwise coerce to
+# 0 findings via the else-branch and clear the unsafe_github_actions gate.
+jq -e 'type == "array" or (type == "object" and has("errors"))' "$INPUT" >/dev/null 2>&1 \
+	|| { log_error "$TOOL: unrecognized report shape (malformed/error output); refusing to clear the gate"; exit 2; }
+
 N=$(jq '
 	if type == "array" then length
 	elif (type == "object" and (.errors | type) == "number") then .errors

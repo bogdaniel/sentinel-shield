@@ -14,6 +14,40 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 4: collector fail-closed hardening + honest tooling claims (14 findings)
+
+Coherent fail-closed + honest-claim batch from the 475-finding census. `ss_collector_guard`
+already rejects missing/empty and invalid-JSON input; the gap closed here is **valid JSON of
+an unrecognized shape** (a scanner that emits an error object) being coerced to 0 findings and
+silently clearing a security gate.
+
+- **11 collectors now fail closed on an unrecognized report shape** (they previously coerced
+  malformed/error output to a clean pass): `actionlint`, `hadolint`, `psalm`, `phpstan`,
+  `dockle`, `conftest`, `nuclei`, `zap`, `terrascan`, `third-party-semgrep`,
+  `dependency-policy`. Each asserts its expected container (array / `.totals` / `.results` /
+  `.details` / …) is present and exits 2 otherwise; `phpstan` also gained the integer guard
+  its siblings have. A new prod test — `tests/prod/273-collector-shape-failclosed.sh` —
+  proves both directions for all 11 (malformed → exit 2, well-typed clean/empty → pass;
+  22/22 assertions green), so the hardening cannot silently over- or under-fire.
+  *(The quality collectors — complexity/coverage/dead-code/… — already fail closed on an
+  unknown `.status`; their narrower residual hole is deferred to a fixtured batch.)*
+- **`scripts/run-hadolint.sh` default image pinned to a digest** —
+  `hadolint/hadolint:v2.12.0@sha256:30a8fd2e…`. A gate engine that enforces image-digest
+  pinning on consumers was pulling its own gate tool from a floating `hadolint/hadolint`
+  tag by default.
+- **`scripts/support-bundle.sh` now has a redaction test** —
+  `tests/prod/290-support-bundle.sh` seeds secret-shaped tokens and asserts the shareable
+  bundle redacts included config, excludes raw artifacts by default, redacts raw copies under
+  `--include-raw`, and leaks no seeded secret anywhere. It aggregates diagnostics (253's exact
+  threat surface) but had zero test coverage — a redaction regression would have shipped silently.
+- **Honest workflow-template tool claims** — `sentinel-shield-pr-fast.yml` and
+  `sentinel-shield-main.yml` headers advertised tools they do not run: pr-fast listed
+  Gitleaks (the secrets control), Psalm, ESLint, tsc, zizmor, actionlint, composer audit —
+  none has a step (Gitleaks/actionlint/zizmor run in the separate `ci-security.yml`); main
+  listed CodeQL, Trivy fs, Deptrac and architecture tests, none wired, with Dependency-Check
+  disabled by default. Both headers corrected to the tools actually executed, with the
+  pr-fast note that it is **not** the secrets gate.
+
 ### Fixed — full-repo review batch 3: critical DAST/type-gate bypasses + fail-open collectors (20 findings)
 
 From the 475-finding full-repo census (7 parallel sweeps). This batch takes the 2 CRITICAL
