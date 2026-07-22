@@ -14,6 +14,25 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 8: quality-collector fail-closed (focused-tests + source-size)
+
+The quality collectors already failed closed on an *unknown* `.status`, but had a residual hole:
+when `.status` was **absent** they derived status from numeric metric keys with `// 0`, so a
+valid-JSON object carrying neither a status nor any recognized metric key (e.g. a scanner error
+object) derived a clean `pass` and cleared the gate.
+
+- `scripts/collectors/focused-tests.sh` and `scripts/collectors/source-size.sh` now require the
+  report to carry an explicit `.status` **or** at least one recognized metric key; otherwise they
+  emit `execution-error` (this file's existing fail-closed convention) instead of deriving 0. A
+  metrics-only report with no status still derives `pass` — the legitimate contract is preserved.
+- New prod test `tests/prod/277-quality-collector-failclosed.sh` proves all three directions for
+  both (shapeless error object → `execution-error`; metrics-only → `pass`; explicit
+  `{"status":"pass"}` → `pass`).
+- The other seven quality collectors (`complexity`, `coverage`, `dead-code`, `debug-code`,
+  `diff-coverage`, `duplication`, `mutation`) are **owned by open PR #56** (malformed-count
+  coercion) and are intentionally left untouched here; the shapeless-error-object guard is added
+  to them in a follow-up on top of #56 to avoid a conflicting re-fix.
+
 ### Fixed — full-repo review batch 7: DAST committed allowlist + tool-wiring integrity guard
 
 - **DAST allowlist was self-attested.** `scripts/runners/dast-guard.sh` compared the dispatch
