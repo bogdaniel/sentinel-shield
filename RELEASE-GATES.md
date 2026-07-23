@@ -24,7 +24,7 @@ which reads a project's `.sentinel-shield/profile.yaml`. Full details:
 | `sentinel-shield-gates.json` | Programmatic consumers |
 | `sentinel-shield-gates.md` | Human summary |
 
-**Mode-to-threshold mapping** — the `fail_on` gates (**41** on this revision — `scripts/resolve-gates.sh` is the only authority; the "twelve" in earlier revisions was the schema's REQUIRED subset, not the gate set) resolve as follows
+**Mode-to-threshold mapping** — the `fail_on` gates (**47** on this revision — `scripts/resolve-gates.sh` is the only authority; the "twelve" in earlier revisions was the schema's REQUIRED subset, not the gate set) resolve as follows
 (`true` = blocks the build):
 
 | Gate | report-only | baseline | strict | regulated |
