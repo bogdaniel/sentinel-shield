@@ -301,7 +301,7 @@ RD_ROOT_RULES
 		-e "s/(npm_)[A-Za-z0-9]{20,}/${RD_PH_NPM}/g" \
 		-e "s#(_password=)[^[:space:]\"']+#\\1***REDACTED***#g" \
 		-e "s#(_auth=)[^[:space:]\"']+#\\1***REDACTED***#g" \
-		-e "s/(\"auth\"[[:space:]]*:[[:space:]]*\")[^*\"]([^\"\\]|\\\\.)*\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"auth\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
 		-e "s#(--homedir[[:space:]]+)[^[:space:]]+#\\1${RD_PH_GNUPG}#g" \
 		-e "s#(GNUPGHOME=)[^[:space:]]+#\\1${RD_PH_GNUPG}#g" \
 		-e "s#[^[:space:]\"':=]*/\\.gnupg[^[:space:]\"']*#${RD_PH_GNUPG}#g" \
@@ -309,12 +309,16 @@ RD_ROOT_RULES
 		-e "s#[^[:space:]\"':=]*[.](pem|key|p12|pfx)#${RD_PH_KEYPATH}#g" \
 		-e "s#([?&](sig|signature|token|access_token|access_key|api_key|apikey|password|passwd|pwd|secret|auth|se|sv|st|x-amz-security-token)=)[^&[:space:]\"']+#\\1***REDACTED***#g" \
 		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH))[=:][[:space:]]*[^[:space:]\"']+/\\1=***REDACTED***/g" \
-		-e "s/(\"($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")[^*\"]([^\"\\]|\\\\.)*\"/\\1***REDACTED***\"/g" \
-		-e "s/(\"[A-Za-z0-9]+[_-]($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")[^*\"]([^\"\\]|\\\\.)*\"/\\1***REDACTED***\"/g" \
-		-e "s/(\"[A-Za-z0-9]*[a-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?\"[[:space:]]*:[[:space:]]*\")[^*\"]([^\"\\]|\\\\.)*\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"[A-Za-z0-9]+[_-]($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"[A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
 		-e "s/(^|[[:space:]])(($_rd_sw)([_-][A-Za-z0-9_-]*)?)[=:][[:space:]]*[^*[:space:]\"',;}][^[:space:]\"',;}]*/\\1\\2=***REDACTED***/g" \
-		-e "s/([?&][A-Za-z0-9]*[a-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?=)[^&[:space:]\"']+/\\1***REDACTED***/g" \
-		-e "s/(^|[[:space:]])([A-Za-z0-9]*[a-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)[^*[:space:]\"',;}][^[:space:]\"',;}]*/\\1\\2***REDACTED***/g" \
+		-e "s/([?&][A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?=)[^&[:space:]\"']+/\\1***REDACTED***/g" \
+		-e "s/(^|[[:space:]])([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)[^*[:space:]\"',;}][^[:space:]\"',;}]*/\\1\\2***REDACTED***/g" \
+		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH)[=:][[:space:]]*)\"[^\"]*\"/\\1\"***REDACTED***\"/g" \
+		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH)[=:][[:space:]]*)'[^']*'/\\1'***REDACTED***'/g" \
+		-e "s/([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)\"[^\"]*\"/\\1\"***REDACTED***\"/g" \
+		-e "s/([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)'[^']*'/\\1'***REDACTED***'/g" \
 		-e "s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/${RD_PH_EMAIL}/g" \
 		"$@"
 	unset _rd_home _rd_rules _rd_len _rd_kind _rd_ce _rd_sw

@@ -378,6 +378,43 @@ RED=$(printf 'the quick brown fox jumps over the lazy dog\n' | rd_redact_stream)
 	|| fail "(R4) plain prose was altered/emptied: $RED"
 
 # ============================================================================
+# (R5-R7) Second CodeRabbit re-review round: leading-* values, quoted assignments, acronym keys.
+# ============================================================================
+# (R5) A secret value beginning with '*' must still redact — the old `[^*"]` first-char guard
+# skipped it, leaking `*supersecret`.
+RED=$(printf '{"apiKey":"*supersecret"}\n' | rd_redact_stream)
+case "$RED" in
+	*"supersecret"*) fail "(R5) leading-* JSON value leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R5) a value beginning with * is redacted" ;;
+	*) fail "(R5) leading-* not redacted as expected: $RED" ;;
+esac
+# (R6) Quoted assignment values (KEY=\"...\" and key='...') must redact — the bare value matcher
+# rejected an initial quote, so the quoted secret leaked.
+RED=$(printf 'GITHUB_TOKEN="secret123"\n' | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R6a) quoted double-quote assignment leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R6a) double-quoted assignment value is redacted" ;;
+	*) fail "(R6a) not redacted: $RED" ;;
+esac
+RED=$(printf "apiKey='secret123'\n" | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R6b) single-quoted assignment leaked: $RED" ;;
+	*"***REDACTED***"*) pass "(R6b) single-quoted assignment value is redacted" ;;
+	*) fail "(R6b) not redacted: $RED" ;;
+esac
+# (R6c) an ordinary quoted non-secret assignment must NOT be redacted (no over-reach).
+RED=$(printf 'name="Alice"\n' | rd_redact_stream)
+[ "$RED" = 'name="Alice"' ] && pass "(R6c) ordinary quoted value left intact" \
+	|| fail "(R6c) ordinary quoted value was altered: $RED"
+# (R7) acronym-prefixed camelCase keys (APIKey/APIToken) must redact.
+RED=$(printf '{"APIKey":"secret123"}\n' | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R7) acronym key APIKey leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R7) acronym-prefixed key is redacted" ;;
+	*) fail "(R7) not redacted: $RED" ;;
+esac
+
+# ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
 	exit 1
