@@ -1,0 +1,9 @@
+{
+  "tool": "acceptance-tests",
+  "producer": "playwright",
+  "status": "pass",
+  "tests": 12,
+  "failures": 0,
+  "skipped": 0,
+  "missing_acceptance_evidence": false
+}

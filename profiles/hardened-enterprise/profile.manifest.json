@@ -17,8 +17,8 @@
   ],
   "never_touch": [".sentinel-shield/accepted-risks.json"],
   "required_scripts": ["scripts/build-security-summary.sh", "scripts/enforce-gates.sh"],
-  "recommended_pr_fast_tools": ["gitleaks", "semgrep", "composer-audit", "npm-audit", "php-syntax", "phpstan", "tests"],
-  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check", "deptrac"],
-  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "dockle"],
-  "recommended_raw_reports": ["gitleaks.json", "semgrep.json", "composer-audit.json", "trivy.json", "dependency-check.json"]
+  "recommended_pr_fast_tools": ["gitleaks", "semgrep", "composer-audit", "npm-audit", "php-syntax", "phpstan", "tests", "test-change-evidence"],
+  "recommended_main_gate_tools": ["codeql", "osv-scanner", "trivy-fs", "syft", "grype", "dependency-check", "deptrac", "behat-acceptance", "playwright-acceptance"],
+  "recommended_scheduled_tools": ["trufflehog", "scorecard", "dependency-check", "dockle", "behat-acceptance", "playwright-acceptance"],
+  "recommended_raw_reports": ["gitleaks.json", "semgrep.json", "composer-audit.json", "trivy.json", "dependency-check.json", "test-change-evidence.json", "behat-specs.json", "behat-acceptance.json", "cucumber-specs.json", "playwright-acceptance.json"]
 }

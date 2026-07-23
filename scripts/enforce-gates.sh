@@ -93,6 +93,24 @@ ARCHITECTURE_BOOL_KEYS="missing_architecture_evidence"
 # Informational architecture metrics surfaced in the enforcement report (never gate directly).
 ARCHITECTURE_INFO_KEYS="architecture_rule_count architecture_tool_count architecture_context_count"
 
+# Testing-discipline gates (v2.2.0). COUNT gates evaluated like every other count gate; absent
+# keys read as 0 (an older summary stays valid). These are their OWN channel — a missing test
+# never becomes a vulnerability, and a vulnerability never becomes a testing-discipline finding.
+#
+# production_change_without_test_change is a TDD PROXY, not proof of TDD: Sentinel Shield
+# cannot know whether a test was written before the code it covers. It gates the one thing that
+# IS observable — production behavior changed and no test changed with it.
+TESTING_DISCIPLINE_COUNT_KEYS="production_change_without_test_change orphan_behavior_specifications acceptance_test_failures"
+
+# Boolean testing-discipline evidence gates (v2.2.0) — evaluated with eval_bool_gate (absent
+# key reads as false). The builder (run with --profile) sets each only when that evidence was
+# EXPECTED by the profile or the project's testing-discipline policy, so a library is never
+# failed for BDD/ATDD it never adopted.
+TESTING_DISCIPLINE_BOOL_KEYS="missing_test_change_evidence missing_behavior_specification missing_acceptance_evidence"
+
+# Informational testing-discipline metrics surfaced in the report (never gate directly).
+TESTING_DISCIPLINE_INFO_KEYS="behavior_spec_count acceptance_test_count"
+
 # Informational quality metrics surfaced in the enforcement report (never gate directly).
 QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method_percent coverage_class_percent mutation_score_percent complexity_max complexity_average duplication_percent dead_code_count changed_lines_coverage_percent test_count max_file_lines max_function_lines"
 
@@ -674,6 +692,18 @@ for _abk in $ARCHITECTURE_BOOL_KEYS; do
 	eval_bool_gate "$_abk"
 done
 
+# Testing-discipline gates (v2.2.0). Counts first (TDD proxy violations, orphan behavior specs,
+# acceptance-test failures), then the boolean evidence gates. acceptance_test_failures fails
+# whenever evidence EXISTS and reports failures — a suite that never ran contributes 0 here and
+# is caught by missing_acceptance_evidence instead, so "we skipped it" and "it failed" stay two
+# distinct, separately-gated facts. NOT suppressible by accepted-risk.
+for _tdck in $TESTING_DISCIPLINE_COUNT_KEYS; do
+	eval_count_gate "$_tdck"
+done
+for _tdbk in $TESTING_DISCIPLINE_BOOL_KEYS; do
+	eval_bool_gate "$_tdbk"
+done
+
 # --- required-tool POLICY enforcement (v1.10) --------------------------------
 # When the summary carries per-tool policy data (build-security-summary.sh --profile),
 # enforce required-tool availability/configuration MECHANICALLY, in a channel SEPARATE
@@ -1006,6 +1036,35 @@ write_markdown() {
 		printf '\n'
 		printf -- '| Metric | Value |\n| --- | --- |\n'
 		for k in $ARCHITECTURE_INFO_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+
+		printf '## Testing discipline (TDD proxies, BDD, ATDD)\n\n'
+		printf -- '> Sentinel Shield enforces test-first discipline through EVIDENCE:\n'
+		printf -- '> production-change-without-test-change detection, changed-line coverage,\n'
+		printf -- '> missing/empty test evidence, mutation testing, focused-test guards, BDD\n'
+		printf -- '> specification evidence, and ATDD acceptance-test evidence.\n'
+		printf -- '>\n'
+		printf -- '> It does NOT prove true TDD (a final snapshot cannot show what was written\n'
+		printf -- '> first), does not guarantee BDD quality, and never replaces product-owner\n'
+		printf -- '> acceptance. Mode defaults: the TDD proxy blocks from strict;\n'
+		printf -- '> acceptance_test_failures blocks from baseline when evidence exists;\n'
+		printf -- '> BDD/ATDD evidence is demanded only from application profiles that opted in.\n'
+		printf -- '> See docs/testing-discipline-governance.md.\n\n'
+		printf -- '| Gate | Value |\n| --- | --- |\n'
+		for k in $TESTING_DISCIPLINE_COUNT_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv=0 ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		for k in $TESTING_DISCIPLINE_BOOL_KEYS; do
+			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
+			printf -- '| %s | %s |\n' "$k" "$_qv"
+		done
+		printf '\n'
+		printf -- '| Metric | Value |\n| --- | --- |\n'
+		for k in $TESTING_DISCIPLINE_INFO_KEYS; do
 			_qv=$(jqr ".summary.$k"); case "$_qv" in ''|null) _qv="(absent)" ;; esac
 			printf -- '| %s | %s |\n' "$k" "$_qv"
 		done

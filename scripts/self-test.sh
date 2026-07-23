@@ -995,9 +995,30 @@ run_feature_completion() {
 	[ -f "$ROOT/tests/prod/280-architecture-governance.sh" ] && _p280=present || _p280=missing
 	fc_check "prod suite 280-architecture-governance.sh present (production-readiness)" "$_p280" "present"
 
+	# v2.2.0 testing discipline: TDD proxy / BDD / ATDD collectors must fail closed the same way.
+	# tests/prod/290-testing-discipline-governance.sh carries the full suite.
+	echo '{"tool":"test-change-evidence","status":"findings","production_change_without_test_change":1,"missing_test_change_evidence":false}' > "$_r/tce.json"
+	fc_check "test-change-evidence collector -> production_change_without_test_change" \
+		"$(sh "$C/test-change-evidence.sh" --input "$_r/tce.json" | jq '.summary.production_change_without_test_change')" "1"
+	echo '{"tool":"behavior-specs","status":"pass","spec_count":2,"scenario_count":8}' > "$_r/bspec.json"
+	fc_check "behavior-specs collector -> behavior_spec_count" \
+		"$(sh "$C/behavior-specs.sh" --input "$_r/bspec.json" | jq '.summary.behavior_spec_count')" "10"
+	echo '{"tool":"acceptance-tests","status":"findings","tests":10,"failures":2}' > "$_r/atests.json"
+	fc_check "acceptance-tests collector -> acceptance_test_failures" \
+		"$(sh "$C/acceptance-tests.sh" --input "$_r/atests.json" | jq '.summary.acceptance_test_failures')" "2"
+	echo '{"tool":"acceptance-tests","status":"pass","tests":0,"failures":0}' > "$_r/atzero.json"
+	fc_check "acceptance-tests: tests=0 -> missing evidence (never a clean pass)" \
+		"$(sh "$C/acceptance-tests.sh" --input "$_r/atzero.json" | jq -r '.tool_report.missing_acceptance_evidence')" "true"
+	echo '{"tool":"behavior-specs","status":"totally-made-up"}' > "$_r/bs-unknown.json"
+	fc_check "behavior-specs collector: unknown status -> execution-error (no fake clean)" \
+		"$(sh "$C/behavior-specs.sh" --input "$_r/bs-unknown.json" | jq -r '.status')" "execution-error"
+	[ -f "$ROOT/tests/prod/290-testing-discipline-governance.sh" ] && _p290=present || _p290=missing
+	fc_check "prod suite 290-testing-discipline-governance.sh present (production-readiness)" "$_p290" "present"
+
 	# new runners exist + are syntactically valid
 	_miss=0
-	for r in psalm php-style eslint typescript actionlint zizmor deptrac codeql-export architecture-tests; do
+	for r in psalm php-style eslint typescript actionlint zizmor deptrac codeql-export architecture-tests \
+		test-change-evidence behat cucumber-js playwright cypress behat-acceptance cucumber-acceptance; do
 		[ -f "$ROOT/scripts/runners/$r.sh" ] && sh -n "$ROOT/scripts/runners/$r.sh" || { log_error "  runner missing/bad: $r"; _miss=$((_miss + 1)); }
 	done
 	fc_check "all v0.1.14 runners present + valid" "$_miss" "0"

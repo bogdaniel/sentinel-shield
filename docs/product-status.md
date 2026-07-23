@@ -598,3 +598,20 @@ No maturity promotions. Closure work only:
   readable tags + digest overrides; consumers pin by digest before production
   ([`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)). This is supply-chain
   hardening, **not** a maturity change — Grype/Dockle/Semgrep stay as promoted in v0.1.20.
+
+## Testing Discipline Governance (v2.2.0)
+
+Sentinel Shield enforces test-first discipline through evidence:
+production-change-without-test-change detection, changed-line coverage, missing/empty test
+evidence, mutation testing, focused-test guards, BDD specification evidence, and ATDD
+acceptance-test evidence.
+
+Sentinel Shield does **not** claim that it proves true TDD, that it guarantees BDD quality,
+that it replaces product-owner acceptance, or that it understands business intent
+automatically. TDD cannot be proven from final code — it is a workflow, and a final snapshot
+does not record the order its lines were written.
+
+BDD/ATDD evidence is only required when configured or when an app profile enables it in
+strict/regulated mode. Libraries are not forced to carry BDD/ATDD by default.
+
+Full reference: [`testing-discipline-governance.md`](testing-discipline-governance.md).

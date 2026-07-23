@@ -1,0 +1,17 @@
+{
+  "tool": "test-change-evidence",
+  "producer": "test-change-evidence",
+  "status": "pass",
+  "base": "origin/main",
+  "production_changed_files": 2,
+  "test_changed_files": 1,
+  "production_change_without_test_change": 0,
+  "missing_test_change_evidence": false,
+  "expired_waivers": 0,
+  "waived_production_files": 0,
+  "files": {
+    "production": ["src/domain/order.ts"],
+    "tests": ["tests/domain/order.test.ts"],
+    "ignored": ["README.md"]
+  }
+}

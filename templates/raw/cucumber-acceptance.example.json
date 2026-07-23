@@ -1,0 +1,9 @@
+{
+  "tool": "acceptance-tests",
+  "producer": "cucumber-acceptance",
+  "status": "pass",
+  "tests": 5,
+  "failures": 0,
+  "skipped": 0,
+  "missing_acceptance_evidence": false
+}

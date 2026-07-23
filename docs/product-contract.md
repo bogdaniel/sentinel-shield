@@ -251,3 +251,20 @@ appropriate for a release candidate. Final `v1.0.0` follows the rc soak — see
 - [`product-readiness-checklist.md`](product-readiness-checklist.md) — readiness evidence.
 - [`roadmap.md`](roadmap.md) — maturity-ordered plan to (eventually) `v1.0`.
 - [`sentinel-shield-release-process.md`](sentinel-shield-release-process.md) — tags, immutability, release gate.
+
+## Testing Discipline Governance (v2.2.0)
+
+Sentinel Shield enforces test-first discipline through evidence:
+production-change-without-test-change detection, changed-line coverage, missing/empty test
+evidence, mutation testing, focused-test guards, BDD specification evidence, and ATDD
+acceptance-test evidence.
+
+Sentinel Shield does **not** claim that it proves true TDD, that it guarantees BDD quality,
+that it replaces product-owner acceptance, or that it understands business intent
+automatically. TDD cannot be proven from final code — it is a workflow, and a final snapshot
+does not record the order its lines were written.
+
+BDD/ATDD evidence is only required when configured or when an app profile enables it in
+strict/regulated mode. Libraries are not forced to carry BDD/ATDD by default.
+
+Full reference: [`testing-discipline-governance.md`](testing-discipline-governance.md).

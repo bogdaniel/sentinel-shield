@@ -140,6 +140,34 @@ key reads as `0` / `false`. `missing_architecture_evidence` maps to
 `SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE` and fails when `true` while that flag is
 `true`; the three counts are informational and are **not** gated.
 
+### Testing discipline (v2.2.0)
+
+TDD proxies, BDD specification evidence and ATDD acceptance evidence — their own channel, never
+folded into vulnerability counters:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `production_change_without_test_change` | integer gate | Groups where a **declared production file** changed with no matching test/spec/feature/acceptance change in the same diff. A **proxy** over changed paths, not proof of TDD — it cannot observe whether runtime behavior changed. |
+| `missing_test_change_evidence` | boolean gate | `true` when changed-file evidence could not be computed where the profile expects it (no git work tree, no resolvable diff base, unreadable report). |
+| `behavior_spec_count` | integer | Informational. BDD specs + scenarios detected or executed, summed across producers. |
+| `missing_behavior_specification` | boolean gate | `true` when behavior-spec evidence is **expected** but absent/unavailable/errored, or a producer declared zero specs and zero scenarios. |
+| `orphan_behavior_specifications` | integer gate | Specs with no matching implementation/test evidence, when the producer can determine it (others report `0`). |
+| `acceptance_test_count` | integer | Informational. Acceptance-level tests/scenarios executed, summed across producers. |
+| `acceptance_test_failures` | integer gate | Failing acceptance tests/scenarios, summed across producers. |
+| `missing_acceptance_evidence` | boolean gate | `true` when acceptance evidence is **expected** but absent/unavailable/errored, or a report has `tests: 0` (a suite that ran nothing proves nothing). |
+
+`acceptance_test_count`, `acceptance_test_failures` and `behavior_spec_count` are **summed
+across producers** — each ATDD/BDD producer writes its own raw report path
+(`playwright-acceptance.json`, `cypress-acceptance.json`, `behat-specs.json`, …), so running
+Playwright *and* Cypress aggregates rather than overwriting. The generic
+`acceptance-tests.json` / `behavior-specs.json` paths remain available for a custom/manual
+producer.
+
+The three `missing_*` booleans are emitted only when `build-security-summary.sh` runs with
+`--profile`, and are `true` only when that evidence was **expected** — a library that never
+adopted BDD/ATDD is never marked as missing it. See
+[`testing-discipline-governance.md`](testing-discipline-governance.md).
+
 > Architecture tools detect dependency-boundary violations, not the quality of domain modeling
 > itself. Architecture governance is supported by engine tests and fixtures. Do not claim real
 > consumer proof until a real Laravel/Symfony/Node consumer validation exists.
@@ -184,6 +212,17 @@ the canonical table above; the new boolean gate joins it:
 | Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
 | --- | --- |
 | `MISSING_ARCHITECTURE_EVIDENCE` | `summary.missing_architecture_evidence == true` |
+
+**Testing-discipline gates (v2.2.0)** map the same way:
+
+| Gate flag (`SENTINEL_SHIELD_FAIL_ON_…`) | Fails when |
+| --- | --- |
+| `PRODUCTION_CHANGE_WITHOUT_TEST_CHANGE` | `summary.production_change_without_test_change > 0` |
+| `MISSING_TEST_CHANGE_EVIDENCE` | `summary.missing_test_change_evidence == true` |
+| `MISSING_BEHAVIOR_SPECIFICATION` | `summary.missing_behavior_specification == true` |
+| `ORPHAN_BEHAVIOR_SPECIFICATIONS` | `summary.orphan_behavior_specifications > 0` |
+| `ACCEPTANCE_TEST_FAILURES` | `summary.acceptance_test_failures > 0` |
+| `MISSING_ACCEPTANCE_EVIDENCE` | `summary.missing_acceptance_evidence == true` |
 
 See [`gate-resolution.md`](gate-resolution.md) for the authoritative per-mode default matrix,
 [`engineering-quality-gates.md`](engineering-quality-gates.md) and

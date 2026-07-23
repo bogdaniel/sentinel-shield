@@ -434,3 +434,82 @@ Rules (fail closed on any violation):
 - A waiver **applies** only while `expires_at >= today` in **UTC** (a waiver expiring
   today is valid through the end of that UTC day); expired waivers validate but do not
   downgrade the control.
+
+## Testing Discipline Governance (v2.2.0)
+
+Sentinel Shield enforces test-first discipline through evidence:
+production-change-without-test-change detection, changed-line coverage, missing/empty test
+evidence, mutation testing, focused-test guards, BDD specification evidence, and ATDD
+acceptance-test evidence.
+
+Sentinel Shield does **not** claim that it proves true TDD, that it guarantees BDD quality,
+that it replaces product-owner acceptance, or that it understands business intent
+automatically. TDD cannot be proven from final code — it is a workflow, and a final snapshot
+does not record the order its lines were written.
+
+BDD/ATDD evidence is only required when configured or when an app profile enables it in
+strict/regulated mode. Libraries are not forced to carry BDD/ATDD by default.
+
+Full reference: [`testing-discipline-governance.md`](testing-discipline-governance.md).
+
+### Testing-discipline tool categories and scheduling
+
+Three new `category` values group the producers so the builder can decide expectation per
+channel:
+
+| Category | Producers | Default policy |
+| --- | --- | --- |
+| `testing-discipline` | `test-change-evidence` | `recommended` (needs only git; evidence still expected, but the MODE decides blocking) |
+| `bdd` | `behat-specs`, `cucumber-specs` | `optional` |
+| `atdd` | `behat-acceptance`, `cucumber-acceptance`, `playwright-acceptance`, `cypress-acceptance` | `optional` |
+
+For **bdd** and **atdd**, only a `required` producer makes that channel's evidence expected.
+For the **testing-discipline** (TDD proxy) channel the threshold is `required` *or*
+`recommended` — the same rule architecture evidence uses — because the proxy needs no project
+tooling, only a git history. It is deliberately not shipped as `required`: that would route its
+absence through the always-on required-tool channel and fail every mode, defeating the ramp. BDD/ATDD producers ship as
+`optional` on every profile so a project that never adopted them is never failed for their
+absence; a project opts in via `.sentinel-shield/testing-discipline-policy.yaml` or by promoting
+the producer to `required` in a profile override.
+
+Recommended execution:
+
+```txt
+test-change-evidence: PR true, main true
+behavior-specs:       PR true if configured
+acceptance-tests:     PR true if fast; main true; scheduled optional
+Playwright/Cypress:   main true, scheduled true (too slow for every PR)
+```
+
+Do not make slow browser acceptance suites mandatory for every PR unless the profile or policy
+explicitly requires it.
+
+### Producer raw report paths are distinct
+
+The `acceptance-tests` and `behavior-specs` **contracts are generic** — every producer emits the
+same shape, and the collector never cares which tool produced it. But each producer writes its
+**own raw report path**, because a shared path means the producer that runs last silently
+destroys the earlier producer's evidence before the collector ever sees it:
+
+| Producer | Raw report | Collector emit-name |
+| --- | --- | --- |
+| Behat (specs) | `reports/raw/behat-specs.json` | `behat_specs` |
+| Cucumber.js (specs) | `reports/raw/cucumber-specs.json` | `cucumber_specs` |
+| Playwright | `reports/raw/playwright-acceptance.json` | `playwright_acceptance` |
+| Cypress | `reports/raw/cypress-acceptance.json` | `cypress_acceptance` |
+| Behat (acceptance) | `reports/raw/behat-acceptance.json` | `behat_acceptance` |
+| Cucumber.js (acceptance) | `reports/raw/cucumber-acceptance.json` | `cucumber_acceptance` |
+| custom / manual | `reports/raw/acceptance-tests.json`, `reports/raw/behavior-specs.json` | `acceptance_tests`, `behavior_specs` |
+
+**Multiple ATDD (and BDD) producers aggregate.** `acceptance_test_count` and
+`acceptance_test_failures` are SUMMED across producers, as is `behavior_spec_count`; the
+`missing_*` booleans are OR-ed. Running Playwright *and* Cypress is a supported, correct setup —
+they no longer overwrite each other, and their results add up.
+
+The generic `acceptance-tests.json` / `behavior-specs.json` paths remain supported for a
+**custom or manual** producer emitting the contract directly. No shipped profile claims those
+paths, so a hand-rolled producer can never collide with a profile-declared one.
+
+**Missing evidence is derived only when the channel is expected** — see the expectation rules
+above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
+guaranteed by Sentinel Shield.

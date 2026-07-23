@@ -1,0 +1,9 @@
+{
+  "tool": "acceptance-tests",
+  "producer": "behat-acceptance",
+  "status": "pass",
+  "tests": 6,
+  "failures": 0,
+  "skipped": 0,
+  "missing_acceptance_evidence": false
+}

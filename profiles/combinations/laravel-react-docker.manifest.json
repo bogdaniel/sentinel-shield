@@ -118,7 +118,8 @@
     "semgrep",
     "tests",
     "dependency-cruiser",
-    "eslint-boundaries"
+    "eslint-boundaries",
+    "test-change-evidence"
   ],
   "recommended_main_gate_tools": [
     "codeql",
@@ -131,14 +132,16 @@
     "dependency-check",
     "php-arkitect",
     "dependency-cruiser",
-    "eslint-boundaries"
+    "eslint-boundaries",
+    "playwright-acceptance"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
     "scorecard",
     "dockle",
     "dependency-check",
-    "grype"
+    "grype",
+    "playwright-acceptance"
   ],
   "recommended_raw_reports": [
     "gitleaks.json",
@@ -171,6 +174,10 @@
     "sbom.spdx.json",
     "dependency-cruiser.json",
     "eslint-boundaries.json",
-    "php-arkitect.json"
+    "php-arkitect.json",
+    "test-change-evidence.json",
+    "behat-specs.json",
+    "behat-acceptance.json",
+    "playwright-acceptance.json"
   ]
 }

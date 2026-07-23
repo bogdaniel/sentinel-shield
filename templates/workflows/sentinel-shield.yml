@@ -20,8 +20,14 @@
 #   scripts/runners/laravel-phpstan.sh  scripts/runners/larastan.sh
 #   scripts/runners/php-syntax.sh       scripts/runners/pint.sh
 #   scripts/runners/actionlint.sh       scripts/runners/zizmor.sh
-#   scripts/runners/codeql-export.sh    (+ eslint/typescript/pest/phpunit/deptrac/…
+#   scripts/runners/codeql-export.sh    scripts/runners/test-change-evidence.sh
+#   (+ eslint/typescript/pest/phpunit/deptrac/behat/cucumber-js/playwright/cypress
 #   and every other runner declared by the profile's tool policy).
+#
+# TESTING DISCIPLINE (v2.2.0): scripts/runners/test-change-evidence.sh compares the changed
+# files in the diff, so it needs real git history — the checkout steps below use
+# `fetch-depth: 0` deliberately. With a shallow clone no diff base resolves and the runner
+# honestly reports `unavailable` + missing_test_change_evidence rather than a clean zero.
 #
 # SOURCE STRATEGY: Option B — Sentinel Shield is checked out into tools/sentinel-shield
 # and its scripts are called from there.
