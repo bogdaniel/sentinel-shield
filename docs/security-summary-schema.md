@@ -147,7 +147,7 @@ folded into vulnerability counters:
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `production_change_without_test_change` | integer gate | Production-change groups where behavior changed with no matching test/spec/feature/acceptance change. A **proxy**, not proof of TDD. |
+| `production_change_without_test_change` | integer gate | Groups where a **declared production file** changed with no matching test/spec/feature/acceptance change in the same diff. A **proxy** over changed paths, not proof of TDD — it cannot observe whether runtime behavior changed. |
 | `missing_test_change_evidence` | boolean gate | `true` when changed-file evidence could not be computed where the profile expects it (no git work tree, no resolvable diff base, unreadable report). |
 | `behavior_spec_count` | integer | Informational. BDD specs + scenarios detected or executed, summed across producers. |
 | `missing_behavior_specification` | boolean gate | `true` when behavior-spec evidence is **expected** but absent/unavailable/errored, or a producer declared zero specs and zero scenarios. |

@@ -190,13 +190,18 @@ MB=$(git merge-base "$BASE" HEAD 2>/dev/null || printf '%s' "$BASE")
 CHANGED=$(git diff --name-only "$MB" HEAD 2>/dev/null || printf '')
 if [ -z "$CHANGED" ]; then
 	# A genuinely empty diff is not missing evidence: nothing changed, so nothing is owed.
-	printf '%s\n' "$(jq -n --arg b "$BASE" '{
-		tool:"test-change-evidence", producer:"test-change-evidence", status:"pass", base:$b,
+	# An empty diff owes no test change, but an EXPIRED waiver still suppresses nothing and
+	# must surface as an expired exception regardless of what changed. Hardcoding
+	# expired_waivers:0 here hid expired waivers whenever this diff touched no files. Carry the
+	# already-computed $EXPIRED_WAIVERS, and reflect it in status so the collector counts it.
+	printf '%s\n' "$(jq -n --arg b "$BASE" --argjson ew "$EXPIRED_WAIVERS" '{
+		tool:"test-change-evidence", producer:"test-change-evidence",
+		status:(if $ew > 0 then "findings" else "pass" end), base:$b,
 		production_changed_files:0, test_changed_files:0,
 		production_change_without_test_change:0, missing_test_change_evidence:false,
-		expired_waivers:0, waived_production_files:0,
+		expired_waivers:$ew, waived_production_files:0,
 		files:{production:[], tests:[], ignored:[]} }')" > "$OUT"
-	log_info "test-change-evidence: no changed files vs $BASE; report written to $OUT"
+	log_info "test-change-evidence: no changed files vs $BASE ($EXPIRED_WAIVERS expired waiver(s)); report written to $OUT"
 	exit 0
 fi
 

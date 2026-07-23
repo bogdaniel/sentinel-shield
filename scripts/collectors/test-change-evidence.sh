@@ -87,7 +87,13 @@ N=$(td_count "$INPUT" '.production_change_without_test_change // 0')
 
 # Expired TDD waivers ride the long-standing expired_exceptions gate (which blocks in EVERY
 # mode) rather than inventing a parallel counter: an expired waiver is an expired exception.
-EXPW=$(td_num "$INPUT" '.expired_waivers // 0')
+# expired_waivers is a GATING count: it drives the status decision below and rides the
+# expired_exceptions gate (blocks in EVERY mode). It must fail closed exactly like N, not use
+# td_num — td_num coerces a malformed/negative/fractional value to 0, which would report a
+# repo with expired waivers as clean. PROD/TESTS stay on td_num: they are informational
+# metadata in the report only, never gated.
+EXPW=$(td_count "$INPUT" '.expired_waivers // 0')
+[ "$EXPW" = "invalid" ] && td_bad_count "$TOOL" "expired_waivers count" "$UNKNOWN_OV" "$UNKNOWN_REPORT_EXTRAS"
 PROD=$(td_num "$INPUT" '.production_changed_files // 0')
 TESTS=$(td_num "$INPUT" '.test_changed_files // 0')
 

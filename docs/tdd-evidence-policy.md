@@ -2,10 +2,12 @@
 
 The TDD proxy answers one narrow, observable question:
 
-> Did production behavior change while no test, spec, feature or acceptance file changed in the
-> same diff?
+> Did a **declared production file** change while no test, spec, feature or acceptance file
+> changed in the same diff?
 
-That is evidence. It is not proof of test-driven development.
+That is evidence. It is not proof of test-driven development. It classifies **changed paths**;
+it cannot observe whether runtime behavior actually changed, so it is worded in terms of the
+files that changed, never "behavior".
 
 ## Why there is no such thing as a TDD gate
 
@@ -23,7 +25,7 @@ So Sentinel Shield enforces TDD evidence proxies, not developer intent. The prox
 
 | Proxy | Gate | What it observes |
 | --- | --- | --- |
-| Production change without test change | `production_change_without_test_change` | A behavior change arrived with no test change |
+| Production change without test change | `production_change_without_test_change` | A declared production file changed with no test change in the same diff |
 | Changed-line coverage | `changed_lines_coverage_violations` | The lines you just wrote are exercised |
 | Missing / empty test evidence | `missing_test_evidence`, `empty_test_suite` | A suite exists and actually ran |
 | Mutation testing | `mutation_score_violations` | The tests would notice if the code broke |

@@ -50,7 +50,9 @@ reports:
 `profiles:` and `exceptions:` are read where useful (profiles appear in the report)
 but do not change gate resolution.
 
-The schema-required subset of the canonical gate keys, in output order:
+The twelve **core** gate keys — the original v2.0 set — in output order (additive gate
+families layered on since then, engineering-quality and testing-discipline, are listed in
+their own sections below and in the mode table; this is not the full gate set):
 
 ```txt
 secrets

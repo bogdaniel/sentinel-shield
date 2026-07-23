@@ -779,8 +779,9 @@ Six new gates ride along — `production_change_without_test_change`, `missing_t
 `missing_acceptance_evidence` — plus the informational `behavior_spec_count` /
 `acceptance_test_count`. All optional/additive, so older summaries stay valid. Mode defaults: the TDD
 proxy blocks from **strict**, acceptance failures block from **baseline** when evidence exists, orphan
-specs block in **regulated**, and BDD/ATDD evidence is demanded only from **application** profiles that
-opted in. Producers (Behat, Cucumber.js, Playwright, Cypress, or anything emitting the contract) are
+specs block in **regulated**. Those mode **defaults** for BDD/ATDD apply to **application** profiles;
+libraries are exempt from default enforcement, not from the feature — **any** project can opt in
+explicitly through policy flags or a required producer. Producers (Behat, Cucumber.js, Playwright, Cypress, or anything emitting the contract) are
 configured in `.sentinel-shield/testing-discipline-policy.yaml`. The contract is generic but each
 producer writes its own raw report path, so multiple ATDD/BDD producers **aggregate** instead of
 overwriting each other; an explicit `bdd.enabled: false` / `atdd.enabled: false` switches a channel

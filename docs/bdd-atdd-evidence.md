@@ -26,7 +26,8 @@ quietly disappear, rot into a permanent skip, or report green after running noth
 **Libraries are not forced to carry BDD/ATDD by default.** BDD/ATDD evidence is only required
 when configured, or when an app profile enables it in strict/regulated mode.
 
-Both flags must be on before behavior-spec evidence is *expected*:
+There are **two independent paths** to expecting behavior-spec evidence. This first one is
+the **policy path**: both flags must be on before behavior-spec evidence is *expected*:
 
 ```yaml
 testing_discipline:
@@ -48,9 +49,11 @@ testing_discipline:
       - cypress
 ```
 
-Alternatively a profile may declare a BDD/ATDD producer as `required`. The shipped profiles
-declare them as `optional`, so nothing is demanded until a project asks for it. A
-`php-library` profile carries `behat` as `optional` and no ATDD producer at all.
+The second, **separate** path is a **required producer**: if a profile declares a BDD/ATDD
+producer as `required`, its absence activates the missing-evidence gate on its own — the
+policy flags above are not consulted for that path. The shipped profiles declare these
+producers as `optional`, so nothing is demanded until a project asks for it (via either
+path). A `php-library` profile carries `behat` as `optional` and no ATDD producer at all.
 
 ## The BDD contract
 
