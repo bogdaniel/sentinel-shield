@@ -148,6 +148,10 @@ for f in $FILES; do
 		FAILED=1
 	fi
 done
+# Re-enable pathname expansion: $FILES has been consumed, and the `jq … part-*.json` merge
+# below is a PATHNAME glob that set -f would otherwise leave literal (jq then fails to open
+# 'part-*.json' and the runner exits non-zero — a required-tool execution error).
+set +f
 
 if [ "$ANY_VALID" -eq 0 ]; then
 	# Nothing parseable at all — Hadolint failed unexpectedly. Do NOT fake an empty report.
