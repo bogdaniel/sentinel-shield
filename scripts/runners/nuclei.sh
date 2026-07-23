@@ -15,6 +15,7 @@ rc=0; ss_dast_check || rc=$?
 rc=0; ss_nuclei_template_check || rc=$?
 [ "$rc" -ne 0 ] && exit "$rc"
 mkdir -p "$(dirname "$OUT")"
+rm -f -- "$OUT" 2>/dev/null || true   # never leave a stale report as evidence for this run
 if ! command -v nuclei >/dev/null 2>&1; then
 	echo "[sentinel-shield][dast] nuclei not installed locally; run via sentinel-shield-dast.yml. No scan run." >&2
 	exit 0

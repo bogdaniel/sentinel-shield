@@ -32,7 +32,9 @@
 # stdout = machine-readable JSON only. All logs go to stderr.
 # Exit (CLI): 0 ok; 2 invalid invocation / missing jq / unknown tool / config error;
 #             3 invalid override file (schema validation failed).
-set -eu
+# `set -eu` ONLY when executed directly (dual-use file: sourced as a lib AND run as a CLI).
+# Sourced, it must not mutate the caller's shell options; the CLI path still gets set -eu.
+case "$0" in *tool-policy-override.sh) set -eu ;; esac
 
 # Include guard (safe to source more than once).
 if [ "${__SENTINEL_SHIELD_TPO_LOADED:-}" = "1" ]; then

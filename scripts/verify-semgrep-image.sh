@@ -26,6 +26,7 @@ if command -v semgrep >/dev/null 2>&1; then
 	# Use the SS curated PHP rules so we exercise real rule parsing.
 	semgrep --json --output "$OUT" --config "$ROOT/semgrep/app/php" "$FIXTURE" >"$LOG" 2>&1 || true
 elif command -v docker >/dev/null 2>&1; then
+	case "$IMAGE" in *@sha256:*) : ;; *) echo "[sentinel-shield][warn] semgrep-verify: image '$IMAGE' is a mutable tag (not @sha256:); pin by digest for reproducible runs" >&2 ;; esac
 	docker run --rm -v "$ROOT:/ss" -v "$FIXTURE:/fix" "$IMAGE" \
 		semgrep --json --output /fix/_verify.json --config /ss/semgrep/app/php /fix >"$LOG" 2>&1 || true
 	[ -f "$FIXTURE/_verify.json" ] && { mv "$FIXTURE/_verify.json" "$OUT"; } || true

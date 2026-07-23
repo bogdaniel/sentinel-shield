@@ -20,6 +20,7 @@ on:
       - 'scripts/enforce-security-policy.sh'
       - 'scripts/normalize-security-summary.sh'
       - 'scripts/lib/security-policy.sh'
+      - 'scripts/lib/sentinel-shield-common.sh'
       - '.github/workflows/security-incident-validation.yml'
   push:
     branches:

@@ -21,7 +21,8 @@
 # the end of that UTC day. Expiry is checked at apply time, not validation time.
 #
 # Malformed file / record => cw_validate_file returns 2 (callers fail closed).
-set -eu
+# No top-level `set -eu`: this file is sourced and defines functions only; it must not
+# mutate the sourcing shell's options. Every caller sets its own `set -eu`.
 
 if [ "${__SENTINEL_SHIELD_CONTROL_WAIVERS_LOADED:-}" = "1" ]; then
 	return 0 2>/dev/null || true

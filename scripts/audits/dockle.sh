@@ -21,6 +21,7 @@ if command -v dockle >/dev/null 2>&1; then
 	dockle --exit-code "$DEXIT" -f json -o "$OUT" "$IMG" || true
 elif [ -n "$DOCKLE_IMG" ] && command -v docker >/dev/null 2>&1; then
 	echo "[sentinel-shield] dockle (container $DOCKLE_IMG): scanning image $IMG" >&2
+	case "$DOCKLE_IMG" in *@sha256:*) : ;; *) echo "[sentinel-shield][warn] dockle: image '$DOCKLE_IMG' is a mutable tag (not @sha256:); pin by digest for reproducible/gated runs" >&2 ;; esac
 	OUTDIR=$(CDPATH= cd -- "$(dirname "$OUT")" && pwd)
 	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$OUTDIR:/report" "$DOCKLE_IMG" \
 		--exit-code "$DEXIT" -f json -o /report/"$(basename "$OUT")" "$IMG" || true

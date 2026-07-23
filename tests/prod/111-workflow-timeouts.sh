@@ -46,7 +46,7 @@ jobs_missing_timeout() {
 
 _seen=0
 for _dir in "$ROOT/.github/workflows" "$ROOT/templates/workflows"; do
-	for _f in "$_dir"/*.yml; do
+	for _f in "$_dir"/*.yml "$_dir"/*.yaml; do
 		[ -e "$_f" ] || continue
 		_seen=1
 		_base=${_f##*/}

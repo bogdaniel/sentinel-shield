@@ -17,7 +17,7 @@
 #
 # Usage: sh scripts/acquire-sentinel-shield.sh --repository <owner/repo|url|path>
 #            --ref <tag|40-hex-sha> --destination <dir>
-#            [--transport https|ssh|gh] [--verify] [--reuse-existing] [--cleanup]
+#            [--transport https|ssh|gh] [--verify|--no-verify] [--reuse-existing] [--cleanup]
 #   --repository  owner/repo shorthand (resolved per --transport), OR an explicit remote
 #                 (https://, ssh://, git@host:..., or a local path) used verbatim.
 #   --ref         An IMMUTABLE ref: an annotated/lightweight tag, or a full 40-hex commit
@@ -25,7 +25,9 @@
 #   --destination The checkout directory (the ONLY path mutated in the consumer project).
 #   --transport   Remote scheme for owner/repo shorthand: https (default), ssh, or gh.
 #   --verify      Assert the checkout HEAD equals the requested ref's resolved commit;
-#                 a mismatch FAILS CLOSED (exit 4).
+#                 a mismatch FAILS CLOSED (exit 4). ON BY DEFAULT (the check is cheap);
+#                 pass --no-verify to opt out.
+#   --no-verify   Skip the HEAD==resolved-commit assertion (not recommended).
 #   --reuse-existing  Reuse a present checkout whose HEAD already matches instead of cloning.
 #   --cleanup     Remove the destination first (may be used alone to just clean up).
 set -eu
@@ -44,12 +46,13 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 usage() {
 	cat <<'EOF'
 Usage: acquire-sentinel-shield.sh --repository <owner/repo|url|path> --ref <tag|40-hex-sha> --destination <dir>
-                                  [--transport https|ssh|gh] [--verify] [--reuse-existing] [--cleanup]
+                                  [--transport https|ssh|gh] [--verify|--no-verify] [--reuse-existing] [--cleanup]
   --repository <owner/repo|url|path>  Source repo: owner/repo shorthand or an explicit remote/local path.
   --ref <tag|40-hex-sha>              Immutable ref (tag or full 40-hex SHA); moving branches are refused.
   --destination <dir>                 Checkout directory (the only path mutated).
   --transport https|ssh|gh            Remote scheme for owner/repo shorthand (default: https).
-  --verify                            Assert checkout HEAD == resolved commit; fail closed on mismatch.
+  --verify                            Assert checkout HEAD == resolved commit; fail closed on mismatch. ON BY DEFAULT.
+  --no-verify                         Skip the HEAD == resolved-commit assertion (not recommended).
   --verify-source <mode>              OPTIONAL extra verification of the acquired checkout (default none):
                                         tree-record            RECORD the deterministic HEAD tree id (NOT a check).
                                         tree-checksum          compare HEAD tree to --expected-tree; fail closed.
@@ -220,7 +223,7 @@ REPO=""
 REF=""
 DEST=""
 TRANSPORT="https"
-VERIFY=0
+VERIFY=1
 VERIFY_SOURCE="none"
 EXPECTED_TREE=""
 VMETHOD="none"
@@ -241,6 +244,7 @@ while [ $# -gt 0 ]; do
 			DEST="$2"; shift 2 ;;
 		--transport) TRANSPORT="${2:?--transport requires a value}"; shift 2 ;;
 		--verify) VERIFY=1; shift ;;
+		--no-verify) VERIFY=0; shift ;;
 		--verify-source) VERIFY_SOURCE="${2:?--verify-source requires a value}"; shift 2 ;;
 		--expected-tree) EXPECTED_TREE="${2:?--expected-tree requires a value}"; shift 2 ;;
 		--reuse-existing) REUSE=1; shift ;;

@@ -17,7 +17,9 @@
 # stdout = merged tools{} JSON (machine-readable only). All logs go to stderr.
 # Exit: 0 ok; 2 invalid invocation / missing jq / unknown profile / invalid JSON
 #       (all delegated to the canonical resolver, which is fail-closed).
-set -eu
+# `set -eu` ONLY when executed directly (dual-use file: sourced as a lib AND run as a CLI).
+# Sourced, it must not mutate the caller's shell options; the CLI path still gets set -eu.
+case "$0" in *profile-compose.sh) set -eu ;; esac
 
 # Include guard (safe to source more than once).
 if [ "${__SENTINEL_SHIELD_PROFILE_COMPOSE_LOADED:-}" = "1" ]; then
