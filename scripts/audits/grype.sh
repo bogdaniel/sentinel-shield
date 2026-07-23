@@ -60,6 +60,7 @@ if command -v grype >/dev/null 2>&1; then
 	write_prov "local-binary" "$_gver" "$_gbin" "" ""
 elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	EXEC="docker run --rm -v $PWD:/src -w /src $IMAGE"
+	case "$IMAGE" in *@sha256:*) : ;; *) log_warn "grype: image '$IMAGE' is a mutable tag (not @sha256:); pin by digest for reproducible/gated runs" ;; esac
 	case "$IMAGE" in
 		*@sha256:*) _gdig="sha256:${IMAGE##*@sha256:}" ;;
 		*) _gpto=$(bp_timeout docker-probe) || _gpto=15

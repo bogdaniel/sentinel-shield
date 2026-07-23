@@ -198,6 +198,7 @@ elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 		done > "$DC_PERM_SNAP" 2>/dev/null || true
 		chmod -R a+rwX "$CACHE_ABS" "$OUTDIR" 2>/dev/null || true
 	fi
+	case "$IMAGE" in *@sha256:*) : ;; *) echo "[sentinel-shield][warn] dependency-check: image '$IMAGE' is a mutable tag (not @sha256:); pin by digest for reproducible/gated runs" >&2 ;; esac
 	# shellcheck disable=SC2086
 	$TO docker run --rm --user "$(id -u):$(id -g)" \
 		-v "$PWD:/src" -v "$CACHE_ABS:/usr/share/dependency-check/data" -v "$OUTDIR:/report" \

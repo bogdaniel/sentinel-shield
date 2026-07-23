@@ -22,7 +22,8 @@
 # OPT-IN CONTRACT (off by default; zero behavior change when disabled)
 #   Emission happens ONLY when BOTH are set:
 #     SENTINEL_SHIELD_EVENTS=1            (or true|yes|on)
-#     SENTINEL_SHIELD_EVENTS_FILE=<path>  (the JSONL sink; appended, never truncated)
+#     SENTINEL_SHIELD_EVENTS_FILE=<path>  (the JSONL sink; appended, size-rotated)
+#     SENTINEL_SHIELD_EVENTS_MAX_BYTES=<n> (rollover threshold; default 10485760, 0 disables)
 #   When either is unset, every oe_emit is a no-op returning 0. Like the transaction journal,
 #   emission is a best-effort AUDIT trail: a failed WRITE degrades to a visible warning and NEVER
 #   aborts the host operation. Enum VALIDATION, by contrast, fails closed — an event that does not
@@ -337,6 +338,17 @@ oe_emit() {
 	if [ -z "$_oe_line" ]; then
 		log_warn "oe_emit: could not build a '$_oe_command/$_oe_phase' event"
 		return 0
+	fi
+
+	# Size-based rollover so the sink cannot grow unbounded on a long-lived adopter machine.
+	# Default cap 10 MiB; override via SENTINEL_SHIELD_EVENTS_MAX_BYTES (0 disables rotation).
+	# One generation is kept (<file>.1); best-effort, never aborts the host operation.
+	_oe_max="${SENTINEL_SHIELD_EVENTS_MAX_BYTES:-10485760}"
+	case "$_oe_max" in '' | *[!0-9]*) _oe_max=10485760 ;; esac
+	if [ "$_oe_max" -gt 0 ] && [ -f "$SENTINEL_SHIELD_EVENTS_FILE" ]; then
+		_oe_sz=$(wc -c < "$SENTINEL_SHIELD_EVENTS_FILE" 2>/dev/null | tr -dc '0-9')
+		case "$_oe_sz" in '' | *[!0-9]*) _oe_sz=0 ;; esac
+		[ "$_oe_sz" -ge "$_oe_max" ] && mv -f "$SENTINEL_SHIELD_EVENTS_FILE" "$SENTINEL_SHIELD_EVENTS_FILE.1" 2>/dev/null || true
 	fi
 
 	# Best-effort durable append to the JSONL sink (never aborts the host operation).

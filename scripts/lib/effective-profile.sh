@@ -25,7 +25,8 @@
 #     "one_of_groups": {<group>:{policy,alternatives,selection,fallback_order,
 #                                 status,selected,available}},
 #     "diagnostics": [ ... ] }
-set -eu
+# No top-level `set -eu`: this file is sourced and defines functions only; it must not
+# mutate the sourcing shell's options. Every caller sets its own `set -eu`.
 
 if [ "${__SENTINEL_SHIELD_EFFECTIVE_PROFILE_LOADED:-}" = "1" ]; then
 	return 0 2>/dev/null || true

@@ -8,6 +8,14 @@
 # manifest to reports/<stage>-execution.json. It NEVER fabricates a passing report;
 # final policy enforcement is left to enforce-gates.sh.
 #
+# CONCURRENCY — SINGLE WRITER per reports directory. This deletes and rewrites
+# reports/raw/<tool>.json and reports/<stage>-execution.json without a lock (the
+# operation-lock/transaction machinery guards only install/sync/migrate, not report
+# writes). Do NOT run two stages against the SAME reports dir at once (e.g. `pr` and
+# `scheduled` concurrently in one checkout) — they will clobber each other's evidence.
+# CI runs each stage in its own job/workspace, so this holds there; a local caller
+# must serialize stages or use a separate --output-dir per concurrent run.
+#
 # Selection (per stage): a tool runs when
 #   - policy is not `disabled` and not `external`, AND
 #   - execution.<stage> == true, AND
