@@ -56,6 +56,17 @@ _dc_restore_perms() {
 	# cache/output legitimately carrying `o+w` came back stripped. Replaying the snapshot puts
 	# each path back to whatever it actually was, honouring the restore contract exactly.
 	if [ -n "${DC_PERM_SNAP:-}" ] && [ -f "${DC_PERM_SNAP:-}" ]; then
+		# Two passes, so BOTH pre-existing and newly-created paths end up correct:
+		#   1. Strip world-write from the whole relaxed tree. This is what covers files CREATED
+		#      DURING the scan — the report written into OUTDIR, new NVD DB entries in the cache
+		#      — which have no snapshot line (the snapshot was taken before the run) and would
+		#      otherwise keep the container's relaxed `a+rwX` (world-writable) mode. That happens
+		#      on every successful scan, so it is not an edge case.
+		#   2. Replay the pre-relaxation snapshot, restoring every path that EXISTED beforehand
+		#      to its EXACT original mode — re-adding a legitimate pre-existing `o+w` that pass 1
+		#      stripped. New files are not in the snapshot, so they keep the safe pass-1 mode.
+		[ -n "${CACHE_ABS:-}" ] && chmod -R o-w "$CACHE_ABS" 2>/dev/null || true
+		[ -n "${OUTDIR:-}" ] && chmod -R o-w "$OUTDIR" 2>/dev/null || true
 		while IFS="$(printf '\t')" read -r _rm _rp; do
 			[ -n "$_rm" ] && [ -n "$_rp" ] && [ -e "$_rp" ] && chmod "$_rm" "$_rp" 2>/dev/null || true
 		done < "$DC_PERM_SNAP"
