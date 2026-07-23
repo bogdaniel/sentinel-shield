@@ -16,8 +16,9 @@ must fail closed.
 "we are clean". This document records where that invariant was broken, what now enforces it,
 and — stated plainly — what is still open.
 
-Everything here is proven by `tests/prod/266-fail-closed-evidence-integrity.sh`. Each check in
-that suite fails against the pre-hotfix code; 28 of them did when it was written.
+Everything here is proven by `tests/prod/266-fail-closed-evidence-integrity.sh`: 48 checks in
+total, 28 of which fail against the pre-hotfix code (the rest assert behaviour that was already
+correct and guard against regressions).
 
 ## What was broken
 

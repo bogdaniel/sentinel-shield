@@ -347,6 +347,37 @@ case "$RED" in
 esac
 
 # ============================================================================
+# (R) CodeRabbit re-review gaps: escaped-quote JSON values + camelCase query/bare assignments.
+# ============================================================================
+# An escaped quote inside a JSON string value must NOT end the redaction early — the old
+# `[^"]*` matcher stopped at the `\"`, leaving the suffix visible.
+RED=$(printf '{"GITHUB_TOKEN":"abc\\"def-LEAKED"}\n' | rd_redact_stream)
+case "$RED" in
+	*"def-LEAKED"*) fail "(R1) escaped-quote JSON value leaked the suffix: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R1) escaped-quote JSON value is fully redacted" ;;
+	*) fail "(R1) escaped-quote JSON not redacted as expected: $RED" ;;
+esac
+# A camelCase secret key in a QUERY parameter (apiKey) must be redacted, not only snake_case.
+RED=$(printf 'https://x.example/cb?apiKey=SECRETVALUE123&page=1\n' | rd_redact_stream)
+case "$RED" in
+	*"SECRETVALUE123"*) fail "(R2) camelCase query apiKey leaked: $RED" ;;
+	*"apiKey=***REDACTED***"*) pass "(R2) camelCase query apiKey is redacted" ;;
+	*) fail "(R2) camelCase query not redacted as expected: $RED" ;;
+esac
+# A bare camelCase secret assignment (apiKey=...) must be redacted.
+RED=$(printf 'apiKey=SECRETVALUE123\n' | rd_redact_stream)
+case "$RED" in
+	*"SECRETVALUE123"*) fail "(R3) bare camelCase apiKey leaked: $RED" ;;
+	*"apiKey=***REDACTED***"*) pass "(R3) bare camelCase apiKey is redacted" ;;
+	*) fail "(R3) bare camelCase not redacted as expected: $RED" ;;
+esac
+# Guardrail: plain prose is never mangled and the redactor never empties its output.
+RED=$(printf 'the quick brown fox jumps over the lazy dog\n' | rd_redact_stream)
+[ "$RED" = "the quick brown fox jumps over the lazy dog" ] \
+	&& pass "(R4) plain prose passes through unchanged (redactor does not empty output)" \
+	|| fail "(R4) plain prose was altered/emptied: $RED"
+
+# ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
 	exit 1

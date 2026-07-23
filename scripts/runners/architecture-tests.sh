@@ -74,14 +74,20 @@ fi
 
 # env var (indirect read) then policy. The NAME is validated as a POSIX shell identifier before
 # the indirect expansion, so a crafted --env-var value can never smuggle shell code into eval.
+#
+# The check MUST be a negative FULL-value match. A positive `[A-Za-z_][A-Za-z0-9_]*` glob does
+# NOT work: its trailing `*` matches ANY characters, so `ab$(echo INJECTED)` satisfies it
+# (a, b, then `*` swallows the rest) and reaches `eval`, executing the command substitution.
+# Reject empty, digit-leading, or ANY value containing a non-identifier character; only a pure
+# identifier survives to the indirect expansion.
 if [ -z "$CMD" ]; then
 	case "$ENV_VAR" in
-		[A-Za-z_][A-Za-z0-9_]*)
-			CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"")
-			[ -n "$CMD" ] && CMD_SOURCE="operator" ;;
-		*)
+		'' | [0-9]* | *[!A-Za-z0-9_]*)
 			log_error "invalid --env-var name '$ENV_VAR' (expected a POSIX shell identifier)"
 			exit 2 ;;
+		*)
+			CMD=$(eval "printf '%s' \"\${$ENV_VAR:-}\"")
+			[ -n "$CMD" ] && CMD_SOURCE="operator" ;;
 	esac
 fi
 if [ -z "$CMD" ] && ap_present; then
