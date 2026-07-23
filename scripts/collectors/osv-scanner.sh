@@ -47,7 +47,12 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	exit 2
 fi
 
-# Bucket by the vulnerability's OWN severity instead of collapsing everything into high.
+# Fail closed on an unrecognized SHAPE (v2.0.2, #51). Without this the `else` branch of the
+# extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
+# valid non-negative integers, and an unreadable report produced a clean PASS — the
+# exact fail-open this hotfix exists to close.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.results? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# Bucket by the vulnerability's OWN severity instead of collapsing everything into high (#52).
 #
 # Previously every OSV finding — regardless of severity — became high_vulnerabilities with
 # critical hardcoded to 0. A project that sets gates.fail_on.high_vulnerabilities:false
@@ -97,6 +102,8 @@ OV=$(jq 'if has("results") then
 			{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0),
 			 _results:null, _native:false}
 		 end' "$INPUT")
+# Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities,.high_vulnerabilities,.medium_vulnerabilities]|add // 0')
 NATIVE=$(printf '%s' "$OV" | jq -r '._native')
 RC=$(printf '%s' "$OV" | jq -r '._results')

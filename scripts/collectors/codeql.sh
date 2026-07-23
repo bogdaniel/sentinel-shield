@@ -15,7 +15,13 @@ while [ $# -gt 0 ]; do case "$1" in
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
-# Resolve each result's effective SARIF level, then map security-severity to a bucket.
+# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2, #51).
+# The recognizer accepts BOTH the native tool shape AND the pre-normalized
+# {critical,high,medium} object the extraction below already falls back to — an
+# earlier revision only matched the native form, turning that supported input into a
+# hard execution-error.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.runs? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# Resolve each result's effective SARIF level, then map security-severity to a bucket (#52).
 #
 # Two defects fixed. (1) critical_vulnerabilities was hardcoded 0, so CodeQL alone could
 # never trip the critical gate no matter what it found. (2) Only the per-result `.level`
@@ -49,6 +55,8 @@ OV=$(jq '
 	else
 		{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0)}
 	end' "$INPUT")
+# Fail closed on negative/float/non-numeric counts (v2.0.2, #51); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status:$s, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}')

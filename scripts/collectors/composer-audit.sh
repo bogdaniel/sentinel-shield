@@ -32,6 +32,12 @@ while [ $# -gt 0 ]; do
 done
 
 ss_collector_guard "$TOOL" "$INPUT"
+# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2).
+# This collector has NO pre-normalized fallback in its extraction, so the recognizer
+# deliberately matches the NATIVE shape ONLY. Widening it to accept {critical:N}
+# would ACCEPT a document the extraction cannot read and report a clean 0 — a
+# fail-open strictly worse than rejecting the input.
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.advisories? | type) == "object") or ((.advisories? | type) == "array"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 
 # An advisory with NO severity is still a vulnerability.
 #
@@ -57,6 +63,8 @@ OV=$(jq '
 				or (IN("critical","high","medium","moderate","low") | not)) ] | length)
 	}' "$INPUT")
 
+# Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities}')

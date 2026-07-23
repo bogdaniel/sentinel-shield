@@ -487,7 +487,19 @@ if [ -n "$PROFILE_NAME" ]; then
 					# Empty cstatus: no collector for this tool -> a present, valid report means it
 					# ran, so pass. A collector that ran but returned an empty status is an anomaly
 					# -> fail closed as execution-error.
-					if [ "$_hascol" = "0" ]; then status="pass"; executed=true; installed=true
+					# KNOWN GAP, deliberately NOT closed in this hotfix. A tool with no
+					# collector cannot be verified from its report, so a REQUIRED one
+					# ({} in larastan.json / pint.json / syft.json) is granted a clean
+					# pass on file presence alone. Making it fail closed here is a
+					# one-line change — and it turns all five e2e fixtures and every
+					# profile requiring these tools red, because the real remedy is to
+					# WRITE the missing collectors, not to reject the reports. That is
+					# Wave-2 work; shipping the strictness without the collectors would
+					# be a breaking change disguised as a security fix.
+					# Tracked in the audit as "required tools without collectors".
+					if [ "$_hascol" = "0" ]; then
+						[ "$tpol" = "required" ] && log_warn "$tkey: required tool has no collector; its report is accepted UNVERIFIED (known gap — see docs/fail-closed-evidence.md)"
+						status="pass"; executed=true; installed=true
 					else status="execution-error"; executed=false; fi ;;
 				*) status="execution-error"; executed=false ;;
 			esac
@@ -548,8 +560,32 @@ EOF
 		_gstatus=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].status // "unknown"')
 		if [ -n "$_grep" ]; then
 			_grf="$RAW_DIR/$(basename -- "$_grep")"
+			# A one-of group is satisfied by EVIDENCE, not by a file existing (v2.0.2
+			# hotfix). This previously accepted any present, valid-JSON report — so
+			# `printf '{}' > reports/raw/tests.json` marked the required test group
+			# satisfied without a single test having run. The group's own COLLECTOR
+			# result is now the authority: it must have produced a real evidence status
+			# (pass/findings/fail/warn). unavailable / not-configured / execution-error /
+			# disabled and unrecognized statuses leave the resolver's verdict standing.
 			if [ -f "$_grf" ] && [ -s "$_grf" ] && jq -e . "$_grf" >/dev/null 2>&1; then
-				_gstatus="satisfied"
+				# Resolve the collector by the REPORT FILENAME, not the group key. A
+				# one-of group key is abstract (`php-tests`) and its members are
+				# `pest`/`phpunit`, but the collector that actually parsed the file is
+				# registered in TOOL_TABLE against the raw filename (tests.json -> tests).
+				_gbase=$(basename -- "$_grf")
+				_gemit=$(printf '%s\n' "$TOOL_TABLE" | awk -F'|' -v f="$_gbase" '$2==f{print $4; exit}')
+				[ -n "$_gemit" ] || _gemit=$(emit_name_for "$_g")
+				_gcol=$(printf '%s' "$TOOLSOBJ" | jq -r --arg e "$_gemit" '(.[$e].status) // ""')
+				case "$_gcol" in
+					pass | findings | fail | warn) _gstatus="satisfied" ;;
+					'')
+						# No collector understands this report at all: fall back to the
+						# resolver's own verdict rather than inventing satisfaction.
+						log_warn "one-of group '$_g': no collector is registered for '$_gbase'; leaving resolver status '$_gstatus'" ;;
+					*)
+						log_warn "one-of group '$_g': report '$_grf' is present but carries no valid evidence (collector status '$_gcol'); NOT counted as satisfied"
+						_gstatus="unsatisfied" ;;
+				esac
 			fi
 		fi
 		[ "$_gstatus" = "unsatisfied" ] && _unsat=$((_unsat + 1))
@@ -695,7 +731,14 @@ jq -n \
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
-		summary: ($counts + { missing_sbom: $ms, missing_release_evidence: $mr, expired_exceptions: $ee }
+		summary: ($counts
+			+ { missing_sbom: $ms, missing_release_evidence: $mr }
+			# expired_exceptions has TWO independent sources and both must survive
+			# (v2.0.2 hotfix). This previously read `expired_exceptions: $ee`, which
+			# unconditionally OVERWROTE any collector-reported expiry with the count from
+			# reports/exceptions.json alone — so a collector that detected an expired
+			# waiver had its finding silently discarded on the way into the summary.
+			+ { expired_exceptions: (($counts.expired_exceptions // 0) + $ee) }
 			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch } else {} end)),
 		tools: $tools,
 		exceptions: { active: $ea, expired: $ee },
@@ -709,7 +752,11 @@ jq -n \
 jq -e '
 	(.summary.missing_sbom == (.evidence.sbom.present | not))
 	and (.summary.missing_release_evidence == (.evidence.release_evidence.present | not))
-	and (.summary.expired_exceptions == .exceptions.expired)
+	# expired_exceptions aggregates the exceptions file AND any collector-reported
+	# expiry, so it must be >= the file count — never equal-by-construction (v2.0.2).
+	# The old `==` assertion is precisely what cemented the overwrite it was meant to
+	# verify: it could only hold if collector-reported expiries were discarded.
+	and (.summary.expired_exceptions >= .exceptions.expired)
 ' "$OUTPUT" >/dev/null || die_cfg "internal consistency check failed for $OUTPUT"
 
 log_info "wrote $OUTPUT (mode-agnostic findings; enforce with scripts/enforce-gates.sh)"

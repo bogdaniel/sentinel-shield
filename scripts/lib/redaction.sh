@@ -253,6 +253,18 @@ _rd_root_records() {
 # Path roots come from RD_TARGET_ROOT / RD_REPO_ROOT / RD_TMP_ROOTS / RD_HOME (all optional).
 _rd_pattern_stage() {
 	_rd_home="${RD_HOME:-$HOME}"
+	# Secret-bearing key WORDS, case-insensitive via bracket classes (sed has no portable
+	# /I). Used by the JSON key/value rules below (v2.0.2 hotfix): the previous generic
+	# rule's value class excluded the double-quote character, so in JSON — where the byte
+	# after `": "` IS a quote — it could never match. `{"GITHUB_TOKEN": "..."}` passed
+	# through untouched, and JSON is the format security-summary.json, reports/raw/* and
+	# the event journal are all persisted in.
+	#
+	# The three JSON rules deliberately require a WORD BOUNDARY (name starts with the
+	# word, or it follows _ / -, or a camelCase hump) so ordinary data is not corrupted:
+	# "monkey" and "donkeys" contain "key" but are not secrets, and silently mangling
+	# real evidence is its own integrity failure.
+	_rd_sw='[Kk][Ee][Yy]|[Tt][Oo][Kk][Ee][Nn]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]'
 
 	# Build path-relativization rules delimiter-safely: gather every replacement root as a validated
 	# record, DEDUPLICATE exact repeats, then order LONGEST-FIRST (numeric on the raw path length) so
@@ -289,7 +301,7 @@ RD_ROOT_RULES
 		-e "s/(npm_)[A-Za-z0-9]{20,}/${RD_PH_NPM}/g" \
 		-e "s#(_password=)[^[:space:]\"']+#\\1***REDACTED***#g" \
 		-e "s#(_auth=)[^[:space:]\"']+#\\1***REDACTED***#g" \
-		-e "s/(\"auth\"[[:space:]]*:[[:space:]]*\")[^\"]+\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"auth\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
 		-e "s#(--homedir[[:space:]]+)[^[:space:]]+#\\1${RD_PH_GNUPG}#g" \
 		-e "s#(GNUPGHOME=)[^[:space:]]+#\\1${RD_PH_GNUPG}#g" \
 		-e "s#[^[:space:]\"':=]*/\\.gnupg[^[:space:]\"']*#${RD_PH_GNUPG}#g" \
@@ -297,9 +309,19 @@ RD_ROOT_RULES
 		-e "s#[^[:space:]\"':=]*[.](pem|key|p12|pfx)#${RD_PH_KEYPATH}#g" \
 		-e "s#([?&](sig|signature|token|access_token|access_key|api_key|apikey|password|passwd|pwd|secret|auth|se|sv|st|x-amz-security-token)=)[^&[:space:]\"']+#\\1***REDACTED***#g" \
 		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH))[=:][[:space:]]*[^[:space:]\"']+/\\1=***REDACTED***/g" \
+		-e "s/(\"($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"[A-Za-z0-9]+[_-]($_rd_sw)([_-][A-Za-z0-9_-]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
+		-e "s/(\"[A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?\"[[:space:]]*:[[:space:]]*\")([^\"\\]|\\\\.)+\"/\\1***REDACTED***\"/g" \
+		-e "s/(^|[[:space:]])(($_rd_sw)([_-][A-Za-z0-9_-]*)?)[=:][[:space:]]*[^*[:space:]\"',;}][^[:space:]\"',;}]*/\\1\\2=***REDACTED***/g" \
+		-e "s/([?&][A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?=)[^&[:space:]\"']+/\\1***REDACTED***/g" \
+		-e "s/(^|[[:space:]])([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)[^*[:space:]\"',;}][^[:space:]\"',;}]*/\\1\\2***REDACTED***/g" \
+		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH)[=:][[:space:]]*)\"[^\"]*\"/\\1\"***REDACTED***\"/g" \
+		-e "s/([A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|AUTH)[=:][[:space:]]*)'[^']*'/\\1'***REDACTED***'/g" \
+		-e "s/([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)\"[^\"]*\"/\\1\"***REDACTED***\"/g" \
+		-e "s/([A-Za-z0-9]*[A-Za-z](Key|Token|Secret|Password|Passwd|Credential)([A-Z][A-Za-z0-9_]*)?[=:][[:space:]]*)'[^']*'/\\1'***REDACTED***'/g" \
 		-e "s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/${RD_PH_EMAIL}/g" \
 		"$@"
-	unset _rd_home _rd_rules _rd_len _rd_kind _rd_ce
+	unset _rd_home _rd_rules _rd_len _rd_kind _rd_ce _rd_sw
 }
 
 # rd_redact_stream — read STDIN, write fully-redacted STDOUT. Runs the LITERAL registry stage

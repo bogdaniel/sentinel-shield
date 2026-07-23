@@ -347,6 +347,74 @@ case "$RED" in
 esac
 
 # ============================================================================
+# (R) CodeRabbit re-review gaps: escaped-quote JSON values + camelCase query/bare assignments.
+# ============================================================================
+# An escaped quote inside a JSON string value must NOT end the redaction early — the old
+# `[^"]*` matcher stopped at the `\"`, leaving the suffix visible.
+RED=$(printf '{"GITHUB_TOKEN":"abc\\"def-LEAKED"}\n' | rd_redact_stream)
+case "$RED" in
+	*"def-LEAKED"*) fail "(R1) escaped-quote JSON value leaked the suffix: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R1) escaped-quote JSON value is fully redacted" ;;
+	*) fail "(R1) escaped-quote JSON not redacted as expected: $RED" ;;
+esac
+# A camelCase secret key in a QUERY parameter (apiKey) must be redacted, not only snake_case.
+RED=$(printf 'https://x.example/cb?apiKey=SECRETVALUE123&page=1\n' | rd_redact_stream)
+case "$RED" in
+	*"SECRETVALUE123"*) fail "(R2) camelCase query apiKey leaked: $RED" ;;
+	*"apiKey=***REDACTED***"*) pass "(R2) camelCase query apiKey is redacted" ;;
+	*) fail "(R2) camelCase query not redacted as expected: $RED" ;;
+esac
+# A bare camelCase secret assignment (apiKey=...) must be redacted.
+RED=$(printf 'apiKey=SECRETVALUE123\n' | rd_redact_stream)
+case "$RED" in
+	*"SECRETVALUE123"*) fail "(R3) bare camelCase apiKey leaked: $RED" ;;
+	*"apiKey=***REDACTED***"*) pass "(R3) bare camelCase apiKey is redacted" ;;
+	*) fail "(R3) bare camelCase not redacted as expected: $RED" ;;
+esac
+# Guardrail: plain prose is never mangled and the redactor never empties its output.
+RED=$(printf 'the quick brown fox jumps over the lazy dog\n' | rd_redact_stream)
+[ "$RED" = "the quick brown fox jumps over the lazy dog" ] \
+	&& pass "(R4) plain prose passes through unchanged (redactor does not empty output)" \
+	|| fail "(R4) plain prose was altered/emptied: $RED"
+
+# ============================================================================
+# (R5-R7) Second CodeRabbit re-review round: leading-* values, quoted assignments, acronym keys.
+# ============================================================================
+# (R5) A secret value beginning with '*' must still redact — the old `[^*"]` first-char guard
+# skipped it, leaking `*supersecret`.
+RED=$(printf '{"apiKey":"*supersecret"}\n' | rd_redact_stream)
+case "$RED" in
+	*"supersecret"*) fail "(R5) leading-* JSON value leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R5) a value beginning with * is redacted" ;;
+	*) fail "(R5) leading-* not redacted as expected: $RED" ;;
+esac
+# (R6) Quoted assignment values (KEY=\"...\" and key='...') must redact — the bare value matcher
+# rejected an initial quote, so the quoted secret leaked.
+RED=$(printf 'GITHUB_TOKEN="secret123"\n' | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R6a) quoted double-quote assignment leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R6a) double-quoted assignment value is redacted" ;;
+	*) fail "(R6a) not redacted: $RED" ;;
+esac
+RED=$(printf "apiKey='secret123'\n" | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R6b) single-quoted assignment leaked: $RED" ;;
+	*"***REDACTED***"*) pass "(R6b) single-quoted assignment value is redacted" ;;
+	*) fail "(R6b) not redacted: $RED" ;;
+esac
+# (R6c) an ordinary quoted non-secret assignment must NOT be redacted (no over-reach).
+RED=$(printf 'name="Alice"\n' | rd_redact_stream)
+[ "$RED" = 'name="Alice"' ] && pass "(R6c) ordinary quoted value left intact" \
+	|| fail "(R6c) ordinary quoted value was altered: $RED"
+# (R7) acronym-prefixed camelCase keys (APIKey/APIToken) must redact.
+RED=$(printf '{"APIKey":"secret123"}\n' | rd_redact_stream)
+case "$RED" in
+	*"secret123"*) fail "(R7) acronym key APIKey leaked: $RED" ;;
+	*'"***REDACTED***"'*) pass "(R7) acronym-prefixed key is redacted" ;;
+	*) fail "(R7) not redacted: $RED" ;;
+esac
+
+# ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
 	exit 1

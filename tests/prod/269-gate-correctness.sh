@@ -53,10 +53,14 @@ check "dead-code: absent count is a legitimate pass (0)" \
 # --- --strict-summary must accept the schema's own status values ------------
 # The enforcer allowed 5 values; the schema (and every v1.10+ collector) emits 10. So the
 # STRICTEST validation flag could not be run against a HEALTHY summary.
+# A real evidence-bearing tool (tests:pass) is included so this isolates the status-ENUM
+# validation from the separate NO_EVIDENCE_FOR_STRICT check (added by the fail-closed hotfix,
+# #51), which independently — and correctly — refuses to certify strict from a summary where
+# NOT ONE tool ran.
 _schema=$(jq -r '.properties.tools.additionalProperties.properties.status.enum | sort | join(",")' \
 	"$ROOT/schemas/security-summary.schema.json")
 for _st in findings not-configured not-applicable execution-error disabled; do
-	printf '{"version":"1.0","generated_at":"2026-07-20T00:00:00Z","source":{},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0},"tools":{"coverage":{"status":"%s"}}}\n' "$_st" > "$WORK/sum.json"
+	printf '{"version":"1.0","generated_at":"2026-07-20T00:00:00Z","source":{},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0},"tools":{"coverage":{"status":"%s"},"tests":{"status":"pass"}}}\n' "$_st" > "$WORK/sum.json"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$WORK" --format env >/dev/null 2>&1
 	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$WORK/sentinel-shield-gates.env" \
 		--summary "$WORK/sum.json" --output-dir "$WORK" --format json --strict-summary >/dev/null 2>&1 && _rc=0 || _rc=$?

@@ -44,6 +44,15 @@ case "$RS" in
 		exit 0 ;;
 esac
 
+# Fail closed on a report that carries NO test-result fields at all (v2.0.2 hotfix).
+# `{}` used to read as `{"status":"pass","failures":0,"tests":0}` — a clean pass — which
+# also satisfied the REQUIRED one-of test group: `printf '{}' > reports/raw/tests.json`
+# certified that a project's tests passed without a single test having run. A document
+# with no tests/failures/errors/skipped field is not a test report.
+ss_shape_or_fail "$TOOL" "$INPUT" \
+	'(type == "object") and (has("tests") or has("failures") or has("errors") or has("skipped"))' \
+	'{"test_failures":0,"test_count":0,"skipped_tests":0}'
+
 # num <key> — numeric value of .<key>, floored, or 0 for absent/non-numeric.
 num() { jq --arg k "$1" '((.[$k] // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT"; }
 

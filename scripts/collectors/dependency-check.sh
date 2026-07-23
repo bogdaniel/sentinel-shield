@@ -15,11 +15,15 @@ while [ $# -gt 0 ]; do case "$1" in
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
+# Fail closed on a report whose SHAPE this collector does not recognize (v2.0.2).
+ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.dependencies? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 # Severity vocab is normalized: Dependency-Check mixes NVD/CVSS labels (CRITICAL/HIGH/MEDIUM/LOW)
 # with the npm Node-Audit / RetireJS labels (critical/high/moderate/low). npm "MODERATE" IS the
 # medium bucket — map it so real moderate CVEs are counted (and gated in strict), not dropped.
 # (v0.1.27: surfaced by a real dependency-rich consumer run — 3 moderate npm CVEs were being lost.)
 OV=$(jq 'if has("dependencies") then ([.dependencies[]?.vulnerabilities[]?.severity // empty | ascii_upcase | if . == "MODERATE" then "MEDIUM" else . end]) as $s | {critical_vulnerabilities:([$s[]|select(.=="CRITICAL")]|length), high_vulnerabilities:([$s[]|select(.=="HIGH")]|length), medium_vulnerabilities:([$s[]|select(.=="MEDIUM")]|length)} else {critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0)} end' "$INPUT")
+# Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
+ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status:$s, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}')
