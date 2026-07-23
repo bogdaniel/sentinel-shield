@@ -45,6 +45,12 @@ $(find "$d" \
 	done
 fi
 FILES=$(printf '%s\n' "$FILES" | sed '/^$/d' | sort -u)
+# $FILES holds LITERAL paths (CLI args + discovered Dockerfiles). The `for f in $FILES`
+# loops below word-split on newline (IFS) but WITHOUT this would also pathname-expand each
+# word, so a file literally named e.g. `Dockerfile[1]` could match a different path or be
+# skipped. `set -f` disables pathname expansion for the rest of the script; it does NOT
+# affect the `case` glob patterns used later (those are unaffected by -f).
+set -f
 
 ensure_dir "$(dirname "$OUTPUT")"
 TMP=$(mktemp); trap 'rm -f "$TMP"' EXIT INT TERM; : > "$TMP"

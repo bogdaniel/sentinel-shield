@@ -70,6 +70,10 @@ discover() {
 
 # De-dup, stable order.
 FILES=$(discover | sort -u)
+# $FILES holds literal Dockerfile paths. Disable pathname expansion so the newline-split
+# `for f in $FILES` never glob-expands a path with shell metacharacters (`case` globs later
+# are unaffected by `set -f`).
+set -f
 
 if [ "$LIST_ONLY" -eq 1 ]; then
 	[ -n "$FILES" ] && printf '%s\n' "$FILES"

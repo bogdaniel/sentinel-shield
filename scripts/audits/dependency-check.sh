@@ -50,20 +50,21 @@ _dc_restore_perms() {
 	# applying it recursively would mark every FILE inside executable and overwrite its real
 	# permissions — corrupting the cache to undo a relaxation. Restore the root itself
 	# directly, then strip ONLY the `other`-write bit the relaxation added.
-	[ -n "${DC_MODE_CACHE:-}" ] && [ -n "${CACHE_ABS:-}" ] && chmod "$DC_MODE_CACHE" "$CACHE_ABS" 2>/dev/null || true
-	[ -n "${DC_MODE_OUT:-}" ] && [ -n "${OUTDIR:-}" ] && chmod "$DC_MODE_OUT" "$OUTDIR" 2>/dev/null || true
-	if [ "${SENTINEL_SHIELD_DC_RELAX_PERMS:-0}" = "1" ]; then
-		# `o-w` undoes the security-relevant part of `a+rwX`: WORLD-writable reports, which
-		# is the actual defect (the summary builder trusts reports/raw, so a world-writable
-		# report dir lets any local user forge evidence between scan and build).
-		# Residual, stated rather than hidden: per-file modes were not captured before the
-		# relaxation, so a file that was 0644 comes back 0664 — the GROUP-write bit can
-		# survive. Stripping `g-w` unconditionally would break a legitimately
-		# group-writable shared cache, which is a real CI setup. This path is opt-in and
-		# unnecessary in the default configuration (the container runs as the host user),
-		# so the narrow undo is the right trade.
-		[ -n "${CACHE_ABS:-}" ] && chmod -R o-w "$CACHE_ABS" 2>/dev/null || true
-		[ -n "${OUTDIR:-}" ] && chmod -R o-w "$OUTDIR" 2>/dev/null || true
+	# Restore the exact per-path modes captured before the relaxation. This replaces a former
+	# `chmod -R o-w` best-effort undo that removed the `other`-write bit from EVERY path —
+	# including roots and descendants that were world-writable BEFORE the scan — so a shared
+	# cache/output legitimately carrying `o+w` came back stripped. Replaying the snapshot puts
+	# each path back to whatever it actually was, honouring the restore contract exactly.
+	if [ -n "${DC_PERM_SNAP:-}" ] && [ -f "${DC_PERM_SNAP:-}" ]; then
+		while IFS="$(printf '\t')" read -r _rm _rp; do
+			[ -n "$_rm" ] && [ -n "$_rp" ] && [ -e "$_rp" ] && chmod "$_rm" "$_rp" 2>/dev/null || true
+		done < "$DC_PERM_SNAP"
+		rm -f "$DC_PERM_SNAP" 2>/dev/null || true
+	else
+		# No snapshot (relaxation was not applied): the roots were never changed, but restore
+		# the captured root modes defensively — a no-op when nothing touched them.
+		[ -n "${DC_MODE_CACHE:-}" ] && [ -n "${CACHE_ABS:-}" ] && chmod "$DC_MODE_CACHE" "$CACHE_ABS" 2>/dev/null || true
+		[ -n "${DC_MODE_OUT:-}" ] && [ -n "${OUTDIR:-}" ] && chmod "$DC_MODE_OUT" "$OUTDIR" 2>/dev/null || true
 	fi
 	return 0
 }
@@ -173,6 +174,17 @@ elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
 	DC_MODE_CACHE=$(_dc_mode_of "$CACHE_ABS")
 	DC_MODE_OUT=$(_dc_mode_of "$OUTDIR")
 	if [ "${SENTINEL_SHIELD_DC_RELAX_PERMS:-0}" = "1" ]; then
+		# Snapshot the EXACT mode of every path before the recursive relaxation so the EXIT
+		# trap can put each one back verbatim. The previous restore did `chmod -R o-w`, which
+		# cannot tell a bit the relaxation ADDED from a pre-existing `o+w` — so it stripped
+		# permissions the shared cache/output legitimately had, breaking the "restore original
+		# modes" contract. A per-path snapshot restores whatever was actually there.
+		# (Tab-delimited mode<TAB>path; the NVD cache and reports/raw never contain tab/newline
+		# filenames — these are dependency-check DB files and scanner reports, not arbitrary input.)
+		DC_PERM_SNAP=$(mktemp 2>/dev/null || mktemp -t dcperm)
+		find "$CACHE_ABS" "$OUTDIR" 2>/dev/null | while IFS= read -r _p; do
+			_m=$(_dc_mode_of "$_p"); [ -n "$_m" ] && printf '%s\t%s\n' "$_m" "$_p"
+		done > "$DC_PERM_SNAP" 2>/dev/null || true
 		chmod -R a+rwX "$CACHE_ABS" "$OUTDIR" 2>/dev/null || true
 	fi
 	# shellcheck disable=SC2086

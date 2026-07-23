@@ -44,6 +44,11 @@ if [ -z "$FILES" ]; then
 	fi
 fi
 
+# $FILES holds literal workflow paths. Disable pathname expansion so the newline-split
+# `for f in $FILES` below never glob-expands a path containing shell metacharacters. `case`
+# glob patterns later are unaffected by `set -f`.
+set -f
+
 ensure_dir "$(dirname "$OUTPUT")"
 
 TMP=$(mktemp); trap 'rm -f "$TMP"' EXIT INT TERM

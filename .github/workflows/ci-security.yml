@@ -27,6 +27,14 @@ on:
 permissions:
   contents: read
 
+# Pin the Trivy SCANNER version once. The trivy-action otherwise installs "latest", so the
+# binary that generates reports/raw/trivy.json could differ from whatever version the freshness
+# step records — the manifest would then claim a version that did not produce the scan. Every
+# trivy-action step below installs this exact version, and the version-capture step records
+# THIS value, so the recorded version is always the one that scanned.
+env:
+  TRIVY_VERSION: "v0.72.0"
+
 concurrency:
   group: ci-security-${{ github.ref }}
   cancel-in-progress: true
@@ -119,6 +127,7 @@ jobs:
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
@@ -234,6 +243,7 @@ jobs:
       - name: Trivy (JSON → reports/raw/trivy.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
@@ -360,6 +370,7 @@ jobs:
       - name: Trivy (JSON → reports/raw/trivy.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
@@ -432,7 +443,10 @@ jobs:
           # (pinned above to $GITHUB_WORKSPACE/.cache/trivy) — read from that same path.
           trivy_meta="${GITHUB_WORKSPACE:-$PWD}/.cache/trivy/db/metadata.json"
           trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
-          trivy_ver=$(docker run --rm aquasec/trivy:0.72.0 version --format json 2>/dev/null | jq -r '.Version // empty' 2>/dev/null || true)
+          # Record the SAME version the trivy-action was pinned to above (env.TRIVY_VERSION),
+          # not a separately-pulled container: the recorded version must be the one that
+          # actually generated reports/raw/trivy.json. Strip the leading "v" for the manifest.
+          trivy_ver="${TRIVY_VERSION#v}"
           osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:v2.4.0 --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
           # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness is the
           # scan instant — recorded explicitly here as evidence, not defaulted inside the tool.
