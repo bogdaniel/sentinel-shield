@@ -61,7 +61,7 @@ jobs:
 
   # --------------------------------------------------------------------------
   # Workflow linting: actionlint (digest-pinned container) + zizmor (SHA-pinned action).
-  workflow-lint:
+  workflow-lint-readiness:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -217,7 +217,7 @@ jobs:
   production-readiness:
     needs:
       - static-shell
-      - workflow-lint
+      - workflow-lint-readiness
       - schema-validation
       - self-tests
       - adopter-and-consumers

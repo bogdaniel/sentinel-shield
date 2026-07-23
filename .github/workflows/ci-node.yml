@@ -22,7 +22,7 @@ jobs:
   # The engine repo is not a Node project, so the gate below skips (green) instead of
   # failing on a missing root package.json. Consumers with a package.json run it normally;
   # engine forks (still no package.json) also skip correctly.
-  detect:
+  detect-node:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -37,8 +37,8 @@ jobs:
         run: |
           if [ -f package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   node:
-    needs: detect
-    if: ${{ needs.detect.outputs.present == 'true' }}
+    needs: detect-node
+    if: ${{ needs.detect-node.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -77,8 +77,14 @@ jobs:
 
       - name: Test / build
         run: |
-          if npm run | grep -q "^  test"; then npm test; fi
-          if npm run | grep -q "^  build"; then npm run build; fi
+          # Detect scripts from package.json, NOT from `npm run` output. The previous
+          # `npm run | grep -q "^  test"` depended on npm's two-space listing format: if npm
+          # changes that presentation the grep stops matching, `npm test` never executes, the
+          # step exits 0 and the `node` check goes GREEN having run no tests. package.json is
+          # the contract; the CLI's human-readable output is not.
+          has_script() { jq -e --arg s "$1" '.scripts[$s] // empty' package.json >/dev/null 2>&1; }
+          if has_script test; then npm test; else echo "::warning::no \"test\" script in package.json — nothing was tested"; fi
+          if has_script build; then npm run build; else echo "::notice::no \"build\" script in package.json"; fi
 
       # --- Sentinel Shield raw reports (best-effort; for normalization) ---
       # npm audit --json maps to the npm_audit collector. tests.json must be a

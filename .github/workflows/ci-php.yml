@@ -25,7 +25,7 @@ jobs:
   # instead of failing on a missing root composer.json. Consumers that vendor this CI and
   # have a composer.json run it normally — and an engine FORK (still no composer.json) also
   # skips correctly, which a hardcoded repo-name guard could not do.
-  detect:
+  detect-php:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -40,8 +40,8 @@ jobs:
         run: |
           if [ -f composer.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   php:
-    needs: detect
-    if: ${{ needs.detect.outputs.present == 'true' }}
+    needs: detect-php
+    if: ${{ needs.detect-php.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -55,12 +55,27 @@ Core gates:
 - `trivy-fs`
 - `security-summary`
 
+> ### ⚠️ REQUIRED SETTINGS CHANGE (audit)
+>
+> Four workflows used to publish a check named **`detect`**, and two published
+> **`workflow-lint`**. Branch protection matches `required_status_checks` contexts **by NAME**,
+> so a passing `detect` from `ci-docker` satisfied a requirement that the `detect` in
+> `ci-codeql` never ran for — the gate rots open. (An earlier revision of this document
+> asserted GitHub distinguishes them by originating workflow. It does not.)
+>
+> The jobs are now uniquely named: `detect-codeql`, `detect-php`, `detect-node`,
+> `detect-docker`, and `workflow-lint-readiness`.
+>
+> **Anyone with branch protection configured must update the required-check list to the new
+> names.** Until then the old contexts will never report and PRs may block. The drift audit
+> (`scripts/audits/required-checks-audit.sh`) now fails on any cross-workflow duplicate.
+
 Applicability / detect checks:
 
-- `ci-php` → `detect`
-- `ci-node` → `detect`
-- `ci-docker` → `detect`
-- `ci-codeql` → `detect`
+- `ci-php` → `detect-php`
+- `ci-node` → `detect-node`
+- `ci-docker` → `detect-docker`
+- `ci-codeql` → `detect-codeql`
 
 These `detect` jobs are the applicability gates that decide whether their heavy jobs
 (php, node, docker, analyze) need to run for a given change. Requiring the `detect`
@@ -90,10 +105,10 @@ filenames) when configuring required checks. This table mirrors
 | `ci-pipeline`        | `prepare` (`applicability-detector`); `php-quality`, `node-quality`, `docker-security` (`conditional-heavy`); `security-scan`, `build-security-summary`, `release-gate` (`always-required`) |
 | `ci-security`        | `detect-deps` (`applicability-detector`); `semgrep`, `gitleaks`, `trivy-fs`, `security-summary`, `security-acceptance` (`always-required`); `osv-scanner`, `sbom` (`conditional-heavy`); `security-acceptance-live` (`default-branch-only`) |
 | `ci-workflow-lint`   | `workflow-lint`, `workflow-runtime-audit`, `governance-audits` (all `always-required`) |
-| `ci-codeql`          | `detect` (`applicability-detector`), `analyze` (`conditional-heavy`) |
-| `ci-php`             | `detect` (`applicability-detector`), `php` (`conditional-heavy`) |
-| `ci-node`            | `detect` (`applicability-detector`), `node` (`conditional-heavy`) |
-| `ci-docker`          | `detect` (`applicability-detector`), `docker` (`conditional-heavy`) |
+| `ci-codeql`          | `detect-codeql` (`applicability-detector`), `analyze` (`conditional-heavy`) |
+| `ci-php`             | `detect-php` (`applicability-detector`), `php` (`conditional-heavy`) |
+| `ci-node`            | `detect-node` (`applicability-detector`), `node` (`conditional-heavy`) |
+| `ci-docker`          | `detect-docker` (`applicability-detector`), `docker` (`conditional-heavy`) |
 | `ci-release-gate`    | `gate` (`release-only`) |
 
 > DAST (OWASP ZAP / Nuclei) publishes no core check. It is an optional
@@ -106,7 +121,8 @@ filenames) when configuring required checks. This table mirrors
 > and `governance-audits` (required-checks drift + merge-safety). All three are
 > `always-required`.
 
-Note that several workflows (`ci-codeql`, `ci-php`, `ci-node`, `ci-docker`) share the
-job name `detect`. GitHub distinguishes these check runs by their originating
-workflow, which is why the recommended set above qualifies them as
-`ci-<workflow>` → `detect`.
+Those applicability gates used to share the job name `detect`, so a passing `detect`
+from one workflow could satisfy a requirement meant for another. They are now uniquely
+named per workflow — `detect-codeql`, `detect-php`, `detect-node`, `detect-docker` — and
+`config/required-checks.json` is the source of truth for these context names. Require the
+qualified names above; a bare `detect` no longer exists.

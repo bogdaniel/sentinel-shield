@@ -12,101 +12,242 @@
   "workflows": {
     "ci-self-test.yml": {
       "checks": [
-        { "name": "full-self-test", "classification": "always-required" },
-        { "name": "syntax", "classification": "always-required" },
-        { "name": "lifecycle", "classification": "always-required" },
-        { "name": "fallback-policy", "classification": "always-required" },
-        { "name": "negative-policy", "classification": "always-required" },
-        { "name": "workflow-sanity", "classification": "always-required" }
+        {
+          "name": "full-self-test",
+          "classification": "always-required"
+        },
+        {
+          "name": "syntax",
+          "classification": "always-required"
+        },
+        {
+          "name": "lifecycle",
+          "classification": "always-required"
+        },
+        {
+          "name": "fallback-policy",
+          "classification": "always-required"
+        },
+        {
+          "name": "negative-policy",
+          "classification": "always-required"
+        },
+        {
+          "name": "workflow-sanity",
+          "classification": "always-required"
+        }
       ]
     },
     "ci-pipeline.yml": {
       "checks": [
-        { "name": "prepare", "classification": "applicability-detector" },
-        { "name": "php-quality", "classification": "conditional-heavy" },
-        { "name": "node-quality", "classification": "conditional-heavy" },
-        { "name": "docker-security", "classification": "conditional-heavy" },
-        { "name": "security-scan", "classification": "always-required" },
-        { "name": "build-security-summary", "classification": "always-required" },
-        { "name": "release-gate", "classification": "always-required" }
+        {
+          "name": "prepare",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "php-quality",
+          "classification": "conditional-heavy"
+        },
+        {
+          "name": "node-quality",
+          "classification": "conditional-heavy"
+        },
+        {
+          "name": "docker-security",
+          "classification": "conditional-heavy"
+        },
+        {
+          "name": "security-scan",
+          "classification": "always-required"
+        },
+        {
+          "name": "build-security-summary",
+          "classification": "always-required"
+        },
+        {
+          "name": "release-gate",
+          "classification": "always-required"
+        }
       ]
     },
     "ci-security.yml": {
       "checks": [
-        { "name": "detect-deps", "classification": "applicability-detector" },
-        { "name": "semgrep", "classification": "always-required" },
-        { "name": "gitleaks", "classification": "always-required" },
-        { "name": "osv-scanner", "classification": "conditional-heavy" },
-        { "name": "trivy-fs", "classification": "always-required" },
-        { "name": "sbom", "classification": "conditional-heavy" },
-        { "name": "security-summary", "classification": "always-required" },
-        { "name": "security-acceptance", "classification": "always-required" },
-        { "name": "security-acceptance-live", "classification": "default-branch-only" }
+        {
+          "name": "detect-deps",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "semgrep",
+          "classification": "always-required"
+        },
+        {
+          "name": "gitleaks",
+          "classification": "always-required"
+        },
+        {
+          "name": "osv-scanner",
+          "classification": "conditional-heavy"
+        },
+        {
+          "name": "trivy-fs",
+          "classification": "always-required"
+        },
+        {
+          "name": "sbom",
+          "classification": "conditional-heavy"
+        },
+        {
+          "name": "security-summary",
+          "classification": "always-required"
+        },
+        {
+          "name": "security-acceptance",
+          "classification": "always-required"
+        },
+        {
+          "name": "security-acceptance-live",
+          "classification": "default-branch-only"
+        }
       ]
     },
     "ci-workflow-lint.yml": {
       "checks": [
-        { "name": "workflow-lint", "classification": "always-required" },
-        { "name": "workflow-runtime-audit", "classification": "always-required" },
-        { "name": "governance-audits", "classification": "always-required" }
+        {
+          "name": "workflow-lint",
+          "classification": "always-required"
+        },
+        {
+          "name": "workflow-runtime-audit",
+          "classification": "always-required"
+        },
+        {
+          "name": "governance-audits",
+          "classification": "always-required"
+        }
       ]
     },
     "ci-codeql.yml": {
       "checks": [
-        { "name": "detect", "classification": "applicability-detector" },
-        { "name": "analyze", "classification": "conditional-heavy" }
+        {
+          "name": "detect-codeql",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "analyze",
+          "classification": "conditional-heavy"
+        }
       ]
     },
     "ci-php.yml": {
       "checks": [
-        { "name": "detect", "classification": "applicability-detector" },
-        { "name": "php", "classification": "conditional-heavy" }
+        {
+          "name": "detect-php",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "php",
+          "classification": "conditional-heavy"
+        }
       ]
     },
     "ci-node.yml": {
       "checks": [
-        { "name": "detect", "classification": "applicability-detector" },
-        { "name": "node", "classification": "conditional-heavy" }
+        {
+          "name": "detect-node",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "node",
+          "classification": "conditional-heavy"
+        }
       ]
     },
     "ci-docker.yml": {
       "checks": [
-        { "name": "detect", "classification": "applicability-detector" },
-        { "name": "docker", "classification": "conditional-heavy" }
+        {
+          "name": "detect-docker",
+          "classification": "applicability-detector"
+        },
+        {
+          "name": "docker",
+          "classification": "conditional-heavy"
+        }
       ]
     },
     "ci-release-gate.yml": {
       "checks": [
-        { "name": "gate", "classification": "release-only" }
+        {
+          "name": "gate",
+          "classification": "release-only"
+        }
       ]
     },
     "ci-adopter-validation.yml": {
       "checks": [
-        { "name": "scorecard-unit", "classification": "always-required" },
-        { "name": "adopter-suite", "classification": "always-required" }
+        {
+          "name": "scorecard-unit",
+          "classification": "always-required"
+        },
+        {
+          "name": "adopter-suite",
+          "classification": "always-required"
+        }
       ]
     },
     "ci-compatibility.yml": {
       "checks": [
-        { "name": "compat-unit", "classification": "always-required" },
-        { "name": "compat-representative", "classification": "always-required" },
-        { "name": "compat-full-matrix", "classification": "scheduled-only" }
+        {
+          "name": "compat-unit",
+          "classification": "always-required"
+        },
+        {
+          "name": "compat-representative",
+          "classification": "always-required"
+        },
+        {
+          "name": "compat-full-matrix",
+          "classification": "scheduled-only"
+        }
       ]
     },
     "security-incident-validation.yml": {
       "checks": [
-        { "name": "incident-response-contract", "classification": "conditional-heavy" }
+        {
+          "name": "incident-response-contract",
+          "classification": "conditional-heavy"
+        }
       ]
     },
     "ci-production-readiness.yml": {
       "checks": [
-        { "name": "static-shell", "classification": "always-required" },
-        { "name": "workflow-lint", "classification": "always-required" },
-        { "name": "schema-validation", "classification": "always-required" },
-        { "name": "self-tests", "classification": "always-required" },
-        { "name": "adopter-and-consumers", "classification": "always-required" },
-        { "name": "acceptance-and-release", "classification": "always-required" },
-        { "name": "production-readiness", "classification": "conditional-heavy" }
+        {
+          "name": "static-shell",
+          "classification": "always-required"
+        },
+        {
+          "name": "workflow-lint-readiness",
+          "classification": "always-required"
+        },
+        {
+          "name": "schema-validation",
+          "classification": "always-required"
+        },
+        {
+          "name": "self-tests",
+          "classification": "always-required"
+        },
+        {
+          "name": "adopter-and-consumers",
+          "classification": "always-required"
+        },
+        {
+          "name": "acceptance-and-release",
+          "classification": "always-required"
+        },
+        {
+          "name": "production-readiness",
+          "classification": "conditional-heavy"
+        }
       ]
     }
   }

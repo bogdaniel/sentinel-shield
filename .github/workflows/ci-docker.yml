@@ -23,7 +23,7 @@ jobs:
   # scanner tests), not a buildable app, so the gate below skips (green) instead of
   # failing on a missing root Dockerfile / unbuildable image. Consumers with a root
   # Dockerfile run it normally.
-  detect:
+  detect-docker:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -38,8 +38,8 @@ jobs:
         run: |
           if [ -f Dockerfile ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
   docker:
-    needs: detect
-    if: ${{ needs.detect.outputs.present == 'true' }}
+    needs: detect-docker
+    if: ${{ needs.detect-docker.outputs.present == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
