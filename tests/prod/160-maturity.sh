@@ -21,7 +21,7 @@ FAILED=0
 ok()  { printf 'PASS: %s\n' "$1"; }
 bad() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 
-command -v jq >/dev/null 2>&1 || { printf 'SKIP: jq unavailable (required for this test)\n'; exit 0; }
+command -v jq >/dev/null 2>&1 || { printf 'FAIL: jq is a documented prerequisite but is absent\n' >&2; exit 2; }
 [ -f "$SCRIPT" ] || { bad "maturity-report.sh exists"; exit 1; }
 
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ssmaturity)

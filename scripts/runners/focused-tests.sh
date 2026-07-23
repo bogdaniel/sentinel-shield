@@ -35,28 +35,37 @@ command_exists jq || { log_error "focused-tests: jq is required."; exit 2; }
 # Directories excluded from every source scan (matched by name, anywhere in the tree).
 EXCLUDES="--exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=reports --exclude-dir=storage --exclude-dir=cache --exclude-dir=dist --exclude-dir=build --exclude-dir=coverage --exclude-dir=generated --exclude-dir=.git"
 
-# count_matches <label> -- echo the number of matched occurrences for the remaining -e
-# patterns (grep -o prints one line per match). grep exits 1 on zero matches; the pipe to wc
-# keeps the pipeline status at wc's 0, and a non-numeric result (should never happen) -> 0.
+# count_matches -e <pat> [-e <pat> ...] -- echo the number of matched occurrences (grep -o
+# prints one line per match). grep rc: 0=matches, 1=no matches, >1=real error. A real error
+# must NOT be silently counted as zero (a false clean pass), so it prints the sentinel "ERR"
+# for the caller to fail on. A non-numeric count (should never happen) -> 0.
 count_matches() {
-	shift
+	_grc=0
 	# shellcheck disable=SC2086
-	_c=$(grep -rIoF $EXCLUDES "$@" . 2>/dev/null | wc -l | tr -d '[:space:]' || true)
+	_out=$(grep -rIoF $EXCLUDES "$@" . 2>/dev/null) || _grc=$?
+	if [ "$_grc" -gt 1 ]; then printf 'ERR'; return; fi
+	[ -n "$_out" ] || { printf '0'; return; }
+	_c=$(printf '%s\n' "$_out" | wc -l | tr -d '[:space:]')
 	case "$_c" in '' | *[!0-9]*) _c=0 ;; esac
 	printf '%s' "$_c"
 }
 
 # Focused markers: JS/TS describe.only/it.only/test.only/suite.only/context.only and the
 # catch-all .only( ; PHP/Pest ->only( . (Fixed strings; a dot is literal under -F.)
-FOCUSED=$(count_matches focused \
+FOCUSED=$(count_matches \
 	-e 'describe.only' -e 'it.only' -e 'test.only' -e 'suite.only' -e 'context.only' \
 	-e '.only(' -e '->only(')
 
 # Skipped markers: PHP markTestSkipped(/markTestIncomplete( ; JS/TS describe.skip/it.skip/
 # test.skip/xdescribe(/xit( .
-SKIPPED=$(count_matches skipped \
+SKIPPED=$(count_matches \
 	-e 'markTestSkipped(' -e 'markTestIncomplete(' \
 	-e 'describe.skip' -e 'it.skip' -e 'test.skip' -e 'xdescribe(' -e 'xit(')
+
+# A grep hard failure must fail the runner, never masquerade as a clean zero-marker pass.
+case "$FOCUSED$SKIPPED" in
+	*ERR*) log_error "focused-tests: grep failed while scanning for markers; refusing to emit a possibly-false clean report."; exit 2 ;;
+esac
 
 ensure_dir "$(dirname "$OUTPUT")"
 

@@ -10,7 +10,7 @@
 # requires mikefarah `yq` v4 to be installed.
 
 project:
-  name: proxyflux
+  name: PROJECT_NAME_HERE
   type: laravel          # laravel | symfony | node | react | docker | other
   criticality: high      # low | medium | high | critical (informational)
   owner: platform-team

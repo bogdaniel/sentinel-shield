@@ -19,14 +19,16 @@
 #     never fake an empty [] report on unexpected failure. A genuine "0 findings" run
 #     DOES write [] (that is a real clean result, not a fake).
 #
-# Hadolint source: local `hadolint` binary if on PATH, else `docker run hadolint/hadolint`.
-# Pin the image to a digest in production (see docs/pinned-ci-references guidance).
+# Hadolint source: local `hadolint` binary if on PATH, else `docker run` the DIGEST-PINNED
+# image. A gate engine that enforces image-digest pinning on consumers must not pull its own
+# gate tool from a floating tag — the default is pinned; override with SENTINEL_SHIELD_HADOLINT_IMAGE.
 set -eu
 
 OUTPUT="reports/raw/hadolint.json"
 CONFIG=""
 LIST_ONLY=0
-HADOLINT_IMAGE="${SENTINEL_SHIELD_HADOLINT_IMAGE:-hadolint/hadolint}"
+# hadolint v2.12.0 (digest-pinned, not a floating tag).
+HADOLINT_IMAGE="${SENTINEL_SHIELD_HADOLINT_IMAGE:-hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e}"
 
 # usage — print CLI usage/help to stdout.
 usage() {

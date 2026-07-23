@@ -84,13 +84,15 @@ fi
 
 VERSION=$("$BIN" --version 2>/dev/null | head -n1 || true)
 TMP="$OUT.tmp"
+_err="$OUT.stderr.log"
 # Deptrac exits non-zero when it FINDS violations — a non-zero exit is not an error here;
-# the report's validity is what decides evidence vs execution-error.
-"$BIN" analyse --config-file="$CONFIG" --formatter=json --output="$TMP" >/dev/null 2>&1 || true
+# the report's validity is what decides evidence vs execution-error. Keep stderr as a debug
+# artifact so an execution-error carries diagnostics rather than being silent.
+"$BIN" analyse --config-file="$CONFIG" --formatter=json --output="$TMP" >/dev/null 2>"$_err" || true
 
 if [ ! -f "$TMP" ] || [ ! -s "$TMP" ] || ! jq -e . "$TMP" >/dev/null 2>&1; then
 	rm -f "$TMP"
-	write_status "execution-error" "deptrac ran but produced no valid JSON report"
+	write_status "execution-error" "deptrac ran but produced no valid JSON report (see $_err)"
 fi
 
 # Preserve the NATIVE report verbatim, annotated with producer/config/version metadata
@@ -98,6 +100,6 @@ fi
 jq --arg c "$CONFIG" --arg v "$VERSION" \
 	'if type=="object" then . + {producer:"deptrac", config:$c, tool_version:$v} else . end' "$TMP" > "$OUT" 2>/dev/null \
 	|| mv "$TMP" "$OUT"
-rm -f "$TMP"
+rm -f "$TMP" "$_err"
 log_info "deptrac: report written to $OUT (config=$CONFIG)"
 exit 0

@@ -28,7 +28,12 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
-N=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0))' "$INPUT")
+# Fail CLOSED if the phpstan `.totals` object is absent (a fatal/error output would otherwise
+# read as 0 errors and clear the gate). Also guard the count is a non-negative integer.
+jq -e '(type == "object" and has("totals")) or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { log_warn "$TOOL: report has no .totals (malformed/error output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
+N=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0)) | floor' "$INPUT")
+case "$N" in ''|*[!0-9]*) log_error "$TOOL: non-integer error count"; exit 2 ;; esac
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(jq -n --arg s "$STATUS" --argjson n "$N" '{status: $s, errors: $n}')
 OV=$(jq -n --argjson n "$N" '{type_errors: $n}')

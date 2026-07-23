@@ -88,13 +88,15 @@ if [ -z "$PATHS" ]; then
 fi
 
 TMP="$OUT.tmp"
+_err="$OUT.stderr.log"
 # ESLint exits non-zero when it reports problems — validity of the JSON decides evidence.
+# Keep stderr as a debug artifact so an execution-error carries diagnostics.
 # shellcheck disable=SC2086  # RUN and PATHS are intentionally word-split argument lists
-$RUN $PATHS --format json > "$TMP" 2>/dev/null || true
+$RUN $PATHS --format json > "$TMP" 2>"$_err" || true
 
 if [ ! -s "$TMP" ] || ! jq -e . "$TMP" >/dev/null 2>&1; then
 	rm -f "$TMP"
-	arch_write_status "$OUT" eslint-boundaries execution-error "eslint ran but produced no valid JSON report"
+	arch_write_status "$OUT" eslint-boundaries execution-error "eslint ran but produced no valid JSON report (see $_err)"
 	exit 0
 fi
 
@@ -109,9 +111,9 @@ jq --arg re "$BOUNDARY_RULES" '
 	    context_count: 0,
 	    failures: [ $b[] | { rule: (.ruleId // ""), message: (.message // "") } ] }' "$TMP" > "$OUT" 2>/dev/null || {
 	rm -f "$TMP"
-	arch_write_status "$OUT" eslint-boundaries execution-error "eslint report could not be normalized (unexpected shape)"
+	arch_write_status "$OUT" eslint-boundaries execution-error "eslint report could not be normalized (unexpected shape; see $_err)"
 	exit 0
 }
-rm -f "$TMP"
+rm -f "$TMP" "$_err"
 log_info "eslint-boundaries: violations=$(jq -r '.violations' "$OUT") -> $OUT (config=$CONFIG)"
 exit 0

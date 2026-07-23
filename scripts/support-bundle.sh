@@ -30,11 +30,13 @@ trap 'rm -rf "$STAGE"' EXIT
 B="$STAGE/support-bundle"; mkdir -p "$B"
 
 # redact common secret-shaped tokens from any text we copy in.
+# No `i` sed flag (GNU-only; BSD/macOS sed errors) — case folded into the pattern.
+# Fail CLOSED: if sed fails, omit the content rather than copying it unredacted.
 redact() { sed -E \
   -e 's/(AKIA)[0-9A-Z]{16}/\1<redacted>/g' \
   -e 's/(gh[pousr]_)[A-Za-z0-9]{20,}/\1<redacted>/g' \
-  -e 's/([A-Za-z0-9_]*(SECRET|TOKEN|PASSWORD|API_KEY|NVD_API_KEY)[A-Za-z0-9_]*[[:space:]]*[:=][[:space:]]*).+/\1<redacted>/gi' \
-  "$1" > "$2" 2>/dev/null || cp "$1" "$2"; }
+  -e 's/([A-Za-z0-9_]*([Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Aa][Pp][Ii]_[Kk][Ee][Yy])[A-Za-z0-9_]*[[:space:]]*[:=][[:space:]]*).+/\1<redacted>/g' \
+  "$1" > "$2" 2>/dev/null || printf '%s\n' "[redaction failed: content omitted]" > "$2"; }
 
 # environment / versions (no secret values)
 { echo "date: (stamp omitted — deterministic bundle)"; echo "uname: $(uname -a 2>/dev/null || true)";

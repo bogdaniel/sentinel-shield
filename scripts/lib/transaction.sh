@@ -97,6 +97,12 @@ tx_journal() {
 	# tx_journal_verify tolerates a single torn TAIL line but rejects any earlier corruption.
 	_tj_line=$(printf '%s' "$_tj_body" | jq -c --arg h "$_tj_hash" '. + {hash:$h}' 2>/dev/null || printf '')
 	if [ -n "$_tj_line" ]; then
+		# Heal a torn prior tail BEFORE appending: if the file does not end in a newline
+		# (crash mid-write), this append would concatenate onto that tail, turning a
+		# tolerated trailing artifact into prefix corruption that blocks recovery.
+		if [ -s "$_tj_file" ] && [ -n "$(tail -c1 "$_tj_file" 2>/dev/null)" ]; then
+			printf '\n' >> "$_tj_file" 2>/dev/null || true
+		fi
 		printf '%s\n' "$_tj_line" >> "$_tj_file" 2>/dev/null \
 			|| log_warn "journal: could not append a '$_tj_phase' entry to $_tj_file"
 		_tx_sync
@@ -653,11 +659,11 @@ tx_rollback() {
 				|| _tx_recover_fail "$_rel" "rollback-snapshot" "$_rb_r: snapshot entry escapes the snapshot dir via a symlinked parent"
 			{ [ -f "$TX_SNAP/snap/$_rel" ] && [ ! -L "$TX_SNAP/snap/$_rel" ]; } \
 				|| _tx_recover_fail "$_rel" "rollback-snapshot" "SNAPSHOT_SYMLINK: snapshot entry is not a regular file — refusing to follow it"
-			ensure_dir "$TARGET/$(dirname -- "$_rel")"
-			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel"
+			ensure_dir "$TARGET/$(dirname -- "$_rel")" || _tx_recover_fail "$_rel" "restore-mkdir" "could not recreate the parent directory for the restored file"
+			cp -p "$TX_SNAP/snap/$_rel" "$TARGET/$_rel" || _tx_recover_fail "$_rel" "restore-copy" "could not restore the prior file (read-only target or permission denied)"
 			tx_journal "rollback-step" "$_rel" "restored pre-write copy"
 		else
-			rm -f "$TARGET/$_rel"
+			rm -f "$TARGET/$_rel" || _tx_recover_fail "$_rel" "remove-created" "could not remove the newly-created file (read-only directory?)"
 			tx_journal "rollback-step" "$_rel" "removed newly-created file"
 		fi
 	done < "$TX_SNAP/touched"
@@ -672,6 +678,11 @@ tx_rollback() {
 tx_begin() {
 	ensure_dir "$SS_DIR"
 	TX_SNAP="$SS_DIR/.txn-$$"
+	# A prior process with THIS pid may have left a stale snapshot dir behind (PID reuse).
+	# Truncating only 'touched' would leave stale 'created' entries and snap/ copies that later
+	# make _tx_manifest_check reject recovery (created not a subset of touched) — remove any
+	# leftover dir wholesale so the transaction starts from clean state.
+	_tx_rm "$TX_SNAP"
 	ensure_dir "$TX_SNAP"
 	: > "$TX_SNAP/touched"
 	_tx_ld=$(_tx_lockdir)

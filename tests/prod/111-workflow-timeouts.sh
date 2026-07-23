@@ -32,10 +32,12 @@ jobs_missing_timeout() {
 	awk '
 		/^jobs:[[:space:]]*$/ { injobs=1; next }
 		{
-			if (injobs && $0 ~ /^  [A-Za-z0-9_-]+:[[:space:]]*$/) {
+			# A job key: 2-space indent, bare `name:` with optional trailing comment.
+			if (injobs && $0 ~ /^  [A-Za-z0-9_"'"'"'-]+:[[:space:]]*(#.*)?$/) {
 				if (cur != "" && !has) print cur
 				line=$0; sub(/^  /,"",line); sub(/:.*/,"",line); cur=line; has=0
 			}
+			# Job-level timeout-minutes (4-space); tolerate a trailing comment.
 			if (injobs && $0 ~ /^    timeout-minutes:[[:space:]]/) has=1
 		}
 		END { if (cur != "" && !has) print cur }

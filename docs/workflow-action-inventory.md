@@ -72,7 +72,7 @@ explicit per-job `timeout-minutes`, a workflow-level `concurrency` group, and
 ## Regenerated from the workflows (audit)
 
 The table(s) above were **stale and are not enforced**: neither
-`scripts/audits/audit-github-actions-pins.sh` nor `scripts/audits/workflow-runtime-audit.sh`
+`scripts/audit-github-actions-pins.sh` nor `scripts/audits/workflow-runtime-audit.sh`
 ever reads this document — both inspect the workflows directly. Several documented SHAs
 appeared in no workflow, and several real pins were undocumented, while the header claimed the
 list was "asserted by two fail-closed gates". Treat the workflows as the source of truth.
@@ -100,5 +100,5 @@ The following is generated from the current tree (18 pinned `uses:` refs, dedupl
 | `shivammathur/setup-php` | `f3e473d116dcccaddc5834248c87452386958240` |
 | `zizmorcore/zizmor-action` | `192e21d79ab29983730a13d1382995c2307fbcaa` |
 
-**Verified:** every `uses:` line in `.github/workflows/` and `templates/workflows/` — 126 of
-126 — is pinned to a full 40-hex commit SHA.
+**Verified:** every `uses:` line in `.github/workflows/` and `templates/workflows/` — 140 of
+140 — is pinned to a full 40-hex commit SHA.

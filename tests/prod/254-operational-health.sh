@@ -303,7 +303,6 @@ else
 fi
 
 # Disabled by default: no sink, no events (opt-in contract).
-_before=$( [ -f "$EVENTS" ] && wc -l < "$EVENTS" | tr -d ' ' || echo 0 )
 unset SENTINEL_SHIELD_EVENTS SENTINEL_SHIELD_EVENTS_FILE 2>/dev/null || :
 oe_emit --command doctor --phase start --reason-code noop_probe >/dev/null 2>&1 \
 	&& pass "(12+) oe_emit is a no-op returning success when emission is disabled" \

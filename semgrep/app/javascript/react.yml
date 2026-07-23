@@ -24,7 +24,9 @@ rules:
       cwe: "CWE-79: Cross-site Scripting"
     pattern-either:
       - pattern: $EL.innerHTML = $X
+      - pattern: $EL.innerHTML += $X
       - pattern: $EL.outerHTML = $X
+      - pattern: $EL.outerHTML += $X
       - pattern: $EL.insertAdjacentHTML(...)
       - pattern: document.write(...)
 
@@ -40,16 +42,10 @@ rules:
     pattern-either:
       - pattern: <$EL href="javascript:..." />
       - pattern: <$EL src="javascript:..." />
+      - pattern: <$EL href="javascript:...">...</$EL>
+      - pattern: <$EL src="javascript:...">...</$EL>
 
-  - id: ss-react-unsanitized-html-render
-    languages: [javascript, typescript]
-    severity: WARNING
-    message: >
-      HTML string assembled from variables and rendered. Ensure it is sanitised
-      (DOMPurify) before reaching the DOM.
-    metadata:
-      category: security
-      cwe: "CWE-79: Cross-site Scripting"
-    pattern-either:
-      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: `...${$X}...` }} />"
-      - pattern: "<$EL dangerouslySetInnerHTML={{ __html: `...${$X}...` }}>...</$EL>"
+  # NOTE: the former `ss-react-unsanitized-html-render` rule was removed — its
+  # patterns (dangerouslySetInnerHTML with an interpolated template-literal __html)
+  # are a strict subset of `ss-react-dangerously-set-inner-html` above (whose $X
+  # metavariable already matches template literals), so every hit was double-counted.

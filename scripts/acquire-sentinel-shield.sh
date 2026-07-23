@@ -34,6 +34,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/source-verification.sh
 . "$SCRIPT_DIR/lib/source-verification.sh"
+# shellcheck source=scripts/lib/release-authz.sh
+. "$SCRIPT_DIR/lib/release-authz.sh"   # ra_bounded: cap remote git/gh operations where timeout(1) exists
+# Ceiling (seconds) for a single remote git/gh operation so a hung/unreachable remote cannot stall
+# install/update forever. Generous by default (large-repo clones); override via the env var.
+: "${GIT_NET_TIMEOUT:=300}"
 
 # usage — print CLI usage/help to stdout (lists every flag).
 usage() {
@@ -329,8 +334,9 @@ if printf '%s' "$REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
 	KIND="sha"
 	EXPECTED=$(printf '%s' "$REF" | tr 'A-F' 'a-f')
 else
-	TAG_OUT=$(git ls-remote "$URL" "refs/tags/$REF" "refs/tags/$REF^{}" 2>/dev/null) || {
-		log_error "acquire: cannot reach remote to resolve ref '$REF' at $URL"; exit 4
+	TAG_OUT=$(ra_bounded "$GIT_NET_TIMEOUT" git ls-remote "$URL" "refs/tags/$REF" "refs/tags/$REF^{}" 2>/dev/null) || {
+		if [ "${RA_TIMEOUT:-0}" = 1 ]; then log_error "acquire: resolving ref '$REF' at $URL timed out after ${GIT_NET_TIMEOUT}s"; else log_error "acquire: cannot reach remote to resolve ref '$REF' at $URL"; fi
+		exit 4
 	}
 	# Prefer the peeled (^{}) commit for annotated tags; fall back to the direct line.
 	EXPECTED=$(printf '%s\n' "$TAG_OUT" | awk -v r="refs/tags/$REF" '
@@ -341,7 +347,7 @@ else
 		KIND="tag"
 	else
 		# Not a tag. If it is a branch, name it explicitly; either way it is non-immutable.
-		if [ -n "$(git ls-remote --heads "$URL" "$REF" 2>/dev/null)" ]; then
+		if [ -n "$(ra_bounded "$GIT_NET_TIMEOUT" git ls-remote --heads "$URL" "$REF" 2>/dev/null)" ]; then
 			log_error "acquire: ref '$REF' is a moving branch — refusing (use an immutable tag or full 40-hex SHA)"
 		else
 			log_error "acquire: ref '$REF' is not a tag and not a full 40-hex SHA — refusing (immutable refs only)"
@@ -379,20 +385,20 @@ fi
 # --- clone the immutable checkout (shallow where possible) --------------------
 if [ "$KIND" = "tag" ]; then
 	if [ "$USE_GH" = 1 ]; then
-		gh repo clone "$REPO" "$DEST" -- --depth 1 --branch "$REF" --single-branch >&2 || {
-			log_error "acquire: gh clone of tag '$REF' failed"; exit 4; }
+		ra_bounded "$GIT_NET_TIMEOUT" gh repo clone "$REPO" "$DEST" -- --depth 1 --branch "$REF" --single-branch >&2 || {
+			[ "${RA_TIMEOUT:-0}" = 1 ] && log_error "acquire: gh clone of tag '$REF' timed out after ${GIT_NET_TIMEOUT}s" || log_error "acquire: gh clone of tag '$REF' failed"; exit 4; }
 	else
-		git clone --quiet --depth 1 --branch "$REF" --single-branch "$URL" "$DEST" || {
-			log_error "acquire: clone of tag '$REF' failed"; exit 4; }
+		ra_bounded "$GIT_NET_TIMEOUT" git clone --quiet --depth 1 --branch "$REF" --single-branch "$URL" "$DEST" || {
+			[ "${RA_TIMEOUT:-0}" = 1 ] && log_error "acquire: clone of tag '$REF' timed out after ${GIT_NET_TIMEOUT}s" || log_error "acquire: clone of tag '$REF' failed"; exit 4; }
 	fi
 else
 	# A bare SHA cannot be shallow-fetched portably; full-clone then detach to the commit.
 	if [ "$USE_GH" = 1 ]; then
-		gh repo clone "$REPO" "$DEST" -- --no-checkout >&2 || {
-			log_error "acquire: gh clone failed"; exit 4; }
+		ra_bounded "$GIT_NET_TIMEOUT" gh repo clone "$REPO" "$DEST" -- --no-checkout >&2 || {
+			[ "${RA_TIMEOUT:-0}" = 1 ] && log_error "acquire: gh clone timed out after ${GIT_NET_TIMEOUT}s" || log_error "acquire: gh clone failed"; exit 4; }
 	else
-		git clone --quiet --no-checkout "$URL" "$DEST" || {
-			log_error "acquire: clone failed"; exit 4; }
+		ra_bounded "$GIT_NET_TIMEOUT" git clone --quiet --no-checkout "$URL" "$DEST" || {
+			[ "${RA_TIMEOUT:-0}" = 1 ] && log_error "acquire: clone timed out after ${GIT_NET_TIMEOUT}s" || log_error "acquire: clone failed"; exit 4; }
 	fi
 	git -C "$DEST" cat-file -e "$EXPECTED^{commit}" 2>/dev/null || {
 		log_error "acquire: commit $EXPECTED not found in $REPO"; exit 4; }

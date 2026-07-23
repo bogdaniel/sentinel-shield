@@ -45,6 +45,11 @@ case "$RS" in
 		exit 0 ;;
 esac
 
+# Fail closed on a valid-JSON object that carries neither an explicit status nor any recognized
+# metric key (e.g. a scanner error object): it must not derive a clean 0 pass.
+jq -e '(type=="object" and (has("status") or has("findings") or has("focused_test_violations") or has("skipped_test_marker_violations") or has("violations"))) or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error","findings":0}' '{}'; exit 0; }
+
 FTV=$(jq '((.focused_test_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 STM=$(jq '((.skipped_test_marker_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
 SUM=$((FTV + STM))

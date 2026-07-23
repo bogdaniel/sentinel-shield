@@ -75,16 +75,17 @@ if [ -n "$PATHS" ] && [ -z "$CONFIG" ]; then
 	set -- "$@" $(printf '%s' "$PATHS" | tr ',' ' ')
 elif [ -z "$PATHS" ] && [ -z "$CONFIG" ]; then
 	set -- "$@" src
+elif [ -n "$PATHS" ] && [ -n "$CONFIG" ]; then
+	log_warn "phpstan: SENTINEL_SHIELD_PHPSTAN_PATHS is set but config '$CONFIG' supplies the analysed paths; ignoring PATHS."
 fi
 
 log_info "phpstan: $PHPSTAN_BIN $* (memory=$MEM, config=${CONFIG:-<none>})"
 _rc=0
 "$PHPSTAN_BIN" "$@" >"$_raw" 2>"$_err" || _rc=$?
 
-# write_report <json-text> — write the validated PHPStan JSON to $OUTPUT, log the
-# error count, clean up debug artifacts, and exit 0.
-write_report() {
-	printf '%s' "$1" > "$OUTPUT"
+# finalize_report — $OUTPUT already holds the validated PHPStan JSON; log the error
+# count, clean up debug artifacts, and exit 0.
+finalize_report() {
 	_n=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0))' "$OUTPUT" 2>/dev/null || echo '?')
 	log_info "phpstan: wrote $OUTPUT (errors=$_n)."
 	rm -f "$_raw" "$_err" 2>/dev/null || true
@@ -92,12 +93,15 @@ write_report() {
 }
 
 if jq -e 'type == "object"' "$_raw" >/dev/null 2>&1; then
-	write_report "$(cat "$_raw")"
+	# cp the raw file verbatim — a command-substitution round-trip would strip trailing newlines.
+	cp "$_raw" "$OUTPUT"
+	finalize_report
 fi
 _sliced=$(awk 'f==0 && index($0,"{")>0 {f=1} f' "$_raw")
 if [ -n "$_sliced" ] && printf '%s' "$_sliced" | jq -e 'type == "object"' >/dev/null 2>&1; then
 	log_warn "phpstan: stdout had leading noise; extracted the JSON object (see $_raw / $_err)."
-	write_report "$_sliced"
+	printf '%s\n' "$_sliced" > "$OUTPUT"
+	finalize_report
 fi
 
 log_warn "phpstan: produced no valid JSON object on stdout (exit ${_rc:-?}); leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_raw, $_err."

@@ -85,11 +85,14 @@ is_allowed() { # is_allowed <basename> <check> <key>
 			set -- $_entry
 			[ "$#" -eq 4 ] || continue
 			_af=$1; _ac=$2; _ak=$3; _ax=$4
-			# match file + check + (key or wildcard) + not expired (expiry >= today,
-			# ISO dates compare lexically).
+			# match file + check + (key or wildcard) + not expired (expiry >= today).
+			# Compare as YYYYMMDD integers: `[ x \> y ]` is a non-POSIX bashism that errors on
+			# dash (Linux CI /bin/sh), which would make exemptions never match (fail-open).
+			_axn=$(printf '%s' "$_ax" | tr -cd '0-9')
+			_tdn=$(printf '%s' "$TODAY" | tr -cd '0-9')
 			if [ "$_af" = "$_ia_bn" ] && [ "$_ac" = "$_ia_ck" ] \
 				&& { [ "$_ak" = "*" ] || [ "$_ak" = "$_ia_ky" ]; } \
-				&& { [ "$_ax" = "$TODAY" ] || [ "$_ax" \> "$TODAY" ]; }; then
+				&& [ -n "$_axn" ] && [ -n "$_tdn" ] && [ "$_axn" -ge "$_tdn" ]; then
 				_hit=0
 			fi
 		done

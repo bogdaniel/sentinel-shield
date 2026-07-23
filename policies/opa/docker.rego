@@ -2,7 +2,10 @@
 #
 # Usage:
 #   conftest test docker-compose.yml --policy policies/opa/docker.rego
-#   conftest test Dockerfile --parser dockerfile --policy policies/opa/docker.rego
+#
+# SCOPE: these rules read Compose input (`input.services`) ONLY. A Dockerfile parsed with
+# `--parser dockerfile` produces a different shape and matches nothing here (it would pass
+# vacuously) — use the `ss-docker-*` Semgrep rules in semgrep/app/docker/ for Dockerfiles.
 #
 # These are starter rules. Tune the package name and inputs to your Conftest setup.
 package sentinel.docker
@@ -26,12 +29,20 @@ deny contains msg if {
 }
 
 # --- Compose: root user ---
+# `user` may be "root", "0", or a "<uid>:<gid>" form (e.g. "0:0", "root:root",
+# "root:0") — all of which run as UID 0. Compare the UID part (before any colon).
 deny contains msg if {
 	some name
 	svc := input.services[name]
-	svc.user == "root"
+	is_root_user(svc.user)
 	msg := sprintf("service '%s' must not run as root user", [name])
 }
+
+user_str(u) := u if is_string(u)
+user_str(u) := sprintf("%v", [u]) if is_number(u)
+
+is_root_user(u) if { split(user_str(u), ":")[0] == "root" }
+is_root_user(u) if { split(user_str(u), ":")[0] == "0" }
 
 # --- Compose: latest image tag (or missing tag) ---
 deny contains msg if {
@@ -42,12 +53,15 @@ deny contains msg if {
 	msg := sprintf("service '%s' uses ':latest' image tag; pin a version/digest", [name])
 }
 
+# Tag check on the LAST path segment: `registry:5000/app` contains a colon in the
+# registry host but still has no tag.
 deny contains msg if {
 	some name
 	svc := input.services[name]
 	img := svc.image
-	not contains(img, ":")
 	not contains(img, "@sha256:")
+	parts := split(img, "/")
+	not contains(parts[count(parts) - 1], ":")
 	msg := sprintf("service '%s' image '%s' has no version tag; pin a version/digest", [name, img])
 }
 

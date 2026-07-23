@@ -22,7 +22,9 @@ rules:
       confidence: MEDIUM
       cwe: "CWE-506: Embedded Malicious Code"
     patterns:
-      - pattern-regex: '"(preinstall|install|postinstall)"\s*:'
+      # `prepare` runs on `npm install` of a git-hosted dependency (build-from-source),
+      # so it is an install-time lifecycle hook for supply-chain purposes too.
+      - pattern-regex: '"(preinstall|install|postinstall|prepare)"\s*:'
 
   - id: ss-tp-npm-install-script-risky
     languages: [generic]
@@ -40,4 +42,4 @@ rules:
       confidence: HIGH
       cwe: "CWE-506: Embedded Malicious Code"
     patterns:
-      - pattern-regex: '"(preinstall|install|postinstall)"\s*:\s*"[^"]*(curl |wget |\bbash\b|\bsh \b|powershell|node -e|child_process|https?://)[^"]*"'
+      - pattern-regex: '"(preinstall|install|postinstall|prepare)"\s*:\s*"(?:[^"\\]|\\.)*(curl |wget |\bbash\b|\bsh\b|powershell|node -e|node --eval|node -p|node --print|child_process|https?://)(?:[^"\\]|\\.)*"'

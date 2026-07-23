@@ -25,9 +25,13 @@ rules:
       category: security
       cwe: "CWE-352: Cross-Site Request Forgery"
     # Regex form (always parses; the structural attribute+method pattern did not
-    # compile). Flags Route attributes whose methods include a state-changing verb —
-    # a review prompt to confirm CSRF protection. Silence once verified.
-    pattern-regex: '#\[Route\([^)]*methods:\s*\[[^\]]*[\x27"](POST|PUT|PATCH|DELETE)[\x27"]'
+    # compile). Flags Route attributes/annotations whose methods include a
+    # state-changing verb — a review prompt to confirm CSRF protection. Covers both
+    # PHP 8 `#[Route(..., methods: [...])]` and Symfony 5-era
+    # `@Route(..., methods={"POST"})` annotations. Silence once verified.
+    pattern-either:
+      - pattern-regex: '#\[Route\([^)]*methods:\s*\[[^\]]*[\x27"](POST|PUT|PATCH|DELETE)[\x27"]'
+      - pattern-regex: '@Route\([^)]*methods\s*=\s*\{[^}]*[\x27"](POST|PUT|PATCH|DELETE)[\x27"]'
 
   - id: ss-symfony-unsafe-deserialization
     languages: [php]
@@ -39,7 +43,7 @@ rules:
       category: security
       cwe: "CWE-502: Deserialization of Untrusted Data"
     patterns:
-      - pattern: unserialize($X)
+      - pattern: unserialize(...)
       - pattern-not: unserialize($X, ['allowed_classes' => false])
 
   - id: ss-symfony-process-shell-string

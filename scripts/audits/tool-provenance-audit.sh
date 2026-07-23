@@ -94,11 +94,25 @@ env_key() { printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_' |
 env_get() { eval "printf '%s' \"\${$1:-}\""; }
 
 # best_effort_version <binary> — first line of `<bin> --version`, else `<bin> version`.
+# BOUNDED: this audit's stated purpose is bounding tool-execution hangs, so the version probe
+# itself must not run unbounded — a wedged binary would otherwise hang the audit forever.
 best_effort_version() {
-	_v=$("$1" --version 2>/dev/null | head -n1) || _v=""
-	[ -n "$_v" ] || { _v=$("$1" version 2>/dev/null | head -n1) || _v=""; }
+	_bev_to=$(bp_timeout scanner-version) || _bev_to=30
+	_bev_out=$(mktemp); _bev_err=$(mktemp)
+	if bp_run scanner-version "$_bev_to" "$_bev_out" "$_bev_err" -- "$1" --version; then
+		_v=$(head -n1 "$_bev_out" 2>/dev/null) || _v=""
+	else
+		_v=""
+	fi
+	if [ -z "$_v" ]; then
+		: > "$_bev_out"; : > "$_bev_err"
+		if bp_run scanner-version "$_bev_to" "$_bev_out" "$_bev_err" -- "$1" version; then
+			_v=$(head -n1 "$_bev_out" 2>/dev/null) || _v=""
+		fi
+	fi
+	rm -f "$_bev_out" "$_bev_err"
 	printf '%s' "$_v"
-	unset _v
+	unset _v _bev_to _bev_out _bev_err
 }
 
 # add_violation <tool> <check> <message>

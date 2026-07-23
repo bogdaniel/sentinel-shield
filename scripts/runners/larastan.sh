@@ -6,8 +6,13 @@
 # dirs, package:discover) because larastan boots the framework, then runs PHPStan with
 # --error-format=json and writes the validated JSON object to reports/raw/larastan.json.
 #
-# Contract (matches laravel-phpstan.sh): detect exe deterministically; no project mutation;
-# normalized report; findings still EXIT 0 (JSON is the signal); tool ABSENT or no valid
+# Contract (matches laravel-phpstan.sh): detect exe deterministically; normalized report;
+# findings still EXIT 0 (JSON is the signal); tool ABSENT or no valid
+# NOTE: this runner DOES mutate the project when the Laravel prepare/discover steps are
+# enabled (default on): it mkdirs bootstrap/cache + storage/** and 'artisan package:discover'
+# rewrites bootstrap/cache/packages.php. Set SENTINEL_SHIELD_LARAVEL_PREPARE=false and
+# SENTINEL_SHIELD_LARAVEL_PACKAGE_DISCOVER=false to run without touching the tree.
+# Continuing the contract:
 # JSON -> leave report ABSENT + EXIT 0 + log_warn (builder marks 'unavailable'); NEVER write
 # a fake clean report; EXIT 2 only on bad invocation / missing jq.
 #
@@ -93,20 +98,22 @@ _rc=0
 "$PHPSTAN_BIN" "$@" >"$_raw" 2>"$_err" || _rc=$?
 
 # Validate / extract the JSON object (strip leading boot/deprecation noise). NEVER fake.
-write_report() {
-	printf '%s' "$1" > "$OUTPUT"
+finalize_report() {
 	_n=$(jq '((.totals.file_errors // 0) + (.totals.errors // 0))' "$OUTPUT" 2>/dev/null || echo '?')
 	log_info "larastan: wrote $OUTPUT (errors=$_n)."
 	rm -f "$_raw" "$_err" 2>/dev/null || true
 	exit 0
 }
 if jq -e 'type == "object"' "$_raw" >/dev/null 2>&1; then
-	write_report "$(cat "$_raw")"
+	# cp the raw file verbatim — a command-substitution round-trip would strip trailing newlines.
+	cp "$_raw" "$OUTPUT"
+	finalize_report
 fi
 _sliced=$(awk 'f==0 && index($0,"{")>0 {f=1} f' "$_raw")
 if [ -n "$_sliced" ] && printf '%s' "$_sliced" | jq -e 'type == "object"' >/dev/null 2>&1; then
 	log_warn "larastan: stdout had leading noise; extracted the JSON object (see $_raw / $_err)."
-	write_report "$_sliced"
+	printf '%s\n' "$_sliced" > "$OUTPUT"
+	finalize_report
 fi
 
 log_warn "larastan: produced no valid JSON object on stdout (exit ${_rc:-?}); leaving '$OUTPUT' absent (tool 'unavailable'). NOT writing a fake clean report. Debug: $_raw, $_err."

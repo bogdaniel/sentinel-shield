@@ -86,8 +86,9 @@ sh scripts/sync-baseline.sh --target <project> --apply --force
 ```
 
 **Project-local files need no rollback.** `accepted-risks.json`, `phpstan-baseline.neon`, and
-`never_touch` entries are never auto-created or overwritten (proven in the self-tests:
-`install --force` preserves them at self-test.sh:689, `sync --apply --force` at self-test.sh:711).
+`never_touch` entries are never auto-created or overwritten (proven in the self-tests by the
+checks `install --force preserves real accepted-risks.json` and
+`sync preserves real accepted-risks.json` in `scripts/self-test.sh`).
 An edited `profile.yaml` / `.semgrepignore` is `create-if-missing` and is preserved on sync, so a
 forced sync cannot have clobbered it.
 

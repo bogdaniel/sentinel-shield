@@ -14,7 +14,10 @@ OUTPUT_DIR ?= reports
 
 MODE_ARG := $(if $(MODE),--mode $(MODE),)
 
-.POSIX:
+# NOTE: this Makefile is a GNU make convenience wrapper — it uses $(if ...),
+# $(MAKEFILE_LIST) and the pattern-based help target, none of which are POSIX make.
+# It is intentionally NOT declared .POSIX:. The scripts under scripts/*.sh are the
+# portable source of truth and run without make.
 .PHONY: help detect resolve enforce report quality-php quality-node security \
         install sync self-test validate clean
 
@@ -64,7 +67,7 @@ self-test: ## Resolve baseline + enforce the example summary (expect pass)
 
 validate: ## Syntax-check all scripts and run the self-test
 	@echo "== sh -n =="
-	@for f in scripts/*.sh scripts/lib/*.sh; do sh -n "$$f" && echo "ok: $$f"; done
+	@for f in scripts/*.sh scripts/lib/*.sh; do sh -n "$$f" || exit 1; echo "ok: $$f"; done
 	@echo "== self-test =="
 	@$(MAKE) --no-print-directory self-test
 

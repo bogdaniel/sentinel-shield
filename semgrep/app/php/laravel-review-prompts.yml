@@ -6,7 +6,7 @@
 # `--config semgrep` scan of the bundled rules root unless you point Semgrep at this
 # file explicitly, e.g.:
 #
-#   semgrep --config semgrep/php/laravel-review-prompts.yml
+#   semgrep --config semgrep/app/php/laravel-review-prompts.yml
 #
 # Use them during manual review; silence individual hits with a justified
 # `// nosemgrep: <rule-id>` once confirmed safe.

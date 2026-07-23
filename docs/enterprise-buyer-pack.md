@@ -46,8 +46,9 @@ are diff-checked to **0 lines** each release.
 
 ## Secret handling
 
-- NVD API key is **consumer-provided**, passed via a `0600 --propertyfile`, **never** logged, in a
-  report, or committed; rotation guidance in [`security-hygiene.md`](security-hygiene.md).
+- NVD API key is **consumer-provided**, passed via an ephemeral `--propertyfile` (kept off the CLI
+  and removed on exit), **never** logged, in a report, or committed; rotation guidance in
+  [`security-hygiene.md`](security-hygiene.md).
 - Evidence fixtures carry **no credentials** and never deploy.
 - Secret scanning (`secrets`) is **never suppressible**.
 

@@ -22,9 +22,11 @@ WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ssevsem)
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 if ! command -v jq >/dev/null 2>&1; then
-	# The validator hard-requires jq (exit 3); without it this test cannot run.
-	printf '# jq unavailable — skipping semantic test (validator needs jq)\n'
-	exit 0
+	# jq is a documented hard prerequisite (the validator exits 3 without it). Exit with the
+	# distinct prereq code (2) — matching scripts/self-test.sh and the adopter suite — so a
+	# jq-less environment is NOT indistinguishable from a full pass to the runner.
+	printf 'FAIL: jq is a documented prerequisite but is absent (validator needs jq)\n' >&2
+	exit 2
 fi
 
 ENG="0123456789abcdef0123456789abcdef01234567"

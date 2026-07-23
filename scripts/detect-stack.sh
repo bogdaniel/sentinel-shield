@@ -6,8 +6,9 @@ set -eu
 TARGET="${1:-.}"
 
 if [ ! -d "$TARGET" ]; then
+	# Invalid input -> exit 2 per the engine-wide convention (2 = invalid invocation/input).
 	echo "error: target directory '$TARGET' not found" >&2
-	exit 1
+	exit 2
 fi
 
 # Space-separated list of detected stacks (avoids non-portable echo -e / literal \n).

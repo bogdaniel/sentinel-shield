@@ -57,10 +57,15 @@ expect_reject() {
   _out="$WORK/o.json"; _err="$WORK/e.txt"; _rc=0
   collect --workflow "$_wf" --output "$_out" >/dev/null 2>"$_err" || _rc=$?
   if [ "$_rc" != "$_exp" ]; then fail "$_desc (expected exit $_exp, got $_rc)"; return; fi
-  if grep -q "$_reason" "$_err"; then pass "$_desc"; else fail "$_desc (reason '$_reason' not reported)"; fi
+  # Anchor on the "<workflow>:<reason>" shape the collector emits (UNMET summary), so an
+  # incidental mention of the token elsewhere in stderr cannot satisfy the assertion.
+  if grep -Fq "$_wf:$_reason" "$_err"; then pass "$_desc"; else fail "$_desc (reason '$_reason' not reported)"; fi
 }
 
 # ---------- MATCH: one green push run on the default branch ----------
+# Snapshot evidence/releases BEFORE collection so a pre-existing local modification in a
+# dev worktree does not spuriously fail the "pure generator" assertion below.
+_ev_before=$(git -C "$ROOT" status --porcelain evidence/releases 2>/dev/null || :)
 MOCK_RUNS=$(runs_doc "$(mkrun 5001)")
 export MOCK_RUNS
 OUT="$WORK/match.json"; RC=0
@@ -81,7 +86,7 @@ else
   fail "match: generated candidate does NOT validate offline"
 fi
 # It must NOT have written any evidence/releases/*.json (generator, not writer).
-if [ -z "$(git -C "$ROOT" status --porcelain evidence/releases 2>/dev/null)" ]; then
+if [ "$(git -C "$ROOT" status --porcelain evidence/releases 2>/dev/null || :)" = "$_ev_before" ]; then
   pass "match: no evidence/releases file was mutated by collection"
 else
   fail "match: collection mutated evidence/releases (must be a pure generator)"

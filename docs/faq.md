@@ -28,9 +28,11 @@ turnkey "all scanners proven" product. Several scanner integrations are `support
 [`product-status.md`](product-status.md).
 
 **Q: Which mode should I use?**
-Start in `baseline` (a migration aid that blocks on the highest-confidence findings). Move to
-`strict` only after completing the strict pre-flight. `regulated` adds further gates (e.g.
-`dast_findings`). See [`strict-mode-readiness.md`](strict-mode-readiness.md).
+Start in `report-only` for first-time adoption (scanners run; only secrets, expired exceptions,
+and focused-test markers block), then move to `baseline` as your steady state (a migration aid that
+blocks on the highest-confidence findings). Move to `strict` only after completing the strict
+pre-flight. `regulated` adds further gates (e.g. `dast_findings`). See
+[`strict-mode-readiness.md`](strict-mode-readiness.md).
 
 **Q: Is strict mode required?**
 No. Strict is **opt-in**. It turns Sentinel Shield from a migration aid into a production
@@ -71,7 +73,7 @@ NVD rate limit and is likely to fail. See
 
 **Q: How is the NVD key kept safe?**
 It is **consumer-provided** via a GitHub secret and handed to Dependency-Check only through a
-`0600 --propertyfile` — **never** on the command line, so it stays off process listings and CI
+`--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit) — **never** on the command line, so it stays off process listings and CI
 logs. **Never print, log, paste, or commit the value.** See
 [`security-hygiene.md`](security-hygiene.md).
 

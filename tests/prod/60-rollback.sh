@@ -14,6 +14,11 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 BPT="$ROOT/scripts/bootstrap-profile-tools.sh"
 
+# One trapped workspace so an abort under set -eu (or a kill) never leaks temp dirs;
+# each case allocates its scratch dir UNDER $WORK (see mktemp -d "$WORK/..." below).
+WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ssrollback)
+trap 'rm -rf "$WORK"' EXIT INT TERM
+
 FAILS=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
@@ -45,7 +50,7 @@ EOF
 # Drives bootstrap --apply for one Node manager and asserts PM-aware rollback.
 node_rollback_case() {
 	_pm="$1"; _lock="$2"; _recon="$3"
-	_w=$(mktemp -d); _t="$_w/proj"; mkdir -p "$_t/node_modules"
+	_w=$(mktemp -d "$WORK/case.XXXXXX"); _t="$_w/proj"; mkdir -p "$_t/node_modules"
 	printf '{"name":"x","version":"1.0.0"}' > "$_t/package.json"
 	printf 'original-lockfile-contents\n' > "$_t/$_lock"
 	_op=$(cat "$_t/package.json"); _ol=$(cat "$_t/$_lock")
@@ -90,7 +95,7 @@ node_rollback_case yarn yarn.lock         "install --immutable"
 # Fake composer: validate ok; require MUTATES composer.json+lock then FAILS; the
 # reconstruction command (install --no-interaction --prefer-dist) succeeds.
 composer_rollback_case() {
-	_w=$(mktemp -d); _t="$_w/proj"; mkdir -p "$_t/vendor"
+	_w=$(mktemp -d "$WORK/case.XXXXXX"); _t="$_w/proj"; mkdir -p "$_t/vendor"
 	printf '{"name":"app/app","require":{}}' > "$_t/composer.json"
 	printf '{"_":"original-lock"}' > "$_t/composer.lock"
 	_ocj=$(cat "$_t/composer.json"); _ocl=$(cat "$_t/composer.lock")
@@ -139,7 +144,7 @@ composer_rollback_case
 
 # --- ambiguous multiple Node lockfiles are rejected (no guessing, no mutation) -
 ambiguous_case() {
-	_t=$(mktemp -d)
+	_t=$(mktemp -d "$WORK/case.XXXXXX")
 	printf '{"name":"x"}' > "$_t/package.json"
 	printf '{}' > "$_t/package-lock.json"
 	printf '' > "$_t/yarn.lock"

@@ -13,6 +13,8 @@ while [ $# -gt 0 ]; do case "$1" in
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
+jq -e '(type == "object" and has("details")) or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { log_warn "$TOOL: report has no .details (malformed/error output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
 N=$(jq '([.details[]? | select(.level=="FATAL" or .level=="WARN")] | length) // 0 | floor' "$INPUT")
 case "$N" in ''|*[!0-9]*) log_error "$TOOL: non-integer count"; exit 2 ;; esac
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi

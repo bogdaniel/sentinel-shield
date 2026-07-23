@@ -65,6 +65,16 @@ PLATFORM=$(uname -s 2>/dev/null || echo unknown)
 DEFAULT_BUDGET=60          # per-step wall-clock budget the scorecard holds mandatory steps to
 TIMEOUT_SECS=45            # bounded timeout for any single engine command
 TIMEOUT_RC=124            # DISTINCT result code for a timed-out command
+IS_ROOT=0; [ "$(id -u 2>/dev/null || echo 0)" = "0" ] && IS_ROOT=1
+
+# t_sha256 <file> — portable content digest (sha256sum, else shasum -a 256, else cksum).
+# Bare `shasum` is not guaranteed on minimal Linux images; falling through to cksum keeps
+# the byte-for-byte restore comparison working (any consistent digest suffices here).
+t_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1
+	elif command -v shasum >/dev/null 2>&1; then shasum -a 256 -- "$1" | cut -d' ' -f1
+	else cksum -- "$1" | cut -d' ' -f1; fi
+}
 
 FAILS=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -226,13 +236,15 @@ flow_pipeline() {
 # does not, by itself, fail the scenario. Prints pass|fail.
 verify_result() {
 	_bad=$(jq -s '[.[] | select(.status=="fail" and (.step|test("^inject-failure")|not))] | length' "$STEPS")
-	_injtotal=$(jq -s '[.[] | select(.step|test("^inject-failure"))] | length' "$STEPS")
-	_injfailed=$(jq -s '[.[] | select((.step|test("^inject-failure")) and .status=="fail")] | length' "$STEPS")
+	# An injected command that unexpectedly EXITS 0 is a broken test. The recorded status is
+	# hardcoded "fail" by every caller, so it cannot witness this; assert on the recorded
+	# exit_code instead (null exit_codes are the deliberate "could-not-attempt" injections).
+	_injzero=$(jq -s '[.[] | select((.step|test("^inject-failure")) and (.exit_code==0))] | length' "$STEPS")
 	_injbad=$(jq -s '[.[] | select(.step|test("^inject-failure")) | select((.message//"")=="" or (.next_action//"")=="")] | length' "$STEPS")
 	# pass iff: no non-injected mandatory step failed; every injected failure carried a
-	# message + next_action; AND every inject-failure step ACTUALLY failed (an injected
-	# command that unexpectedly exits 0 — status != fail — is a broken test, not a pass).
-	if [ "$_bad" = 0 ] && [ "$_injbad" = 0 ] && [ "$_injfailed" = "$_injtotal" ]; then echo pass; else echo fail; fi
+	# message + next_action; AND no inject-failure step exited 0 (an injected command that
+	# unexpectedly succeeds is a broken test, not a pass).
+	if [ "$_bad" = 0 ] && [ "$_injbad" = 0 ] && [ "$_injzero" = 0 ]; then echo pass; else echo fail; fi
 }
 
 # ======================================================================
@@ -294,16 +306,16 @@ scn_managed_conflict() {
 	_mf="$CUR_TARGET/.github/workflows/sentinel-shield.yml"
 	_res=pass; _restored=false
 	if [ -f "$_mf" ]; then
-		_sha0=$(shasum "$_mf" | cut -d' ' -f1)
+		_sha0=$(t_sha256 "$_mf")
 		# INJECT: a pre-existing managed-file conflict — the managed file is mutated out of band.
 		printf '\n# LOCAL DRIFT INJECTED BY ADOPTER SCENARIO\n' >> "$_mf"
-		_sha1=$(shasum "$_mf" | cut -d' ' -f1)
+		_sha1=$(t_sha256 "$_mf")
 		record inject-failure "detect drift in <target>/.github/workflows/sentinel-shield.yml" 1 0 fail \
 			"managed file drifted from the baseline (checksum changed)" "re-run install with --force to restore the managed baseline"
 		# RECOVER: the documented resolution — install --apply --force restores managed files.
 		_t0=$(date +%s); _rc=0
 		ss_run "$WORK/out" sh "$REPO_ROOT/scripts/install-baseline.sh" --target "$CUR_TARGET" --profile node --apply --force || _rc=$?
-		_sha2=$(shasum "$_mf" | cut -d' ' -f1)
+		_sha2=$(t_sha256 "$_mf")
 		if [ "$_rc" = 0 ] && [ "$_sha2" = "$_sha0" ]; then
 			record recover "sh scripts/install-baseline.sh --target <target> --profile node --apply --force" 0 "$(elapsed_since "$_t0")" ok "managed file restored byte-for-byte to the baseline" ""
 			_restored=true
@@ -329,14 +341,27 @@ scn_read_only() {
 	# INJECT: install into a read-only project directory must fail (no partial writes).
 	_t0=$(date +%s); _rc=0
 	ss_run "$WORK/out" sh "$REPO_ROOT/scripts/install-baseline.sh" --target "$CUR_TARGET" --profile node --apply || _rc=$?
-	record inject-failure "sh scripts/install-baseline.sh --target <target> --profile node --apply" "$_rc" "$(elapsed_since "$_t0")" fail \
-		"install into a read-only project failed (rc=$_rc)" "grant write permission to the project directory, then re-run install --apply"
+	_ro_ok=1
+	if [ "$_rc" != 0 ]; then
+		record inject-failure "sh scripts/install-baseline.sh --target <target> --profile node --apply" "$_rc" "$(elapsed_since "$_t0")" fail \
+			"install into a read-only project failed (rc=$_rc)" "grant write permission to the project directory, then re-run install --apply"
+	elif [ "$IS_ROOT" = 1 ]; then
+		# uid 0 bypasses the 0555 mode bits, so the injection is a genuine no-op under root
+		# (as in 251). Record it honestly as a skip rather than claiming a failure occurred.
+		record inject-failure "sh scripts/install-baseline.sh --target <target> --profile node --apply" "$_rc" "$(elapsed_since "$_t0")" skip \
+			"read-only injection is a no-op under root (uid 0 bypasses directory mode bits)" "run this scenario as a non-root user to exercise write-protection"
+	else
+		# Non-root: a read-only target that still accepted the write is a broken guard.
+		record inject-failure "sh scripts/install-baseline.sh --target <target> --profile node --apply" "$_rc" "$(elapsed_since "$_t0")" fail \
+			"install UNEXPECTEDLY succeeded into a read-only project (rc=0) — write-protection not enforced" "investigate why the installer wrote into a 0555 directory"
+		_ro_ok=0
+	fi
 	# RECOVER: restore write permission and re-install; verify the install completed.
 	chmod 0755 "$CUR_TARGET"
 	_res=fail; _restored=false
 	_t0=$(date +%s); _rc=0
 	ss_run "$WORK/out" sh "$REPO_ROOT/scripts/install-baseline.sh" --target "$CUR_TARGET" --profile node --apply || _rc=$?
-	if [ "$_rc" = 0 ] && [ -f "$CUR_TARGET/.sentinel-shield/installation.json" ]; then
+	if [ "$_rc" = 0 ] && [ -f "$CUR_TARGET/.sentinel-shield/installation.json" ] && [ "$_ro_ok" = 1 ]; then
 		record recover "sh scripts/install-baseline.sh --target <target> --profile node --apply" 0 "$(elapsed_since "$_t0")" ok "install completed after write permission was restored" ""
 		_res=pass; _restored=true
 	else

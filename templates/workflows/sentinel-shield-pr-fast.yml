@@ -1,8 +1,11 @@
 # Sentinel Shield — PR FAST GATE (v0.1.12). Fast, deterministic, no external target scanning.
 # === MANAGED BY SENTINEL SHIELD === installed/synced via install-baseline.sh / sync-baseline.sh.
-# Tools: php -l, PHPStan, Psalm, Pint/PHP-CS-Fixer, ESLint, tsc --noEmit, Semgrep, Gitleaks,
-# composer audit, npm audit, actionlint, zizmor, GH Actions pin audit, Docker base digest,
-# Hadolint, unit/feature tests. Enforces the project's profile mode.
+# Tools ACTUALLY run by this workflow: php -l, PHPStan, npm audit, Semgrep (curated),
+# Hadolint, GH Actions pin audit, Docker base digest, dependency policy. Psalm/Pint/ESLint/
+# tsc run ONLY if the steps below are wired for a configured project.
+# NOTE: Gitleaks (secrets), actionlint and zizmor are NOT run here — they run in the separate
+# security workflow (ci-security.yml). This PR-fast gate is NOT the secrets gate.
+# Enforces the project's profile mode.
 name: sentinel-shield-pr-fast
 on:
   pull_request:
@@ -15,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Semgrep scanner image — readable tag by default; pin by digest in production (see
   # docs/scanner-image-digest-pinning.md). Override with the digest form to harden supply chain:
@@ -41,12 +44,14 @@ jobs:
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
-          # Psalm / Pint / PHP-CS-Fixer: run if configured, write reports/raw/{psalm,php-style}.json
+          # TODO (optional, NOT wired): Psalm / Pint / PHP-CS-Fixer — add the runner calls here if
+          # your project configures them; write reports/raw/{psalm,php-style}.json.
       - name: Node fast checks
         run: |
           npm ci || true
           npm audit --json > reports/raw/npm-audit.json 2>/dev/null || true
-          # tsc --noEmit + eslint -> reports/raw/{typescript,eslint}.json
+          # TODO (optional, NOT wired): tsc --noEmit + eslint — add the commands here if your
+          # project configures them; write reports/raw/{typescript,eslint}.json.
       - name: GH Actions + Docker lint + dependency policy
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/run-hadolint.sh || true
@@ -62,7 +67,7 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
-          # gitleaks + actionlint + zizmor via their pinned actions/containers (see ci-security.yml)
+          # NOTE: gitleaks + actionlint + zizmor are NOT run here — they run in ci-security.yml.
       - name: Build summary + enforce
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json

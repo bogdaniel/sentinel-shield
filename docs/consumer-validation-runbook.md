@@ -91,7 +91,7 @@ sh "$SS_DIR/scripts/doctor.sh" --target .
 Prove the scanners run locally before spending CI minutes:
 
 ```sh
-sh "$SS_DIR/scripts/run-local-security.sh" .
+sh "$SS_DIR/scripts/run-local-scanner-sweep.sh" .
 ```
 
 Resolve any **tool unavailable** results (exit 3) by installing the tool — never by weakening a

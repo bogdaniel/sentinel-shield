@@ -1,5 +1,4 @@
 {
-  "$schema": "https://sentinel-shield/schemas/release-required-workflows.schema.json",
   "version": "1.0",
   "description": "Canonical COMPLETE set of default-branch CI workflows whose successful run at the release source commit is REQUIRED before a Sentinel Shield release may be authorized. This is the authority consumed by scripts/lib/release-authz.sh (ra_check_evidence_source) — it replaces any ad hoc 'at least one successful run' heuristic. Membership is the set of workflows in config/required-checks.json that publish at least one 'always-required' check-run (i.e. every workflow that runs on every push to the default branch and is a required status check). For EVERY workflow listed here the release-evidence must present EXACTLY ONE authoritative engine_ci run: exact workflow_name, exact repository, exact source commit, an approved default-branch event, a successful conclusion, and the declared artifact state. Keep this file in lockstep with config/required-checks.json and docs/branch-protection.md.",
   "repository": "bogdaniel/sentinel-shield",

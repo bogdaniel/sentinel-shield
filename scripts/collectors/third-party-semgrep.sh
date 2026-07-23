@@ -42,6 +42,11 @@ done
 # Missing/empty input -> unavailable (counts 0); invalid JSON -> exit 2 (fail safe).
 ss_collector_guard "$TOOL" "$INPUT"
 
+# Fail CLOSED if the semgrep `.results` array is absent (a semgrep error object would
+# otherwise zero all four supply-chain counters and clear the gate).
+jq -e '(type == "object" and (.results | type) == "array") or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { log_warn "$TOOL: report has no .results array (malformed/error output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
+
 OV=$(jq '
 	[ .results[]?
 	  | (.extra.metadata.sentinel_shield_category // "")

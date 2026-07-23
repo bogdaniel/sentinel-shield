@@ -31,4 +31,7 @@ rules:
       sentinel_shield_category: third_party_suspicious_code
       confidence: HIGH
       cwe: "CWE-95: Eval Injection"
-    pattern-regex: 'preg_replace\s*\(\s*[\x27"][^\x27"]*/[a-zA-Z]*e[a-zA-Z]*[\x27"]'
+    # Delimiter is generalized: PHP allows any non-alphanumeric char as the pattern
+    # delimiter (/x/e, #x#e, ~x~e, ...). Capture the first delimiter after the quote
+    # and require the /e modifier after its matching closer.
+    pattern-regex: 'preg_replace\s*\(\s*[\x27"]([^\w\s\\])(?:\\.|(?!\1)[^\x27"])*\1[a-zA-Z]*e[a-zA-Z]*[\x27"]'

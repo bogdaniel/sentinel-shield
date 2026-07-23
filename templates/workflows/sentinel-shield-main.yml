@@ -1,6 +1,8 @@
 # Sentinel Shield — MAIN BRANCH GATE (v0.1.12). Heavier but deterministic; trusted branch.
-# CodeQL, OSV-Scanner, Trivy fs, OWASP Dependency-Check, Grype, Deptrac, architecture tests,
-# Syft SBOM, and IaC (Checkov/Conftest/Terrascan) when IaC present.
+# Tools ACTUALLY run by this workflow: Syft SBOM, OSV-Scanner, Grype (SBOM mode), and IaC
+# (Checkov/Conftest/Terrascan) when IaC present. OWASP Dependency-Check is present but DISABLED
+# by default (enable on the nightly job). CodeQL (via github/codeql-action), Trivy fs, Deptrac
+# and architecture tests are NOT wired here — add the steps or run them in their own workflows.
 #
 # FIRST-TIME VALIDATION (v0.1.17). This workflow is workflow_dispatch + push only, so it cannot be
 # dispatched from a feature branch until it already exists on the default branch (chicken-and-egg).
@@ -27,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
-  SENTINEL_SHIELD_REF: v0.1.21                            # pin to a full SHA before production
+  SENTINEL_SHIELD_REF: v2.0.1                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Scanner images — readable tags by default; pin by digest in production
   # (see docs/scanner-image-digest-pinning.md). Override with the digest form:
@@ -52,18 +54,17 @@ jobs:
           SENTINEL_SHIELD_GRYPE_MODE: sbom
           SENTINEL_SHIELD_GRYPE_SBOM_PATH: reports/sbom.spdx.json
           # SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype@sha256:...   # set for container execution
-          # Dependency-Check is DISABLED by default (slow NVD download); enable on the nightly job.
-          SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: disabled
         run: |
           mkdir -p reports/raw
+          # Syft SBOM first: grype runs in sbom mode against reports/sbom.spdx.json below.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/syft.sh reports/sbom.spdx.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/osv-scanner.sh reports/raw/osv-scanner.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
+          # OWASP Dependency-Check is DELIBERATELY NOT run here: it is disabled by default
+          # (slow NVD download) and runs on the nightly job (sentinel-shield-scheduled.yml).
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/checkov.sh reports/raw/checkov.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/conftest.sh reports/raw/conftest.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/terrascan.sh reports/raw/terrascan.json || true
-          # CodeQL via github/codeql-action; export SARIF -> reports/raw/codeql.json
-          # Syft SBOM -> reports/sbom.spdx.json ; Deptrac -> reports/raw/deptrac.json
       - name: Build summary + enforce
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh --profile .sentinel-shield/profile.yaml --output-dir reports --format all

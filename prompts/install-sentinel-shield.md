@@ -176,7 +176,9 @@ A missing **required** tool is a config failure (doctor exit 3) — report it, d
 ad-hoc scanner sweep. It produces the real `reports/security-summary.json`:
 
 ```sh
-sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --target .
+# --profile and --stage are REQUIRED (run-local-pipeline.sh exits 2 without them).
+# Use the profile you selected in step 8.
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile <name> --target . --stage main
 ```
 
 A real finding that blocks the gate is **correct behavior** — report it, do not suppress it.

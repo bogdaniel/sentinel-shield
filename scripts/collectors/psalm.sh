@@ -29,6 +29,10 @@ done
 
 ss_collector_guard "$TOOL" "$INPUT"
 
+# Fail CLOSED on an unrecognized shape (else-branch 0 would clear the type_errors gate).
+jq -e '(type == "array" or (type == "object" and has("issues"))) or . == {}' "$INPUT" >/dev/null 2>&1 \
+	|| { log_warn "$TOOL: unrecognized report shape (malformed/error output); status=execution-error (fail-closed)"; ss_emit_collector "$TOOL" "execution-error" '{"status":"execution-error"}' '{}'; exit 0; }
+
 N=$(jq '
 	if type == "array" then length
 	elif (type == "object" and (.issues | type) == "array") then (.issues | length)

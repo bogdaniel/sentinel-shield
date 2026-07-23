@@ -38,7 +38,13 @@ rules:
       - pattern: child_process.execSync(...)
       - pattern: child_process.spawn(...)
       - pattern: require("child_process").exec(...)
-      - pattern: $CP.exec(...)
+      # $CP bound to a child_process import/require so this does not match every
+      # RegExp.prototype.exec() call (re.exec(str) is ubiquitous, wrong class).
+      - patterns:
+          - pattern: $CP.exec(...)
+          - pattern-inside: |
+              $CP = require("child_process");
+              ...
 
   - id: ss-tp-js-dynamic-require
     languages: [javascript, typescript]
@@ -50,10 +56,12 @@ rules:
       sentinel_shield_category: third_party_suspicious_code
       confidence: LOW
       cwe: "CWE-829: Inclusion of Functionality from Untrusted Control Sphere"
-    pattern-either:
-      - pattern: require($X)
-      - pattern: import($X)
-    pattern-not: require("...")
+    patterns:
+      - pattern-either:
+          - pattern: require($X)
+          - pattern: import($X)
+      - pattern-not: require("...")
+      - pattern-not: import("...")
 
   - id: ss-tp-js-env-read
     languages: [javascript, typescript]
@@ -91,6 +99,15 @@ rules:
     languages: [generic]
     severity: WARNING
     paths:
+      # Scope to JS/TS source so a broad invocation does not scan lockfiles, vendored
+      # data, SVGs, etc. where long base64-like literals are common and benign.
+      include:
+        - "*.js"
+        - "*.jsx"
+        - "*.ts"
+        - "*.tsx"
+        - "*.mjs"
+        - "*.cjs"
       exclude:
         - "*.map"
     message: >

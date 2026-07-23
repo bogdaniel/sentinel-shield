@@ -8,5 +8,11 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 OUTPUT="reports/raw/phpstan-symfony.json"
-[ "${1:-}" = "--output" ] && OUTPUT="${2:?--output requires a value}"
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+		-h | --help) printf 'Usage: phpstan-symfony.sh [--output <path>]\n'; exit 0 ;;
+		*) echo "[sentinel-shield] phpstan-symfony: unknown argument: $1" >&2; exit 2 ;;
+	esac
+done
 exec sh "$SCRIPT_DIR/phpstan.sh" --output "$OUTPUT"

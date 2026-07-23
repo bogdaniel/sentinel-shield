@@ -26,7 +26,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-compatibility-${{ github.ref }}
+  # Key on event_name too: without it, a master push and the nightly `schedule` full-matrix
+  # run share a group and cancel-in-progress silently drops the only run of the full
+  # runner-image matrix (or vice versa), losing nightly coverage.
+  group: ci-compatibility-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

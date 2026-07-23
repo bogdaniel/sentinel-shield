@@ -18,8 +18,10 @@ rules:
     languages: [php]
     severity: ERROR
     message: >
-      Shell execution with request data is command injection. Use
-      Symfony\Component\Process\Process with an argument array (no shell).
+      Shell execution function used. If any part of the command derives from
+      request/user input this is command injection — use
+      Symfony\Component\Process\Process with an argument array (no shell). Review
+      even static commands; this rule flags the sink regardless of argument source.
     metadata:
       category: security
       cwe: "CWE-78: OS Command Injection"
@@ -55,7 +57,7 @@ rules:
       category: security
       cwe: "CWE-502: Deserialization of Untrusted Data"
     patterns:
-      - pattern: unserialize($X)
+      - pattern: unserialize(...)
       - pattern-not: unserialize($X, ['allowed_classes' => false])
 
   - id: ss-php-debug-dump
@@ -124,8 +126,8 @@ rules:
     metadata:
       category: security
       cwe: "CWE-798: Use of Hard-coded Credentials"
-    pattern-either:
-      - pattern: $password = "...";
-      - pattern: $secret = "...";
-      - pattern: $apiKey = "...";
-      - pattern: $api_key = "...";
+    patterns:
+      - pattern: $VAR = "...";
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i)\$\w*(password|passwd|pwd|secret|api_?key|token|auth)\w*

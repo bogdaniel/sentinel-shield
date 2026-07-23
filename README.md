@@ -94,10 +94,13 @@ machine-readable [`config/compatibility-policy.json`](config/compatibility-polic
 fail-closed gate:
 
 ```sh
-sh scripts/health.sh                     # exit 0 supported · 1 degraded · 3 unsupported · 2 bad policy · 4 probe timeout
-sh scripts/health.sh --docker required   # a container-backed action: fail closed if Docker is absent
-sh scripts/health.sh --require-network    # an online-only op: fail closed if the host is offline
+sh scripts/health.sh --policy config/compatibility-policy.json                     # exit 0 supported · 1 degraded · 3 unsupported · 2 bad policy · 4 probe timeout
+sh scripts/health.sh --policy config/compatibility-policy.json --docker required   # a container-backed action: fail closed if Docker is absent
+sh scripts/health.sh --policy config/compatibility-policy.json --require-network   # an online-only op: fail closed if the host is offline
 ```
+
+(Without `--policy` the script runs the operational health *report* instead — different exit codes;
+see [`docs/operations-runbook.md`](docs/operations-runbook.md).)
 
 Supported at a glance: Linux/macOS/Windows-via-POSIX · `x86_64`/`arm64` · POSIX shells (`sh`, `bash`,
 `dash`, `zsh`, …) · Git ≥ 2.20 · jq ≥ 1.6 · PHP 8.1–8.4 · Node 18/20/22 LTS · npm 8–11 · pnpm 8–10 ·
@@ -313,9 +316,11 @@ reports/raw/*.json  →  scripts/collectors/<tool>.sh  →  scripts/build-securi
   schema-consistent summary (with a self-check). `--strict-tools` / `--require-tool`
   make missing artifacts fatal.
 
-Fourteen tools are supported today (Gitleaks, Semgrep, Trivy, composer audit, npm
+30+ tools are supported today — the core set (Gitleaks, Semgrep, Trivy, composer audit, npm
 audit, TypeScript, ESLint, PHPStan, Psalm, Deptrac, tests, Hadolint, actionlint,
-zizmor) with **conservative, tunable** severity mappings — not a claim of perfect
+zizmor) plus the full collector table in
+[`scripts/build-security-summary.sh`](scripts/build-security-summary.sh) — with
+**conservative, tunable** severity mappings — not a claim of perfect
 coverage. See [`docs/scanner-normalization.md`](docs/scanner-normalization.md) and,
 for the Node/React mappings, [`docs/node-react-normalization.md`](docs/node-react-normalization.md).
 Clean input examples live in [`templates/raw/`](templates/raw/).

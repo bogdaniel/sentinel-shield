@@ -93,7 +93,10 @@ ra_guard_destructive() {
 		case "$_ra_a" in
 			--delete-tag | --move-tag | --force-tag | --retag | --overwrite-tag \
 				| --delete-release | --remove-release | --unpublish | --delete-published \
-				| --rewrite-history | --force-push)
+				| --rewrite-history | --force-push \
+				| --delete-tag=* | --move-tag=* | --force-tag=* | --retag=* | --overwrite-tag=* \
+				| --delete-release=* | --remove-release=* | --unpublish=* | --delete-published=* \
+				| --rewrite-history=* | --force-push=*)
 				log_error "ra_guard_destructive: refusing '$_ra_a' — Sentinel Shield NEVER deletes or moves a released tag or deletes a published release."
 				log_error "Roll forward instead: publish a SUPERSEDING fixed release and mark the affected version via 'declare-superseded'/'rollback-advisory'."
 				return 2

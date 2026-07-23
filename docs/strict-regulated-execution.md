@@ -10,6 +10,12 @@ Honesty note: this is an execution/verification spec for the four existing modes
 **not** weaken any gate and makes **no v1.0 claim**. Gate booleans below are read straight
 from `resolve-gates.sh`; if that file changes, this doc must be re-derived.
 
+> **Superseded snapshot (v0.1.24 / 24-gate era).** The per-flag tables and gate counts below were
+> derived when `resolve-gates.sh` defined **24** `fail_on` keys. The resolver now defines **41**
+> keys, so the "X of 24" totals here are a historical audit trail, not the current surface. For the
+> authoritative, current per-mode gate booleans see [`gate-resolution.md`](gate-resolution.md) and
+> the `FAIL_ON_KEYS`/`default_for()` in [`scripts/resolve-gates.sh`](../scripts/resolve-gates.sh).
+
 Related docs (authoritative for their topics; referenced, not duplicated):
 
 - [`docs/strict-mode-readiness.md`](strict-mode-readiness.md)
@@ -108,9 +114,11 @@ non-zero (or the evidence flag is `true`).
 | `repository_health_warnings` | `false` | no | regulated-only |
 | `ai_review_findings` | `false` | no | never gating by default (opt-in via profile) |
 
-Strict blocks 18 of 24 gates. The 6 it does **not** block are exactly:
+Strict blocks 18 of these 24 gates. The 6 it does **not** block are exactly:
 `missing_release_evidence`, `third_party_suspicious_code`, `third_party_obfuscation`,
-`dast_findings`, `repository_health_warnings`, `ai_review_findings`.
+`dast_findings`, `repository_health_warnings`, `ai_review_findings`. (24-gate-era snapshot —
+against the current 41-key resolver strict leaves 9 non-blocking; see the superseded note above
+and [`gate-resolution.md`](gate-resolution.md).)
 
 ## 92 — Per-flag table: every REGULATED `fail_on` flag
 
@@ -141,7 +149,8 @@ Strict blocks 18 of 24 gates. The 6 it does **not** block are exactly:
 | `repository_health_warnings` | `true` | yes | **yes — promotes at regulated** |
 | `ai_review_findings` | `false` | no | no — still opt-in only |
 
-Regulated blocks 23 of 24 gates. The only non-blocking gate is `ai_review_findings`
+Regulated blocks 23 of these 24 gates (24-gate-era snapshot — see the superseded note above).
+The only non-blocking gate is `ai_review_findings`
 (opt-in via `gates.fail_on.ai_review_findings: true` in the profile). The 5 gates that
 **newly** become blocking moving strict → regulated: `missing_release_evidence`,
 `dast_findings`, `repository_health_warnings`, `third_party_suspicious_code`,

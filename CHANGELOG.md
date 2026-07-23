@@ -14,6 +14,392 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+### Fixed — full-repo review batch 10: targeted robustness + offboarding (deferred-class, safe subset)
+
+The objective, low-risk items from the deferred optimization/improvement class — the ones with
+a real correctness or enterprise-readiness payoff, not the speculative refactors.
+
+- **`scripts/runners/php-coverage.sh` + `php-diff-coverage.sh` now `export XDEBUG_MODE=coverage`.**
+  On an Xdebug-3 host with the mode unset, the coverage run emits nothing and silently degrades
+  to `unavailable` even though a driver is installed — the gate loses coverage evidence for a
+  fully-capable host. PCOV ignores the variable, so the export is safe everywhere.
+- **`.github/workflows/ci-compatibility.yml` concurrency-cancellation bug.** The group was keyed
+  on `github.ref` only with `cancel-in-progress: true`, shared between master pushes and the
+  nightly `schedule` full runner-image matrix — a push could cancel the only nightly matrix run
+  (or vice versa), silently losing coverage. The group now includes `github.event_name`.
+- **`.github/workflows/ci-release-gate.yml`** corrected a misleading comment claiming
+  `environment: production` is "protected: require reviewers" — GitHub auto-creates the
+  environment *unprotected* on first reference; the comment now says protection must be configured.
+- **New `docs/uninstall.md`** (linked from `docs/index.md`) — a production adopter had no documented
+  full-removal path (existing docs cover mode-lowering and evidence cleanup only). Covers removing
+  the managed workflow, branch-protection checks, `.sentinel-shield/`, evidence, secrets, and
+  gitignore entries.
+- Removed three residual stray `</content>` paste-cruft tags (`main-gate-validation-strategy.md`,
+  `product-boundaries.md`, `install-sync-status.md`).
+
+**Deliberately NOT done** (reported): the over-engineering "shrink/merge" findings —
+`bounded-process.sh` is now used on the main runner path (batch 6), and merging the ~2.5k lines of
+release-verification scripts into a dispatcher is a high-risk refactor with no correctness gain;
+per-runner scan bounding for nuclei/zap/mutation is largely redundant now that `run-tool-plan`
+bounds every runner (batch 6) and the DAST workflow has a job `timeout-minutes` backstop; the
+`isolated_tool_fetch_verified` "dead code" finding was a **false positive** (it is called by
+`tests/prod/221`); and the enterprise "instrument the pipeline with the event sink" items are
+feature work, not cleanup.
+
+### Fixed — full-repo review batch 9: MED/LOW correctness sweep (~90 findings, 88 files)
+
+The objective-correctness subset of the census MED/LOW tail, applied across the whole engine
+in one pass (excluding the 166 files owned by open PRs #49–#63 and everything already fixed in
+batches 1–8). Verified end-to-end on the settled tree: `dash -n` on every changed script,
+`jq`/YAML parse on every changed JSON/YAML, `opa check` on the policies, `make validate`
+self-test PASS, and 34 change-relevant prod tests + the adopter suite + the six regression
+tests (273–277, 290) all green.
+
+**Runners (17 files).** DAST host comparison now normalizes case + trailing FQDN dot (legit
+targets no longer fail closed); `codeql-export`/`phpstan-doctrine`/`phpstan-symfony`/`focused-tests`
+gained real arg loops that reject unknown flags; `zap-baseline` now invokes the entrypoint it
+actually probed for; `laravel-phpstan`/`phpstan`/`larastan` extract+validate the JSON object
+(stdout noise no longer corrupts the report) and `cp` instead of a newline-stripping
+command-substitution; `deptrac`/`dependency-cruiser`/`eslint-boundaries`/`php-arkitect` keep
+stderr as a referenced debug artifact instead of discarding it, and `php-arkitect` emits
+`execution-error` instead of a fabricated finding count; `js-coverage` clears a stale summary
+pre-run; `source-size`/`php-diff-coverage` parse newline-/space-bearing paths safely (the latter
+fixing a possible false pass); `infection` derives artifact names from `$OUTPUT` so parallel runs
+don't collide.
+
+**Libraries & scripts (15 files).** `archive-safety` no longer coerces an unparseable size total
+to 0 (emits `size-unverifiable`) and fails closed when the collision primitive is missing;
+`security-policy` returns 2 on a jq crash instead of `|| true` → PASS; `transaction` routes failed
+restores through the recovery path, wipes a reused stale txn dir, and refuses a foreign-host lock
+unless forced; `filesystem-safety` replaces a non-POSIX `\|` sed BRE; `workflow-runtime-audit`
+uses an integer date compare instead of the dash-breaking `[ x \> y ]`; `acquire`/
+`validate-release-evidence`/`verify-release-artifacts`/`tool-provenance-audit`/`source-verification`
+bound their network/tool calls via the existing bounded-process machinery (with a download-size
+ceiling); `run-local-pipeline` reclaims a stale `.pipeline-lock`; `detect-stack` exits 2 on a
+missing target; `resolve-effective-profile` cleans its temp on non-zero exit.
+
+**Collectors (4 files).** `ai-security-review`, `kuzushi`, `scorecard`, `zizmor` gained the
+established shape/integer fail-closed guard (unknown shape / negative / fractional counts no longer
+derive a clean pass or crash the dash test).
+
+**Semgrep rules (12 files).** Root-user rule catches `USER 0`/`0:0`/`root:root`; `:latest`
+allows `--platform` flags; privileged-compose covers `compose.yml`/`docker-compose.yaml`/etc.;
+`unserialize(...)` (revived dead `pattern-not`, flags the unsafe 2-arg form) across generic-php +
+symfony; hardcoded-secret rules use `metavariable-regex` over credential-like names; `$CP.exec`
+is bound to a real `child_process` import (kills the `RegExp.exec` false-positive class); install-
+script rules add the `prepare` lifecycle hook and handle escaped quotes; several path/anchor scoping
+fixes.
+
+**Policies (3 rego files).** terraform ingress now normalizes all three resource shapes
+(`aws_security_group_rule`, inline `aws_security_group` ingress, `aws_vpc_security_group_ingress_rule`)
+and treats IPv6 `::/0` as world-open; github-actions flags unpinned third-party **reusable
+workflows** and warns on secrets under `pull_request_target` and in step `env:`; docker catches
+root UID `0` in all forms. (`opa check --v1-compatible` passes; every new rule was `opa eval`-confirmed.)
+
+**Docs (16 edits/15 files).** report-only gate list corrected to include `focused_test_violations`;
+gate counts updated to the 41-key resolver (was 24-era); `140/140` pin count; remaining `0600
+--propertyfile` wording; a dead anchor, a deprecated-script reference, drifting line citations, and
+several stray paste-cruft (`</content>`/`</invoke>`) tags removed. **Schema:** `consumer-validation`
+dropped its "ajv-validated in CI" overclaim (no ajv exists; validation is jq-structural).
+
+**Tests & templates (18 files).** `adopter-scenarios` no longer has a tautological pass (asserts no
+injected failure exited 0; adds an IS_ROOT guard; portable sha256); `111-workflow-timeouts` parses
+`*.yaml` and comment-trailing job keys; several suites exit 2 on a missing hard prereq instead of a
+false green; `Makefile` dropped a misleading `.POSIX:`; the `main`/`pr-fast`/`scheduled`/`ai-review`/
+`dependency-check` templates had honest-tooling and template-injection-hygiene fixes (dead
+disabled DC call removed, unimplemented stubs marked, `${{ }}` → shell `$VAR` for user-influenced
+values, no fabricated `{"findings":[]}`); example hardened snippet pins refreshed.
+
+**Deliberately NOT changed** (reported, not silently dropped): the ~75 pure
+optimization/deduplication/refactor findings (no correctness impact — changing them risks
+regressions for style), risky edits to widely-sourced hot libraries flagged "only if truly safe",
+and everything owned by the open PRs #49–#63. The jq-missing exit-code 2-vs-3 convention is left
+as-is (cosmetic; changing the release scripts would risk their passing tests).
+
+### Fixed — full-repo review batch 8: quality-collector fail-closed (focused-tests + source-size)
+
+The quality collectors already failed closed on an *unknown* `.status`, but had a residual hole:
+when `.status` was **absent** they derived status from numeric metric keys with `// 0`, so a
+valid-JSON object carrying neither a status nor any recognized metric key (e.g. a scanner error
+object) derived a clean `pass` and cleared the gate.
+
+- `scripts/collectors/focused-tests.sh` and `scripts/collectors/source-size.sh` now require the
+  report to carry an explicit `.status` **or** at least one recognized metric key; otherwise they
+  emit `execution-error` (this file's existing fail-closed convention) instead of deriving 0. A
+  metrics-only report with no status still derives `pass` — the legitimate contract is preserved.
+- New prod test `tests/prod/277-quality-collector-failclosed.sh` proves all three directions for
+  both (shapeless error object → `execution-error`; metrics-only → `pass`; explicit
+  `{"status":"pass"}` → `pass`).
+- The other seven quality collectors (`complexity`, `coverage`, `dead-code`, `debug-code`,
+  `diff-coverage`, `duplication`, `mutation`) are **owned by open PR #56** (malformed-count
+  coercion) and are intentionally left untouched here; the shapeless-error-object guard is added
+  to them in a follow-up on top of #56 to avoid a conflicting re-fix.
+
+### Fixed — full-repo review batch 7: DAST committed allowlist + tool-wiring integrity guard
+
+- **DAST allowlist was self-attested.** `scripts/runners/dast-guard.sh` compared the dispatch
+  `target_url` host against the dispatch `allowed_host` — both supplied by the same dispatcher —
+  so anyone with dispatch rights could scan any host. The guard now ALSO checks a **committed**
+  allowlist file when present (`.sentinel-shield/dast-allowlist.txt` by default, override
+  `SENTINEL_SHIELD_DAST_ALLOWLIST_FILE`): the target host must appear in that review-gated file
+  (exact whole-line match; `#` comments ignored), and a configured-but-missing file fails closed.
+  Dispatch rights alone can no longer authorize a scan. The `sentinel-shield-dast.yml` header and
+  the ZAP/nuclei runners inherit this via the shared guard. New prod test
+  `tests/prod/276-dast-allowlist.sh` (4 cases, incl. the batch-3 userinfo-bypass regression).
+- **Tool-wiring drift guard.** Two sources of truth wire the same tools — profile manifests
+  (`runner`/`report`) and `build-security-summary.sh`'s `TOOL_TABLE` (raw→collector) — and drift
+  only surfaced at runtime as "collector not found". New prod test
+  `tests/prod/275-tool-wiring-integrity.sh` asserts every manifest `runner` path and every
+  TOOL_TABLE collector script exists on disk (70 rows parsed, all present today), turning a
+  latent runtime failure into a CI-caught one.
+
+### Fixed — full-repo review batch 6: bound the main tool-execution path (no more infinite runner hangs)
+
+Census HIGH/architecture gap: `run-tool-plan.sh` — the main tool-execution path — invoked each
+profile runner unbounded (`sh "$REPO_ROOT/$_runner" > log 2>&1`), so one hung scanner stalled the
+whole stage forever, and `scripts/lib/bounded-process.sh` (the timeout machinery) sat unused on
+that path. Local runs had no CI `timeout-minutes` backstop either.
+
+- Each runner invocation now runs under `bp_run` (the same bounded-process primitive the audit
+  wrappers use). A hung runner is terminated (TERM→KILL, process-group isolation) and recorded as
+  an **execution error**, which makes a required tool fail the stage honestly instead of hanging.
+- The cap is **generous by design** — default **30 min**, override
+  `SENTINEL_SHIELD_RUNNER_TIMEOUT_SECONDS` — so it kills a genuine hang without throttling a
+  legitimately long test or mutation suite (run-tool-plan runs those too).
+- The combined `.run.log` debug artifact is preserved (bp_run's separate stdout/stderr are
+  concatenated back).
+- New prod test `tests/prod/274-runner-execution-bounded.sh` guards both the wiring (bounded-process
+  sourced, runner invoked via `bp_run`, no bare unbounded `sh $runner >` remains) and the behavior
+  (a 60 s sleeper under a 2 s bound is killed in ~2 s, reports `timed-out`, and returns non-zero).
+
+### Fixed — full-repo review batch 5: runner-generation backport (7 runners to the honest-absent contract)
+
+The census HIGH: two runner generations coexisted on live profile paths. Seven old-style
+(v0.1.14) runners — `eslint`, `psalm`, `actionlint`, `zizmor`, `typescript`, `php-syntax`,
+`php-style` — did not source the common lib, wrote via positional `$1` only, discarded stderr
+(`2>/dev/null || true`), never cleared a stale report, and never validated the tool's JSON
+before publishing it. A direct invocation (e.g. the pr-fast template) could inherit a previous
+run's report and lost all diagnostics. All seven are backported to the hardened contract the
+`phpstan`/`npm-audit` family already use:
+
+- source `scripts/lib/sentinel-shield-common.sh` (structured `log_*`, `command_exists`, `ensure_dir`);
+- accept `--output <path>` (a bare positional path still works — the pr-fast template and other
+  callers are unchanged) and reject unknown `--flags` with exit 2;
+- clear a stale `$OUTPUT` up front (the "(Issue 7)" contract) so an unavailable/failed run cannot
+  be read as current evidence;
+- run the tool to a temp file, **validate the JSON shape** (array / object) before copying to
+  `$OUTPUT`, and otherwise leave the report **absent** (honest `unavailable`) rather than
+  publishing partial/garbage JSON that would make the collector exit 2;
+- keep stdout/stderr as debug artifacts on trouble instead of discarding them.
+
+Also fixed along the way:
+- **`php-syntax.sh` `set -e` abort (regression introduced in batch 3, caught before merge).**
+  `BAD=$(find app src Modules routes config database …)` aborted the runner (rc 1) whenever any
+  of those dirs was missing — common — which the gate reads as an execution error. Now scans
+  only existing dirs (and reports honest *not-applicable* when none exist).
+- **`actionlint.sh`** dropped the `.github/workflows/*.yml` glob that missed `*.yaml` workflows;
+  actionlint now auto-discovers both extensions.
+- **`php-style.sh`** no longer reruns the whole `pint --test` a second time on every violating
+  repo just to write a `.txt` file no collector reads; it accepts the JSON when valid, else absent.
+
+Verified: dash `-n` on all seven; hermetic-PATH proof that each leaves NO report and exits 0 when
+its tool is absent (stale report cleared, not resurrected); unknown-flag → exit 2; positional
+back-compat intact; `php-syntax` correct on paths with spaces and on repos missing source dirs;
+`make validate` self-test PASS; prod tests 273/290 still green.
+
+### Fixed — full-repo review batch 4: collector fail-closed hardening + honest tooling claims (14 findings)
+
+Coherent fail-closed + honest-claim batch from the 475-finding census. `ss_collector_guard`
+already rejects missing/empty and invalid-JSON input; the gap closed here is **valid JSON of
+an unrecognized shape** (a scanner that emits an error object) being coerced to 0 findings and
+silently clearing a security gate.
+
+- **11 collectors now fail closed on an unrecognized report shape** (they previously coerced
+  malformed/error output to a clean pass): `actionlint`, `hadolint`, `psalm`, `phpstan`,
+  `dockle`, `conftest`, `nuclei`, `zap`, `terrascan`, `third-party-semgrep`,
+  `dependency-policy`. Each asserts its expected container (array / `.totals` / `.results` /
+  `.details` / …) is present and exits 2 otherwise; `phpstan` also gained the integer guard
+  its siblings have. A new prod test — `tests/prod/273-collector-shape-failclosed.sh` —
+  proves both directions for all 11 (malformed → exit 2, well-typed clean/empty → pass;
+  22/22 assertions green), so the hardening cannot silently over- or under-fire.
+  *(The quality collectors — complexity/coverage/dead-code/… — already fail closed on an
+  unknown `.status`; their narrower residual hole is deferred to a fixtured batch.)*
+- **`scripts/run-hadolint.sh` default image pinned to a digest** —
+  `hadolint/hadolint:v2.12.0@sha256:30a8fd2e…`. A gate engine that enforces image-digest
+  pinning on consumers was pulling its own gate tool from a floating `hadolint/hadolint`
+  tag by default.
+- **`scripts/support-bundle.sh` now has a redaction test** —
+  `tests/prod/290-support-bundle.sh` seeds secret-shaped tokens and asserts the shareable
+  bundle redacts included config, excludes raw artifacts by default, redacts raw copies under
+  `--include-raw`, and leaks no seeded secret anywhere. It aggregates diagnostics (253's exact
+  threat surface) but had zero test coverage — a redaction regression would have shipped silently.
+- **Honest workflow-template tool claims** — `sentinel-shield-pr-fast.yml` and
+  `sentinel-shield-main.yml` headers advertised tools they do not run: pr-fast listed
+  Gitleaks (the secrets control), Psalm, ESLint, tsc, zizmor, actionlint, composer audit —
+  none has a step (Gitleaks/actionlint/zizmor run in the separate `ci-security.yml`); main
+  listed CodeQL, Trivy fs, Deptrac and architecture tests, none wired, with Dependency-Check
+  disabled by default. Both headers corrected to the tools actually executed, with the
+  pr-fast note that it is **not** the secrets gate.
+
+### Fixed — full-repo review batch 3: critical DAST/type-gate bypasses + fail-open collectors (20 findings)
+
+From the 475-finding full-repo census (7 parallel sweeps). This batch takes the 2 CRITICAL
+and 18 HIGH findings not owned by open PRs. Every fix verified against code; security fixes
+proven behaviorally.
+
+**Critical**
+
+- **DAST allowlist bypass (`scripts/runners/dast-guard.sh`).** The host parser stripped the
+  port before the userinfo, so `http://allowed.host:x@evil.com/` matched the allowed host
+  while ZAP/nuclei actually scanned `evil.com`. Userinfo (`*@`) is now stripped before the
+  port. *Proven: the bypass URL now fails closed (exit 3).*
+- **TypeScript gate fake clean pass (`scripts/runners/typescript.sh`).** When tsc could not
+  run, `grep -c "error TS"` counted 0 and the runner wrote `{errors:0}` — a fake pass on the
+  type gate. It now captures tsc's exit code and reports unavailable (writes nothing) when
+  tsc fails without emitting diagnostics; a stale report is cleared up front. *Proven both
+  paths.*
+
+**High — fake-clean / stale-evidence / fail-open**
+
+- `runners/knip.sh` — a ts-prune crash in the fallback path yielded `dead_code_count:0`
+  (fake pass); now reports unavailable on non-zero ts-prune exit.
+- `runners/laravel-phpstan.sh` — missing the stale-report `rm -f` the sibling PHPStan
+  runners have; a stale `phpstan.json` could be read as current evidence. Added.
+- `runners/zap-full.sh` — probed `zap-baseline.py`/`zap.sh` but executed
+  `zap-full-scan.py`; the active scan silently no-op'd. Now probes the binary it runs.
+- `runners/nuclei.sh` — wrote JSONL (`-jle`); the collector reads one JSON document and
+  exits 2 on multi-doc input, hard-erroring the DAST gate exactly when ≥2 findings exist.
+  Switched to `-je` (JSON array).
+- `runners/codeql-export.sh` — searched the whole repo for `*.sarif`, so a stray/fixture
+  SARIF (PR-influenceable) could be exported as the CodeQL evidence. Restricted to the
+  codeql-action output dir.
+- `runners/php-syntax.sh` — `for f in $(find …)` word-split filenames; paths with spaces
+  fragmented and inflated `php_syntax_errors` with false positives that block releases. Now
+  uses `find … -exec` per file.
+- `collectors/docker-base-digest.sh` + `collectors/github-actions-pins.sh` — a non-array
+  (malformed) audit report coerced to count 0 → clean pass, silently clearing the
+  `unsafe_docker` / `unsafe_github_actions` gates. Now fail closed (exit 2) on non-array
+  input. *Proven: malformed → exit 2, empty array → exit 0.*
+
+**High — durability / bounded execution**
+
+- `lib/transaction.sh` — the journal appended without healing a torn prior tail, so a
+  crash-truncated line got concatenated into by the next append, turning a tolerated
+  trailing artifact into prefix corruption that blocks recovery. A trailing newline is now
+  ensured before each append.
+- `audits/grype.sh` + `audits/osv-scanner.sh` — headers claimed hangs "can no longer stall
+  the scan"; only the version probe was bounded, the actual scan ran unbounded. The scan is
+  now wrapped in `bp_run` with a `*_SCAN_TIMEOUT_SECONDS` cap.
+
+**High — fail-open workflow templates**
+
+- `templates/workflows/sentinel-shield.yml` (and the `examples/` copy) — the prepare step's
+  `resolve-gates.sh … || true` and the main-gate `run-tool-plan.sh … || true` swallowed
+  resolver/runner failures (exit 3/4), letting the release gate enforce on partial evidence
+  or the wrong gate set. Both `|| true` removed.
+
+**High — false/ broken documentation**
+
+- `prompts/install-sentinel-shield.md` + `prompts/update-sentinel-shield.md` — the
+  authoritative-gate step ran `run-local-pipeline.sh --target .`, which exits 2 (missing
+  required `--profile`/`--stage`). Corrected to the full invocation.
+- False "`0600 --propertyfile`" NVD-key security claim corrected across six docs
+  (troubleshooting, faq, product-readiness-checklist, enterprise-scanner-matrix,
+  production-readiness-audit, dependency-check-consumer-evidence) — the wrapper deliberately
+  uses 644/755 (0600 was the container-unreadable bug); troubleshooting.md contradicted its
+  own correct statement.
+- `policies/opa/docker.rego` + `terraform.rego` — headers advertised `--parser dockerfile`
+  / hcl2 modes the rules do not support (they read Compose / plan-JSON only; other shapes
+  pass vacuously — fail-open for a documented mode). Scoped the headers to what the rules
+  actually consume.
+
+### Fixed — full-repo review batch 2: stale template pins, unpinned example actions, config hygiene (7 findings)
+
+- **All shipped workflow templates now pin `SENTINEL_SHIELD_REF: v2.0.1`** (the latest
+  published release). The template set a consumer installs together carried four different
+  stale refs (v0.1.0 / v0.1.12 / v0.1.21 / v1.1.0) — consumers fetched an engine two major
+  versions old with none of the v2 gate fixes. The "pin to a full SHA before production"
+  guidance is retained.
+- **`templates/workflows/sentinel-shield-main.yml` grype sbom mode now has an SBOM.** The
+  template set `SENTINEL_SHIELD_GRYPE_MODE: sbom` pointing at `reports/sbom.spdx.json`, but
+  no step produced it (only a comment suggested Syft) — grype scanned nothing. A
+  `scripts/audits/syft.sh` step now writes the SBOM first.
+- **`examples/laravel-react-docker` workflow actions pinned to full commit SHAs** —
+  33 `uses:` references (checkout, upload/download-artifact, setup-node, setup-php,
+  trivy-action, sbom-action) now use the same verified SHAs as the canonical templates
+  (download-artifact v4 resolved via the GitHub API); the example previously shipped
+  floating version tags in the exact file consumers copy. The hardcoded `branches: [master]`
+  push trigger now carries a warning that a wrong default-branch name silently skips the
+  gate on merges.
+- **`.trivyignore` ceiling documented**: the plain format suppresses the three fixture CVEs
+  repo-wide (it cannot path-scope). Acceptable only while the engine has no production
+  dependency manifests; the migration path (path-scoped `.trivyignore.yaml`) is now recorded
+  in the file.
+- **`config/release-required-workflows.json`** dropped a dangling `$schema` URL pointing at
+  a schema file that does not exist (the config is validated structurally by
+  `scripts/lib/release-authz.sh`; prod test 262 still passes).
+- **CONTRIBUTING.md** semgrep layout corrected: rules live under `semgrep/app/<lang>/` and
+  `semgrep/supply-chain/`, not the documented `semgrep/<lang>/`.
+- Reviewed and **dismissed as false positive**: reported dead links in
+  `docs/maturity-audit-v024.md` are quoted defect examples inside an audit-findings table,
+  and the defects they describe were already fixed in the target docs.
+
+### Fixed — full-repo review batch 1: fail-open policies, broken doc commands, portability (20 findings)
+
+Fixes from a systematic four-dimension review (scripts/lib, policies/schemas/config,
+Makefile/templates/workflows, docs-vs-code), scoped to exclude everything already
+addressed by open PRs #49–#63. Every finding was verified against the code before the
+fix, and every policy fix was proven with positive/negative OPA eval fixtures.
+
+- **`policies/opa/production-env.rego` failed OPEN on boolean cookie flags.** The deny
+  bodies guarded on `input.SESSION_SECURE_COOKIE` / `input.COOKIE_SECURE` truthiness, so a
+  JSON/YAML boolean `false` — the exact insecure state — made the guard itself fail and the
+  deny never fired. The rules now bind the value first, then check truthiness (proven:
+  boolean `false` now denies).
+- **`policies/opa/github-actions.rego` missed fully-unpinned actions.** `is_third_party`
+  required `contains(uses, "@")`, so a ref-less `uses: foo/bar` (resolves to the default
+  branch — the most dangerous form) escaped the pin-to-SHA deny. The `@` requirement is
+  removed (`docker://` images excluded); ref-less third-party actions are now denied.
+- **`policies/opa/terraform.rego`** now actually checks RDP 3389 (header claimed "SSH/RDP",
+  only 22 was checked) and catches full-range openers (`from_port 0, to_port 65535`,
+  `protocol "-1"`) that the `== 0/== 0` unrestricted-ingress rule missed.
+- **`policies/opa/docker.rego`** untagged-image deny now evaluates the tag on the image's
+  last path segment, so untagged `registry:5000/app` no longer slips through on the
+  registry-port colon.
+- **`scripts/support-bundle.sh` could leak secrets on macOS.** The redaction `sed` used the
+  GNU-only `/gi` flag; BSD sed errors and the fallback copied the file **unredacted** into
+  the bundle. Case now folded into the pattern (portable), and the fallback fails closed
+  (omits content instead of copying raw).
+- **`scripts/health.sh` network probe always failed.** The default probe URL
+  (`github.com/anthropics/.git`) is not a repository, so `git ls-remote` returned 128 and
+  `--check-network` reported `network_unreachable` even fully online. Now probes a real
+  public repo.
+- **`Makefile` `validate` masked syntax errors** — the `sh -n` loop returned only the last
+  iteration's status; a broken non-last script still exited 0. Now exits 1 on the first
+  failure (regression-tested).
+- **README/`docs/compatibility.md` compatibility-gate examples were broken**: `health.sh`
+  shown without `--policy` runs the operational report (different exit codes), and
+  `--docker`/`--require-network` without `--policy` exit 64 "unknown argument". All
+  examples now pass `--policy config/compatibility-policy.json`.
+- **`.gitleaks.toml` allowlist anchored** (`^tests/`, `^examples/`) — unanchored regexes
+  also suppressed secrets in any path containing `tests/`/`examples/`.
+- **Semgrep rules**: `ss-tp-js-dynamic-require` had a top-level `pattern-not` beside
+  `pattern-either` (schema-invalid — the exclusion was silently dropped); now nested under
+  `patterns:`, with literal `import("...")` also excluded. `\bsh \b` in the js-install-scripts
+  high-confidence regex missed `sh -c`/`sh ./x`; now `\bsh\b`. The docker `:latest` rule
+  message no longer claims to catch untagged `FROM` (it cannot, without multi-stage
+  alias false positives).
+- **Example workflow images pinned** — `examples/laravel-react-docker` ran
+  `semgrep/semgrep:latest` and `zricethezav/gitleaks:latest`, contradicting the canonical
+  template's own "never `:latest`" rule; now pinned to the template's versions.
+- **`scripts/normalize-security-summary.sh`** built JSON scalars by hand-quoting
+  (`"\"$_ver\""`); a `"`/`\` in a version/timestamp/digest produced invalid JSON and
+  aborted under `set -e`. Scalars now pass through `jq --arg`.
+- **`scripts/generate-report.sh`** generated reports pointing users at the deprecated
+  `run-local-security.sh` shim; now references `run-local-scanner-sweep.sh`.
+- Stale README tool count ("Fourteen tools") corrected to the actual 30+ collector table;
+  wrong `scripts/audits/` path to `audit-github-actions-pins.sh` fixed in two docs.
+
 ### Fixed — false claims and a non-operative profile (documentation accuracy)
 
 Docs asserting **more validation than the engine performs**, in the file set whose entire

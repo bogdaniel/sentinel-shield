@@ -63,7 +63,10 @@ _clover="$_dir/php-coverage.clover.xml"
 _err="$_dir/php-coverage.stderr.log"
 rm -f "$_clover" 2>/dev/null || true
 
-log_info "php-coverage: $BIN --coverage-clover $_clover"
+# Xdebug 3 emits NO coverage unless XDEBUG_MODE includes 'coverage' — an unset mode makes an
+# installed driver look absent and the run silently degrade to 'unavailable'. PCOV ignores it.
+export XDEBUG_MODE=coverage
+log_info "php-coverage: $BIN --coverage-clover $_clover (XDEBUG_MODE=coverage)"
 _rc=0
 "$BIN" --coverage-clover "$_clover" >"$_dir/php-coverage.stdout.raw" 2>"$_err" || _rc=$?
 

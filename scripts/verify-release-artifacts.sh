@@ -40,6 +40,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/archive-safety.sh"
 # shellcheck source=scripts/lib/redaction.sh
 . "$SCRIPT_DIR/lib/redaction.sh"
+# shellcheck source=scripts/lib/release-authz.sh
+. "$SCRIPT_DIR/lib/release-authz.sh"   # ra_bounded: cap network operations where timeout(1) exists
 
 usage() {
 	printf 'Usage: verify-release-artifacts.sh (--evidence <file> | --repo <owner/name> --run <id>) [--commit <40hex>] [--require-embedded-commit] [--min-files <n>] [--max-bytes <n>] [--max-entries <n>] [--workdir <dir>] [--output <path>]\n'
@@ -53,6 +55,9 @@ REQUIRE_EMBEDDED=0
 MIN_FILES=0
 MAX_BYTES=104857600      # 100 MiB total uncompressed
 MAX_ENTRIES=10000
+# Raw (compressed) zip ceiling: an artifact zip larger than the uncompressed cap is already out
+# of contract, so reject it BEFORE inspecting/extracting to bound the disk-exhaustion window.
+: "${GH_TIMEOUT:=120}"   # per-API-call timeout (seconds) where timeout(1) is available
 WORKDIR=""
 OUTPUT=""
 while [ $# -gt 0 ]; do
@@ -143,8 +148,14 @@ verify_one_artifact() {
 		_adir="$ROOT_WORK/a-$_run-$_aid"
 		ensure_dir "$_adir"
 		_zip="$_adir/artifact.zip"
-		if ! "$GH_BIN" api "repos/$_repo/actions/artifacts/$_aid/zip" > "$_zip" 2>/dev/null; then
-			_reasons="$_reasons download-failed"; _archive_safe=false
+		_zbytes=""
+		if ! ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_repo/actions/artifacts/$_aid/zip" > "$_zip" 2>/dev/null; then
+			if [ "${RA_TIMEOUT:-0}" = 1 ]; then _reasons="$_reasons download-timeout"; else _reasons="$_reasons download-failed"; fi
+			_archive_safe=false
+		elif _zbytes=$(wc -c < "$_zip" 2>/dev/null | tr -d ' '); [ -z "$_zbytes" ] || [ "$_zbytes" -gt "$MAX_BYTES" ] 2>/dev/null; then
+			# Raw zip exceeds the size ceiling (or its byte count is unreadable): reject before
+			# inspecting/extracting so an oversized download cannot exhaust disk on the way in.
+			_reasons="$_reasons oversize-download"; _archive_safe=false
 		else
 			_sha=$(ss_sha256_file "$_zip" || printf '')
 			# Pre-extraction safety scan (path traversal, symlinks, dupes, zip-bomb) PLUS a
@@ -225,8 +236,9 @@ verify_one_artifact() {
 printf '%s\n' "$RUNS_TSV" | grep -v '^[[:space:]]*$' > "$ROOT_WORK/runs.tsv"
 while IFS="$(printf '\t')" read -r _repo _run; do
 	[ -n "$_repo" ] && [ -n "$_run" ] || continue
-	_listj=$("$GH_BIN" api "repos/$_repo/actions/runs/$_run/artifacts" 2>/dev/null) || {
-		log_error "could not list artifacts for $_repo run $_run"; exit 2; }
+	_listj=$(ra_bounded "$GH_TIMEOUT" "$GH_BIN" api "repos/$_repo/actions/runs/$_run/artifacts" 2>/dev/null) || {
+		if [ "${RA_TIMEOUT:-0}" = 1 ]; then log_error "listing artifacts for $_repo run $_run timed out after ${GH_TIMEOUT}s"; else log_error "could not list artifacts for $_repo run $_run"; fi
+		exit 2; }
 	printf '%s' "$_listj" | jq -e . >/dev/null 2>&1 || { log_error "malformed artifacts list for $_repo run $_run"; exit 2; }
 	_n=$(printf '%s' "$_listj" | jq '(.artifacts // []) | length')
 	if [ "$_n" = 0 ]; then

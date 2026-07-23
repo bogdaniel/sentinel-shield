@@ -82,7 +82,9 @@ to **distinct** immutable-install commands (`--frozen-lockfile` vs `--immutable`
 The gate is **offline-capable** (`doctor`, `health`, gate resolution over cached reports). A run
 that performs an **online-only** operation (engine `git clone`/`fetch`, Docker image pulls,
 Dependency-Check NVD sync, package-registry installs) should be invoked with
-`sh scripts/health.sh --require-network`; an offline host then fails with `NETWORK_REQUIRED_OFFLINE`.
+`sh scripts/health.sh --policy config/compatibility-policy.json --require-network`; an offline host
+then fails with `NETWORK_REQUIRED_OFFLINE`. (`--require-network` is only valid together with
+`--policy`; without it the script runs the operational health report and rejects the flag.)
 
 ## GitHub-hosted runner images
 

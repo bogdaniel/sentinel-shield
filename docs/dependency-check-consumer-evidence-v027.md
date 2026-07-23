@@ -24,7 +24,7 @@
 | Severity (raw) | `HIGH`=3 (NVD) + `high`=3 (npm) = **6 high**; `moderate`=3 (npm) → **medium**; `low`=2 |
 | Sources | NVD=3, NPM=7, RetireJS=1 |
 | Collector mapping | **status `fail`, 0 critical / 6 high / 3 medium** |
-| Key handling | `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY` via `0600 --propertyfile`; **never logged / committed / in-artifact** (verified) |
+| Key handling | `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY` via `--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit); **never logged / committed / in-artifact** (verified) |
 
 **Non-zero CVE severity buckets are now exercised on real consumer evidence** (v0.1.26's open caveat),
 with one correctness fix below.
@@ -67,7 +67,7 @@ evidence — NOT a live CI run (see §4).
 
 ## 3. NVD API key handling
 
-`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, passed through a `0600 --propertyfile` (never on the
+`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`, passed through a `--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit) (never on the
 command line / process list). Verified: **0 occurrences** in the run log, the artifact, and every
 tracked/committed file. Key stored outside the repo.
 

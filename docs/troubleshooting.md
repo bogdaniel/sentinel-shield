@@ -22,7 +22,7 @@ triage the finding"; `2` means "fix the input/config".
 | `0` | Success | Nothing — proceed. |
 | `1` | Gate failed (findings block) | Triage the finding; accept-risk if justified. **Do not suppress.** |
 | `2` | Config / input error | Fix the input, env var, or JSON. Re-run. |
-| `3` | DAST guard fail-closed (runners) | Set target/allowlist correctly — see DAST section. |
+| `3` | Preflight/guard fail-closed: DAST guard (runners), `health.sh --policy` unsupported/incompatible host, or `doctor.sh` profile-required tool absent under an enforced tool-mode | Fix the flagged precondition — set target/allowlist (DAST), run on a supported host (`health.sh --policy`), or install the required tool (`doctor.sh`). |
 
 ---
 
@@ -138,7 +138,7 @@ binary (violation count), not graded.
 **Symptom: HTTP 429 / rate-limited during the NVD update.**
 Cause: no NVD API key, so DC uses the anonymous (throttled) NVD rate limit. Fix: provide the
 GitHub secret `SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`. The wrapper hands it to DC via a
-`0600 --propertyfile`, never on the CLI, so it stays off process listings and logs. See
+`--propertyfile` (a world-readable file in an ephemeral temp dir, removed on exit), never on the CLI, so it stays off process listings and logs. See
 [`dependency-check-ci-cache.md`](dependency-check-ci-cache.md) and
 [`dependency-check-hardening.md`](dependency-check-hardening.md). **Never print, log, or commit
 the key value.**
@@ -292,7 +292,7 @@ only. Nuclei additionally enforces a **controlled template path** guard. See
 - **Do not run Semgrep with `--config=auto`.** Use the curated app rules; `auto` reintroduces
   noise and the parser issues that pinning `1.165.0` fixed.
 - **Do not print, log, paste, or commit the NVD key value.** It is consumer-provided via a
-  GitHub secret and handed to DC only through a `0600` propertyfile. See
+  GitHub secret and handed to DC only through a `--propertyfile` (ephemeral temp dir, removed on exit). See
   [`security-hygiene.md`](security-hygiene.md).
 - **Do not fake-clean.** Never hand-write a zero-finding report when a scanner was
   `unavailable`. `unavailable` ≠ clean.

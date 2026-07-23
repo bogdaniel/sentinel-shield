@@ -394,5 +394,3 @@ digest pinning, and the still-experimental/manual DAST/IaC/architecture surfaces
 only when the [`roadmap.md`](roadmap.md) frontier lands with cited evidence and the
 [`v1-readiness.md`](v1-readiness.md) §2 bar is fully met. This addendum records the gap; it does not
 close it.
-</content>
-</invoke>

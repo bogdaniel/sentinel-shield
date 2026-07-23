@@ -364,7 +364,10 @@ fs_casefold_collisions_impl() {
 # form with another. Returns 1 when a post-normalisation collision exists. FS_PATH_COLLISION.
 fs_path_collisions() {
 	_pc_out=$(cat | sed '/^$/d' | while IFS= read -r _pc_l; do
-		_pc_n=$(printf '%s' "$_pc_l" | sed -e 's#//*#/#g' -e 's#\(^\|/\)\./#\1#g' -e 's#/$##')
+		# Drop './' segments (leading and mid-path) and a trailing '/'. BRE alternation (\|) is a
+		# GNU extension unsupported by BSD/macOS sed, so use branch loops that fully collapse
+		# repeated './././' runs portably rather than a single overlapping /g pass.
+		_pc_n=$(printf '%s' "$_pc_l" | sed -e 's#//*#/#g' -e ':t' -e 's#^\./##' -e 't t' -e ':u' -e 's#/\./#/#g' -e 't u' -e 's#/$##')
 		printf '%s\t%s\n' "$_pc_n" "$_pc_l"
 	done | LC_ALL=C sort | awk -F'\t' '
 		{ if ($1 == prevk) { if (!pshown) { print prevv; pshown=1 } print $2 }

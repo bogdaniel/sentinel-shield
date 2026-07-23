@@ -194,7 +194,9 @@ sh "${SENTINEL_SHIELD_PATH}/scripts/doctor.sh" --target . --profile <name>
 and enforce, all from the acquired checkout:
 
 ```sh
-sh "${SENTINEL_SHIELD_PATH}/scripts/run-local-pipeline.sh" --target .
+# --profile and --stage are REQUIRED (run-local-pipeline.sh exits 2 without them).
+# Use the target profile from step 10.
+sh "${SENTINEL_SHIELD_PATH}/scripts/run-local-pipeline.sh" --profile <name> --target . --stage main
 sh "${SENTINEL_SHIELD_PATH}/scripts/enforce-gates.sh" --target .
 ```
 

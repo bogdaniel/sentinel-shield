@@ -110,7 +110,7 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 | sentinel-shield-scheduled.yml | NIGHT | no | n/a | experimental / manual |
 | sentinel-shield-dast.yml | MANUAL | no | **no** | manual (fail-closed) |
 | sentinel-shield-ai-review.yml | AI | no | advisory | non-gating |
-</content>
+| sentinel-shield-dependency-check.yml | EVIDENCE (dispatch-only) | no | n/a | attempted / not live-validated |
 
 ## v0.1.19 — main-gate execution hardening
 Grype (SBOM-first/fs/container), Dependency-Check (disabled-default; nightly), Dockle (image-gated)

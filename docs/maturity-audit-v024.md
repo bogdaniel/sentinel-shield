@@ -224,4 +224,3 @@ Recommended fix: delete these stray lines. They are tool/template artifacts, not
   `product-status.md:140-141` + `roadmap.md:81` + `v1-readiness.md:300-301` (stray `</content>`/`</invoke>`).
 - Link checks done by filesystem existence (`test -e` on resolved relative paths).
 - `sh scripts/self-test.sh all` → 312 PASS, exit 0 (confirms the 312-check claim).
-</content>

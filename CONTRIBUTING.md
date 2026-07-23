@@ -43,7 +43,8 @@ All scripts target POSIX `sh`:
 
 - **A profile:** add `profiles/<stack>/` with configs and a `README.md`; keep
   defaults migration-friendly and document tuning.
-- **A Semgrep rule:** add to the appropriate `semgrep/<lang>/*.yml`; use a unique
+- **A Semgrep rule:** add to the appropriate `semgrep/app/<lang>/*.yml` (or
+  `semgrep/supply-chain/third-party[-experimental]/` for supply-chain rules); use a unique
   `id`, set a sensible severity, and comment where teams should tune it. Starter
   rules, not completeness proofs.
 - **An OPA policy:** add to `policies/opa/`; document the expected input shape and
