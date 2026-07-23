@@ -42,7 +42,20 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-DCV=$(jq '((.debug_code_violations // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
+# The GATING count is never coerced (see docs/raw-report-contract.md). An ABSENT key is
+# legitimately 0; a present-but-malformed one is untrusted evidence, not a clean result.
+DCV=$(jq -r '
+	if (has("debug_code_violations") | not) then "0"
+	elif ((.debug_code_violations | type) == "number" and .debug_code_violations >= 0
+	      and (.debug_code_violations | floor) == .debug_code_violations)
+		then (.debug_code_violations | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$DCV" = "invalid" ]; then
+	log_warn "$TOOL: .debug_code_violations is malformed; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed debug_code_violations count"}' '{"debug_code_violations":0}'
+	exit 0
+fi
 
 if [ "$DCV" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 

@@ -97,8 +97,16 @@ o=$(sh "$COLL/coverage.sh" --input "$CT/viol.json")
 if [ "$(echo "$o" | jq '.summary.coverage_threshold_violations')" = "3" ] && [ "$(echo "$o" | jq '.summary.coverage_regression')" = "1" ]; then
 	pass "coverage collector: violations=3, regression=1"
 else fail "coverage violation mapping wrong"; fi
-v=$(sh "$COLL/coverage.sh" --input "$CT/nonnum.json" | jq '.summary.coverage_threshold_violations,.summary.coverage_line_percent' | tr '\n' ' ')
-[ "$v" = "0 0 " ] && pass "coverage collector: non-numeric -> 0" || fail "coverage non-numeric got '$v'"
+# ASSERTION CHANGED (audit): a non-numeric GATING count must FAIL CLOSED, not read as a
+# clean 0. This previously required violations=0 — i.e. it pinned the behaviour where a
+# corrupted or truncated coverage report reported PASS. The concern it encoded (never emit a
+# negative that violates the schema's minimum:0) is still upheld: the execution-error path
+# emits 0, it just no longer claims the run was clean.
+o=$(sh "$COLL/coverage.sh" --input "$CT/nonnum.json")
+[ "$(echo "$o" | jq -r '.status')" = "execution-error" ] \
+	&& [ "$(echo "$o" | jq '.summary.coverage_threshold_violations')" = "0" ] \
+	&& pass "coverage collector: non-numeric violations -> execution-error (never a clean 0)" \
+	|| fail "coverage non-numeric got status=$(echo "$o" | jq -r '.status')"
 rc=0; sh "$COLL/coverage.sh" --input "$CT/bad.json" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && pass "coverage collector: invalid JSON -> exit 2" || fail "coverage invalid json got $rc"
 st=$(sh "$COLL/coverage.sh" --input "$CT/missing.json" 2>/dev/null | jq -r '.status')
@@ -338,8 +346,14 @@ o=$(sh "$COLL/focused-tests.sh" --input "$DC/neg.json")
 	&& pass "collectors clamp negative counts to 0 (schema minimum:0 upheld)" || fail "collector did not clamp negatives"
 echo '{"line_percent":-9,"violations":-3,"regression":false}' > "$DC/negcov.json"
 o=$(sh "$COLL/coverage.sh" --input "$DC/negcov.json")
-[ "$(echo "$o" | jq '.summary.coverage_threshold_violations')" = "0" ] && [ "$(echo "$o" | jq '.summary.coverage_line_percent')" = "0" ] \
-	&& pass "coverage collector clamps negative violations + percent to 0" || fail "coverage collector did not clamp negatives"
+# ASSERTION CHANGED (audit): a NEGATIVE gating count fails closed rather than clamping to a
+# clean 0. Clamping mattered because the builder SUMS across collectors, so a negative could
+# cancel another scanner's real findings — but silently reporting the corrupted report as
+# PASS was the wrong remedy. The schema invariant (no negative in the summary) still holds.
+[ "$(echo "$o" | jq -r '.status')" = "execution-error" ] \
+	&& [ "$(echo "$o" | jq '.summary.coverage_threshold_violations')" = "0" ] \
+	&& pass "coverage collector: negative violations -> execution-error (schema minimum:0 upheld)" \
+	|| fail "coverage collector did not fail closed on negatives"
 
 # --- (9) resolver mode defaults for the §2 gates -----------------------------
 gv() { awk -F= -v k="SENTINEL_SHIELD_FAIL_ON_$2" '$1==k{print $2;exit}' "$1"; }

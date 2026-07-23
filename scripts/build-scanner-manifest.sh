@@ -76,7 +76,8 @@ if [ -n "$SCANNER_META" ]; then
 	[ -f "$SCANNER_META" ] && jq -e 'type=="object"' "$SCANNER_META" >/dev/null 2>&1 || { log_error "--scanner-meta not a JSON object"; exit 2; }
 fi
 
-# recompute_applicable <applies_when> — mirror scripts/enforce-security-policy.sh so a manifest
+# recompute_applicable <applies_when> — MUST stay byte-compatible in behaviour with
+# scripts/enforce-security-policy.sh (asserted by tests/prod/269). Mirrors it so a manifest
 # never contradicts the acceptance gate's own independent recompute.
 # tests/ and examples/ are pruned: they hold DELIBERATELY-VULNERABLE consumer/adopter fixtures,
 # which are the engine's test DATA, not its own supply chain — scanning them for the engine's
@@ -102,7 +103,13 @@ recompute_applicable() {
 				_h=$(find "$WORKSPACE/.github/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print 2>/dev/null | head -n 1)
 				[ -n "$_h" ] && printf 'yes' || printf 'no'
 			else printf 'no'; fi ;;
-		*) printf 'no' ;;
+		# DEFAULT ARM: "unknown", matching scripts/enforce-security-policy.sh exactly.
+		# This printed 'no' — so an UNRECOGNIZED applies_when meant "scanner not
+		# applicable" to the manifest and "cannot decide" to the enforcer that
+		# independently re-checks it. A recompute whose whole purpose is cross-checking
+		# must not disagree with its counterpart about the fail-closed direction; 'no'
+		# silently drops a scanner from the applicable set, 'unknown' does not.
+		*) printf 'unknown' ;;
 	esac
 }
 

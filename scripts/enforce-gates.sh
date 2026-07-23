@@ -38,9 +38,18 @@ die_cfg() {
 	exit 2
 }
 
-# Canonical gate keys in stable order. Mapping of gate key -> env suffix is the
-# uppercase of the key (handled below).
-GATE_KEYS="secrets critical_vulnerabilities high_vulnerabilities medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker unsafe_github_actions missing_sbom missing_release_evidence expired_exceptions third_party_suspicious_code third_party_install_script_risk third_party_obfuscation third_party_network_behavior"
+# NOTE: there is deliberately NO single "GATE_KEYS" list here.
+#
+# There used to be one. It was referenced NOWHERE, and it listed 16 of the ~41 gates this
+# script actually evaluates — so it read as an authoritative inventory while omitting the
+# quality, architecture and testing-discipline channels entirely. A maintainer trusting it
+# would have concluded those gates did not exist.
+#
+# The real inventory is the set of *_KEYS lists below, each paired with the evaluator that
+# consumes it, plus the explicit eval_* calls further down. scripts/resolve-gates.sh
+# FAIL_ON_KEYS is the authority on which flags are emitted; tests/prod/269 asserts the two
+# sides reconcile exactly, so a gate can no longer be resolved-but-never-evaluated (or the
+# reverse) without a test failing.
 
 # Integer summary keys that must be present (the two missing_* are booleans and
 # are validated separately).
@@ -267,7 +276,14 @@ if [ "$STRICT_SUMMARY" -eq 1 ]; then
 		(.tools // {}) | to_entries[]
 		| select(.value | type == "object")
 		| select((.value.status // "pass") as $s
-			| ($s | IN("pass","fail","warn","skipped","unavailable")) | not)
+			# The allowlist MUST match schemas/security-summary.schema.json. It listed only
+			# the 5 legacy values while the schema (and every v1.10+ collector) also emits
+			# findings / not-configured / not-applicable / execution-error / disabled — so
+			# --strict-summary, the STRICTEST validation flag, could not be run against a
+			# HEALTHY summary: any coverage/mutation/complexity report with findings made it
+			# exit 2. The enforcer was the stale side.
+			| ($s | IN("pass","fail","warn","skipped","unavailable",
+			           "findings","not-configured","not-applicable","execution-error","disabled")) | not)
 		| .key' "$SUMMARY" 2>/dev/null || true)
 	if [ -n "$_bad" ]; then
 		die_cfg "strict-summary: invalid tool status for: $(printf '%s' "$_bad" | tr '\n' ' ')"

@@ -43,9 +43,39 @@ case "$RS" in
 		exit 0 ;;
 esac
 
-DCC=$(jq '((.dead_code_count // 0) | if (type=="number" and . >= 0) then floor else 0 end)' "$INPUT")
-# .violations wins when present+numeric; otherwise fall back to the dead-code count.
-V=$(jq --argjson dcc "$DCC" 'if (.violations|type)=="number" then (if .violations < 0 then 0 else (.violations|floor) end) else $dcc end' "$INPUT")
+# dead_code_count is the gating count whenever .violations is absent, so it must be held to
+# the SAME fail-closed standard as .violations: `((.dead_code_count // 0) | if number...)`
+# coerced a malformed value (e.g. "abc", -1, 1.5) to 0 — read as a clean pass. Distinguish
+# ABSENT (legitimately 0, no count reported) from PRESENT-BUT-MALFORMED (untrusted -> reject).
+DCC=$(jq -r '
+	if (has("dead_code_count") | not) then "0"
+	elif ((.dead_code_count | type) == "number" and .dead_code_count >= 0 and (.dead_code_count | floor) == .dead_code_count)
+		then (.dead_code_count | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$DCC" = "invalid" ]; then
+	log_warn "$TOOL: .dead_code_count is malformed; status=execution-error (never coerced to a clean 0)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed dead_code_count"}' '{"dead_code_violations":0}'
+	exit 0
+fi
+# .violations wins when present and VALID. Two behaviours changed here:
+#   * a present-but-MALFORMED .violations used to fall back to .dead_code_count — so
+#     {"violations":"abc","dead_code_count":7} reported 7 violations, a number the report
+#     never asserted and that no sibling collector would produce. A malformed gating count
+#     is untrusted evidence, not a licence to substitute a different field.
+#   * a NEGATIVE .violations was clamped to 0, i.e. silently reported as clean.
+# Both now fail closed. An ABSENT .violations still legitimately uses .dead_code_count.
+V=$(jq -r --argjson dcc "$DCC" '
+	if (has("violations") | not) then ($dcc | tostring)
+	elif ((.violations | type) == "number" and .violations >= 0 and (.violations | floor) == .violations)
+		then (.violations | floor | tostring)
+	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$V" = "invalid" ]; then
+	log_warn "$TOOL: .violations is malformed; status=execution-error (never coerced, never substituted)"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"malformed violations count"}' '{"dead_code_violations":0}'
+	exit 0
+fi
 if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
 
 OV=$(jq -n --argjson v "$V" --argjson dcc "$DCC" '{dead_code_violations:$v, dead_code_count:$dcc}')

@@ -520,6 +520,42 @@ Profiles recommended and required tools that nothing could execute, and — wors
 Verified NOT dead, and left alone: `scorecard`, `trufflehog`, `dependency-check` and
 `tests` are executed by the installed workflow templates rather than `.tools`, and
 `php-tests` is a legitimate `one-of` group whose members write the collected `tests.json`.
+### Fixed — gate correctness and dead configuration
+
+- **Symfony style output never reached the summary.** The profile declares its style tool as
+  `php-cs-fixer`; the builder's `TOOL_TABLE` only knew `php-style`, so `php-cs-fixer.json` was
+  never read — a Symfony project with style violations reported `style_violations: 0` and
+  passed strict. A `php-cs-fixer` row is added (both keys emit `php_style`; a profile declares
+  one or the other, asserted by a new test so the cross-collector SUM cannot double-count).
+- **Six quality collectors coerced a malformed gating count to a clean `0`** — negative,
+  fractional and non-numeric `.violations` all read as PASS, so a corrupted or truncated report
+  reported clean. `docs/raw-report-contract.md` states the opposite rule verbatim and
+  `lib/architecture-evidence.sh` already implemented it. An **absent** count still legitimately
+  means 0; only a present-but-malformed one fails closed.
+- **`dead-code` FABRICATED a count from a different field**: `{"violations":"abc",
+  "dead_code_count":7}` reported 7 violations — a number the report never asserted. A malformed
+  gating count is untrusted evidence, not a licence to substitute another field.
+- **`--strict-summary` rejected the schema's own status values.** It allowed 5 while the schema
+  and every v1.10+ collector emit 10, so the STRICTEST validation flag could not be run against
+  a healthy summary: any coverage/mutation/complexity report with findings made it exit 2.
+- **`zap-full.json` was produced but never collected** — the DAST template writes it, no
+  `TOOL_TABLE` row read it, so a full ZAP scan contributed nothing to `dast_findings`.
+- **The two `recompute_applicable` copies disagreed** on the default arm (`no` vs `unknown`), so
+  an unrecognized `applies_when` meant "not applicable" to the manifest builder and "cannot
+  decide" to the enforcer that independently re-checks it — while a comment claimed they were
+  kept identical. Aligned to `unknown`, and the agreement is now asserted.
+- **`GATE_KEYS` was dead AND stale** — referenced nowhere, listing 16 of ~41 gates while reading
+  as an authoritative inventory. Removed; a test asserts the resolver emits a full gate set.
+- **`fix_available_handling` and `categories.*.blocking` are declarative only** — nothing reads
+  them, so editing them changes nothing. Marked in the config itself so an operator cannot
+  mistake them for a kill switch.
+
+Three self-test assertions **required the old coercing behaviour** and are updated in place with
+the reasoning (two in `270-quality-gates.sh`, plus the earlier ones in this series). New:
+`tests/prod/269-gate-correctness.sh` (41 checks, 27 failing against the unfixed engine).
+
+**No tag, release, manifest, or evidence bundle is produced by this change.**
+
 
 ### Added — Engineering Quality Gates (v2.1)
 

@@ -97,6 +97,16 @@ policy_message() {
 }
 
 # tool-key | raw-filename | collector-script | emitted-tool-name
+#
+# NOTE: this is a DATA string. Do not put '#' comment lines inside it — each line is split
+# on '|' into four positional fields, so a comment becomes a malformed row.
+#
+# `php-cs-fixer` and `php-style` both emit php_style on purpose: symfony declares its style
+# tool as php-cs-fixer (whose runner writes an honest unavailable report, which php-style.sh
+# does not), every other PHP profile uses php-style. Without the php-cs-fixer row the builder
+# never read php-cs-fixer.json, so SYMFONY STYLE OUTPUT NEVER REACHED THE SUMMARY — a project
+# with style violations reported style_violations=0 and passed strict. A profile declares one
+# or the other, never both, so the cross-collector SUM cannot double-count.
 TOOL_TABLE='gitleaks|gitleaks.json|gitleaks.sh|gitleaks
 semgrep|semgrep.json|semgrep.sh|semgrep
 trivy|trivy.json|trivy.sh|trivy
@@ -123,7 +133,7 @@ larastan|larastan.json|phpstan.sh|larastan
 phpstan-symfony|phpstan-symfony.json|phpstan.sh|phpstan_symfony
 phpstan-doctrine|phpstan-doctrine.json|phpstan.sh|phpstan_doctrine
 pint|pint.json|php-style.sh|pint
-php-cs-fixer|php-cs-fixer.json|php-style.sh|php_cs_fixer
+php-cs-fixer|php-cs-fixer.json|php-style.sh|php_style
 rector|rector.json|rector.sh|rector
 syft|syft.json|syft.sh|syft
 osv-scanner|osv-scanner.json|osv-scanner.sh|osv_scanner
@@ -136,6 +146,7 @@ conftest|conftest.json|conftest.sh|conftest
 terrascan|terrascan.json|terrascan.sh|terrascan
 dockle|dockle.json|dockle.sh|dockle
 zap|zap.json|zap.sh|zap
+zap-full|zap-full.json|zap.sh|zap_full
 nuclei|nuclei.json|nuclei.sh|nuclei
 ai-security-review|ai-security-review.json|ai-security-review.sh|ai_security_review
 kuzushi|kuzushi.json|kuzushi.sh|kuzushi
