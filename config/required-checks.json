@@ -249,6 +249,18 @@
           "classification": "conditional-heavy"
         }
       ]
+    },
+    "ci-zap.yml": {
+      "checks": [
+        {
+          "name": "zap-baseline",
+          "classification": "scheduled-only"
+        },
+        {
+          "name": "zap-full",
+          "classification": "scheduled-only"
+        }
+      ]
     }
   }
 }
