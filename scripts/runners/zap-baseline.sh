@@ -11,6 +11,7 @@ rc=0; ss_dast_check || rc=$?
 [ "$rc" -eq 10 ] && exit 0      # no target -> skip cleanly
 [ "$rc" -ne 0 ] && exit "$rc"   # allowlist violation -> fail closed
 mkdir -p "$(dirname "$OUT")"
+rm -f -- "$OUT" 2>/dev/null || true   # never leave a stale report as evidence for this run
 # Invoke whichever ZAP entrypoint is actually installed. Accepting zap.sh in the
 # availability check but only ever calling zap-baseline.py made hosts with just zap.sh
 # log "running ZAP baseline" then silently no-op via `|| true`.

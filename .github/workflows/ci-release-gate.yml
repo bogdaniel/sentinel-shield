@@ -178,11 +178,11 @@ jobs:
             echo ""
             echo "## Resolved gates"
             echo ""
-            [ -f reports/sentinel-shield-gates.md ] && cat reports/sentinel-shield-gates.md
+            if [ -f reports/sentinel-shield-gates.md ]; then cat reports/sentinel-shield-gates.md; fi
             echo ""
             echo "## Enforcement"
             echo ""
-            [ -f reports/sentinel-shield-enforcement.md ] && cat reports/sentinel-shield-enforcement.md
+            if [ -f reports/sentinel-shield-enforcement.md ]; then cat reports/sentinel-shield-enforcement.md; fi
           } > reports/release-evidence.md
 
       - name: Upload release evidence

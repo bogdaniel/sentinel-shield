@@ -11,6 +11,7 @@ while [ $# -gt 0 ]; do case "$1" in
   *) echo "[sentinel-shield] codeql-export: unknown argument: $1" >&2; exit 2 ;;
 esac; done
 mkdir -p "$(dirname "$OUT")"
+rm -f -- "$OUT" 2>/dev/null || true   # never leave a stale report as evidence for this run
 # Search only the codeql-action output dir, NOT the whole repo: a stray/fixture *.sarif
 # anywhere in a PR checkout could otherwise be exported as the CodeQL evidence.
 [ -z "$SARIF" ] && SARIF=$(find codeql-results "${RUNNER_TEMP:-/nonexistent}/codeql_databases" -name '*.sarif' 2>/dev/null | head -1)
