@@ -134,13 +134,18 @@ for _spec in $CONSUMER_SPECS; do
 		yarn-immutable) _want='install --immutable$' ;;
 		yarn-classic-frozen) _want='install --frozen-lockfile$' ;;
 	esac
+	# The emitted status must REFLECT the assertion, not be hardcoded. These records are
+	# validated by rcv_validate and consumed as consumer-validation evidence, so a
+	# hardcoded "pass" made the artifact claim every gate passed on a failing run.
 	if printf '%s' "$_cmd" | grep -q "$_want"; then
 		pass "$_rel: immutable template manager-correct ($_cmd)"
+		_recst=pass; _recreason=OK
 	else
 		fail "$_rel: immutable template manager-correct (got '$_cmd')"
+		_recst=fail; _recreason=PM_TEMPLATE_MISMATCH
 	fi
-	rec "$_rel" "$_mgr" "lockfile-authority" "lockfile" "pass" "OK" "structural" "$_line"
-	rec "$_rel" "$_mgr" "pm-authority" "package-manager" "pass" "OK" "structural" "$_cmd"
+	rec "$_rel" "$_mgr" "lockfile-authority" "lockfile" "$_recst" "$_recreason" "structural" "$_line"
+	rec "$_rel" "$_mgr" "pm-authority" "package-manager" "$_recst" "$_recreason" "structural" "$_cmd"
 	IFS='
 '
 done
@@ -438,8 +443,23 @@ else
 	fail "consumer-validation.schema.json is not valid JSON"
 fi
 
-_total=$(grep -c . "$REC" 2>/dev/null || echo 0)
+_total=$(grep -c . "$REC" 2>/dev/null || true)
+case "$_total" in '' | *[!0-9]*) _total=0 ;; esac
 printf '\n201-node-consumers: %s record(s) emitted, %d skip(s), %d failure(s)\n' "$_total" "$SKIPS" "$FAILS"
+
+# EVIDENCE-CONSISTENCY GUARD. This file is validated by rcv_validate and consumed as
+# consumer-validation evidence. Several `rec` calls historically hardcoded "pass",
+# so a failing run still emitted an artifact asserting every gate passed — the exit
+# code was right while the evidence lied. A run with failures must leave a trace in
+# the evidence itself, not only in the exit status.
+if [ "$FAILS" -ne 0 ]; then
+	_nonpass=$(grep -c '"status"[[:space:]]*:[[:space:]]*"\(fail\|skip\)"' "$REC" 2>/dev/null || true)
+	case "$_nonpass" in '' | *[!0-9]*) _nonpass=0 ;; esac
+	if [ "$_nonpass" -eq 0 ]; then
+		printf 'FAIL: %d assertion(s) failed but every emitted record claims "pass" — the evidence artifact contradicts the run\n' "$FAILS"
+	fi
+fi
+
 if [ "$FAILS" -ne 0 ]; then
 	printf '%d assertion(s) FAILED\n' "$FAILS"
 	exit 1

@@ -338,6 +338,24 @@ eh_pass_variant() {
 	_why=""
 	[ "$EH_TP_RC" -eq 0 ] || _why="run-tool-plan exit $EH_TP_RC"
 	[ -n "$_why" ] || [ -f "$_manifest" ] || _why="missing execution manifest"
+	# The manifest must be READABLE, not merely present. eh_manifest_regressions ends in
+	# `|| true`, so a truncated manifest made jq fail, produced empty output, and the
+	# "no regressions" check below read that silence as success.
+	[ -n "$_why" ] || jq -e . "$_manifest" >/dev/null 2>&1 || _why="execution manifest is not valid JSON"
+	# The harness's headline claim is that every required tool actually EXECUTES.
+	# _req_exec was computed, printed into the evidence record and echoed in the success
+	# log — but never asserted. If run-tool-plan degraded to scheduling nothing, every
+	# fixture printed required_executed:0 and the harness still logged "PASS variant OK".
+	# A tool that vanishes from .tools entirely is not flagged by eh_manifest_regressions
+	# either, so this is the only thing standing between "nothing ran" and a green run.
+	[ -n "$_why" ] || [ "${_req_exec:-0}" -gt 0 ] 2>/dev/null \
+		|| _why="no required tool executed (required_executed=${_req_exec:-unset})"
+	# The resolver's tool list drives the report-recreation loop below. eh_resolve
+	# swallows stderr and its exit status is discarded, and this whole function runs under
+	# `|| FAILS=...` which suppresses set -e — so a broken resolver left _writers empty
+	# and silently turned that loop into a no-op over pre-seeded reports.
+	[ -n "$_why" ] || [ -n "$_writers" ] \
+		|| _why="resolver produced no report-writing tools (effective-profile resolution likely failed)"
 	if [ -z "$_why" ]; then
 		_reg=$(eh_manifest_regressions "$_manifest")
 		[ -z "$_reg" ] || _why="required execution regressions [$_reg]"

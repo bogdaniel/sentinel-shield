@@ -191,3 +191,21 @@ jobs:
           else
             echo "::warning::pipx unavailable; zizmor skipped (not validated)"
           fi
+
+      # A REQUIRED check that cannot fail is not a gate.
+      #
+      # Both steps above are `continue-on-error: true` AND end in `|| echo`, so this job
+      # was structurally incapable of a non-zero exit — while being registered
+      # `always-required` in config/required-checks.json and therefore satisfying branch
+      # protection unconditionally. Someone could add `pull_request_target` with a
+      # privileged checkout to a template, have actionlint flag it, and still merge green.
+      #
+      # The advisory posture of actionlint/zizmor is deliberate and is kept. What is added
+      # is a set of NON-ADVISORY structural invariants that must hold for every workflow
+      # and template — the same ones tests/prod/110-workflows.sh enforces locally — so this
+      # job has at least one assertion that can actually fail.
+      - name: Workflow hardening invariants (BLOCKING)
+        run: |
+          set -eu
+          sh tests/prod/110-workflows.sh
+          sh tests/prod/111-workflow-timeouts.sh

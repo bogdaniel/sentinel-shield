@@ -466,7 +466,11 @@ run_hadolint() {
 
 	# Missing Dockerfiles -> --list prints nothing, exits 0.
 	_empty=$(mktemp -d)
-	_out=$( cd "$_empty" && sh "$_rh" --list ); _rc=$?
+	# `_out=$(...); _rc=$?` is unsafe under `set -eu` (line 15): the assignment is itself a
+	# simple command, so a non-zero exit aborts the whole harness BEFORE _rc is read — and
+	# it aborts silently, producing no FAIL line, in exactly the failure case the next two
+	# assertions exist to detect. Capture the status explicitly instead.
+	_rc=0; _out=$( cd "$_empty" && sh "$_rh" --list ) || _rc=$?
 	hl_check "no Dockerfiles -> empty list" "$(printf '%s' "$_out" | wc -c | tr -d ' ')" "0"
 	hl_check "no Dockerfiles -> exit 0" "$_rc" "0"
 
@@ -1630,8 +1634,14 @@ run_v024_coverage() {
 	# --- Workflow hardening (Lane K): EVERY upload step is if: always() (tighter than v0.1.22 check) ---
 	_unguarded=0
 	for _wf in "$ROOT"/templates/workflows/*.yml; do
-		_ups=$(grep -c 'uses: actions/upload-artifact' "$_wf" 2>/dev/null || echo 0)
-		_alw=$(grep -c 'if: always()' "$_wf" 2>/dev/null || echo 0)
+		# `grep -c` PRINTS 0 and EXITS 1 when nothing matches, so `|| echo 0` appends a
+		# SECOND zero: the variable becomes "0\n0" and `[ "0 0" -le "0" ]` raises
+		# "integer expression expected", firing the || branch as a FALSE FAILURE. Latent
+		# today only because every shipped template has an upload; a trap for the next one.
+		_ups=$(grep -c 'uses: actions/upload-artifact' "$_wf" 2>/dev/null || true)
+		_alw=$(grep -c 'if: always()' "$_wf" 2>/dev/null || true)
+		case "$_ups" in '' | *[!0-9]*) _ups=0 ;; esac
+		case "$_alw" in '' | *[!0-9]*) _alw=0 ;; esac
 		[ "$_ups" -le "$_alw" ] || { log_error "  $(basename "$_wf"): $_ups uploads but only $_alw if:always()"; _unguarded=$((_unguarded + 1)); }
 	done
 	vc_check "every workflow upload guarded by if: always()" "$_unguarded" "0"

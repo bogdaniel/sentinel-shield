@@ -56,10 +56,37 @@ else
 fi
 
 # No credential userinfo ('@') ever stored in repository.
-if jq -e 'has("repository") and (.repository|test("@"))' "$INST" >/dev/null 2>&1; then
-	fail "(a) repository must not carry credentials ('@')"
+#
+# This assertion used to be STRUCTURALLY UNFALSIFIABLE. Fixture TA is a bare `mkdir -p`
+# with no .sentinel-shield-ref record, and install-baseline.sh only populates .repository
+# from that record — so `has("repository")` was always false and the `pass` branch always
+# fired. A `null` .repository would additionally make test() raise a jq error, which is
+# also non-zero, which also passed. Regressing the installer to persist
+# `https://tok@host/o/r` would not have been detected.
+#
+# A positive control now proves the check can actually see a credential-bearing value.
+if jq -e '(.repository // null) != null' "$INST" >/dev/null 2>&1; then
+	# repository present and non-null. `test("@")` ERRORS on a non-string (null slips past
+	# has("repository")), and that error, swallowed by `2>/dev/null`, made the `else` record
+	# a false "no credential" pass. Require a string first: a non-string repository is a
+	# malformed record and fails, never silently passes.
+	if jq -e '(.repository | type) != "string"' "$INST" >/dev/null 2>&1; then
+		fail "(a) repository is present but not a string (malformed record)"
+	elif jq -e '.repository | test("@")' "$INST" >/dev/null 2>&1; then
+		fail "(a) repository must not carry credentials ('@')"
+	else
+		pass "(a) repository carries no credential userinfo"
+	fi
 else
-	pass "(a) repository carries no credential userinfo"
+	pass "(a) no repository recorded (nothing to leak)"
+fi
+# Positive control: the same predicate MUST flag a credential-bearing record.
+_ctl="$WORK/cred-control.json"
+printf '{"repository":"https://tok@github.com/o/r"}\n' > "$_ctl"
+if jq -e '.repository | test("@")' "$_ctl" >/dev/null 2>&1; then
+	pass "(a) positive control: the credential predicate detects userinfo"
+else
+	fail "(a) positive control FAILED — the credential check cannot detect '@' at all"
 fi
 
 # Atomic write leaves NO temp file and NO dangling lock after success.

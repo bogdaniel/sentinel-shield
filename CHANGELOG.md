@@ -662,6 +662,57 @@ pre-hotfix engine).
   required tools, and the absent baseline-comparison mechanism remain open and are listed in
   `docs/fail-closed-evidence.md`.
 
+### Fixed — checks that could not fail (test/CI integrity)
+
+Assertions and CI jobs that reported green without being able to detect the thing they
+existed to catch. Each item is a check that was **structurally incapable of failing**, not a
+check that merely happened to pass.
+
+- **`tests/prod/92-release-binding.sh` — ~10 assertions passed for the wrong reason.** POSIX
+  leaves it unspecified whether a `VAR=value` prefix on a **function** call persists; dash and
+  bash discard it, macOS `/bin/sh` keeps it. Unwrapped, `RUN_NAME=ci-docker expect …` leaked
+  into every later assertion, and once `FAIL_RUN=1` leaked the artifact-ownership check could
+  never fail. Proven by mutation: deleting the ownership check from
+  `validate-release-evidence.sh` still passed before this change, and fails after it. Each
+  prefixed call is now isolated in a subshell.
+- **`workflow-sanity` was an `always-required` check with no assertion.** Both of its steps are
+  `continue-on-error: true` and end in `|| echo`, so the job could not exit non-zero while
+  satisfying branch protection unconditionally. The advisory posture of actionlint/zizmor is
+  kept; a blocking structural-invariant step (110/111) is added so the gate can actually fail.
+- **`ci-production-readiness` changed-file evidence was always the whole repo.** The aggregate
+  job checked out at depth 1, so every diff-base probe failed and the chain fell through to
+  `git ls-files`. That file is reviewed as evidence, so it was identical for a one-line docs PR
+  and a rewrite of `scripts/`. Now `fetch-depth: 0`, and the degraded fallback emits a warning
+  instead of being silent.
+- **`scripts/e2e-harness.sh` passed with zero required tools executed.** `_req_exec` was
+  computed, recorded and printed — but never asserted. A resolver failure additionally emptied
+  the report-recreation loop silently (`eh_resolve` discards its status, and `|| FAILS=…`
+  suppresses `set -e`), and a truncated manifest read as "no regressions" because
+  `eh_manifest_regressions` ends in `|| true`. All four are now assertions.
+- **`tests/prod/190-hygiene.sh` passed vacuously without git.** Every check is
+  `git ls-files | grep … || true`, where the `|| true` covers the whole pipeline — outside a
+  work tree all seven checks printed PASS having inspected nothing. A positive control now
+  requires git, a work tree, and a non-empty file list.
+- **`tests/prod/110-workflows.sh` exited 0 on an empty glob.** Renaming `templates/workflows/`
+  or moving to `.yaml` would have silently retired all five hardening invariants. Zero files is
+  now a failure, and the count is reported.
+- **`tests/prod/120-installer-tx.sh` credential check was unfalsifiable.** The fixture never
+  populates `.repository`, so `has("repository")` was always false and the `pass` branch always
+  fired; a `null` value would also have raised a jq error, which also passed. Split, and a
+  positive control now proves the predicate detects `user@host`.
+- **Root skips printed as PASS** in `tests/prod/121-recovery.sh`. Under a root CI container the
+  permission-failure paths the suite exists to prove silently evaporated while it reported
+  green. They are recorded as SKIP — the suite header already said "a skip is not a pass".
+- **`tests/prod/201-node-consumers.sh` hardcoded `"pass"` into evidence records.** The exit code
+  was right while the JSONL artifact — validated by `rcv_validate` and consumed as
+  consumer-validation evidence — claimed every gate passed on a failing run. Status now
+  reflects the assertion, and a guard fails the suite if a failing run emits an all-pass
+  artifact.
+- **`scripts/self-test.sh`**: `_out=$(…); _rc=$?` under `set -eu` aborted the harness before
+  `_rc` was read — silently, with no FAIL line, in precisely the case the following assertions
+  detect. And `grep -c … || echo 0` appended a **second** zero (`grep -c` prints 0 *and* exits
+  1), producing `"0\n0"` and an "integer expression expected" false failure.
+
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 
 

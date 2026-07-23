@@ -34,8 +34,15 @@ pass "workflow dir present: templates/workflows"
 # mentions (e.g. "no pull_request_target") never trip the invariants below.
 code_lines() { grep -vE '^[[:space:]]*#' "$1"; }
 
+# Guard against an EMPTY glob. If templates/workflows/ is renamed or converted to .yaml,
+# the loop body never runs, FAILS stays 0, and all five hardening invariants (SHA pinning,
+# no pull_request_target, permissions:, persist-credentials:false, no curl|sh) silently
+# stop being enforced while the log still looks healthy. 111-workflow-timeouts.sh already
+# guards this way; this suite did not.
+_seen=0
 for f in "$WF_DIR"/*.yml; do
 	[ -f "$f" ] || continue
+	_seen=$((_seen + 1))
 	b=$(basename "$f")
 	CODE=$(code_lines "$f")
 
@@ -99,8 +106,15 @@ for f in "$WF_DIR"/*.yml; do
 	fi
 done
 
+# Zero workflow files means zero assertions ran — an empty glob must be a FAILURE, not a
+# silent green. Without this the suite exits 0 having verified nothing.
+if [ "$_seen" -eq 0 ]; then
+	fail "no workflow files found under $WF_DIR — the hardening invariants were not checked"
+fi
+
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d assertion(s) failed\n' "$FAILS" >&2
 	exit 1
 fi
+printf 'checked %d workflow template(s)\n' "$_seen"
 exit 0
