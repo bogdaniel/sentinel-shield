@@ -28,27 +28,40 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
 		-h | --help) printf 'Usage: audit-docker-base-digest.sh [--output <path>] [files...]\n'; exit 0 ;;
-		*) FILES="$FILES $1"; shift ;;
+		*) FILES="$FILES
+$1"; shift ;;
 	esac
 done
 
 if [ -z "$FILES" ]; then
-	for f in Dockerfile Dockerfile.*; do [ -f "$f" ] && FILES="$FILES ./$f"; done
+	for f in Dockerfile Dockerfile.*; do [ -f "$f" ] && FILES="$FILES
+./$f"; done
 	for d in docker .docker; do
 		[ -d "$d" ] || continue
-		FILES="$FILES $(find "$d" \
+		FILES="$FILES
+$(find "$d" \
 			-type d \( -name node_modules -o -name vendor -o -name .git -o -name dist -o -name build -o -name coverage \) -prune -o \
 			-type f \( -name Dockerfile -o -name 'Dockerfile.*' \) -print 2>/dev/null)"
 	done
 fi
-FILES=$(printf '%s\n' $FILES | sed '/^$/d' | sort -u)
+FILES=$(printf '%s\n' "$FILES" | sed '/^$/d' | sort -u)
+# $FILES holds LITERAL paths (CLI args + discovered Dockerfiles). The `for f in $FILES`
+# loops below word-split on newline (IFS) but WITHOUT this would also pathname-expand each
+# word, so a file literally named e.g. `Dockerfile[1]` could match a different path or be
+# skipped. `set -f` disables pathname expansion for the rest of the script; it does NOT
+# affect the `case` glob patterns used later (those are unaffected by -f).
+set -f
 
 ensure_dir "$(dirname "$OUTPUT")"
 TMP=$(mktemp); trap 'rm -f "$TMP"' EXIT INT TERM; : > "$TMP"
 
 # Collect declared stage aliases (FROM x AS alias) so `FROM alias` is not flagged.
 STAGES=" "
+_ss_oifs=$IFS
+IFS='
+'
 for f in $FILES; do
+	IFS=$_ss_oifs
 	[ -f "$f" ] || continue
 	while IFS= read -r a; do
 		[ -n "$a" ] && STAGES="$STAGES$(printf '%s' "$a" | tr '[:upper:]' '[:lower:]') "
@@ -57,7 +70,11 @@ $(grep -iE '^[[:space:]]*FROM[[:space:]]' "$f" | sed -nE 's/.*[[:space:]][Aa][Ss
 EOF
 done
 
+_ss_oifs=$IFS
+IFS='
+'
 for f in $FILES; do
+	IFS=$_ss_oifs
 	[ -f "$f" ] || continue
 	_ln=0
 	while IFS= read -r line || [ -n "$line" ]; do
@@ -87,5 +104,5 @@ done
 
 jq -s '.' "$TMP" > "$OUTPUT"
 _n=$(jq 'length' "$OUTPUT")
-log_info "audit-docker-base-digest: scanned $(printf '%s\n' $FILES | grep -c . 2>/dev/null || echo 0) Dockerfile(s) -> $OUTPUT ($_n un-digested base(s))"
+log_info "audit-docker-base-digest: scanned $(printf '%s\n' "$FILES" | grep -c . 2>/dev/null || true) Dockerfile(s) -> $OUTPUT ($_n un-digested base(s))"
 exit 0

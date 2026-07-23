@@ -32,7 +32,8 @@ while [ $# -gt 0 ]; do
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
 		--dir) DIR="${2:?--dir requires a value}"; shift 2 ;;
 		-h | --help) printf 'Usage: audit-github-actions-pins.sh [--output <path>] [--dir <dir>] [files...]\n'; exit 0 ;;
-		*) FILES="$FILES $1"; shift ;;
+		*) FILES="$FILES
+$1"; shift ;;
 	esac
 done
 
@@ -42,6 +43,11 @@ if [ -z "$FILES" ]; then
 		FILES=$(find "$DIR" -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sort)
 	fi
 fi
+
+# $FILES holds literal workflow paths. Disable pathname expansion so the newline-split
+# `for f in $FILES` below never glob-expands a path containing shell metacharacters. `case`
+# glob patterns later are unaffected by `set -f`.
+set -f
 
 ensure_dir "$(dirname "$OUTPUT")"
 
@@ -57,7 +63,11 @@ is_sha() { # 40-char lowercase hex
 	printf '%s' "$1" | grep -Eq '^[0-9a-f]{40}$'
 }
 
+_ss_oifs=$IFS
+IFS='
+'
 for f in $FILES; do
+	IFS=$_ss_oifs
 	[ -f "$f" ] || continue
 	_ln=0
 	while IFS= read -r line || [ -n "$line" ]; do
@@ -110,5 +120,5 @@ done
 
 jq -s '.' "$TMP" > "$OUTPUT"
 _n=$(jq 'length' "$OUTPUT")
-log_info "audit-github-actions-pins: scanned $(printf '%s\n' $FILES | grep -c . 2>/dev/null || echo 0) file(s) -> $OUTPUT ($_n unpinned ref(s))"
+log_info "audit-github-actions-pins: scanned $(printf '%s\n' "$FILES" | grep -c . 2>/dev/null || true) file(s) -> $OUTPUT ($_n unpinned ref(s))"
 exit 0

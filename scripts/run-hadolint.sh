@@ -70,6 +70,10 @@ discover() {
 
 # De-dup, stable order.
 FILES=$(discover | sort -u)
+# $FILES holds literal Dockerfile paths. Disable pathname expansion so the newline-split
+# `for f in $FILES` never glob-expands a path with shell metacharacters (`case` globs later
+# are unaffected by `set -f`).
+set -f
 
 if [ "$LIST_ONLY" -eq 1 ]; then
 	[ -n "$FILES" ] && printf '%s\n' "$FILES"
@@ -129,7 +133,11 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 ANY_VALID=0
 FAILED=0
 i=0
+_ss_oifs=$IFS
+IFS='
+'
 for f in $FILES; do
+	IFS=$_ss_oifs
 	i=$((i + 1))
 	out=$(run_one "$f" || true)
 	if printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then
@@ -140,6 +148,10 @@ for f in $FILES; do
 		FAILED=1
 	fi
 done
+# Re-enable pathname expansion: $FILES has been consumed, and the `jq … part-*.json` merge
+# below is a PATHNAME glob that set -f would otherwise leave literal (jq then fails to open
+# 'part-*.json' and the runner exits non-zero — a required-tool execution error).
+set +f
 
 if [ "$ANY_VALID" -eq 0 ]; then
 	# Nothing parseable at all — Hadolint failed unexpectedly. Do NOT fake an empty report.

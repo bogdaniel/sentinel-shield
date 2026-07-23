@@ -3,6 +3,14 @@
 # ACTION PINNING: `uses:` shows version tags for readability. Per
 # docs/github-actions-security.md, pin third-party actions to a full commit SHA
 # in sensitive (deploy/release) workflows before production use.
+# SCANNER IMAGES ARE VERSION-PINNED, NEVER `:latest`.
+# A mutable tag in the job that produces release evidence means the scanner set can change
+# silently between two runs of the SAME commit — the acceptance artifact stops being
+# reproducible, and a republished upstream tag is code execution with the repo bind-mounted.
+# Versions below are the ones recorded in evidence/releases/*-security-acceptance.json, i.e.
+# the versions that actually produced the shipped evidence. Pin by @sha256 digest before
+# treating any of these as supply-chain-hardened; a version tag is still mutable in principle.
+
 name: ci-security
 
 on:
@@ -18,6 +26,14 @@ on:
 
 permissions:
   contents: read
+
+# Pin the Trivy SCANNER version once. The trivy-action otherwise installs "latest", so the
+# binary that generates reports/raw/trivy.json could differ from whatever version the freshness
+# step records — the manifest would then claim a version that did not produce the scan. Every
+# trivy-action step below installs this exact version, and the version-capture step records
+# THIS value, so the recorded version is always the one that scanned.
+env:
+  TRIVY_VERSION: "v0.72.0"
 
 concurrency:
   group: ci-security-${{ github.ref }}
@@ -111,6 +127,7 @@ jobs:
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
@@ -218,7 +235,7 @@ jobs:
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
@@ -226,6 +243,7 @@ jobs:
       - name: Trivy (JSON → reports/raw/trivy.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
@@ -343,7 +361,7 @@ jobs:
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
           jq -e 'type == "array"' reports/raw/gitleaks.json >/dev/null 2>&1 \
@@ -352,6 +370,7 @@ jobs:
       - name: Trivy (JSON → reports/raw/trivy.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
@@ -371,7 +390,7 @@ jobs:
         run: |
           set +e
           docker run --rm -v "$PWD:/src" -w /src \
-            ghcr.io/google/osv-scanner:latest scan source --recursive --format json /src \
+            ghcr.io/google/osv-scanner:v2.4.0 scan source --recursive --format json /src \
             > reports/raw/osv-scanner.json 2> reports/raw/osv-scanner.err
           rc=$?
           set -e
@@ -386,7 +405,7 @@ jobs:
       - name: Grype (JSON → reports/raw/grype.json)
         run: |
           set +e
-          docker run --rm -v "$PWD:/src" anchore/grype:latest dir:/src -o json \
+          docker run --rm -v "$PWD:/src" anchore/grype:v0.115.0 dir:/src -o json \
             > reports/raw/grype.json 2> reports/raw/grype.err
           rc=$?
           set -e
@@ -399,7 +418,7 @@ jobs:
       - name: actionlint (JSON → reports/raw/actionlint.json)
         run: |
           set +e
-          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -format '{{json .}}' \
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -format '{{json .}}' \
             > reports/raw/actionlint.json 2> reports/raw/actionlint.err
           rc=$?
           set -e
@@ -424,8 +443,11 @@ jobs:
           # (pinned above to $GITHUB_WORKSPACE/.cache/trivy) — read from that same path.
           trivy_meta="${GITHUB_WORKSPACE:-$PWD}/.cache/trivy/db/metadata.json"
           trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
-          trivy_ver=$(docker run --rm aquasec/trivy:latest version --format json 2>/dev/null | jq -r '.Version // empty' 2>/dev/null || true)
-          osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:latest --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
+          # Record the SAME version the trivy-action was pinned to above (env.TRIVY_VERSION),
+          # not a separately-pulled container: the recorded version must be the one that
+          # actually generated reports/raw/trivy.json. Strip the leading "v" for the manifest.
+          trivy_ver="${TRIVY_VERSION#v}"
+          osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:v2.4.0 --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
           # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness is the
           # scan instant — recorded explicitly here as evidence, not defaulted inside the tool.
           osv_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
