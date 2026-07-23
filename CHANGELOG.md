@@ -14,7 +14,6 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ### Fixed — full-repo review batch 10: targeted robustness + offboarding (deferred-class, safe subset)
 
 The objective, low-risk items from the deferred optimization/improvement class — the ones with
