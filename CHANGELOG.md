@@ -553,6 +553,68 @@ Verified NOT dead, and left alone: `scorecard`, `trufflehog`, `dependency-check`
 Three self-test assertions **required the old coercing behaviour** and are updated in place with
 the reasoning (two in `270-quality-gates.sh`, plus the earlier ones in this series). New:
 `tests/prod/269-gate-correctness.sh` (41 checks, 27 failing against the unfixed engine).
+### Fixed — collector severity mapping (engine-only)
+
+Eleven collectors mapped real scanner output to the wrong gate, in both directions. Each item
+below produced a **wrong gate verdict** on realistic input. Proven by
+`tests/prod/267-collector-severity-mapping.sh` (51 checks, 31 of which fail against the
+unfixed collectors).
+
+**Under-blocking — real findings that did not gate:**
+
+- `osv-scanner` collapsed every severity into `high_vulnerabilities` with `critical` hardcoded
+  to 0. A project that set `gates.fail_on.high_vulnerabilities: false` during migration — a
+  documented, expected override — while keeping `critical: true` was **completely blind to
+  critical CVEs**. Now buckets by `database_specific.severity`. The CVSS-vector fallback (no
+  label) classifies by impact metrics — all-high → critical, any high impact → high, else
+  medium — so a genuine high/critical vector is never downgraded to medium and slipped past
+  the baseline gate; a vulnerability with no severity signal at all still counts as medium
+  rather than being dropped.
+- `codeql` hardcoded `critical_vulnerabilities: 0` and read only the per-result SARIF `level`.
+  CodeQL commonly omits that and carries the level in the rule's `defaultConfiguration`, so
+  error-level findings defaulted to medium — which does not block in baseline. Now resolves the
+  rule-level severity and honours CodeQL's `security-severity` score (>=9 critical, >=7 high).
+- `composer-audit` returned zero when advisories carried no `severity` field, which they
+  frequently do. A PHP project with known CVEs in `composer.lock` reported zero vulnerabilities
+  and passed strict. Unlabelled/unrecognized advisories now count as medium (fail-closed),
+  while an explicit `low` is dropped, not gated — the canonical `LOW/INFO → not gated` rule,
+  matching how `osv-scanner` already treats an explicit low.
+- `trufflehog` dropped every finding marked `Verified: false`. TruffleHog reports unverified
+  findings by default and non-verifiable custom detectors always do, so real leaked credentials
+  contributed nothing to `secrets` — the gate that blocks in **every** mode. All findings are
+  counted; the verified/unverified split is reported for triage.
+- `trivy` read only `Vulnerabilities[]`, silently discarding `Misconfigurations[]` and
+  `Secrets[]` from the same report. Each family now maps to its own channel.
+- `checkov` raised a jq type error on its documented multi-framework ARRAY output (emitted
+  whenever more than one check type runs), exiting non-zero and failing the whole build. Both
+  shapes are now summed.
+
+**Over-blocking — clean runs that failed, or non-security findings on a security gate:**
+
+- `php-style` counted `.files`, which is keyed by every **scanned** file including clean ones.
+  A clean sweep over a 400-file project reported 400 style violations, and `style_violations`
+  blocks in strict — every PHP project failed permanently, with a count that scaled with repo
+  size. Now reads `totals.errors + totals.warnings`, or per-file counts.
+- `php-syntax` had the identical bug against a gate that blocks from **baseline** up.
+- `eslint` mapped every lint WARNING to `medium_vulnerabilities` (50 unused-variable warnings
+  failed a release gate as "50 medium vulnerabilities"), and **double-counted** security rule
+  hits into both `type_errors` and `high_vulnerabilities` since they are a subset of
+  `errorCount`. Channels are now separated and the subset subtracted.
+- `semgrep` mapped `INFO` to `medium_vulnerabilities`, which blocks in strict — directly
+  contradicting `docs/severity-policy.md` ("Informational … never blocks"). It also promoted
+  `ERROR`, Semgrep's default level for many non-vulnerability correctness rules, straight to
+  `critical`. INFO/LOW are now informational and never gate; ERROR maps to high.
+
+`docs/severity-normalization.md` is corrected to describe the code — several of its statements,
+including its "never silently dropped into `pass`" guarantee, were untrue before this change.
+
+One self-test assertion was **changed rather than kept**: `trufflehog -> secrets (verified
+only)` pinned the defect itself as expected behaviour.
+
+**Known remaining mismatch, documented not fixed:** `actionlint` maps lint errors to
+`unsafe_github_actions`. Unlike everything above it fails *safe* (over-blocking), and routing it
+correctly needs a workflow-lint summary key that does not exist — a schema change, not a mapping
+fix.
 
 **No tag, release, manifest, or evidence bundle is produced by this change.**
 

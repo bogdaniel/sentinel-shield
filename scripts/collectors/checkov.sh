@@ -13,7 +13,18 @@ while [ $# -gt 0 ]; do case "$1" in
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
-N=$(jq '(if (.summary.failed?) != null then .summary.failed elif (.results.failed_checks?) != null then (.results.failed_checks|length) else 0 end) // 0 | floor' "$INPUT")
+# Checkov emits an ARRAY of per-framework objects whenever more than one check type runs
+# (Terraform + Dockerfile, say). `.summary.failed?` against an array raises
+# "Cannot index array with string" — the `?` does not suppress a type error — so the
+# collector exited 5 and the whole build failed. Fail-closed, but unusable on any repo
+# with more than one IaC framework. Both shapes are now summed.
+N=$(jq '
+	def one: (if type == "object" then
+			(if (.summary? | type) == "object" and ((.summary.failed? | type) == "number") then .summary.failed
+			 elif (.results?.failed_checks? | type) == "array" then (.results.failed_checks | length)
+			 else 0 end)
+		else 0 end);
+	(if type == "array" then ([ .[] | one ] | add // 0) else one end) // 0 | floor' "$INPUT")
 case "$N" in ''|*[!0-9]*) log_error "$TOOL: non-integer count"; exit 2 ;; esac
 if [ "$N" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
 REPORT=$(jq -n --arg s "$STATUS" --argjson n "$N" '{status:$s, iac_violations:$n}')

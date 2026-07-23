@@ -34,12 +34,30 @@ ss_collector_guard "$TOOL" "$INPUT"
 OV=$(jq '
 	[ .results[]?.extra.severity // empty | ascii_upcase ] as $s
 	| {
-		critical_vulnerabilities: ([ $s[] | select(. == "ERROR" or . == "CRITICAL") ] | length),
-		high_vulnerabilities:     ([ $s[] | select(. == "WARNING" or . == "HIGH") ] | length),
-		medium_vulnerabilities:   ([ $s[] | select(. == "INFO" or . == "MEDIUM") ] | length)
+		# docs/severity-policy.md: Informational findings have "no direct security impact
+		# ... never blocks". INFO was mapped to medium_vulnerabilities, which BLOCKS in
+		# strict/regulated — the collector contradicted the policy it is judged by.
+		# INFO is now reported separately (informational, never gated).
+		#
+		# The Semgrep ERROR level is its default for many non-vulnerability correctness
+		# rules, so promoting it straight to CRITICAL — never suppressible, blocking from
+		# baseline — massively over-blocked. ERROR now maps to high; only an explicit
+		# CRITICAL severity is critical.
+		critical_vulnerabilities: ([ $s[] | select(. == "CRITICAL") ] | length),
+		high_vulnerabilities:     ([ $s[] | select(. == "ERROR" or . == "HIGH") ] | length),
+		medium_vulnerabilities:   ([ $s[] | select(. == "WARNING" or . == "MEDIUM") ] | length),
+		_informational:           ([ $s[] | select(. == "INFO" or . == "LOW") ] | length)
 	}' "$INPUT")
 
-TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
-if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
-REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities}')
-ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"
+# Status is derived from the GATING buckets only. Informational findings are reported but
+# must never drive the status, or "1 INFO finding" would still fail the gate — exactly the
+# behavior docs/severity-policy.md says never happens.
+TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities, .high_vulnerabilities, .medium_vulnerabilities] | add // 0')
+INFO=$(printf '%s' "$OV" | jq '._informational // 0')
+if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; elif [ "$INFO" -gt 0 ]; then STATUS="warn"; else STATUS="pass"; fi
+REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities, informational: ._informational}')
+# `_informational` is internal metadata: it is surfaced in the tool_report but must NOT
+# enter summary.* — schemas/security-summary.schema.json sets additionalProperties:false
+# on summary, so an undeclared key would make the whole document invalid.
+OVCOUNTS=$(printf '%s' "$OV" | jq '{critical_vulnerabilities, high_vulnerabilities, medium_vulnerabilities}')
+ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OVCOUNTS"
