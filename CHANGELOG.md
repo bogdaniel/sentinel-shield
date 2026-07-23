@@ -1038,7 +1038,7 @@ soak was explicitly waived by the release owner (`evidence/releases/v2.0.0-soak-
 See [`docs/v2.0.0-release-notes.md`](docs/v2.0.0-release-notes.md) and
 [`docs/v2.0.0-known-limitations.md`](docs/v2.0.0-known-limitations.md).
 
-## [Unreleased]
+## [2.0.0-beta.2] — Engine-Only Production-Readiness Hardening (unpublished — superseded by v2.0.0)
 
 ### v2.0.0-beta.2 (DRAFT — engine-only, not published) — production-readiness hardening
 
