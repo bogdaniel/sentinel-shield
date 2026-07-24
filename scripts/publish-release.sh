@@ -154,8 +154,13 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
 else
 	say "creating GitHub Release $TAG..."
 	# shellcheck disable=SC2086
-	gh release create "$TAG" --repo "$REPO" --verify-tag \
-		--title "$TITLE" --notes-file "$NOTES" $KIND $PRE
+	if ! gh release create "$TAG" --repo "$REPO" --verify-tag \
+		--title "$TITLE" --notes-file "$NOTES" $KIND $PRE; then
+		# A concurrent publisher may have created it between the check and now.
+		gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 \
+			|| die "gh release create failed and no release exists for $TAG"
+		say "GitHub Release $TAG was created concurrently; treating as success."
+	fi
 fi
 
 # --- post-publish verification ---------------------------------------------------------

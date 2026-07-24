@@ -97,15 +97,18 @@ sh "$SCRIPT_DIR/verify-release-artifacts.sh" --evidence "$PFX.json" --output "$P
 # artifacts[] + artifacts_verified — the exact state ra_check_evidence_source gates on for
 # artifacts_required workflows. verify-release-artifacts only emits the report; nothing else
 # writes this back, so the collector's honest empty artifacts[] would otherwise fail the gate.
-_embed_tmp=$(mktemp)
+# temp in the SAME dir as the target so the mv is an atomic same-filesystem rename;
+# fail closed if the rewrite errors (a silent failure would leave the un-embedded evidence).
+_embed_tmp=$(mktemp "$EVID/.embed.XXXXXX")
 jq --slurpfile rep "$PFX-artifacts.json" '
 	($rep[0].artifacts) as $recs
 	| .engine_ci |= map(
 		.workflow_run_id as $rid
 		| ($recs | map(select(.run_id == $rid) | {id: .artifact_id, name: .name, verified: .verified})) as $a
 		| .artifacts = $a
-		| .artifacts_verified = (($a | length) > 0 and (all($a[]; .verified == true)))
-	)' "$PFX.json" > "$_embed_tmp" && mv "$_embed_tmp" "$PFX.json"
+		| .artifacts_verified = ((.result == "success") and (($a | length) > 0) and (all($a[]; .verified == true)))
+	)' "$PFX.json" > "$_embed_tmp" || { rm -f "$_embed_tmp"; die "failed to embed verified artifacts into $PFX.json"; }
+mv "$_embed_tmp" "$PFX.json"
 
 # --- 3. pull the three CI-proven gate reports from their green runs ----------
 step "3/8 download CI-proven gate reports (security / compatibility / adopter)"
@@ -172,9 +175,13 @@ sh "$SCRIPT_DIR/authorize-production-release.sh" prepare \
 # Relativize the recorded paths (to the candidate's own directory) so the candidate is
 # PORTABLE — verify-candidate/publish must resolve on any machine, not just where it was
 # generated. Paths were passed absolute above (built from $ROOT); rewrite them like v2.0.1.
-_rel_tmp=$(mktemp)
+# MERGE (not rebuild) so optional fields like .artifacts.waivers — which
+# authorize-production-release.sh reads — survive the rewrite. Temp in the same dir
+# (atomic rename); fail closed so a silent jq/mv error can't leave the absolute-path
+# candidate in place (which would still verify READY only on this machine).
+_rel_tmp=$(mktemp "$EVID/.cand.XXXXXX")
 jq --arg v "$VERSION" --arg s "$STAGE" '
-	.artifacts = {
+	.artifacts = (.artifacts + {
 		evidence: "./v\($v)-\($s).json",
 		manifest: "../manifests/v\($v)-\($s).manifest.json",
 		artifact_verification: "./v\($v)-\($s)-artifacts.json",
@@ -183,12 +190,13 @@ jq --arg v "$VERSION" --arg s "$STAGE" '
 		adopter_scorecard: "./v\($v)-\($s)-adopter-scorecard.json",
 		upgrade_validation: "./v\($v)-\($s)-upgrade-validation.json",
 		rollback_validation: "./v\($v)-\($s)-rollback-validation.json"
-	}
-	| .docs = {
+	})
+	| .docs = (.docs + {
 		limitations: "../../docs/v\($v)-known-limitations.md",
 		support_policy: "../../docs/support-policy.md",
 		incident_response: "../../docs/security-incident-response.md"
-	}' "$CANDIDATE" > "$_rel_tmp" && mv "$_rel_tmp" "$CANDIDATE"
+	})' "$CANDIDATE" > "$_rel_tmp" || { rm -f "$_rel_tmp"; die "failed to relativize candidate paths in $CANDIDATE"; }
+mv "$_rel_tmp" "$CANDIDATE"
 
 # --- 8. verify candidate (all GA gates) -------------------------------------
 step "8/8 verify candidate (re-derive every GA gate)"
