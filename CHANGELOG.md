@@ -14,6 +14,15 @@ engine-only v2 scope.
 
 ## [Unreleased]
 
+## [2.2.0] — Engine-Only Feature Release — 2026-07-24
+
+Engine-only feature release. Adds three additive, evidence-based engineering-governance gate
+families (testing-discipline, engineering-quality, architecture governance v2) and folds in ten
+batches of full-repo review fixes plus release-prep/publish automation. Backward-compatible: no
+stable CLI, exit code, env var, or schema was renamed or removed, and existing mode defaults are
+unchanged (the new gate families are off by default). Baseline `v2.0.1`. Framework-validated GA
+and full-platform GA are not claimed.
+
 ### Fixed — full-repo review batch 10: targeted robustness + offboarding (deferred-class, safe subset)
 
 The objective, low-risk items from the deferred optimization/improvement class — the ones with
