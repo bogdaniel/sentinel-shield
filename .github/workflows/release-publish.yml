@@ -35,13 +35,27 @@ jobs:
 
       - name: Resolve tag, notes, and release kind
         id: meta
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
           TAG="${GITHUB_REF_NAME}"
           NOTES="docs/${TAG}-release-notes.md"
+          BR="${DEFAULT_BRANCH:-master}"
+          # Source-tag releases tag the CI-proven engine commit, which predates the notes
+          # (the notes are merged to the default branch separately). Resolve them from the
+          # tagged tree first, else from the default branch. Skip cleanly (never fail the
+          # tag push) if neither has them — a human can still publish manually.
           if [ ! -f "$NOTES" ]; then
-            echo "::error::release notes '$NOTES' not found in the tagged commit; refusing to publish" >&2
-            exit 1
+            git fetch --quiet --depth=1 origin "$BR" 2>/dev/null || true
+            if git show "FETCH_HEAD:$NOTES" > "/tmp/${TAG}-notes.md" 2>/dev/null \
+               || git show "origin/${BR}:$NOTES" > "/tmp/${TAG}-notes.md" 2>/dev/null; then
+              NOTES="/tmp/${TAG}-notes.md"
+            else
+              echo "::warning::release notes for '$TAG' not found in the tagged commit or the default branch; skipping auto-publish (publish manually)"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
           # Prerelease when the tag carries a pre-release suffix; GA otherwise.
           case "$TAG" in
@@ -49,6 +63,7 @@ jobs:
             *)                      KIND="--latest" ;;
           esac
           {
+            echo "skip=false"
             echo "tag=$TAG"
             echo "notes=$NOTES"
             echo "kind=$KIND"
@@ -56,6 +71,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release (verifies the pushed tag)
+        if: steps.meta.outputs.skip != 'true'
         # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand
         # into the shell as code — a tag name is attacker-influenceable. (zizmor: template-injection)
         env:
@@ -66,6 +82,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -eu
+          # Idempotent: if a human already published this tag manually, do not fail.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it as-is (idempotent)."
+            exit 0
+          fi
           # shellcheck disable=SC2086
           gh release create "$TAG" \
             --repo "$REPO" \
@@ -75,6 +96,7 @@ jobs:
             $KIND
 
       - name: Verify the published release
+        if: steps.meta.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
