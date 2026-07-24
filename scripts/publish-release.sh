@@ -143,7 +143,7 @@ else
 	git tag -s "$TAG" "$SRC" -m "$TITLE"
 fi
 say "verifying tag signature + target..."
-git verify-tag "$TAG" >/dev/null 2>&1 || die "tag $TAG signature does NOT verify — refusing to push"
+git verify-tag "$TAG" >/dev/null 2>&1 || die "tag $TAG signature does NOT verify (e.g. a prior signing attempt failed) — refusing to push. Delete the local tag and re-run: git tag -d $TAG && sh scripts/publish-release.sh --version $VERSION"
 [ "$(git rev-list -n1 "$TAG")" = "$SRC" ] || die "tag $TAG does not peel to $SRC"
 say "pushing tag $TAG to $REMOTE..."
 git push "$REMOTE" "refs/tags/$TAG"
