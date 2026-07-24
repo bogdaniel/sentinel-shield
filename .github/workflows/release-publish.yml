@@ -56,26 +56,36 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release (verifies the pushed tag)
+        # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand
+        # into the shell as code — a tag name is attacker-influenceable. (zizmor: template-injection)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+          KIND: ${{ steps.meta.outputs.kind }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
-          gh release create "${{ steps.meta.outputs.tag }}" \
-            --repo "${GITHUB_REPOSITORY}" \
+          # shellcheck disable=SC2086
+          gh release create "$TAG" \
+            --repo "$REPO" \
             --verify-tag \
-            --title "Sentinel Shield ${{ steps.meta.outputs.tag }}" \
-            --notes-file "${{ steps.meta.outputs.notes }}" \
-            ${{ steps.meta.outputs.kind }}
+            --title "Sentinel Shield $TAG" \
+            --notes-file "$NOTES" \
+            $KIND
 
       - name: Verify the published release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
           STAGE=ga
-          case "${{ steps.meta.outputs.tag }}" in *-rc*) STAGE=rc ;; *-beta*) STAGE=beta ;; *-alpha*) STAGE=alpha ;; esac
+          case "$TAG" in *-rc*) STAGE=rc ;; *-beta*) STAGE=beta ;; *-alpha*) STAGE=alpha ;; esac
           sh scripts/verify-published-release.sh verify-github-release \
-            --tag "${{ steps.meta.outputs.tag }}" \
+            --tag "$TAG" \
             --stage "$STAGE" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --expected-commit "${{ steps.meta.outputs.commit }}"
+            --repo "$REPO" \
+            --expected-commit "$COMMIT"
