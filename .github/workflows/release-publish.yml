@@ -1,0 +1,81 @@
+# Sentinel Shield — GitHub Release publisher.
+#
+# Fires ONLY when a human has already created and pushed a signed `v*` tag. It creates
+# the GitHub Release from docs/<tag>-release-notes.md and verifies the published release
+# — it NEVER creates, moves, or force-updates the tag itself, so the signed-tag airlock
+# (the human holding the signing key) is preserved. `gh release create --verify-tag`
+# refuses to publish if the pushed tag is missing/mismatched.
+#
+# Prerequisite: docs/<tag>-release-notes.md must exist in the tagged commit (the job fails
+# closed otherwise). Prerelease vs latest is derived from the tag suffix (-rc/-beta/-alpha).
+name: release-publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub Release for the pushed tag
+
+concurrency:
+  group: release-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0   # need the tag object + history for verification
+
+      - name: Resolve tag, notes, and release kind
+        id: meta
+        run: |
+          set -eu
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="docs/${TAG}-release-notes.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::release notes '$NOTES' not found in the tagged commit; refusing to publish" >&2
+            exit 1
+          fi
+          # Prerelease when the tag carries a pre-release suffix; GA otherwise.
+          case "$TAG" in
+            *-rc*|*-beta*|*-alpha*) KIND="--prerelease" ;;
+            *)                      KIND="--latest" ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "notes=$NOTES"
+            echo "kind=$KIND"
+            echo "commit=$(git rev-list -n1 "$TAG")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release (verifies the pushed tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "Sentinel Shield ${{ steps.meta.outputs.tag }}" \
+            --notes-file "${{ steps.meta.outputs.notes }}" \
+            ${{ steps.meta.outputs.kind }}
+
+      - name: Verify the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          STAGE=ga
+          case "${{ steps.meta.outputs.tag }}" in *-rc*) STAGE=rc ;; *-beta*) STAGE=beta ;; *-alpha*) STAGE=alpha ;; esac
+          sh scripts/verify-published-release.sh verify-github-release \
+            --tag "${{ steps.meta.outputs.tag }}" \
+            --stage "$STAGE" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --expected-commit "${{ steps.meta.outputs.commit }}"

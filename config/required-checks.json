@@ -261,6 +261,14 @@
           "classification": "scheduled-only"
         }
       ]
+    },
+    "release-publish.yml": {
+      "checks": [
+        {
+          "name": "publish",
+          "classification": "release-only"
+        }
+      ]
     }
   }
 }
