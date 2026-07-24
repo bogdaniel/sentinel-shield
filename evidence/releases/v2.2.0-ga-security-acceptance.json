@@ -1,0 +1,127 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-07-24T13:41:47Z",
+  "policy_version": "1.0.0",
+  "decision": "accepted",
+  "exit_code": 0,
+  "scanners": [
+    {
+      "name": "semgrep",
+      "category": "source_vulnerabilities",
+      "applicable": true,
+      "executed": true,
+      "status": "success",
+      "version": null,
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": 302,
+      "raw_report_digest": "sha256:00912fac214badf99be2320e0a90d95290f44f47a8ead0a26ca4a134c25a81fd"
+    },
+    {
+      "name": "gitleaks",
+      "category": "leaked_secrets",
+      "applicable": true,
+      "executed": true,
+      "status": "success",
+      "version": null,
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": 302,
+      "raw_report_digest": "sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "name": "osv-scanner",
+      "category": "dependency_vulnerabilities",
+      "applicable": false,
+      "executed": false,
+      "status": "not-applicable",
+      "version": "vv2.4.0",
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": null,
+      "raw_report_digest": null,
+      "non_applicability": {
+        "detector": "sentinel-applicability-detector",
+        "detector_version": "1.0.0",
+        "reason": "no-dependency-manifests",
+        "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "detector_report_digest": "sha256:e9b39686fd4d6011671627f89f1b9514e1a3c16a6dafe1a69c9a08b4dd5f5ee7",
+        "recomputed": "no"
+      }
+    },
+    {
+      "name": "grype",
+      "category": "dependency_vulnerabilities",
+      "applicable": false,
+      "executed": false,
+      "status": "not-applicable",
+      "version": "0.115.0",
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": null,
+      "raw_report_digest": null,
+      "non_applicability": {
+        "detector": "sentinel-applicability-detector",
+        "detector_version": "1.0.0",
+        "reason": "no-dependency-manifests",
+        "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "detector_report_digest": "sha256:e9b39686fd4d6011671627f89f1b9514e1a3c16a6dafe1a69c9a08b4dd5f5ee7",
+        "recomputed": "no"
+      }
+    },
+    {
+      "name": "trivy",
+      "category": "container_findings",
+      "applicable": false,
+      "executed": false,
+      "status": "not-applicable",
+      "version": "0.72.0",
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": null,
+      "raw_report_digest": null,
+      "non_applicability": {
+        "detector": "sentinel-applicability-detector",
+        "detector_version": "1.0.0",
+        "reason": "no-dockerfile",
+        "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "detector_report_digest": "sha256:9aa2d407d6eb26842e13a4eb083d394ae677e9e2bf6f063194402c561cc26d5e",
+        "recomputed": "no"
+      }
+    },
+    {
+      "name": "actionlint",
+      "category": "workflow_vulnerabilities",
+      "applicable": true,
+      "executed": true,
+      "status": "success",
+      "version": null,
+      "database_age_days": null,
+      "fresh": true,
+      "targets_scanned": 15,
+      "raw_report_digest": "sha256:9fcb7f631813bb18f9568e519f6763fe72c3e9eda4e593f384fb77c8790efde7"
+    }
+  ],
+  "coverage": {
+    "expected": 3,
+    "scanned": 3,
+    "ratio": 1
+  },
+  "findings": {
+    "total": 4,
+    "blocking": 0,
+    "waived": 0
+  },
+  "waivers": {
+    "applied": [],
+    "rejected": []
+  },
+  "regression": {
+    "baseline_present": false,
+    "coverage_regression": false,
+    "unexplained_finding_drop": false,
+    "baseline_coverage_ratio": null,
+    "baseline_finding_total": null
+  },
+  "violations": []
+}

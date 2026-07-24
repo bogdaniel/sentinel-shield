@@ -1,0 +1,197 @@
+{
+  "version": "2.2.0",
+  "stage": "ga",
+  "release_scope": "engine-only",
+  "engine_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+  "engine_ci": [
+    {
+      "workflow_name": "ci-self-test",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790574,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790574",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598306884,
+          "name": "sentinel-shield-self-test-reports",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-pipeline",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790636,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790636",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598343493,
+          "name": "sentinel-shield-release-evidence",
+          "verified": true
+        },
+        {
+          "id": 8598342988,
+          "name": "sentinel-shield-enforcement",
+          "verified": true
+        },
+        {
+          "id": 8598342509,
+          "name": "sentinel-shield-gate-resolution",
+          "verified": true
+        },
+        {
+          "id": 8598336378,
+          "name": "sentinel-shield-raw-security-merged",
+          "verified": true
+        },
+        {
+          "id": 8598335781,
+          "name": "sentinel-shield-security-summary",
+          "verified": true
+        },
+        {
+          "id": 8598329463,
+          "name": "sentinel-shield-sbom",
+          "verified": true
+        },
+        {
+          "id": 8598328987,
+          "name": "sentinel-shield-raw-security",
+          "verified": true
+        },
+        {
+          "id": 8598328501,
+          "name": "sentinel-shield-security-scan.spdx.json",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-security",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790702,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790702",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598349758,
+          "name": "sentinel-shield-security-acceptance",
+          "verified": true
+        },
+        {
+          "id": 8598321159,
+          "name": "sentinel-shield-security-summary",
+          "verified": true
+        },
+        {
+          "id": 8598320555,
+          "name": "sentinel-shield-raw-security",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-workflow-lint",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790641,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790641",
+      "result": "success",
+      "artifacts": [],
+      "artifacts_verified": false,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-adopter-validation",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790545,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790545",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598333764,
+          "name": "sentinel-shield-adopter-validation",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-compatibility",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790551,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790551",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598308911,
+          "name": "sentinel-shield-compatibility-matrix",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    },
+    {
+      "workflow_name": "ci-production-readiness",
+      "repository": "bogdaniel/sentinel-shield",
+      "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+      "event": "push",
+      "workflow_run_id": 30097790592,
+      "workflow_url": "https://github.com/bogdaniel/sentinel-shield/actions/runs/30097790592",
+      "result": "success",
+      "artifacts": [
+        {
+          "id": 8598944590,
+          "name": "sentinel-shield-production-readiness-report",
+          "verified": true
+        },
+        {
+          "id": 8598334602,
+          "name": "sentinel-shield-adopter-out",
+          "verified": true
+        }
+      ],
+      "artifacts_verified": true,
+      "verified_at": "2026-07-24T14:04:07Z",
+      "verification_method": "github-api"
+    }
+  ],
+  "consumer_runs": [],
+  "required_evidence": {
+    "laravel": false,
+    "symfony": false,
+    "php_library": false,
+    "node_react": false,
+    "combined_profile": false,
+    "bootstrap_apply": false,
+    "rollback_npm": false,
+    "rollback_pnpm": false,
+    "rollback_yarn": false
+  }
+}

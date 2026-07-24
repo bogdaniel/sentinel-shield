@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "report": "rollback-validation",
+  "kind": "rollback",
+  "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+  "from": null,
+  "to": null,
+  "checks": [
+    {
+      "name": "install writes managed files (fault target discovered)",
+      "status": "pass",
+      "detail": "fault-after=.sentinel-shield/accepted-risks.example.json"
+    },
+    {
+      "name": "faulted install is interrupted (non-zero exit)",
+      "status": "pass",
+      "detail": "exit=1"
+    },
+    {
+      "name": "interrupted op rolls back the file it had created",
+      "status": "pass",
+      "detail": ".sentinel-shield/accepted-risks.example.json removed"
+    },
+    {
+      "name": "no operation-lock lingers after rollback",
+      "status": "pass",
+      "detail": "clean rollback"
+    },
+    {
+      "name": "pre-existing project file survives rollback",
+      "status": "pass",
+      "detail": "README.md intact"
+    },
+    {
+      "name": "--recover is clean on the recovered tree (exit 0)",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "install --apply works again after rollback",
+      "status": "pass",
+      "detail": ""
+    }
+  ],
+  "complete": true,
+  "failure_count": 0,
+  "result": "pass"
+}

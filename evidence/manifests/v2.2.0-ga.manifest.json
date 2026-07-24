@@ -1,0 +1,581 @@
+{
+  "schema_version": "1",
+  "metadata": {
+    "generated_at": "2026-07-24T15:00:24Z",
+    "generator": "generate-release-manifest.sh"
+  },
+  "body": {
+    "action_pins": [
+      {
+        "source": ".github/workflows/ci-adopter-validation.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-adopter-validation.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-codeql.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-codeql.yml",
+        "uses": "github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9"
+      },
+      {
+        "source": ".github/workflows/ci-codeql.yml",
+        "uses": "github/codeql-action/autobuild@99df26d4f13ea111d4ec1a7dddef6063f76b97e9"
+      },
+      {
+        "source": ".github/workflows/ci-codeql.yml",
+        "uses": "github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9"
+      },
+      {
+        "source": ".github/workflows/ci-compatibility.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-compatibility.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-docker.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-docker.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-docker.yml",
+        "uses": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+      },
+      {
+        "source": ".github/workflows/ci-node.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-node.yml",
+        "uses": "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+      },
+      {
+        "source": ".github/workflows/ci-node.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-php.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-php.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-php.yml",
+        "uses": "shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240"
+      },
+      {
+        "source": ".github/workflows/ci-pipeline.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-pipeline.yml",
+        "uses": "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+      },
+      {
+        "source": ".github/workflows/ci-pipeline.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-pipeline.yml",
+        "uses": "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610"
+      },
+      {
+        "source": ".github/workflows/ci-pipeline.yml",
+        "uses": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+      },
+      {
+        "source": ".github/workflows/ci-production-readiness.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-production-readiness.yml",
+        "uses": "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+      },
+      {
+        "source": ".github/workflows/ci-production-readiness.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-production-readiness.yml",
+        "uses": "shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240"
+      },
+      {
+        "source": ".github/workflows/ci-production-readiness.yml",
+        "uses": "zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa"
+      },
+      {
+        "source": ".github/workflows/ci-release-gate.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-release-gate.yml",
+        "uses": "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+      },
+      {
+        "source": ".github/workflows/ci-release-gate.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e"
+      },
+      {
+        "source": ".github/workflows/ci-security.yml",
+        "uses": "google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2"
+      },
+      {
+        "source": ".github/workflows/ci-self-test.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-self-test.yml",
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+      },
+      {
+        "source": ".github/workflows/ci-workflow-lint.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-workflow-lint.yml",
+        "uses": "zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa"
+      },
+      {
+        "source": ".github/workflows/ci-zap.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/ci-zap.yml",
+        "uses": "zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25"
+      },
+      {
+        "source": ".github/workflows/ci-zap.yml",
+        "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c"
+      },
+      {
+        "source": ".github/workflows/release-publish.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": ".github/workflows/security-incident-validation.yml",
+        "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-dast.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-dependency-check.yml",
+        "uses": "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-dependency-check.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-main.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-pr-fast.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-scheduled.yml",
+        "uses": "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield-scheduled.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+      },
+      {
+        "source": "templates/workflows/sentinel-shield.yml",
+        "uses": "shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240"
+      }
+    ],
+    "artifact_digests": [
+      {
+        "artifact_id": 8598333764,
+        "name": "sentinel-shield-adopter-validation",
+        "run_id": 30097790545,
+        "sha256": "b8e90fbb20751e3a54e0b6ba58d79db6887df7c88c1fef808663bc6230347f6b"
+      },
+      {
+        "artifact_id": 8598308911,
+        "name": "sentinel-shield-compatibility-matrix",
+        "run_id": 30097790551,
+        "sha256": "a1cc521b513efa743b11ade8f318bcc48f33ba50521a73580ac49920d348a348"
+      },
+      {
+        "artifact_id": 8598306884,
+        "name": "sentinel-shield-self-test-reports",
+        "run_id": 30097790574,
+        "sha256": "93d57a923100cc4476a0edaa48e9811382591ae7710113737a308230f5d9555c"
+      },
+      {
+        "artifact_id": 8598334602,
+        "name": "sentinel-shield-adopter-out",
+        "run_id": 30097790592,
+        "sha256": "57b9ff064bb75b5b236adbec69fb1903f899247bddabda3057cc69c4a24e19eb"
+      },
+      {
+        "artifact_id": 8598944590,
+        "name": "sentinel-shield-production-readiness-report",
+        "run_id": 30097790592,
+        "sha256": "6f8c17de9956446c350f71239431503f4ffbc73c9c9d959df6899ef0f0957af8"
+      },
+      {
+        "artifact_id": 8598328501,
+        "name": "sentinel-shield-security-scan.spdx.json",
+        "run_id": 30097790636,
+        "sha256": "2622ec6d331f79bd4b55e10fddb32f5d45e448ded24bbace2b5bbabcb5c11033"
+      },
+      {
+        "artifact_id": 8598328987,
+        "name": "sentinel-shield-raw-security",
+        "run_id": 30097790636,
+        "sha256": "306a2390485704d6d8d38e11c2a01b1bc18db190d141118cac3a59d7d832c506"
+      },
+      {
+        "artifact_id": 8598329463,
+        "name": "sentinel-shield-sbom",
+        "run_id": 30097790636,
+        "sha256": "1e16f3b8ea476fdaa2d7b4b022e35e6f8c276b82282bb4751ad94757982fec5c"
+      },
+      {
+        "artifact_id": 8598335781,
+        "name": "sentinel-shield-security-summary",
+        "run_id": 30097790636,
+        "sha256": "821b51e0990f143725c30aa336b8c03d12cdc3fb6c717117f4f71bd4498060cf"
+      },
+      {
+        "artifact_id": 8598336378,
+        "name": "sentinel-shield-raw-security-merged",
+        "run_id": 30097790636,
+        "sha256": "80111b3ea5aa9ccc8635fff32ac838e63f3ffbff853478b3fd0bc251a1b2c772"
+      },
+      {
+        "artifact_id": 8598342509,
+        "name": "sentinel-shield-gate-resolution",
+        "run_id": 30097790636,
+        "sha256": "df0b9b9656fb007bcb9ac48f1a22807b22dfe1c995a03255adf4a13305af9b66"
+      },
+      {
+        "artifact_id": 8598342988,
+        "name": "sentinel-shield-enforcement",
+        "run_id": 30097790636,
+        "sha256": "c44e0d1e8abec326dc64bc20682b9c56e06c46b57e38c2a3314ccdf94626148b"
+      },
+      {
+        "artifact_id": 8598343493,
+        "name": "sentinel-shield-release-evidence",
+        "run_id": 30097790636,
+        "sha256": "c0e45c121410306c35e5647790759e8e40c0432a9508b66e4a823081a70df87c"
+      },
+      {
+        "artifact_id": 8598320555,
+        "name": "sentinel-shield-raw-security",
+        "run_id": 30097790702,
+        "sha256": "933c59d9e7eb31847247b99b525cd3b5297fb3a666d8a96bb5727b1713a1ca62"
+      },
+      {
+        "artifact_id": 8598321159,
+        "name": "sentinel-shield-security-summary",
+        "run_id": 30097790702,
+        "sha256": "ab941ea89486ed7d1ad1aeef497dd2b244203de104afa9d4e6db5229cc0a4b78"
+      },
+      {
+        "artifact_id": 8598349758,
+        "name": "sentinel-shield-security-acceptance",
+        "run_id": 30097790702,
+        "sha256": "b69e1472600af9995ab5c1585da86e5d3ea956c07003636bf6996e7d4842e6ba"
+      }
+    ],
+    "profile_policy_digests": [
+      {
+        "path": "profiles/docker/profile.manifest.json",
+        "sha256": "920885d2648f9a69b2912ccf7dc5639f67c87db8189934ee371ab02455975e08"
+      },
+      {
+        "path": "profiles/hardened-enterprise/profile.manifest.json",
+        "sha256": "56df4b17b0d5aff27a6dbea39470347e3b412867a51d4ed2776650819dded272"
+      },
+      {
+        "path": "profiles/laravel/profile.manifest.json",
+        "sha256": "28e3ecce7b75b08449e6433942b4d3321111d6206efba8ec7a67aee699d557e1"
+      },
+      {
+        "path": "profiles/node/profile.manifest.json",
+        "sha256": "cb5d0d856e2cde4e344507b80a23158e84616d7be21a83d04dce8ceb8f8e6b4d"
+      },
+      {
+        "path": "profiles/php-library/profile.manifest.json",
+        "sha256": "0d1c046bfa9cd3effc63ee56cd08d5bd509538d240ffd52a6c558db36844b742"
+      },
+      {
+        "path": "profiles/react/profile.manifest.json",
+        "sha256": "aae9868e5a53a3bff6c0db6e45f7b89b0eb1960ff1c6375033c51e1f53e87461"
+      },
+      {
+        "path": "profiles/symfony/profile.manifest.json",
+        "sha256": "cb60e5e58bb5997db05644857ffffe15b8ba76457764712455238b252ce13f25"
+      }
+    ],
+    "release_scope": "engine-only",
+    "schema_digests": [
+      {
+        "path": "schemas/accepted-risks.schema.json",
+        "sha256": "062d96a7f613e6c770bb7c0ed9bc34238e019c34992da30ba77b0b16f4777c3e"
+      },
+      {
+        "path": "schemas/adopter-scorecard.schema.json",
+        "sha256": "891a9335ba5dcc6090c5948e9755280cb59018c969854b7510d77fe9b46f3e20"
+      },
+      {
+        "path": "schemas/adopter-session.schema.json",
+        "sha256": "30d6417e8907f083b02e7bcd8e99054201aa7919e82f03aa28c297fca6843c8e"
+      },
+      {
+        "path": "schemas/bounded-command-result.schema.json",
+        "sha256": "cd1a63eda284b89011bf60c62bb56edb07e82e376627909cf7c6ab94d8f2cd9f"
+      },
+      {
+        "path": "schemas/command-result.schema.json",
+        "sha256": "717793c6344ac8210cb80787d8d41664e0bc74e0acf2b51ef1f122cfb9261cb8"
+      },
+      {
+        "path": "schemas/compatibility-policy.schema.json",
+        "sha256": "88eb3f0656f0f79971deb3d15491abb6e578bd9cc81ec4869c1d5957cc76dcb9"
+      },
+      {
+        "path": "schemas/consumer-validation.schema.json",
+        "sha256": "a60a099937198e858108244f0cfbff2b72bb26bbbd720ffb459905a1301b66de"
+      },
+      {
+        "path": "schemas/control-waiver.schema.json",
+        "sha256": "e04ae6b26113f17e47738310fc0cf63ddf29b740882fcf55446633bbfcc0c17c"
+      },
+      {
+        "path": "schemas/filesystem-safety-reasons.schema.json",
+        "sha256": "79e2727795612000294e07fcffdc3678dca98afb819e3fb52af9781d90e791d9"
+      },
+      {
+        "path": "schemas/health-report.schema.json",
+        "sha256": "12ef8c9cc1fc825ed2e39b29ee5e17d3132aab38f3603c012cc2a3d811ef8339"
+      },
+      {
+        "path": "schemas/installation-metadata.schema.json",
+        "sha256": "8f6980fbe9cb3faea1b235096a3d401ec009cf840408b81982cd32ef9a92f96c"
+      },
+      {
+        "path": "schemas/installation-plan.schema.json",
+        "sha256": "64d7f26e0213c0ff4e42173b1951dcc9aea26da17b45b1c575366dc54ccff74f"
+      },
+      {
+        "path": "schemas/installation.schema.json",
+        "sha256": "cd153049ac3896df3e6a8a5b9a46b3b8af62c1c8c07b34dbf6b62fedeb2f2955"
+      },
+      {
+        "path": "schemas/merge-safety-audit.schema.json",
+        "sha256": "779f6aeb0085b2daf3b8ba89269120e65f5ff64fd76fbef323610cb56a044563"
+      },
+      {
+        "path": "schemas/operation-lock.schema.json",
+        "sha256": "e68c480d99904174c65992a508468063be773846793dacc2cf64ae46ed41bc90"
+      },
+      {
+        "path": "schemas/operational-event.schema.json",
+        "sha256": "2060511512f71c555db15779a4ef922103706448a5606e0efbd353fbab575fdc"
+      },
+      {
+        "path": "schemas/production-readiness-report.schema.json",
+        "sha256": "49d813a5cf34e7ca2c099867f0533f6e1bb84a7affb76b1220404abc1c7745b7"
+      },
+      {
+        "path": "schemas/production-security-policy.schema.json",
+        "sha256": "94643e2e686396c93a13f7fa3273b6552d851923ce113769bb220f4d1fcdda6e"
+      },
+      {
+        "path": "schemas/quality-policy.schema.json",
+        "sha256": "a3a8db3e957898eacf5a8559feaf9f016d2eb0734934973f48afa186e534ace5"
+      },
+      {
+        "path": "schemas/recovery-inspection.schema.json",
+        "sha256": "822b27641acced84213aa7e284dc51806b872129e07d5d77eb9de0b55f2a5f28"
+      },
+      {
+        "path": "schemas/redaction-report.schema.json",
+        "sha256": "d908bb130dd590a92f1f25af4b05702c75f1cdf8eab639b5588db3f091cd6127"
+      },
+      {
+        "path": "schemas/release-authorization.schema.json",
+        "sha256": "83039b61550946a912cb71725cefa88eb5646a5d866bebc7fa71c824d461b684"
+      },
+      {
+        "path": "schemas/release-candidate.schema.json",
+        "sha256": "5123ed685fc33e34fb5e03223948008c7400d0fbe4cff011160d88c1a42b2bb8"
+      },
+      {
+        "path": "schemas/release-evidence.schema.json",
+        "sha256": "cd0c803802bc0352726fbfbc9174f3b3dd1d086e82434094b309a66243366094"
+      },
+      {
+        "path": "schemas/release-manifest.schema.json",
+        "sha256": "16d53c29e5e79f378f7bfd299747e423eaeb414eb246a47a69967cc1d7815106"
+      },
+      {
+        "path": "schemas/release-override.schema.json",
+        "sha256": "e531eb89785888635c2b53cb814d65123fefeee0eda5ea977131238a51a3a110"
+      },
+      {
+        "path": "schemas/required-checks-audit.schema.json",
+        "sha256": "d3d55e8bc826252200e27b35593e9dfe5709e3cfc589144b2bb46703f5c50545"
+      },
+      {
+        "path": "schemas/required-checks.schema.json",
+        "sha256": "7c2d322cf94b9a6826a2906f1a25febd3d0e2f87fc615b3fd8d4c8cac77310fe"
+      },
+      {
+        "path": "schemas/rollback-advisory.schema.json",
+        "sha256": "d38eed5491bef8493d45cefae53e32f7483fcb1652be56ea5c60ecdc2d983849"
+      },
+      {
+        "path": "schemas/security-acceptance.schema.json",
+        "sha256": "da0f160c562f84e9ddde6e31845c2afdb9717794fc20c6aa0d8f6a678b7bf160"
+      },
+      {
+        "path": "schemas/security-summary.schema.json",
+        "sha256": "6f371e7d91a9219d74cf58d64af86b840eebefea173c1c2d69761d4e8dd8c0b6"
+      },
+      {
+        "path": "schemas/tool-policy-override.schema.json",
+        "sha256": "7237c3e09a6e9a7f83b85d9744227ee1198ed6aea53327b31853c00e7c1b850a"
+      },
+      {
+        "path": "schemas/tool-policy.schema.json",
+        "sha256": "6509bd067fe0dfacc4c4c5b5101963a991b92bb715be4acce5d15d0cc2e801be"
+      },
+      {
+        "path": "schemas/tool-provenance-audit.schema.json",
+        "sha256": "313bb2e4d47022d364fcce4bbd7381b041fcd6ac702d1e5a910efc0e28129e58"
+      },
+      {
+        "path": "schemas/transaction-journal.schema.json",
+        "sha256": "6b8a7847d6c33c84257c846d56b1d3f438f9da4343fb341d939b8156c49b9796"
+      },
+      {
+        "path": "schemas/workflow-runtime-audit.schema.json",
+        "sha256": "d66b52f23276655e5dc47a46278cabfee0adfc1d2d564553ad66c7999b49c72b"
+      }
+    ],
+    "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+    "stage": "ga",
+    "tag_target": "99fcd2767560b257344211aae57e027ea39a5304",
+    "tool_versions": {
+      "gh": "gh version 2.96.0 (2026-07-02)",
+      "jq": "jq-1.8.2",
+      "yq": "yq (https://github.com/mikefarah/yq/) version v4.53.3"
+    },
+    "tree_hash": "8d45bc97e1b6d20149f47e07e30a7d5110874563",
+    "version": "2.2.0",
+    "workflow_runs": [
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790545,
+        "workflow_name": "ci-adopter-validation"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790551,
+        "workflow_name": "ci-compatibility"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790574,
+        "workflow_name": "ci-self-test"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790592,
+        "workflow_name": "ci-production-readiness"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790636,
+        "workflow_name": "ci-pipeline"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790641,
+        "workflow_name": "ci-workflow-lint"
+      },
+      {
+        "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+        "result": "success",
+        "run_id": 30097790702,
+        "workflow_name": "ci-security"
+      }
+    ]
+  },
+  "reproducibility": {
+    "hash_algorithm": "sha256",
+    "canonicalization": "jq -S -c over .body",
+    "hash": "61d29d4ee817358efaacfc40c2e7457448adfe4d3009c1f4cafc3c8d953f1a2e"
+  }
+}

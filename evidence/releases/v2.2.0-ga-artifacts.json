@@ -1,0 +1,646 @@
+{
+  "tool": "verify-release-artifacts",
+  "generated_at": "2026-07-24T14:04:37Z",
+  "engine_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+  "status": "pass",
+  "artifact_count": 16,
+  "failure_count": 0,
+  "artifacts": [
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790574,
+      "artifact_id": 8598306884,
+      "name": "sentinel-shield-self-test-reports",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 22440,
+      "archive_safe": true,
+      "sha256": "93d57a923100cc4476a0edaa48e9811382591ae7710113737a308230f5d9555c",
+      "file_count": 49,
+      "files": [
+        {
+          "path": "raw/acceptance-tests.json",
+          "sha256": "d6127cdb6e595b38002e7c8265a5a83c97656c29d1c9d69119efe4699d933e41"
+        },
+        {
+          "path": "raw/actionlint.json",
+          "sha256": "ee627850a4d5148a773e231ddf0eb9bab715d98442e7ac94dadedbadd68e1e50"
+        },
+        {
+          "path": "raw/architecture.json",
+          "sha256": "4530a4db2b88e39332af6934569c1f5ea1afce1212372f9fa9b77397aefac47d"
+        },
+        {
+          "path": "raw/behat-acceptance.json",
+          "sha256": "2681e81aee6e8fe71d0276c5bc64759e3f96938b56f555e0f25e5e58f0f3bccc"
+        },
+        {
+          "path": "raw/behat-specs.json",
+          "sha256": "c3fe90a56ffcbc8aaef1daacbc8ca4abc79b30fa58e9c343baaf3bf43a61369b"
+        },
+        {
+          "path": "raw/behavior-specs.json",
+          "sha256": "1619376bc111ad85eac3ea1ee7fb326fee990eb9dc5ba737efaa1b139b2ba895"
+        },
+        {
+          "path": "raw/complexity.json",
+          "sha256": "616872b210c42206287c912745639c25cb8013e2ac8b86a308d440055497749f"
+        },
+        {
+          "path": "raw/composer-audit.json",
+          "sha256": "90c6a052a36d97c936bd5c772b049b0d55a691054bbc0f1957bcbb154085853d"
+        },
+        {
+          "path": "raw/coverage.json",
+          "sha256": "658af1848adf94551ecd87959e25444f3db69bf7dbc304d90f47669d8d333fbb"
+        },
+        {
+          "path": "raw/cucumber-acceptance.json",
+          "sha256": "9a805703970ed32d8e6e5eb4df03aee922779fa2739949415f6f9d1b9c19a964"
+        },
+        {
+          "path": "raw/cucumber-specs.json",
+          "sha256": "32257db7ecda0e6bf7bbddd08688baf88382773addcf2ed5462809fdf38f3588"
+        },
+        {
+          "path": "raw/cypress-acceptance.json",
+          "sha256": "a0f458da3ba5c6aaf4638739c25db2bd9b0a02566bb28b2c048220201fada5d0"
+        },
+        {
+          "path": "raw/dead-code.json",
+          "sha256": "20a6bad902afe50e974b4b7373e60c04106f64c7358adf9412f0e8a8eed52486"
+        },
+        {
+          "path": "raw/debug-code.json",
+          "sha256": "d2b220c95a87e50848f4392e3191a3f280330afff126e5ebfa5f9238dd57b6c8"
+        },
+        {
+          "path": "raw/dependency-check.json",
+          "sha256": "0b0c007e04c70c6e9924a5f36806450f14f55f9cd850eda0406ed55a2919a960"
+        },
+        {
+          "path": "raw/dependency-cruiser.json",
+          "sha256": "5a9463b95640feaefc59897c42661b118116ba169bf074dc8ec95abcb0334f69"
+        },
+        {
+          "path": "raw/deptrac.json",
+          "sha256": "ef6dc17ca15cdcdeefbed36eddb8fc562630044256410c22cbae118b42e18225"
+        },
+        {
+          "path": "raw/diff-coverage.json",
+          "sha256": "bd0151f410114f4cb33e451756e1d197007dfdb712534a4bd3614654e57ccdff"
+        },
+        {
+          "path": "raw/docker-base-digest.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/duplication.json",
+          "sha256": "16238ffaf727ddbd8b04d495ace1b98575b2975c49f4a8a825b612b97100478c"
+        },
+        {
+          "path": "raw/eslint-boundaries.json",
+          "sha256": "da0d6298a69916ec7498c0628d5cdca49d66decd9e34717955a933b6205da2e0"
+        },
+        {
+          "path": "raw/eslint.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/focused-tests.json",
+          "sha256": "4787879689ab38b4f522ccc1ea59d9ec28d682d94ff111f223444a0df555d96a"
+        },
+        {
+          "path": "raw/github-actions-pins.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/gitleaks.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/hadolint.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/js-architecture-tests.json",
+          "sha256": "92885c536fcead703790077a4eac8f1d22dac63e7a6fae5c3429a5da02b9035d"
+        },
+        {
+          "path": "raw/mutation.json",
+          "sha256": "e875813365d407437fac10126750e51939fc140df5c1589c484709c97df0b467"
+        },
+        {
+          "path": "raw/npm-audit.json",
+          "sha256": "c9093835e74310f01bfb20fd2bfe751cedd90562626fe5d436fac2be2cc4c41b"
+        },
+        {
+          "path": "raw/php-architecture-tests.json",
+          "sha256": "fcb788108b2dc88995b6ab5ba22c790e18dbbd27c1b9f70a0e3e1325e211c290"
+        },
+        {
+          "path": "raw/php-arkitect.json",
+          "sha256": "614d213dabc9257925ab12b490cb9a635fcd6eb5c604e563729d7aba7c07320b"
+        },
+        {
+          "path": "raw/phpstan.json",
+          "sha256": "b6d1187c4fe7cb5de9a630a5059838e45c6782b884ab5e500c587ec1303779ad"
+        },
+        {
+          "path": "raw/playwright-acceptance.json",
+          "sha256": "27fd845857142ebc27e3e614c84d314a5f576f785b381d512c34a193db5c842e"
+        },
+        {
+          "path": "raw/psalm.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "raw/semgrep.json",
+          "sha256": "84c7aa0d1f10d5b2d7b9a9f6d0cb2c8b423915a414472781584651338e01b156"
+        },
+        {
+          "path": "raw/source-size.json",
+          "sha256": "74e266913cdde7750648c2b61dd64f887aa63bd7897095a3256418c228dcf2a1"
+        },
+        {
+          "path": "raw/test-change-evidence.json",
+          "sha256": "fb675df4fe1ff09c71ab4b39b1a018f60a165ae152981ae497f6244fe4e16ebe"
+        },
+        {
+          "path": "raw/tests.json",
+          "sha256": "89989c88ad7a8519c6ad6b2a00121b2a341fbae1988af51ce1d981cb039e2bcd"
+        },
+        {
+          "path": "raw/third-party-semgrep.json",
+          "sha256": "ddb8a8721efd9ad75b31e191d50af6a957bc50d82bb3e56d7157eed416972891"
+        },
+        {
+          "path": "raw/trivy.json",
+          "sha256": "3b851a62ea8ef72c44f28c7e799fc13e5cea8fe4270474e29fb9200af8eb9555"
+        },
+        {
+          "path": "raw/typescript.json",
+          "sha256": "efe6604e8a14d9eb75525c5285c32142ef789f354ab14a17ef055c50dcb1c8c8"
+        },
+        {
+          "path": "raw/zizmor.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "security-summary.json",
+          "sha256": "33d27a05ca121a7dc4b913c934e37e99801e639afc9a81210498e84c1b5cfaf2"
+        },
+        {
+          "path": "sentinel-shield-enforcement.json",
+          "sha256": "01c89cb1f42b1e5cdff511b3180c376fdffc9c65779ca009ac530f4fec981110"
+        },
+        {
+          "path": "sentinel-shield-enforcement.md",
+          "sha256": "e4d664e4675559e3bb39515adf77a48b9db847396605c10151fb423aa5982c81"
+        },
+        {
+          "path": "sentinel-shield-gates.env",
+          "sha256": "35c6166d40fde5ff9ddc882a44a2a85f16c53e16babc664e23355989771fa8a5"
+        },
+        {
+          "path": "sentinel-shield-gates.json",
+          "sha256": "afa73d434e5d5640f8107c277708ec2ed8a608f70bc1f4143679d60a94c32a98"
+        },
+        {
+          "path": "sentinel-shield-gates.md",
+          "sha256": "8055e6a9793096225ac49d547beaec7d706e80d1fb401d8e2f81bab445a49a4a"
+        },
+        {
+          "path": "sentinel-shield-report.md",
+          "sha256": "1105bf98c73d0ab84c3f99d490ec833c6669bcf7d5cdfa83e9b6eeab2287426f"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598343493,
+      "name": "sentinel-shield-release-evidence",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 3085,
+      "archive_safe": true,
+      "sha256": "c0e45c121410306c35e5647790759e8e40c0432a9508b66e4a823081a70df87c",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "release-evidence.md",
+          "sha256": "6f81b39c519d504454234f9c8b4da7d1cc46c8fa612fab7f29b627d30037e677"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598342988,
+      "name": "sentinel-shield-enforcement",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 3602,
+      "archive_safe": true,
+      "sha256": "c44e0d1e8abec326dc64bc20682b9c56e06c46b57e38c2a3314ccdf94626148b",
+      "file_count": 2,
+      "files": [
+        {
+          "path": "sentinel-shield-enforcement.json",
+          "sha256": "5a03e2e6c9a375553532d805926feedd8f93a45d8c25d9cbb3ff46d3a50417af"
+        },
+        {
+          "path": "sentinel-shield-enforcement.md",
+          "sha256": "10a703181ce9df77952218937efe29d78161fe8b1fad3d3bdd2ce1d1e2dac7b2"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598342509,
+      "name": "sentinel-shield-gate-resolution",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 2516,
+      "archive_safe": true,
+      "sha256": "df0b9b9656fb007bcb9ac48f1a22807b22dfe1c995a03255adf4a13305af9b66",
+      "file_count": 3,
+      "files": [
+        {
+          "path": "sentinel-shield-gates.env",
+          "sha256": "35c6166d40fde5ff9ddc882a44a2a85f16c53e16babc664e23355989771fa8a5"
+        },
+        {
+          "path": "sentinel-shield-gates.json",
+          "sha256": "e20b28701a3402ce865d66d3058c457fc20ae4cf264b9fae3627f4ddf722279a"
+        },
+        {
+          "path": "sentinel-shield-gates.md",
+          "sha256": "e69461cbd05d84e54e510ff0c5dae642e569f0393051016935b9250f3693e6d0"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598336378,
+      "name": "sentinel-shield-raw-security-merged",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 3585,
+      "archive_safe": true,
+      "sha256": "80111b3ea5aa9ccc8635fff32ac838e63f3ffbff853478b3fd0bc251a1b2c772",
+      "file_count": 3,
+      "files": [
+        {
+          "path": "gitleaks.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "semgrep.json",
+          "sha256": "dfa4dd6f7321135f28b56d19fabcfb37cb8961c0b4638f38034b0bcfb80377db"
+        },
+        {
+          "path": "trivy.json",
+          "sha256": "fecbabcc6ee213c3f0ef09679c4261811c4671fc33bb55b1f88a229534982b3e"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598335781,
+      "name": "sentinel-shield-security-summary",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 1547,
+      "archive_safe": true,
+      "sha256": "821b51e0990f143725c30aa336b8c03d12cdc3fb6c717117f4f71bd4498060cf",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "security-summary.json",
+          "sha256": "b9b08febc30a64bf2580ab4252c5628998ee231c6157169e37f72fe0da1611c8"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598329463,
+      "name": "sentinel-shield-sbom",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 5874,
+      "archive_safe": true,
+      "sha256": "1e16f3b8ea476fdaa2d7b4b022e35e6f8c276b82282bb4751ad94757982fec5c",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "sbom.spdx.json",
+          "sha256": "1db78d2581c8318a0260a3b029f376fed722a530c8f0261f408b0516fb1e2e2b"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598328987,
+      "name": "sentinel-shield-raw-security",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 3585,
+      "archive_safe": true,
+      "sha256": "306a2390485704d6d8d38e11c2a01b1bc18db190d141118cac3a59d7d832c506",
+      "file_count": 3,
+      "files": [
+        {
+          "path": "gitleaks.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "semgrep.json",
+          "sha256": "dfa4dd6f7321135f28b56d19fabcfb37cb8961c0b4638f38034b0bcfb80377db"
+        },
+        {
+          "path": "trivy.json",
+          "sha256": "fecbabcc6ee213c3f0ef09679c4261811c4671fc33bb55b1f88a229534982b3e"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790636,
+      "artifact_id": 8598328501,
+      "name": "sentinel-shield-security-scan.spdx.json",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 5924,
+      "archive_safe": true,
+      "sha256": "2622ec6d331f79bd4b55e10fddb32f5d45e448ded24bbace2b5bbabcb5c11033",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "sentinel-shield-security-scan.spdx.json",
+          "sha256": "1db78d2581c8318a0260a3b029f376fed722a530c8f0261f408b0516fb1e2e2b"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790702,
+      "artifact_id": 8598349758,
+      "name": "sentinel-shield-security-acceptance",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 2060,
+      "archive_safe": true,
+      "sha256": "b69e1472600af9995ab5c1585da86e5d3ea956c07003636bf6996e7d4842e6ba",
+      "file_count": 2,
+      "files": [
+        {
+          "path": "scanner-manifest.json",
+          "sha256": "ea16b2d8aa0f3b03c005b19a9d99a881ea8bb28a6975cb5855dd12b581073493"
+        },
+        {
+          "path": "security-acceptance.json",
+          "sha256": "b297f420c91db50de61a5a8e30d14e6a321e671ff45a04002efe8bc42c4d90eb"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790702,
+      "artifact_id": 8598321159,
+      "name": "sentinel-shield-security-summary",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 1559,
+      "archive_safe": true,
+      "sha256": "ab941ea89486ed7d1ad1aeef497dd2b244203de104afa9d4e6db5229cc0a4b78",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "security-summary.json",
+          "sha256": "2749c9e32b713e71a925cb6a6e4e6a0dc3fd010f4e9dfb8386f528d4ee42b7dc"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790702,
+      "artifact_id": 8598320555,
+      "name": "sentinel-shield-raw-security",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 3582,
+      "archive_safe": true,
+      "sha256": "933c59d9e7eb31847247b99b525cd3b5297fb3a666d8a96bb5727b1713a1ca62",
+      "file_count": 3,
+      "files": [
+        {
+          "path": "gitleaks.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+        },
+        {
+          "path": "semgrep.json",
+          "sha256": "b72f14696b626ef358ba6305752a96b2ffbefd365164da82c1bd1c5c04db9c00"
+        },
+        {
+          "path": "trivy.json",
+          "sha256": "8c0f0d3cffd905933dc0de3d8d9aea78f2bcf52bb563096e6efacd4699231c81"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790545,
+      "artifact_id": 8598333764,
+      "name": "sentinel-shield-adopter-validation",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 8123,
+      "archive_safe": true,
+      "sha256": "b8e90fbb20751e3a54e0b6ba58d79db6887df7c88c1fef808663bc6230347f6b",
+      "file_count": 9,
+      "files": [
+        {
+          "path": "adopter-scorecard.json",
+          "sha256": "8db0baf09e35b762524e68549c9ebbe399d63fcdada817b211254c3475cb10d4"
+        },
+        {
+          "path": "adopter-scorecard.md",
+          "sha256": "9ebe91da35ed7a8c92cbe2224da7e875680d62fd84fcdfbb962c49200c6c9ed8"
+        },
+        {
+          "path": "clean-linux.session.json",
+          "sha256": "fd6e739200c06ebbd3d7aea6bb72a728beeee5190a272dbd3fda60dab7060458"
+        },
+        {
+          "path": "interrupted-recovery.session.json",
+          "sha256": "cc388892dbc38123c9d2ee5652d9f4e354bbffdb3bbe62979d611b1a4f4d2c14"
+        },
+        {
+          "path": "managed-file-conflict.session.json",
+          "sha256": "0ea26ffa13125f56a5adec8b6d0b5338070eecc724ff2f65607b69d90a1a5b84"
+        },
+        {
+          "path": "minimal-posix.session.json",
+          "sha256": "eda43aff6ba5ec4e1c4045c48024d41373b816cb31d30192750501dea7dfc383"
+        },
+        {
+          "path": "offline-restricted.session.json",
+          "sha256": "8e8f5cb570793a150394426dcdb4dd61231fb948329d709b56f3fb9d4487d277"
+        },
+        {
+          "path": "proxy-configured.session.json",
+          "sha256": "7e0764ecf29b0ee3f0af8cbac952c353d570d8326feacad90dabb6af29be709b"
+        },
+        {
+          "path": "read-only-project.session.json",
+          "sha256": "51ca74db1afdd8ae0d49974163a648fb76d74da7abf55f4fa9f1c26fd4e85fba"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790551,
+      "artifact_id": 8598308911,
+      "name": "sentinel-shield-compatibility-matrix",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 478,
+      "archive_safe": true,
+      "sha256": "a1cc521b513efa743b11ade8f318bcc48f33ba50521a73580ac49920d348a348",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "compatibility-matrix.json",
+          "sha256": "478c664a4d305d1d9d515f25a44a672028c55efc59d5d7df0d172c6a0b5e45bc"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790592,
+      "artifact_id": 8598944590,
+      "name": "sentinel-shield-production-readiness-report",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 1583,
+      "archive_safe": true,
+      "sha256": "6f8c17de9956446c350f71239431503f4ffbc73c9c9d959df6899ef0f0957af8",
+      "file_count": 2,
+      "files": [
+        {
+          "path": "production-readiness-report.json",
+          "sha256": "4be38d9e3dcacf99ab628901f17a19d2f35306b29ab2bf978ac5224e4e7bb867"
+        },
+        {
+          "path": "production-readiness-report.md",
+          "sha256": "d51a49f6d85aafbdfdb63a6d92db72bbded50c0d25959403ced8a49a1292d3f7"
+        }
+      ],
+      "embedded_commit_found": true,
+      "verified": true,
+      "reasons": []
+    },
+    {
+      "repository": "bogdaniel/sentinel-shield",
+      "run_id": 30097790592,
+      "artifact_id": 8598334602,
+      "name": "sentinel-shield-adopter-out",
+      "ownership_ok": true,
+      "expired": false,
+      "size_in_bytes": 8121,
+      "archive_safe": true,
+      "sha256": "57b9ff064bb75b5b236adbec69fb1903f899247bddabda3057cc69c4a24e19eb",
+      "file_count": 9,
+      "files": [
+        {
+          "path": "adopter-scorecard.json",
+          "sha256": "58340d97418895239b0807abfc0d865f68ce198e9c224bd1f21b4a105f4683cd"
+        },
+        {
+          "path": "adopter-scorecard.md",
+          "sha256": "e3eed5dddd038fe8541f09872f44bda4686689449ca37003d22611a7ee8332f4"
+        },
+        {
+          "path": "clean-linux.session.json",
+          "sha256": "bb34d6ed83b9874d71972dc7737e212922dddb16f5e1f88ff5470ae02f9e03bf"
+        },
+        {
+          "path": "interrupted-recovery.session.json",
+          "sha256": "9441a73645ec79bffc57dac0023db89155936b4b6a36071159607f7969b12cea"
+        },
+        {
+          "path": "managed-file-conflict.session.json",
+          "sha256": "91161d8ba76530ad11b14d3bdeba1b918d7a84012e2b13d682c94d21a1848eb9"
+        },
+        {
+          "path": "minimal-posix.session.json",
+          "sha256": "fcf0013042cfe9ca36a8afab875018bc8ec108f9ea7e679f4b46f3423b8cd2eb"
+        },
+        {
+          "path": "offline-restricted.session.json",
+          "sha256": "d1f883546dbe508dd8268222f1b0ba14fa7f3b660e95291d6b25716c22a36a28"
+        },
+        {
+          "path": "proxy-configured.session.json",
+          "sha256": "dfb9b2a61cf817e7f66836a59664760af68647465fde4c82b7684202cde1a022"
+        },
+        {
+          "path": "read-only-project.session.json",
+          "sha256": "3668db155d3a72d75056b37dd0639dcba1f0d5f2346cb61b2d91f77402d68a41"
+        }
+      ],
+      "embedded_commit_found": false,
+      "verified": true,
+      "reasons": []
+    }
+  ]
+}

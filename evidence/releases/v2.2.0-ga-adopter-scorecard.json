@@ -1,0 +1,44 @@
+{
+  "schema_version": "1",
+  "harness": "adopter-scenarios",
+  "scenario": "offline-restricted",
+  "platform": "Linux",
+  "started_at": "2026-07-24T13:41:05Z",
+  "finished_at": "2026-07-24T13:41:05Z",
+  "documented_environment": [
+    "PATH",
+    "HOME",
+    "TMPDIR"
+  ],
+  "injected_inputs": [],
+  "unexpected_prompt": false,
+  "budget_seconds": 60,
+  "steps": [
+    {
+      "step": "inject-failure",
+      "command": "git clone https://<host>/sentinel-shield.git (network)",
+      "exit_code": 128,
+      "elapsed_seconds": 0,
+      "status": "fail",
+      "message": "network clone failed under offline/restricted network (rc=128)",
+      "generated_files": [],
+      "next_action": "acquire offline via the documented --repository <path> form"
+    },
+    {
+      "step": "recover",
+      "command": "sh scripts/acquire-sentinel-shield.sh --repository <engine-src> --ref <HEAD> --destination <workspace>/offline-engine --verify",
+      "exit_code": 0,
+      "elapsed_seconds": 0,
+      "status": "ok",
+      "message": "acquired offline via the documented --repository form; identity verified",
+      "generated_files": []
+    }
+  ],
+  "result": "pass",
+  "recovery": {
+    "required": true,
+    "performed": true,
+    "restored": true,
+    "method": "documented --repository <path> offline acquire + --verify"
+  }
+}
