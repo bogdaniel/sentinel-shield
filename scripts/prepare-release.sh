@@ -93,6 +93,19 @@ sh "$SCRIPT_DIR/collect-release-evidence.sh" --repo "$REPO" --commit "$SOURCE_CO
 # --- 2. verify the CI artifacts ---------------------------------------------
 step "2/8 verify CI artifacts (ownership / expiry / archive-safety / digests)"
 sh "$SCRIPT_DIR/verify-release-artifacts.sh" --evidence "$PFX.json" --output "$PFX-artifacts.json"
+# Fold the verified artifacts back into the evidence so each engine_ci run records its
+# artifacts[] + artifacts_verified — the exact state ra_check_evidence_source gates on for
+# artifacts_required workflows. verify-release-artifacts only emits the report; nothing else
+# writes this back, so the collector's honest empty artifacts[] would otherwise fail the gate.
+_embed_tmp=$(mktemp)
+jq --slurpfile rep "$PFX-artifacts.json" '
+	($rep[0].artifacts) as $recs
+	| .engine_ci |= map(
+		.workflow_run_id as $rid
+		| ($recs | map(select(.run_id == $rid) | {id: .artifact_id, name: .name, verified: .verified})) as $a
+		| .artifacts = $a
+		| .artifacts_verified = (($a | length) > 0 and (all($a[]; .verified == true)))
+	)' "$PFX.json" > "$_embed_tmp" && mv "$_embed_tmp" "$PFX.json"
 
 # --- 3. pull the three CI-proven gate reports from their green runs ----------
 step "3/8 download CI-proven gate reports (security / compatibility / adopter)"
