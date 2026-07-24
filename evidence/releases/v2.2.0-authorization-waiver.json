@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "kind": "release-authorization-waiver",
+  "version": "2.2.0",
+  "stage": "ga",
+  "release_scope": "engine-only",
+  "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
+  "tag": "v2.2.0",
+  "candidate_hash": "61d29d4ee817358efaacfc40c2e7457448adfe4d3009c1f4cafc3c8d953f1a2e",
+  "control_waived": "two-person-authorization",
+  "waived": true,
+  "waived_by": "bogdan@zenchron.com",
+  "waived_on": "2026-07-24",
+  "published_on": "2026-07-24",
+  "tag_signed": true,
+  "tag_signature_method": "ssh",
+  "rationale": "Single-maintainer repository: the two-person requested_by != approved_by control is structurally unsatisfiable and must not be met by fabricating a second identity. The release owner waived ONLY that identity control for this candidate and signed the tag at the CI-proven source commit directly. See docs/release-authorization-policy.md.",
+  "scope_of_waiver": "two-person identity control ONLY; no other release gate is waived"
+}
