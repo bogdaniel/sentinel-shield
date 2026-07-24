@@ -111,6 +111,7 @@ filenames) when configuring required checks. This table mirrors
 | `ci-docker`          | `detect-docker` (`applicability-detector`), `docker` (`conditional-heavy`) |
 | `ci-release-gate`    | `gate` (`release-only`) |
 | `ci-zap`             | `zap-baseline`, `zap-full` (both `scheduled-only`) |
+| `release-publish`    | `publish` (`release-only`) |
 
 > DAST (OWASP ZAP) runs via the `ci-zap` workflow — `scheduled-only`, so it
 > publishes no required PR check: `zap-full` scans staging nightly and is SKIPPED
