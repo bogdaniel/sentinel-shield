@@ -6,18 +6,18 @@
   "source_commit": "99fcd2767560b257344211aae57e027ea39a5304",
   "tag": "v2.2.0",
   "artifacts": {
-    "evidence": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga.json",
-    "manifest": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/manifests/v2.2.0-ga.manifest.json",
-    "artifact_verification": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-artifacts.json",
-    "security_acceptance": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-security-acceptance.json",
-    "compatibility_matrix": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-compatibility-matrix.json",
-    "adopter_scorecard": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-adopter-scorecard.json",
-    "upgrade_validation": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-upgrade-validation.json",
-    "rollback_validation": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/evidence/releases/v2.2.0-ga-rollback-validation.json"
+    "evidence": "./v2.2.0-ga.json",
+    "manifest": "../manifests/v2.2.0-ga.manifest.json",
+    "artifact_verification": "./v2.2.0-ga-artifacts.json",
+    "security_acceptance": "./v2.2.0-ga-security-acceptance.json",
+    "compatibility_matrix": "./v2.2.0-ga-compatibility-matrix.json",
+    "adopter_scorecard": "./v2.2.0-ga-adopter-scorecard.json",
+    "upgrade_validation": "./v2.2.0-ga-upgrade-validation.json",
+    "rollback_validation": "./v2.2.0-ga-rollback-validation.json"
   },
   "docs": {
-    "limitations": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/docs/v2.2.0-known-limitations.md",
-    "support_policy": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/docs/support-policy.md",
-    "incident_response": "/Users/m3tagh0st/orca/workspaces/sentinel-shield/sunstar/docs/security-incident-response.md"
+    "limitations": "../../docs/v2.2.0-known-limitations.md",
+    "support_policy": "../../docs/support-policy.md",
+    "incident_response": "../../docs/security-incident-response.md"
   }
 }

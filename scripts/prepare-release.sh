@@ -169,6 +169,27 @@ sh "$SCRIPT_DIR/authorize-production-release.sh" prepare \
 	--incident-response "$ROOT/docs/security-incident-response.md" \
 	--output "$CANDIDATE"
 
+# Relativize the recorded paths (to the candidate's own directory) so the candidate is
+# PORTABLE — verify-candidate/publish must resolve on any machine, not just where it was
+# generated. Paths were passed absolute above (built from $ROOT); rewrite them like v2.0.1.
+_rel_tmp=$(mktemp)
+jq --arg v "$VERSION" --arg s "$STAGE" '
+	.artifacts = {
+		evidence: "./v\($v)-\($s).json",
+		manifest: "../manifests/v\($v)-\($s).manifest.json",
+		artifact_verification: "./v\($v)-\($s)-artifacts.json",
+		security_acceptance: "./v\($v)-\($s)-security-acceptance.json",
+		compatibility_matrix: "./v\($v)-\($s)-compatibility-matrix.json",
+		adopter_scorecard: "./v\($v)-\($s)-adopter-scorecard.json",
+		upgrade_validation: "./v\($v)-\($s)-upgrade-validation.json",
+		rollback_validation: "./v\($v)-\($s)-rollback-validation.json"
+	}
+	| .docs = {
+		limitations: "../../docs/v\($v)-known-limitations.md",
+		support_policy: "../../docs/support-policy.md",
+		incident_response: "../../docs/security-incident-response.md"
+	}' "$CANDIDATE" > "$_rel_tmp" && mv "$_rel_tmp" "$CANDIDATE"
+
 # --- 8. verify candidate (all GA gates) -------------------------------------
 step "8/8 verify candidate (re-derive every GA gate)"
 if sh "$SCRIPT_DIR/authorize-production-release.sh" verify-candidate \
