@@ -88,12 +88,19 @@ jobs:
             exit 0
           fi
           # shellcheck disable=SC2086
-          gh release create "$TAG" \
-            --repo "$REPO" \
-            --verify-tag \
-            --title "Sentinel Shield $TAG" \
-            --notes-file "$NOTES" \
-            $KIND
+          if ! gh release create "$TAG" \
+              --repo "$REPO" \
+              --verify-tag \
+              --title "Sentinel Shield $TAG" \
+              --notes-file "$NOTES" \
+              $KIND; then
+            # A concurrent publisher may have created it between the check and now.
+            if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+              echo "Release $TAG was created concurrently; treating as success."
+              exit 0
+            fi
+            exit 1
+          fi
 
       - name: Verify the published release
         if: steps.meta.outputs.skip != 'true'
