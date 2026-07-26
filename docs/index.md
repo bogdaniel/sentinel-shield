@@ -11,7 +11,7 @@
 > engine tests but are not independently live-validated in real consumer repositories.**
 > **Framework-validated and full-platform GA are not claimed.** Single source of truth for maturity:
 > [`product-status.md`](product-status.md). v2 release notes:
-> [`v2.0.1-release-notes.md`](v2.0.1-release-notes.md), [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) ·
+> [`v2.2.0-release-notes.md`](v2.2.0-release-notes.md), [`v2.0.1-release-notes.md`](v2.0.1-release-notes.md), [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) ·
 > branch protection: [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
 > [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md).
 >
@@ -59,7 +59,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 
 ### Modes, gates & governance
 - [`gate-resolution.md`](gate-resolution.md) — mode → gate flags → enforce **[stable]**
-- [`engineering-quality-gates.md`](engineering-quality-gates.md) — coverage/mutation/complexity/duplication/dead-code quality gates (v2.1; unreleased, additive engine capability) **[experimental]**
+- [`engineering-quality-gates.md`](engineering-quality-gates.md) — coverage/mutation/complexity/duplication/dead-code quality gates (released in `v2.2.0`, engine-only) **[reference]**
 - [`severity-policy.md`](severity-policy.md) — severity → gate mapping **[stable]**
 - [`strict-mode-readiness.md`](strict-mode-readiness.md) — strict opt-in pre-flight **[stable]**
 - [`regulated-mode-readiness.md`](regulated-mode-readiness.md) — regulated (not default) **[advanced]**

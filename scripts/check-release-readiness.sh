@@ -327,7 +327,10 @@ else
 			pass "publication declaration is self-consistent (structural-only; --verify-github proves the GitHub Release exists)"
 		fi
 	elif [ "$_rsrc" -eq 3 ]; then
-		fail "release-status publication check needs a tool that is unavailable (exit 3) — fail closed"
+		# NON-WAIVABLE like the other publication failures: "we could not run the check" is
+		# not "the release is published". A missing or transiently failing `gh` must not be
+		# waivable past a publication claim nobody proved.
+		failx "release-status publication check needs a tool that is unavailable (exit 3) — publication was NOT proven; fail closed"
 	else
 		failx "a release is declared PUBLISHED but no valid GitHub Release was proven (run: sh scripts/validate-release-status.sh published --verify-github; backfill via the release-publish workflow_dispatch recovery path)"
 	fi

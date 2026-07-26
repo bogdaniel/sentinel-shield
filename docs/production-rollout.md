@@ -68,7 +68,7 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > `regulated` adds mutation + dead-code. It is off by default in existing modes;
 > adopt it report-only-first via
 > `.sentinel-shield/quality-policy.yaml`. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
-
+>
 > **Architecture Governance v2 (released in `v2.2.0`) — additive engine capability.** Sentinel Shield
 > enforces architecture governance through normalized architecture evidence. Deptrac is the PHP
 > structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers. Custom

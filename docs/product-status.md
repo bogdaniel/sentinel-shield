@@ -13,7 +13,7 @@ in exactly one place.
 
 | Field | Value |
 | --- | --- |
-| Latest release | **v2.2.0** — engine-only **feature** release, **published and marked latest** (2026-07-24, tag target `99fcd276`); adds three additive engineering-governance gate families (testing-discipline, engineering-quality, architecture governance v2), all off by default in existing modes; **not** framework-validated, **not** full-platform GA |
+| Latest release | **v2.2.0** — engine-only **feature** release, **published and marked latest** (2026-07-24, tag target `99fcd276`); adds three additive engineering-governance gate families (testing-discipline, engineering-quality, architecture governance v2) whose keys are additive — several of their gates enforce from `baseline` once evidence exists, see [`gate-resolution.md`](gate-resolution.md); **not** framework-validated, **not** full-platform GA |
 | Prior release | **v2.0.1** — engine-only maintenance release (2026-07-09, tag target `32812ed`, evidence PR #39); superseded as latest by v2.2.0 |
 | Prior production release | **v2.0.0** — engine-only production release (2026-07-09, tag target `13be630`, evidence PR #36) |
 | Prior stable line | **v1.x** (`v1.9.2`) — still supported |
@@ -114,7 +114,7 @@ third-party production adopter — which is **false for everything** this cycle.
 An **engineering-quality** gate family (coverage, coverage regression, mutation, complexity,
 duplication, dead code) is implemented and tested as an **additive** engine capability, in a **separate
 counter channel** from security. It was released in **`v2.2.0`** (engine-only) and is
-off by default in existing modes, so upgrading changes no gate outcome until you opt in. It is not framework live-validated. Full
+additive; which of its gates enforce in which mode is the matrix in [`gate-resolution.md`](gate-resolution.md). It is not framework live-validated. Full
 reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 ### Architecture Governance v2 — additive engine capability, released in `v2.2.0`

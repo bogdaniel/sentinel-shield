@@ -112,6 +112,14 @@ REF_VALUE=$(q '.consumer_ref.value')
 # is_hex40 <value>
 is_hex40() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 
+# tag_token_re <tag> — an ERE matching this tag as a WHOLE TOKEN. `grep -F` was a plain
+# substring match, so the superseded tag `v2.0.0` also matched `v2.0.0-beta.1`,
+# `v2.0.0-rc.1` and `v2.0.0-alpha.1` — tags this repository legitimately names in historical
+# prose. A true sentence about a pre-release would have been reported as a stale-latest claim.
+tag_token_re() {
+	printf '(^|[^0-9A-Za-z.-])%s([^0-9A-Za-z.-]|$)' "$(printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g')"
+}
+
 # is_historical <repo-relative-path> — true when the path is declared frozen.
 #
 # `set -f` is essential: the declared patterns are split into words here, and without it
@@ -229,7 +237,7 @@ check_docs() {
 		_swept=$((_swept + 1))
 		for _tag in $SUPERSEDED_TAGS; do
 			_hits=$(grep -in 'latest release\|latest published release\|latest stable release' "$REPO_ROOT/$_f" 2>/dev/null |
-				grep -F "$_tag" | grep -Fv "$CUR_TAG" || true)
+				grep -E "$(tag_token_re "$_tag")" | grep -Fv "$CUR_TAG" || true)
 			if [ -n "$_hits" ]; then
 				fail "STALE_LATEST_CLAIM — $_f presents superseded $_tag as the latest release:"
 				printf '%s\n' "$_hits" | sed 's/^/          /'
@@ -256,7 +264,7 @@ check_changelog() {
 	if printf '%s' "$_intro" | grep -Fq "$CUR_TAG"; then pass "CHANGELOG intro names $CUR_TAG"
 	else fail "CHANGELOG_INTRO_STALE — the introduction never mentions the current release $CUR_TAG"; fi
 	for _tag in $SUPERSEDED_TAGS; do
-		if printf '%s' "$_intro" | grep -i 'latest release\|latest published release' | grep -F "$_tag" | grep -Fvq "$CUR_TAG"; then
+		if printf '%s' "$_intro" | grep -i 'latest release\|latest published release' | grep -E "$(tag_token_re "$_tag")" | grep -Fvq "$CUR_TAG"; then
 			fail "CHANGELOG_INTRO_STALE_LATEST — the introduction presents superseded $_tag as latest"
 		fi
 	done

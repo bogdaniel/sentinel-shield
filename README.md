@@ -16,8 +16,8 @@ This repository is not a demo. It is intended for use in real production project
 > **Release status.** Latest release: **`v2.2.0` — engine-only feature release**, published
 > and marked **latest** (2026-07-24, tag target `99fcd276`). It supersedes **`v2.0.1`** (engine-only
 > maintenance, tag target `32812ed`) and **`v2.0.0`** (tag target `13be630`), both still intact
-> releases, and adds three additive engineering-governance gate families that are off by default in
-> existing modes. Canonical machine-readable status:
+> releases, and adds three additive engineering-governance gate families. Their gate keys are additive (an older summary stays valid), but "off by default" is not true of the whole families: in `baseline`, `acceptance_test_failures`, `architecture_violations`, `changed_lines_coverage_violations`, `missing_test_evidence`, `empty_test_suite` and `debug_code_violations` enforce once their evidence exists, and `focused_test_violations` enforces in every mode. The per-gate mode matrix is [`docs/gate-resolution.md`](docs/gate-resolution.md).
+> Canonical machine-readable status:
 > [`config/release-status.json`](config/release-status.json). The prior **v1.x**
 > line (`v1.9.2`) remains a supported prior stable line. v2 is an **engine-only** release: it is **not**
 > framework-validated and does **not** claim full-platform GA — **Laravel and Symfony are
@@ -752,8 +752,9 @@ The family now also covers **changed-line (diff) coverage**, **test-evidence / e
 **debug residue** (`debug_code_violations`), and **file-size maintainability** (`large_file_violations`,
 `large_function_violations`) — all additive/optional (missing→0/false) and in the same separate counter
 channel; the fast quality tools now also run on PRs.
-> **Status: additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in
-> existing modes, so upgrading changes no gate outcome until you opt in. Full reference:
+> **Status: additive engine capability, released in `v2.2.0`** (engine-only). Its keys are additive;
+> see [`docs/gate-resolution.md`](docs/gate-resolution.md) for which of them enforce in which mode
+> (several enforce from `baseline` once their evidence exists). Full reference:
 > [`docs/engineering-quality-gates.md`](docs/engineering-quality-gates.md).
 
 ## Architecture Governance v2 (v2.1)
@@ -768,8 +769,9 @@ block from **baseline**, missing evidence blocks from **strict**, and **regulate
 the raw architecture reports to be retained. Producers are configured in
 `.sentinel-shield/architecture-policy.yaml`; style starting points live in `templates/architecture/`.
 Architecture tools detect dependency-boundary violations, not the quality of domain modeling itself.
-> **Status: additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in
-> existing modes, so upgrading changes no gate outcome until you opt in. Full reference:
+> **Status: additive engine capability, released in `v2.2.0`** (engine-only). Its keys are additive;
+> see [`docs/gate-resolution.md`](docs/gate-resolution.md) for which of them enforce in which mode
+> (several enforce from `baseline` once their evidence exists). Full reference:
 > [`docs/architecture-governance.md`](docs/architecture-governance.md).
 
 ## Testing Discipline Governance (v2.2.0)
@@ -793,6 +795,7 @@ off even when a profile declares a required producer.
 order its lines were written — Sentinel Shield enforces TDD evidence proxies, not developer intent. It
 does not guarantee BDD quality and never replaces product-owner acceptance. **Libraries are not forced
 to carry BDD/ATDD by default.**
-> **Status: additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in
-> existing modes, so upgrading changes no gate outcome until you opt in. Full reference:
+> **Status: additive engine capability, released in `v2.2.0`** (engine-only). Its keys are additive;
+> see [`docs/gate-resolution.md`](docs/gate-resolution.md) for which of them enforce in which mode
+> (several enforce from `baseline` once their evidence exists). Full reference:
 > [`docs/testing-discipline-governance.md`](docs/testing-discipline-governance.md).

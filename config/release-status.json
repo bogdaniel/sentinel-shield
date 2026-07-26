@@ -46,10 +46,12 @@
   "status_surfaces": [
     "README.md",
     "CHANGELOG.md",
+    "docs/consumer-onboarding.md",
+    "docs/gate-resolution.md",
     "docs/index.md",
-    "docs/product-status.md",
     "docs/product-contract.md",
     "docs/product-readiness-checklist.md",
+    "docs/product-status.md",
     "docs/production-readiness-audit.md",
     "docs/roadmap.md",
     "docs/sentinel-shield-release-process.md",

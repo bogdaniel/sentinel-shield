@@ -138,12 +138,25 @@ jobs:
           R=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '.verification.reason' 2>/dev/null) || R="unknown"
           if [ "$V" = true ]; then
             echo "tag $TAG: signature GitHub-verified"
-          else
-            # The previous step already proved a signature is PRESENT and that the tag targets
-            # the published commit. GitHub can only mark it verified when the signing key is
-            # registered on the account — say so instead of implying verified provenance.
-            echo "::warning::tag $TAG carries a signature but GitHub reports verified=$V (reason=$R). Register the signing key on the account to get verified provenance."
+            exit 0
           fi
+          # NOT verified. Two very different situations hide behind that, and collapsing them
+          # into one warning was wrong:
+          #
+          #   * the signature itself is BAD or absent — malformed, unsigned, wrong key, expired,
+          #     revoked. That is a failed integrity check and must fail the publication.
+          #   * the signature is well-formed but GitHub cannot attribute it, because the signing
+          #     key is not registered on the account (unknown_key / unknown_signature_type).
+          #     That is an account-configuration gap, not evidence of a bad signature, and the
+          #     previous step already proved the tag carries a signature and targets the
+          #     published commit.
+          case "$R" in
+            unknown_key|unknown_signature_type)
+              echo "::warning::tag $TAG carries a signature but GitHub cannot attribute it (reason=$R). Register the signing key on the account to get verified provenance." ;;
+            *)
+              echo "::error::tag $TAG failed GitHub signature verification (verified=$V, reason=$R). Refusing to publish a release for a tag whose signature does not verify."
+              exit 1 ;;
+          esac
 
       - name: Create GitHub Release (verifies the pushed tag)
         # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand

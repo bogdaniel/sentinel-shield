@@ -120,7 +120,7 @@ first, review real output, then tighten:**
 | OWASP Dependency-Check | `*_vulnerabilities` | `experimental` — **attempted, NOT live-validated** | No real artifact; cold NVD exceeds CI budget. Run **nightly** with warm cache, advisory, before gating. |
 | Checkov / Conftest / Terrascan | `iac_violations` | `experimental` — **only if configured** | No consumer with IaC validated; meaningful only with IaC. |
 | Deptrac | `architecture_violations` | `supported` — not live-validated | Live-validate on a consumer with `deptrac.yaml`. |
-| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | v2.1 unreleased — engine-tested + fixture-tested, **no real consumer validation** | Absent/unavailable/errored evidence blocks here, and the raw reports must be retained. Wire producers in report-only/baseline, tighten through strict, then regulate. |
+| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | released in `v2.2.0` (engine-only) — engine-tested + fixture-tested, **no real consumer validation** | Absent/unavailable/errored evidence blocks here, and the raw reports must be retained. Wire producers in report-only/baseline, tighten through strict, then regulate. |
 | OpenSSF Scorecard | `repository_health_warnings` | `experimental` — regulated-only gate | Needs repo token; review real warnings before blocking. |
 | Trivy (image) | `*_vulnerabilities` | `experimental`/nightly | Needs an image ref; nightly home. |
 | TruffleHog | `secrets` | `experimental`/nightly | Verified-only count; live-validate. |

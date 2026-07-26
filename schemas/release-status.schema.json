@@ -31,7 +31,9 @@
     "superseded": {
       "type": "array",
       "description": "Previously current releases of the same major line, newest first. No active status document may present any of these as latest.",
-      "items": { "$ref": "#/$defs/release" }
+      "items": {
+        "$ref": "#/$defs/release"
+      }
     },
     "prior_supported_line": {
       "$ref": "#/$defs/release",
@@ -40,65 +42,140 @@
     "consumer_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "value"],
+      "required": [
+        "kind",
+        "value"
+      ],
       "description": "The immutable Sentinel Shield ref shipped workflow templates must pin (SENTINEL_SHIELD_REF).",
       "properties": {
         "kind": {
-          "enum": ["tag", "commit"],
+          "enum": [
+            "tag",
+            "commit"
+          ],
           "description": "A moving branch is never a valid consumer ref."
         },
         "value": {
           "type": "string",
           "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?|[0-9a-f]{40})$"
         },
-        "rationale": { "type": "string" }
-      }
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "tag"
+            },
+            "value": {
+              "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "commit"
+            },
+            "value": {
+              "pattern": "^[0-9a-f]{40}$"
+            }
+          }
+        }
+      ]
     },
     "status_surfaces": {
       "type": "array",
       "minItems": 1,
       "description": "Active documents that MUST state the current release. Each is required to exist and to mention the current tag.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "historical_documents": {
       "type": "array",
       "description": "Frozen documents (glob patterns) that record historical truth and are therefore exempt from the stale-latest sweep. They are never rewritten to the current version.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "historical_trees": {
       "type": "array",
       "description": "Directory prefixes whose contents are immutable evidence/fixtures and are exempt from the stale-latest sweep.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "active_workflow_templates": {
       "type": "array",
       "minItems": 1,
       "description": "Shipped consumer workflow templates/examples whose SENTINEL_SHIELD_REF must equal consumer_ref.value.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   },
   "$defs": {
     "release": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "tag", "commit", "published"],
+      "required": [
+        "version",
+        "tag",
+        "commit",
+        "published"
+      ],
       "properties": {
-        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
-        "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+        },
         "commit": {
           "type": "string",
           "pattern": "^[0-9a-f]{40}$",
           "description": "Full 40-hex commit the tag targets. Short SHAs are rejected: they are ambiguous."
         },
-        "stage": { "enum": ["alpha", "beta", "rc", "ga"] },
-        "scope": { "enum": ["engine-only", "framework-validated", "full-platform"] },
+        "stage": {
+          "enum": [
+            "alpha",
+            "beta",
+            "rc",
+            "ga"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "engine-only",
+            "framework-validated",
+            "full-platform"
+          ]
+        },
         "published": {
           "type": "boolean",
           "description": "TRUE only when a GitHub Release exists for `tag`. A pushed Git tag alone is NOT publication."
         },
-        "published_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
-        "release_url": { "type": "string", "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$" },
-        "notes": { "type": "string", "description": "Repository-relative release-notes path." }
+        "published_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "release_url": {
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Repository-relative release-notes path."
+        }
       }
     }
   }

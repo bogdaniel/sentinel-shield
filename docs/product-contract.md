@@ -137,7 +137,7 @@ the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifes
 
 ---
 
-## 4a. Engineering quality gates (v2.1) — unreleased, additive engine capability
+## 4a. Engineering quality gates — additive engine capability, released in `v2.2.0`
 
 An **engineering-quality** gate family (coverage, coverage regression, mutation, complexity,
 duplication, dead code) has been implemented as an **additive** engine capability. Consistent with §2,
@@ -150,7 +150,7 @@ channel** from security; they are **not** accepted-risk-suppressible. This is an
 
 ---
 
-## 4b. Architecture Governance v2 (v2.1) — unreleased, additive engine capability
+## 4b. Architecture Governance v2 — additive engine capability, released in `v2.2.0`
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
