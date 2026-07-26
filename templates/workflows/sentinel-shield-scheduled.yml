@@ -52,10 +52,27 @@ jobs:
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/trufflehog.sh reports/raw/trufflehog.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/scorecard.sh reports/raw/scorecard.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/grype.sh reports/raw/grype.json || true
+          # Producers for the tools the profiles mark REQUIRED at the `scheduled` stage. Each
+          # wrapper is honest-absent: with no scanner binary it writes NOTHING and the collector
+          # reports `unavailable` — it never fabricates a clean report.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/osv-scanner.sh reports/raw/osv-scanner.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/trivy-fs.sh reports/raw/trivy-fs.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/syft.sh reports/raw/syft.json || true
+          if [ -f composer.json ]; then
+            composer audit --format=json > reports/raw/composer-audit.json 2>/dev/null || true
+          fi
           [ -n "${SENTINEL_SHIELD_IMAGE:-}" ] && sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dockle.sh reports/raw/dockle.json || true
+      - name: Gitleaks secrets (pinned image → reports/raw/gitleaks.json)
+        # `secrets` is non-suppressible and the profiles require gitleaks nightly too.
+        continue-on-error: true
+        run: |
+          mkdir -p reports/raw
+          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.18.4}" \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
       - name: Build summary (report-only; nightly does not block merges)
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage scheduled --raw-dir reports/raw --output reports/security-summary.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # preserve raw reports even if a scan/step fails
         with: { name: sentinel-shield-scheduled, path: reports/**, retention-days: 30, if-no-files-found: warn }
@@ -105,7 +122,7 @@ jobs:
       - name: Build summary (report-only)
         if: always()
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage scheduled --raw-dir reports/raw --output reports/security-summary.json || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # scanner failure/findings must NOT erase the raw dependency-check.json
         with: { name: sentinel-shield-dependency-check, path: reports/**, retention-days: 30, if-no-files-found: warn }

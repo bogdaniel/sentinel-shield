@@ -200,6 +200,7 @@ WORKFLOW="local"
 STRICT_TOOLS=0
 REQUIRE_TOOLS=" "   # space-padded list for substring matching
 PROFILE_NAME=""    # when set, overlay effective-profile tool policy onto summary.tools
+STAGE=""
 TARGET_DIR=""      # consuming project root (applicability + one-of + installation.json)
 OVERRIDE_PATH=""   # project tool-policy override passed through to the resolver
 
@@ -219,6 +220,10 @@ Options:
   --commit <sha>          Source commit (default: unknown)
   --branch <branch>       Source branch (default: master)
   --workflow <name>       Producing workflow (default: local)
+  --stage <stage>         pr | main | scheduled. Scopes REQUIRED-tool gating to the tools the
+                          profile selects for that stage (matching run-tool-plan.sh). Status is
+                          still reported for every tool; only gating is scoped. Omit to keep the
+                          stage-blind behaviour.
   --strict-tools          Fail (exit 1) if ANY expected raw artifact is missing
   --require-tool <tool>   Fail (exit 1) if this tool's artifact is missing (repeatable)
   --profile <name>        Overlay the effective-profile tool policy onto summary.tools.
@@ -251,6 +256,7 @@ while [ $# -gt 0 ]; do
 		--strict-tools) STRICT_TOOLS=1; shift ;;
 		--require-tool) REQUIRE_TOOLS="${REQUIRE_TOOLS}${2:?--require-tool requires a value} "; shift 2 ;;
 		--profile) PROFILE_NAME="${2:?--profile requires a value}"; shift 2 ;;
+		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
 		--target) TARGET_DIR="${2:?--target requires a value}"; shift 2 ;;
 		--override) OVERRIDE_PATH="${2:?--override requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
@@ -263,6 +269,10 @@ case "$CRIT" in
 	*) die_cfg "invalid --criticality '$CRIT' (expected: low | medium | high | critical)" ;;
 esac
 
+case "$STAGE" in
+	'' | pr | main | scheduled) ;;
+	*) log_error "--stage must be pr|main|scheduled (got '$STAGE')"; exit 2 ;;
+esac
 command_exists jq || die_cfg "jq is required but was not found. Install jq."
 
 REPORTS_DIR=$(dirname -- "$OUTPUT")
@@ -425,13 +435,21 @@ if [ -n "$PROFILE_NAME" ]; then
 	# Pipe-delimited rows (empty fields preserved):
 	#   key|policy|applicability|report|exes|cfgpath|cfgclass|category
 	# (category is appended LAST so the existing positional fields are untouched.)
-	_rows=$(printf '%s' "$EFF" | jq -r '
+	# The STAGE column carries whether this tool is selected to run at $STAGE. A required tool
+	# that does not run at this stage must not be gate-enforced here: the profiles legitimately
+	# require Dependency-Check nightly, and gating it in the main-gate summary made a main run
+	# unpassable no matter what the consumer did. Its status is still reported honestly — only
+	# the gating is stage-scoped. With no --stage the previous (stage-blind) behaviour is kept.
+	_rows=$(printf '%s' "$EFF" | jq -r --arg stage "$STAGE" '
 		.tools | to_entries[]
 		| [ .key, .value.policy, (.value.applicability // "unknown"),
 			(.value.report // ""),
 			((.value.executable // []) | join(" ")),
 			(.value.config.path // ""), (.value.config.classification // ""),
-			(.value.category // "") ]
+			(.value.category // ""),
+			(if $stage == "" then "yes"
+			 elif (.value.execution[$stage] // false) == true then "yes"
+			 else "no" end) ]
 		| join("|")')
 
 	POLICY_COLLECTED=""
@@ -448,7 +466,7 @@ if [ -n "$PROFILE_NAME" ]; then
 	BDD_EVIDENCE_EMITS=" "
 	ATDD_EVIDENCE_EMITS=" "
 	# Read in the CURRENT shell (here-doc, NOT a pipe) so counters/accumulators persist.
-	while IFS='|' read -r tkey tpol tappl trep texe tcfgp tcfgc tcat; do
+	while IFS='|' read -r tkey tpol tappl trep texe tcfgp tcfgc tcat tstage; do
 		[ -n "$tkey" ] || continue
 
 		# Which tools get a per-tool object: required/recommended/optional always;
@@ -575,7 +593,7 @@ if [ -n "$PROFILE_NAME" ]; then
 		# Gating + counters. Only REQUIRED tools fail the gate per-tool; one-of is
 		# gated at the GROUP level (see one_of_groups), recommended/optional are
 		# visibility-only here (the enforcer downgrades them to warn/info).
-		if [ "$tpol" = "required" ] && [ "$status" != "not-applicable" ]; then
+		if [ "$tpol" = "required" ] && [ "$status" != "not-applicable" ] && [ "${tstage:-yes}" = "yes" ]; then
 			gate_enforced=true
 			case "$status" in
 				unavailable) REQ_FAIL=$((REQ_FAIL + 1)) ;;

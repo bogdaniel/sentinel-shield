@@ -245,6 +245,7 @@
     "codeql": {
       "policy": "required",
       "category": "static-analysis",
+      "runner": "scripts/runners/codeql-export.sh",
       "executable": [
         "codeql"
       ],

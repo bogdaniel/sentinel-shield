@@ -46,6 +46,12 @@ jobs:
       - name: PHP fast checks (best-effort; never fake)
         run: |
           mkdir -p reports/raw
+          # composer audit is REQUIRED at `pr` by every PHP profile; without it the PR plan
+          # records the dependency-advisory channel as unavailable.
+          if [ -f composer.json ]; then
+            composer install --no-interaction --no-progress --prefer-dist --no-scripts || true
+            composer audit --format=json > reports/raw/composer-audit.json 2>/dev/null || true
+          fi
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
           # TODO (optional, NOT wired): Psalm / Pint / PHP-CS-Fixer — add the runner calls here if
@@ -71,10 +77,28 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
-          # NOTE: gitleaks + actionlint + zizmor are NOT run here — they run in ci-security.yml.
+      - name: Gitleaks secrets (pinned image → reports/raw/gitleaks.json)
+        # `secrets` is a NON-SUPPRESSIBLE control and every profile marks gitleaks required at
+        # `pr`. It used to be left to the engine's own ci-security.yml, which a CONSUMER does
+        # not have — so a consumer's PR plan had no secrets producer at all.
+        continue-on-error: true
+        run: |
+          mkdir -p reports/raw
+          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.18.4}" \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+      - name: OSV-Scanner (SHA-pinned action → reports/raw/osv-scanner.json)
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --format=json
+            --output=reports/raw/osv-scanner.json
+            --recursive
+            ./
+        continue-on-error: true
       - name: Build summary + enforce
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage pr --raw-dir reports/raw --output reports/security-summary.json
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # preserve raw reports even when the gate fails on real findings

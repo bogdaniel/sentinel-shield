@@ -219,6 +219,26 @@ jobs:
           format: spdx-json
           output-file: reports/sbom.spdx.json
         continue-on-error: true
+      - name: OSV-Scanner (SHA-pinned action → reports/raw/osv-scanner.json)
+        # Required at `pr` by some profiles (e.g. symfony); without a producer the PR plan
+        # records it unavailable and the main gate inherits an incomplete evidence set.
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --format=json
+            --output=reports/raw/osv-scanner.json
+            --recursive
+            ./
+        continue-on-error: true
+      - name: Repository hygiene audits (Action pinning + base-image digests)
+        # Required by the docker/hardened/combined profiles at pr and main. These are the
+        # engine's own audit wrappers: they read the tree, need no scanner binary, and report
+        # honestly rather than fabricating a clean result.
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-github-actions-pins.sh --output reports/raw/github-actions-pins.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-docker-base-digest.sh --output reports/raw/docker-base-digest.json || true
       - name: Run the PR tool plan (profile-driven)
         # Resolves the effective profile and runs every tool the profile says run at the
         # `pr` stage (language runners execute now that deps are installed; scanner
@@ -236,7 +256,7 @@ jobs:
         run: |
           set -eu
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh \
-            --profile "${PROFILE}" --target . \
+            --profile "${PROFILE}" --stage pr --target . \
             --raw-dir reports/raw --output reports/security-summary.json \
             --project-name "${PROJECT_NAME}" \
             --project-type "${PROFILE}" \
@@ -340,6 +360,59 @@ jobs:
           format: spdx-json
           output-file: reports/sbom.spdx.json
         continue-on-error: true
+      # --- required-report producers for the MAIN tool plan -------------------------
+      # The profile marks syft/osv-scanner/grype as REQUIRED at `main`, and run-tool-plan.sh
+      # exits 3 when a required report is absent. These steps are what make that exit mean
+      # "the scanner found nothing to report / failed", never "the workflow never produced it".
+      # Each is report-only here (continue-on-error): enforcement happens in `Enforce gates`,
+      # and an absent report still fails the plan below — nothing is silenced.
+      - name: SBOM for the tool plan (syft-json → reports/raw/syft.json)
+        # The profile's syft contract is reports/raw/syft.json (Syft's own JSON), NOT the SPDX
+        # artifact above; producing only the SPDX file is what made a fresh install exit 3.
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: syft-json
+          output-file: reports/raw/syft.json
+        continue-on-error: true
+      - name: OSV-Scanner (SHA-pinned action → reports/raw/osv-scanner.json)
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --format=json
+            --output=reports/raw/osv-scanner.json
+            --recursive
+            ./
+        continue-on-error: true
+      - name: Grype vulnerability scan (SHA-pinned action, SBOM-first → reports/raw/grype.json)
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: reports/sbom.spdx.json
+          output-format: json
+          output-file: reports/raw/grype.json
+          fail-build: false
+        continue-on-error: true
+      - name: Initialize CodeQL
+        # `actions` always applies (this workflow itself is analysed); javascript-typescript is
+        # added when the project ships a package.json. CodeQL does not support PHP, so a
+        # PHP-only project is still analysed for its workflows — the profile's codeql contract
+        # is satisfied by scripts/runners/codeql-export.sh exporting the SARIF below.
+        uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: ${{ hashFiles('**/package.json') != '' && 'javascript-typescript,actions' || 'actions' }}
+        continue-on-error: true
+      - name: Analyze with CodeQL (SARIF to codeql-results; no upload, so no security-events write)
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          output: codeql-results
+          upload: false
+        continue-on-error: true
+      - name: Repository hygiene audits (Action pinning + base-image digests)
+        run: |
+          set -eu
+          mkdir -p reports/raw
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-github-actions-pins.sh --output reports/raw/github-actions-pins.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audit-docker-base-digest.sh --output reports/raw/docker-base-digest.json || true
       - name: Run the main tool plan (profile-driven)
         run: |
           set -eu
@@ -354,7 +427,7 @@ jobs:
         run: |
           set -eu
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh \
-            --profile "${PROFILE}" --target . \
+            --profile "${PROFILE}" --stage main --target . \
             --raw-dir reports/raw --output reports/security-summary.json \
             --project-name "${PROJECT_NAME}" \
             --project-type "${PROFILE}" \

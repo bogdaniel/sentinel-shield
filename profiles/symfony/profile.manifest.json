@@ -459,6 +459,7 @@
     "dependency-check": {
       "policy": "required",
       "category": "sca",
+      "note": "Required at the SCHEDULED stage only. Dependency-Check needs the full NVD dataset (hundreds of MB, rate limited without an API key) and a warm persistent cache, so its documented home is the nightly workflow; requiring it at `main` made a fresh managed-workflow install exit 3 for a missing producer rather than for findings. See docs/dependency-check-nightly-strategy.md.",
       "executable": [
         "dependency-check",
         "dependency-check.sh"
@@ -467,7 +468,7 @@
       "missing_behavior": "fail",
       "execution": {
         "pr": false,
-        "main": true,
+        "main": false,
         "scheduled": true
       }
     },
