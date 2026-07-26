@@ -150,10 +150,90 @@ This is transparent in both reports:
 
 - **Baseline adoption still requires human approval.** Setting `status: approved` is
   a deliberate, reviewed human action — Sentinel Shield never sets it.
-- **Not all gates are suppressible** — only `unsafe_docker` and
-  `medium_vulnerabilities` in v0.1.3. Do not expect this to clear critical/high vulns.
+- **Not all gates are suppressible** — only `unsafe_docker` and `medium_vulnerabilities`.
+  Do not expect this to clear critical/high vulns; `secrets`, `expired_exceptions` and
+  `missing_release_evidence` are never suppressible.
 - **Findings are never hidden.** Counts remain; suppression is explicit and logged.
 - Prefer **fixing** over accepting. Acceptance is a time-boxed bridge, not a resolution.
+
+## medium_vulnerabilities finding identity (v2.3)
+
+Finding scope used to exist **only** for `unsafe_docker`. For `medium_vulnerabilities` the
+schema reserved `components` and `fingerprints` without enforcing them, so accepting ONE medium
+vulnerability meant suppressing the **whole gate** — and that broad record then also covered
+every unrelated medium finding that appeared later. That is exactly the governance failure this
+document tells adopters to avoid.
+
+`scripts/normalize-findings.sh` now derives one canonical identity per medium finding from the
+raw scanner reports:
+
+| Source | Raw file | Identity |
+| --- | --- | --- |
+| Grype | `reports/raw/grype.json` | advisory id, package, version, location |
+| OSV-Scanner | `reports/raw/osv-scanner.json` | advisory id, package, version, manifest path |
+| Trivy (fs) | `reports/raw/trivy-fs.json` | `VulnerabilityID`, `PkgName`, installed version, target |
+| Composer audit | `reports/raw/composer-audit.json` | CVE/advisory id, package, affected range |
+| npm audit | `reports/raw/npm-audit.json` | advisory sources, package, range |
+| OWASP Dependency-Check | `reports/raw/dependency-check.json` | CVE, dependency file |
+
+```
+fingerprint = ss-fp/1|<source>|<rule_id>|<component>|<version>|<file>
+```
+
+The fingerprint is **readable, not a hash**, so a reviewer can see exactly what a record
+accepts, and it is built only from stable identity fields — never array order, titles,
+descriptions or line numbers. The algorithm is versioned (`ss-fp/1`) and reported in the
+enforcement JSON, so records stay auditable across upgrades.
+
+### Matching rules
+
+A record matches a finding when **every dimension it declares** matches — declaring more can
+only *narrow* an exception, never widen it:
+
+| Field | Matches |
+| --- | --- |
+| `fingerprints` | the finding's exact canonical fingerprint |
+| `components` | the package/component name (survives a version bump) |
+| `rule_id` / `rule_ids` | the advisory or rule identifier |
+| `files` | the path (exact, path suffix, or basename) |
+
+```json
+{
+  "id": "accept-one-medium",
+  "gate": "medium_vulnerabilities",
+  "scope": "finding",
+  "components": ["symfony/http-kernel"],
+  "rule_ids": ["CVE-2024-50340"],
+  "owner": "platform-team",
+  "severity": "medium",
+  "reason": "No fixed release yet; the affected code path is not reachable from the web tier.",
+  "mitigation": "Upgrade when 6.4.15 lands.",
+  "expires_at": "2026-09-30",
+  "status": "approved"
+}
+```
+
+That record accepts **one advisory for one package**. Every other medium finding — including a
+*different* advisory for the same package, and a *new* medium finding introduced tomorrow —
+remains unaccepted and fails the gate.
+
+**Version changes are deliberate re-review points.** A `fingerprints` record stops matching
+once the package version changes, because the version is part of the identity. Use
+`components` (optionally with `rule_ids`) when the acceptance is about the package rather than
+one exact release.
+
+**Fail-closed on unidentifiable findings.** If `summary.medium_vulnerabilities` counts more
+findings than the raw reports can identify (missing, invalid, or a report format that only
+carries aggregate counts), the shortfall is **unaccepted** and the gate fails. An unreadable
+source never becomes a clean pass. Make the raw reports available to the enforcing job
+(`--raw-dir`, default `<summary dir>/raw`).
+
+**Ambiguous records never suppress.** A finding-scoped record that declares none of the four
+matching fields is reported as `legacy_unscoped_ignored` and suppresses nothing.
+
+**Broad `scope: gate` is still available, still discouraged, and now louder:** it is reported in
+both the JSON (`accepted_risks.medium_vulnerabilities.scope = "gate"`) and the Markdown, with an
+explicit warning that it also covers findings that appear later.
 
 ## unsafe_docker finding sources (v0.1.10)
 

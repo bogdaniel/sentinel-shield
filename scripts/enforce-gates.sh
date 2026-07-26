@@ -124,6 +124,7 @@ ACCEPTED_RISKS_FILE=".sentinel-shield/accepted-risks.json"
 CONTROL_WAIVERS_FILE=".sentinel-shield/control-waivers.json"  # required-tool waivers (schemas/control-waiver.schema.json)
 RAW_HADOLINT=""        # default derived from --summary dir (reports/raw/hadolint.json)
 RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-base-digest.json)
+RAW_DIR=""             # default derived from --summary dir (reports/raw); finding-scope sources
 
 # Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
 # narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
@@ -149,6 +150,8 @@ Options:
                        v0.1.8: records are FINDING-SCOPED by default (match rule_id+files);
                        broad gate suppression requires explicit "scope":"gate".
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
+  --raw-dir <path>       Raw scanner reports used for finding-scoped acceptance on
+                       vulnerability gates (default: <summary dir>/raw).
   --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
                        (default: <summary-dir>/raw/hadolint.json).
   --control-waivers <path>  Required-tool control waivers (default: .sentinel-shield/control-waivers.json,
@@ -182,6 +185,7 @@ while [ $# -gt 0 ]; do
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
 		--control-waivers) CONTROL_WAIVERS_FILE="${2:?--control-waivers requires a value}"; shift 2 ;;
+		--raw-dir) RAW_DIR="${2:?--raw-dir requires a value}"; shift 2 ;;
 		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
 		--docker-base-digest-raw) RAW_DOCKER_BASE="${2:?--docker-base-digest-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
@@ -203,6 +207,9 @@ command_exists jq || die_cfg "jq is required for security-summary.json enforceme
 # the caller pointed elsewhere. Used for unsafe_docker finding-scope matching (v0.1.8).
 [ -n "$RAW_HADOLINT" ] || RAW_HADOLINT="$(dirname "$SUMMARY")/raw/hadolint.json"
 [ -n "$RAW_DOCKER_BASE" ] || RAW_DOCKER_BASE="$(dirname "$SUMMARY")/raw/docker-base-digest.json"
+# Raw scanner reports used to derive FINDING IDENTITY for finding-scoped accepted risks on
+# vulnerability gates (medium_vulnerabilities). Same convention as the two paths above.
+[ -n "$RAW_DIR" ] || RAW_DIR="$(dirname "$SUMMARY")/raw"
 
 # --- load the gates env SAFELY (validate; never blind-source) ----------------
 # Allowed line shape: SENTINEL_SHIELD_<UPPER_KEY>=<safe-value>
@@ -416,7 +423,7 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 		| (.risks // [])[]
 		| select(.status == "approved" and ((.expires_at // "") >= $today) and ((.owner // "") != "") and ((.reason // "") != "") and (((.gate // "") | IN($S[]))))
 		| (.scope // "finding") as $scope
-		| (has("rule_id") or has("files") or has("rule_ids")) as $hasmatch
+		| (has("rule_id") or has("files") or has("rule_ids") or has("components") or has("fingerprints")) as $hasmatch
 		| if $scope == "gate" then "gate|\(.gate)|\(.id // "?")"
 		  elif $hasmatch then "finding|\(.gate)|\(.id // "?")|\(.rule_id // "")|\((.files // []) | join(","))"
 		  else "legacy|\(.gate)|\(.id // "?")" end' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
@@ -431,9 +438,10 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 				finding)
 					AR_FINDING_DETAIL="${AR_FINDING_DETAIL}${_g}|${_id}|${_rule}|${_files}
 "
-					if [ "$_g" != "unsafe_docker" ]; then
-						log_warn "accepted-risks: finding-scope record '$_id' targets '$_g'; finding-scope is only implemented for unsafe_docker in v0.1.8 — NOT suppressing (use \"scope\":\"gate\" for broad)."
-					fi ;;
+					case "$_g" in
+						unsafe_docker | medium_vulnerabilities) : ;;
+						*) log_warn "accepted-risks: finding-scope record '$_id' targets '$_g'; finding identity is defined for unsafe_docker and medium_vulnerabilities — NOT suppressing (use \"scope\":\"gate\" for broad)." ;;
+					esac ;;
 				legacy)
 					AR_LEGACY_WARN=$((AR_LEGACY_WARN + 1))
 					log_warn "accepted-risks: record '$_id' (gate $_g) has no scope and no rule_id/files — ambiguous; NOT suppressing. Add \"scope\":\"finding\" + rule_id/files, or \"scope\":\"gate\" for broad." ;;
@@ -596,6 +604,119 @@ eval_unsafe_docker() {
 	fi
 }
 
+# medium_vulnerabilities (v2.3): finding-scoped acceptance, the same shape as unsafe_docker.
+#
+# Accepting ONE medium vulnerability used to require suppressing the WHOLE gate, so every
+# unrelated medium finding that appeared later was covered by that older, broader exception.
+# Finding identity comes from scripts/normalize-findings.sh, which derives
+# {source, rule_id, component, version, file, fingerprint} from the raw scanner reports.
+#
+# A record matches a finding when EVERY dimension it declares matches (conjunctive, so adding
+# a dimension can only narrow an exception, never widen it):
+#   fingerprints[] -> exact canonical fingerprint     components[] -> package/component name
+#   rule_id / rule_ids -> advisory or rule identifier files[]      -> path (exact/suffix/basename)
+#
+# The gate is accepted-risk ONLY when every counted finding is matched. Findings the raw
+# sources could not account for (missing/invalid/unenumerable report) are UNACCEPTED, so an
+# unreadable source can never turn into a clean pass. The raw count is always preserved.
+MV_TOTAL=0; MV_ACCEPTED=0; MV_UNACCEPTED=0; MV_SCOPE="none"; MV_DETAIL="[]"
+# eval_medium_vulnerabilities — evaluate the medium-vulnerability gate and record its result.
+eval_medium_vulnerabilities() {
+	_key="medium_vulnerabilities"
+	_flag=$(gate_flag "$_key")
+	_val=$(jqr ".summary.$_key")
+	if [ "$_val" = "null" ]; then
+		_val=0
+	else
+		case "$_val" in
+			'' | *[!0-9]*)
+				die_cfg "summary.$_key must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
+		esac
+	fi
+	MV_TOTAL=$_val
+	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
+	if [ "$_val" -eq 0 ]; then add_eval "$_key" true 0 pass; return; fi
+	if is_gate_suppressed "$_key"; then
+		MV_SCOPE="gate"; MV_ACCEPTED=$_val; MV_UNACCEPTED=0
+		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
+		log_warn "medium_vulnerabilities: BROAD (scope:gate) accepted-risk — total $_val, all accepted. Broad suppression also covers findings that appear LATER; prefer finding-scoped records (components/fingerprints)."
+		return
+	fi
+	# No finding-scope record for this gate at all -> ordinary count gate, unchanged.
+	case "$AR_FINDING_DETAIL" in
+		*"$_key|"*) ;;
+		*) add_eval "$_key" true "$_val" fail; return ;;
+	esac
+	MV_SCOPE="finding"
+	_norm="$SCRIPT_DIR/normalize-findings.sh"
+	_finds=""
+	if [ -f "$_norm" ]; then
+		_finds=$(sh "$_norm" --gate medium_vulnerabilities --raw-dir "$RAW_DIR" 2>/dev/null) || _finds=""
+	fi
+	if [ -z "$_finds" ] || ! printf '%s' "$_finds" | jq -e 'type == "array"' >/dev/null 2>&1; then
+		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_warn "medium_vulnerabilities: finding identity could not be derived from '$RAW_DIR' — every finding is UNACCEPTED and the gate FAILS (count $_val preserved)."
+		return
+	fi
+	_acct=$(printf '%s' "$_finds" | jq \
+		--slurpfile risks "$ACCEPTED_RISKS_FILE" \
+		--arg today "$TODAY" --argjson total "$_val" '
+		def norm: (. // "") | tostring | sub("^\\./"; "");
+		. as $finds
+		| ([ ($risks[0].risks // [])[]
+			| select(.gate == "medium_vulnerabilities" and .status == "approved"
+				and ((.expires_at // "") >= $today)
+				and ((.owner // "") != "") and ((.reason // "") != "")
+				and ((.scope // "finding") == "finding")
+				and (has("rule_id") or has("rule_ids") or has("files") or has("components") or has("fingerprints"))) ]) as $fs
+		| [ $finds[]
+			| . as $f
+			| ( ( first( $fs[]
+					| select(
+						( (((.fingerprints // []) | length) == 0)
+							or (((.fingerprints // []) | index($f.fingerprint)) != null) )
+						and ( (((.components // []) | length) == 0)
+							or (((.components // []) | index($f.component)) != null) )
+						and ( ((.rule_id // "") == "" and ((.rule_ids // []) | length) == 0)
+							or (.rule_id == $f.rule_id)
+							or (((.rule_ids // []) | index($f.rule_id)) != null) )
+						and ( (((.files // []) | length) == 0)
+							or any((.files // [])[]; (. | norm) as $rf
+								| ($f.file == $rf) or ($f.file | endswith("/" + $rf))
+								or (($f.file | split("/") | last) == $rf)) )
+					)
+					| .id ) ) // null ) as $rid
+			| { source: $f.source, rule_id: $f.rule_id, component: $f.component,
+				version: $f.version, file: $f.file, fingerprint: $f.fingerprint,
+				accepted: ($rid != null), risk_id: ($rid // "") } ]
+		| ( length ) as $accounted
+		| ( [ .[] | select(.accepted) ] | length ) as $acc
+		| ( [ .[] | select(.accepted | not) ] | length ) as $unacc_visible
+		| ( (if $total > $accounted then ($total - $accounted) else 0 end) ) as $unaccounted_sources
+		| { total: $total, accounted: $accounted, accepted: $acc,
+			unaccepted: ($unacc_visible + $unaccounted_sources),
+			unaccounted_sources: $unaccounted_sources, detail: . }' 2>/dev/null || printf '')
+	if [ -z "$_acct" ]; then
+		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_warn "medium_vulnerabilities: could not compute finding-scope accounting; gate FAILS (count $_val preserved)."
+		return
+	fi
+	MV_ACCEPTED=$(printf '%s' "$_acct" | jq '.accepted')
+	MV_UNACCEPTED=$(printf '%s' "$_acct" | jq '.unaccepted')
+	_unacc_src=$(printf '%s' "$_acct" | jq '.unaccounted_sources')
+	MV_DETAIL=$(printf '%s' "$_acct" | jq -c '.detail')
+	if [ "$MV_UNACCEPTED" -eq 0 ] && [ "$MV_ACCEPTED" -gt 0 ]; then
+		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
+		log_info "medium_vulnerabilities: finding-scoped accepted-risk — total $_val, accepted $MV_ACCEPTED, unaccepted 0."
+	else
+		add_eval "$_key" true "$_val" fail
+		[ "$_unacc_src" -gt 0 ] 2>/dev/null && log_warn "medium_vulnerabilities: $_unacc_src finding(s) could not be identified from the raw reports (missing/invalid/unenumerable) — treated as UNACCEPTED."
+		log_info "medium_vulnerabilities: total $_val, accepted $MV_ACCEPTED, unaccepted $MV_UNACCEPTED → gate FAILS (unaccepted findings present)."
+	fi
+}
+
 # Boolean gate: fails when summary.<key> == true and the flag is enabled. Absent key reads
 # as false (no trigger). Used by missing_coverage_evidence (no evidence.present sidecar).
 eval_bool_gate() {
@@ -648,7 +769,7 @@ eval_expired_gate() {
 eval_count_gate "secrets"
 eval_count_gate "critical_vulnerabilities"
 eval_count_gate "high_vulnerabilities"
-eval_count_gate "medium_vulnerabilities"
+eval_medium_vulnerabilities
 eval_count_gate "architecture_violations"
 eval_count_gate "type_errors"
 eval_count_gate "test_failures"
@@ -938,8 +1059,10 @@ write_json() {
 		printf '    "expired_ignored": %s,\n' "$AR_EXPIRED"
 		printf '    "invalid_ignored": %s,\n' "$AR_INVALID"
 		printf '    "legacy_unscoped_ignored": %s,\n' "$AR_LEGACY_WARN"
-		printf '    "unsafe_docker": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "findings": %s }\n' \
+		printf '    "unsafe_docker": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "findings": %s },\n' \
 			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED" "$UD_DETAIL"
+		printf '    "medium_vulnerabilities": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "fingerprint_algorithm": "ss-fp/1", "findings": %s }\n' \
+			"$MV_SCOPE" "$MV_TOTAL" "$MV_ACCEPTED" "$MV_UNACCEPTED" "$MV_DETAIL"
 		printf '  },\n'
 		printf '  "tool_policy": {\n'
 		printf '    "enforced": %s,\n' "$([ "$HAS_POLICY" = "1" ] && printf true || printf false)"
@@ -1140,6 +1263,20 @@ write_markdown() {
 		printf '%s' "$UD_DETAIL" | jq -r '.[]? | "| \(.source // "?") | \(.rule_id // "?") | \(.file) | \(if .accepted then "yes" else "**NO**" end) | \(.risk_id // "") |"' 2>/dev/null || printf -- '| _(no raw findings)_ | | | | |\n'
 		printf -- '\n> Unaccepted findings are **not hidden** — they fail the gate. Convert each into\n'
 		printf -- '> a fix or a finding-scoped accepted-risk (rule_id + files).\n\n'
+
+		printf '### Medium vulnerabilities (finding-scoped accounting)\n\n'
+		printf -- '- Scope: **%s** | total: %s | accepted: %s | unaccepted: %s | fingerprint algorithm: `ss-fp/1`\n\n' \
+			"$MV_SCOPE" "$MV_TOTAL" "$MV_ACCEPTED" "$MV_UNACCEPTED"
+		if [ "$MV_SCOPE" = "gate" ]; then
+			printf -- '> **BROAD suppression in effect.** A `scope: gate` record accepts every medium\n'
+			printf -- '> vulnerability, including ones that appear LATER. Replace it with finding-scoped\n'
+			printf -- '> records (`components` / `fingerprints`).\n\n'
+		fi
+		printf -- '| Source | Advisory | Component | Version | Accepted | Risk id |\n| --- | --- | --- | --- | --- | --- |\n'
+		printf '%s' "$MV_DETAIL" | jq -r '.[]? | "| \(.source // "?") | \(.rule_id // "?") | \(.component // "?") | \(.version // "") | \(if .accepted then "yes" else "**NO**" end) | \(.risk_id // "") |"' 2>/dev/null || printf -- '| _(no raw findings)_ | | | | | |\n'
+		printf -- '\n> Accepting one medium vulnerability does not accept the others: a record matches only\n'
+		printf -- '> when EVERY dimension it declares (fingerprints / components / rule ids / files)\n'
+		printf -- '> matches the finding. Findings the raw reports could not identify are UNACCEPTED.\n\n'
 		printf -- '> Only APPROVED, unexpired, owner-bound records suppress, and only for\n'
 		printf -- '> suppressible gates (unsafe_docker, medium_vulnerabilities). Records are\n'
 		printf -- '> **finding-scoped by default** (v0.1.8); broad gate suppression requires\n'

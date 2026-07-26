@@ -34,7 +34,7 @@
           "scope": {
             "type": "string",
             "enum": ["finding", "gate"],
-            "description": "v0.1.8+. 'finding' (DEFAULT): suppress only findings matching rule_id/files (implemented for unsafe_docker). 'gate': BROAD — suppress the whole gate (discouraged; reported as broad). A record with neither scope nor rule_id/files is ambiguous and does NOT suppress."
+            "description": "v0.1.8+. 'finding' (DEFAULT): suppress only findings this record identifies. Implemented for unsafe_docker (rule_id + files) and, since v2.3, medium_vulnerabilities (components / fingerprints / rule ids / files). 'gate': BROAD — suppress the whole gate (discouraged; reported as broad, and it also covers findings that appear LATER). A record with neither scope nor any matching field is ambiguous and does NOT suppress."
           },
           "rule_id": {
             "type": "string",
@@ -53,12 +53,12 @@
           "components": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "v0.1.8 RESERVED (not yet enforced). Component identifiers for non-Docker finding scoping."
+            "description": "v2.3 ENFORCED for medium_vulnerabilities. Package/component names the record accepts (e.g. \"symfony/http-kernel\", \"lodash\"), matched against the component of each normalized finding (scripts/normalize-findings.sh). Survives a version bump, so use it when the acceptance is about the package rather than one exact release; combine with rule_id/rule_ids to bind it to a single advisory. Every dimension a record declares must match, so adding one only NARROWS the exception."
           },
           "fingerprints": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "v0.1.8 RESERVED (not yet enforced). Stable per-finding fingerprints for exact matching."
+            "description": "v2.3 ENFORCED for medium_vulnerabilities. Canonical per-finding identities, algorithm version 1: \"ss-fp/1|<source>|<rule_id>|<component>|<version>|<file>\" as emitted by scripts/normalize-findings.sh. Built only from stable identity fields — never array order, titles, descriptions or line numbers. The VERSION is part of the identity on purpose: after a package upgrade the fingerprint changes and the acceptance no longer applies, forcing a re-review (use components to accept across versions)."
           },
           "owner": { "type": "string", "minLength": 1 },
           "severity": {

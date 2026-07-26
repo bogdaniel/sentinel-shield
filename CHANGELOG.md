@@ -15,6 +15,36 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Added — finding-scoped accepted risks beyond `unsafe_docker` (#89)
+
+- **A single medium vulnerability can now be accepted without accepting the rest of the gate.**
+  Finding scope existed only for `unsafe_docker`; for `medium_vulnerabilities` an adopter had to
+  suppress the **whole gate**, which then also covered every unrelated medium finding that appeared
+  later. The schema reserved `components` and `fingerprints` without enforcing them, so the product
+  implied a capability it did not have.
+- **New `scripts/normalize-findings.sh`** derives one canonical identity per finding from the raw
+  scanner reports (Grype, OSV-Scanner, Trivy-fs, composer audit, npm audit, Dependency-Check):
+  `{source, rule_id, component, version, file, severity, fingerprint}`. The fingerprint is a
+  **readable, versioned** canonical string — `ss-fp/1|<source>|<rule_id>|<component>|<version>|<file>`
+  — built only from stable identity fields, never from array order, titles, descriptions or line
+  numbers, and deterministic across runs.
+- **`enforce-gates.sh` implements `components` and `fingerprints`** for `medium_vulnerabilities`,
+  with the same accounting shape as `unsafe_docker`. A record matches only when **every dimension it
+  declares** matches, so adding a dimension can only narrow an exception. Raw counts are preserved,
+  and accepted/unaccepted findings are reported in both the JSON and the Markdown output.
+- **Fail-closed on unidentifiable evidence**: findings the raw reports cannot identify (missing,
+  invalid, or aggregate-only) count as **unaccepted**, so an unreadable source never becomes a clean
+  pass. Ambiguous finding-scoped records still suppress nothing. Never-suppressible gates are
+  unchanged, and existing broad `scope: gate` records keep working — now surfaced loudly as broad.
+- `enforce-gates.sh --raw-dir` selects the raw reports used for finding identity (default
+  `<summary dir>/raw`).
+- Schema, shipped example and [`accepted-risk-suppression.md`](docs/accepted-risk-suppression.md)
+  updated together; **new `tests/prod/286-finding-scoped-suppression.sh`** covers partial
+  acceptance, exact fingerprints, a stale fingerprint after a version bump, a renamed path, a
+  different advisory for the same package, a duplicate advisory across ecosystems, expired/pending/
+  ownerless/ambiguous records, missing and invalid raw sources, an under-counting source, broad
+  backward compatibility, and the unchanged `unsafe_docker` contract.
+
 ### Fixed — the installed main gate is satisfiable, and an executable matrix proves it (#84, #87)
 
 - **Every required tool now has exactly one producer.** The Laravel profile marked
