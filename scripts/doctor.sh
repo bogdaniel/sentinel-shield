@@ -321,6 +321,35 @@ if [ -f "$IM_FILE" ] && command_exists jq; then
   [ "$_managed_missing" -eq 0 ] && ok "managed files present (run sync-baseline to compare content)"
 fi
 
+# (4b) Semgrep scope: the embedded Sentinel Shield checkout must not be scanned as
+#      application code. The managed workflows check the engine out at SENTINEL_SHIELD_PATH
+#      and run Semgrep from the repository ROOT, so an ignore file that does not exclude that
+#      path makes Semgrep analyse the engine's scripts, examples and INTENTIONALLY INSECURE
+#      test fixtures as if they were the consumer's code — a required Semgrep gate can then
+#      fail on clean consumer source. The path is read from the installed workflows, so a
+#      NON-DEFAULT SENTINEL_SHIELD_PATH is checked against what is actually configured rather
+#      than against a hardcoded assumption.
+if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
+  _ss_paths=$(grep -hoE '^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*[^[:space:]#]+' "$TARGET"/.github/workflows/*.y*ml 2>/dev/null \
+    | sed -E 's/^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*//; s/^"(.*)"$/\1/; s#/*$##' | sort -u || true)
+  if [ -n "$_ss_paths" ]; then
+    if [ ! -f "$TARGET/.semgrepignore" ]; then
+      # Only a problem when Semgrep is actually part of the plan; the profile decides.
+      degraded "no .semgrepignore at the project root — Semgrep would scan the embedded Sentinel Shield checkout ($(printf '%s' "$_ss_paths" | tr '\n' ' ')) as application code; install the profile's .semgrepignore (sync-baseline) or add an exclusion for that path"
+    else
+      _ss_unexcluded=""
+      for _p in $_ss_paths; do
+        grep -qE "^${_p}/?$" "$TARGET/.semgrepignore" 2>/dev/null || _ss_unexcluded="$_ss_unexcluded $_p"
+      done
+      if [ -n "$_ss_unexcluded" ]; then
+        degraded ".semgrepignore does not exclude the configured Sentinel Shield checkout path(s):$_ss_unexcluded — add '${_ss_unexcluded# }/' to .semgrepignore, or set SENTINEL_SHIELD_PATH back to the excluded path; otherwise Semgrep scans the engine's own fixtures as your code"
+      else
+        ok "Semgrep scope excludes the embedded Sentinel Shield checkout ($(printf '%s' "$_ss_paths" | tr '\n' ' '))"
+      fi
+    fi
+  fi
+fi
+
 # (5) GitHub Actions pin hygiene (informational): every `uses:` SHOULD pin a 40-hex commit
 #     SHA. Non-SHA refs are flagged; audit-github-actions-pins.sh is the authoritative gate.
 if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then

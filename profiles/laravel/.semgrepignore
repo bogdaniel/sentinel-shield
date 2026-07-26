@@ -30,4 +30,12 @@ public/js/filament/
 # public/js/
 # public/css/
 
+# The embedded Sentinel Shield checkout is TOOLING, not application code. The managed
+# workflows check the engine out here (SENTINEL_SHIELD_PATH) and run Semgrep from the
+# repository root, so without this exclusion Semgrep analyses the engine's own scripts,
+# examples and INTENTIONALLY INSECURE test fixtures as if they were your application —
+# inflating findings, scan time and report size, and making your gate depend on which
+# Sentinel Shield version you pinned. Keep this in sync with SENTINEL_SHIELD_PATH.
+tools/sentinel-shield/
+
 # Do NOT exclude your application source — keep resources/js, app/, Modules/ scanned.

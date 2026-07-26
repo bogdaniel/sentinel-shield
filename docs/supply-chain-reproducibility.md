@@ -124,24 +124,22 @@ key is present and its value (or trailing comment) carries the matching readable
 Production guidance never recommends a mutable `latest` tag — it defeats reproducibility and is a
 supply-chain risk. The pinned scanner images (Semgrep/Grype/Dockle) are all tag- or digest-pinned.
 
-**One allowed exception:** OWASP Dependency-Check. It appears as `owasp/dependency-check:latest` in
-`templates/workflows/sentinel-shield-dependency-check.yml` and
-`templates/workflows/sentinel-shield-scheduled.yml` **only as a not-yet-validated placeholder**, with
-an explicit pin-before-prod comment in the template:
+**No exception remains.** OWASP Dependency-Check used to ship as `owasp/dependency-check:latest`
+(a "not-yet-validated placeholder" with a pin-before-prod comment). That default meant every adopter
+executed whatever the moving tag pointed at that day, so the scanner implementation could change with
+no repository change and no review. Both templates now ship the digest by default:
 
 ```yaml
-# No validated Dependency-Check digest yet — readable tag; pin by digest before production.
-SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
+SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9
 ```
 
-This is honest: Dependency-Check is *attempted, not live-validated* (see
-[`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)), so we deliberately do
-**not** invent a digest for it. The `latest` tag here is a placeholder, and **must be pinned by
-digest before any production use** — resolve and pin it only once a nightly run produces a real
-artifact, then move it into the digest table in `scanner-image-digest-pinning.md`. No other
-production doc or template recommends `latest`. Self-test assertion (expected form): no `:latest`
-appears in any template **except** this one Dependency-Check placeholder, which must retain its
-pin-before-prod comment.
+The approved image, the tag its digest was resolved from, and the resolution date live in
+[`config/scanner-images.json`](../config/scanner-images.json).
+`scripts/validate-scanner-images.sh` fails the build when any shipped template executes a moving tag
+or drifts from the approved reference, and `scripts/audits/tool-provenance-audit.sh` reports what a
+run actually executed (`image-mutable-tag`, `image-digest-drift`). A readable tag remains available
+as a **local development override** via the same environment variable; it is never the shipped
+default and never valid for production or release evidence.
 
 ---
 

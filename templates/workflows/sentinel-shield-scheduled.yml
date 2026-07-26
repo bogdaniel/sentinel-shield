@@ -90,10 +90,12 @@ jobs:
         env:
           SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: enabled
           SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE: .sentinel-shield/cache/dependency-check
-          # Production: pin by digest (validated v0.1.30: owasp/dependency-check@sha256:ad169904…cc77b9).
-          # Dependency-Check keeps the readable :latest tag as the single documented, pin-before-prod
-          # exception (see docs/supply-chain-reproducibility-v025.md); override with the digest above.
-          SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
+          # Digest-pinned by DEFAULT (config/scanner-images.json is the approved-image contract;
+          # scripts/validate-scanner-images.sh fails the build on drift or a moving tag). This is the
+          # digest `owasp/dependency-check:latest` resolved to on 2026-07-26 and the one the recorded
+          # consumer-evidence runs used. For local development you MAY override with a readable tag;
+          # production and release evidence must keep the digest (docs/scanner-image-digest-pinning.md).
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9
           SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT: 40m
         run: |
           mkdir -p reports/raw

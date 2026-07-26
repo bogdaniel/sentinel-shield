@@ -6,6 +6,7 @@
   "extends": ["laravel", "node", "docker"],
   "files": [
     { "source": "templates/profile.yaml", "target": ".sentinel-shield/profile.yaml", "mode": "create-if-missing" },
+    { "source": "profiles/laravel/.semgrepignore", "target": ".semgrepignore", "mode": "create-if-missing" },
     { "source": "templates/accepted-risks.example.json", "target": ".sentinel-shield/accepted-risks.example.json", "mode": "create-if-missing" },
     { "source": "examples/hardened/sentinel-shield-hardened.snippet.yml", "target": ".sentinel-shield/hardened/sentinel-shield-hardened.snippet.yml", "mode": "create-if-missing" }
   ],

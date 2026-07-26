@@ -1,33 +1,32 @@
-# Sentinel Shield — Semgrep scope for React / front-end projects.
+# Sentinel Shield — Semgrep scope for Node / TypeScript service projects.
 # Copy to your repository ROOT as `.semgrepignore`. The Sentinel Shield workflows
 # run Semgrep with `-w /src` so this file (at the repo root) is honored.
 #
 # SCOPE: SEMGREP / SAST ONLY. It does NOT change:
-#   npm audit · Trivy (fs/deps) · Syft SBOM · Gitleaks · composer audit · Hadolint
+#   npm audit · Trivy (fs/deps) · Syft SBOM · Gitleaks · OSV · Grype
 # Those still scan dependencies, lockfiles, and the whole tree.
 # (See docs/semgrep-scoping.md.)
 #
-# Goal: scan application source (src/, app/, components/, resources/js); do NOT
-# treat installed deps or build output as application code.
+# Goal: scan application source (src/, lib/, app/, server/); do NOT treat installed
+# dependencies, build output or generated clients as application code.
 
 # Dependencies
 node_modules/
 
-# Build / bundler output
+# Build / bundler / transpiler output
 dist/
 build/
+out/
+lib-cov/
 coverage/
 .next/
-out/
-.svelte-kit/
 .turbo/
-storybook-static/
+.cache/
 
-# If colocated with a PHP/Laravel backend (monorepo), these are not app source:
-vendor/
-storage/
-public/build/
-public/vendor/
+# Generated clients / schemas (regenerate, do not hand-edit)
+generated/
+**/*.generated.ts
+**/*.generated.js
 
 # The embedded Sentinel Shield checkout is TOOLING, not application code. The managed
 # workflows check the engine out here (SENTINEL_SHIELD_PATH) and run Semgrep from the
@@ -37,4 +36,4 @@ public/vendor/
 # Sentinel Shield version you pinned. Keep this in sync with SENTINEL_SHIELD_PATH.
 tools/sentinel-shield/
 
-# Do NOT exclude your application source — keep src/ and resources/js scanned.
+# Do NOT exclude your application source — keep src/, lib/, app/ and server/ scanned.

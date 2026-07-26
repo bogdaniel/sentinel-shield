@@ -151,11 +151,51 @@ if SENTINEL_SHIELD_ZZZ_SCANNER_IMAGE="example.invalid/zzz-scanner:latest" \
 	sh "$AUDIT" --require-image-digest --output "$O3B" zzz-scanner >/dev/null 2>&1; then
 	fail "provenance audit exited 0 for an unverified image under --require-image-digest (should fail closed)"
 else
+	# The fixture reference also carries the moving tag `:latest`, so the approved-image
+	# contract contributes its own violation alongside the unresolved-digest one.
 	[ "$(jq -r '.status' "$O3B")" = "fail" ] \
-		&& [ "$(jq -r '[.violations[].check]|unique|join(",")' "$O3B")" = "image-digest-unverified" ] \
+		&& [ "$(jq -r '[.violations[].check]|unique|sort|join(",")' "$O3B")" = "image-digest-unverified,image-mutable-tag" ] \
 		&& [ "$(jq -r '.records[0].image.verification_status' "$O3B")" = "unverified" ] \
 		&& pass "provenance audit fails closed on an unverified image under --require-image-digest" \
 		|| fail "provenance audit image required-case malformed: $(jq -c '{status,v:.violations,r:.records[0].image}' "$O3B")"
+fi
+
+# B3c: a MOVING tag is provenance drift for the release-authoritative caller — this is the
+# `owasp/dependency-check:latest` class of defect (the scanner can change with no repository
+# change). A normal run still only RECORDS it, matching this audit's documented contract.
+O3C="$WORK/prov-image-mutable.json"
+if SENTINEL_SHIELD_ZZZ_SCANNER_IMAGE="example.invalid/zzz-scanner:latest" \
+	sh "$AUDIT" --output "$O3C" zzz-scanner >/dev/null 2>&1; then
+	[ "$(jq -r '[.violations[].check]|join(",")' "$O3C")" = "" ] \
+		&& pass "a moving image tag is recorded (not failed) on a normal provenance run" \
+		|| fail "normal provenance run raised a violation for a moving tag: $(jq -c '.violations' "$O3C")"
+else
+	fail "normal provenance run failed closed on a moving image tag (should only record it)"
+fi
+
+# B3d: an image that resolves to a digest OTHER than the approved one is drift. The approved
+# digest comes from config/scanner-images.json, so this cannot pass by editing the test.
+O3D="$WORK/prov-image-drift.json"
+_APPROVED_DC=$(jq -r '.images.SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE.digest' "$ROOT/config/scanner-images.json")
+_WRONG_DIGEST="sha256:$(printf '0%.0s' $(seq 1 64) | cut -c1-64)"
+if SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE="owasp/dependency-check@${_WRONG_DIGEST}" \
+	sh "$AUDIT" --require-image-digest --output "$O3D" dependency-check >/dev/null 2>&1; then
+	fail "provenance audit exited 0 for an image digest that is not the approved one"
+else
+	[ "$(jq -r '[.violations[].check]|unique|join(",")' "$O3D")" = "image-digest-drift" ] \
+		&& [ -n "$_APPROVED_DC" ] \
+		&& pass "provenance audit fails closed when the executed digest is not the approved one" \
+		|| fail "provenance audit digest-drift case malformed: $(jq -c '.violations' "$O3D")"
+fi
+
+# NEGATIVE CONTROL for B3d: the APPROVED digest must NOT be reported as drift, otherwise the
+# check above could be passing for the wrong reason (e.g. every digest flagged).
+O3E="$WORK/prov-image-approved.json"
+if SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE="owasp/dependency-check@${_APPROVED_DC}" \
+	sh "$AUDIT" --require-image-digest --output "$O3E" dependency-check >/dev/null 2>&1; then
+	pass "the approved image digest passes the provenance audit"
+else
+	fail "the approved image digest was rejected: $(jq -c '.violations' "$O3E")"
 fi
 
 # B4: unresolved tool -> recorded, no violation.

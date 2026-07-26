@@ -23,6 +23,42 @@ Application source — `app/`, `Modules/`, `resources/js`, `src/`, `routes/`, `c
 — stays scanned. React XSS, SQLi, command-injection, etc. rules remain **enabled**;
 only the *paths* change.
 
+## The embedded Sentinel Shield checkout is excluded (v2.2+)
+
+The managed workflows check Sentinel Shield out **inside the consuming repository** at
+`SENTINEL_SHIELD_PATH` (default `tools/sentinel-shield`) and run Semgrep from the repository
+root. Every shipped ignore template therefore excludes it:
+
+```txt
+tools/sentinel-shield/
+```
+
+Without that rule Semgrep analyses the engine's own scripts, examples and **intentionally
+insecure test fixtures** as if they were your application code. The consequences were real:
+false-positive findings you cannot fix, inflated scan time and report size, findings that
+change when you bump the pinned engine version, and a **required Semgrep gate failing on clean
+consumer source**.
+
+Coverage is derived, not hand-maintained: `tests/prod/283-semgrep-scope.sh` resolves every
+shipped profile, installs it, and fails when a profile that selects Semgrep does not exclude
+the checkout — or when an ignore file excludes consumer application source. Profiles that do
+not select Semgrep (e.g. `docker`) are exempt, and that exemption comes from the resolver.
+
+**Existing consumers.** `.semgrepignore` is **project-owned**: `sync-baseline.sh` never
+overwrites it, so a project that adopted before this fix keeps its old file. `doctor.sh`
+reports it:
+
+```
+WARN  .semgrepignore does not exclude the configured Sentinel Shield checkout path(s): tools/sentinel-shield
+```
+
+Add the rule yourself (one line) or delete the file and re-run `sync-baseline.sh --apply` to
+get the current template.
+
+**Non-default checkout path.** If you change `SENTINEL_SHIELD_PATH`, add the matching
+exclusion. `doctor.sh` reads the path from your installed workflows and names the exact rule
+to add — it does not assume the default.
+
 ## Scanner-specific behavior — READ THIS
 
 `.semgrepignore` affects **Semgrep / SAST ONLY**. It does **not** narrow any other

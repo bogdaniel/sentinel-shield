@@ -1,0 +1,67 @@
+{
+  "contract": "sentinel-shield/scanner-images@1",
+  "resolved_at": "2026-07-26",
+  "resolution_method": "registry manifest request against registry-1.docker.io; the digest is the Docker-Content-Digest header returned for the recorded tag",
+  "mutable_tags": [
+    "latest",
+    "main",
+    "master",
+    "edge",
+    "stable",
+    "dev",
+    "nightly",
+    "unstable"
+  ],
+  "images": {
+    "SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE": {
+      "repository": "owasp/dependency-check",
+      "resolved_from": "latest",
+      "digest": "sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9",
+      "default_pin": "digest",
+      "default_reference": "owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9",
+      "rationale": "Dependency-Check publishes only a moving `latest` tag, so a readable tag default meant every adopter executed whatever the tag pointed at that day. The digest below is the one behind `latest` on the recorded date and is the same digest the v0.1.26/v0.1.27/v0.1.30 consumer evidence runs used — it is validated, not merely current."
+    },
+    "SENTINEL_SHIELD_SEMGREP_IMAGE": {
+      "repository": "semgrep/semgrep",
+      "resolved_from": "1.165.0",
+      "digest": "sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b",
+      "default_pin": "tag",
+      "default_reference": "semgrep/semgrep:1.165.0",
+      "rationale": "An immutable, explicitly versioned upstream tag. Templates keep the readable form for legibility; production pins the digest recorded here."
+    },
+    "SENTINEL_SHIELD_GITLEAKS_IMAGE": {
+      "repository": "zricethezav/gitleaks",
+      "resolved_from": "v8.18.4",
+      "digest": "sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba",
+      "default_pin": "tag",
+      "default_reference": "zricethezav/gitleaks:v8.18.4",
+      "rationale": "Versioned upstream tag; digest recorded for the production override."
+    },
+    "SENTINEL_SHIELD_GRYPE_IMAGE": {
+      "repository": "anchore/grype",
+      "resolved_from": "v0.114.0",
+      "digest": "sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28",
+      "default_pin": "tag",
+      "default_reference": "anchore/grype:v0.114.0",
+      "rationale": "Versioned upstream tag; digest recorded for the production override."
+    },
+    "SENTINEL_SHIELD_DOCKLE_IMAGE": {
+      "repository": "goodwithtech/dockle",
+      "resolved_from": "v0.4.15",
+      "digest": "sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9",
+      "default_pin": "tag",
+      "default_reference": "goodwithtech/dockle:v0.4.15",
+      "rationale": "Versioned upstream tag; digest recorded for the production override."
+    }
+  },
+  "templates": [
+    "templates/workflows/sentinel-shield.yml",
+    "templates/workflows/sentinel-shield-main.yml",
+    "templates/workflows/sentinel-shield-pr-fast.yml",
+    "templates/workflows/sentinel-shield-scheduled.yml",
+    "templates/workflows/sentinel-shield-dast.yml",
+    "templates/workflows/sentinel-shield-ai-review.yml",
+    "templates/workflows/sentinel-shield-dependency-check.yml",
+    "examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+  ]
+}

@@ -15,6 +15,39 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — shipped scanner images are immutable, and Semgrep no longer scans the engine (#85, #86)
+
+- **`owasp/dependency-check:latest` is gone as a shipped default.** The scheduled and dedicated
+  Dependency-Check templates now execute
+  `owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9`
+  — the digest that tag resolved to, re-verified against the registry. A moving tag as a default
+  meant the scanner implementation could change with no repository change and no review, and no
+  evidence run was reproducible from the workflow source alone.
+- **New `config/scanner-images.json`** (+ [`schemas/scanner-images.schema.json`](schemas/scanner-images.schema.json))
+  — the approved-image contract: repository, the tag each digest was resolved from, the immutable
+  digest, and whether the shipped default is the digest or a readable immutable version tag. The
+  scheduled and dedicated templates can no longer drift apart.
+- **New `scripts/validate-scanner-images.sh`** — `contract | templates | registry | show | all`.
+  Statically rejects any moving tag, any image not in the contract, any drift from the approved
+  reference, and a digest-pinned image downgraded to a tag; `registry` (opt-in, network)
+  re-resolves the recorded tags and reports digest drift without ever auto-bumping the contract.
+- **`scripts/audits/tool-provenance-audit.sh`** now checks what a run actually executed against the
+  contract: `image-mutable-tag` and `image-digest-drift` (release-authoritative, under
+  `--require-image-digest`).
+- **Semgrep no longer scans the embedded Sentinel Shield checkout.** `profiles/laravel/.semgrepignore`
+  and `profiles/react/.semgrepignore` gained `tools/sentinel-shield/`, and the `node` and
+  `hardened-enterprise` profiles — which selected Semgrep as **required** while installing no ignore
+  file at all — now install one. The engine's own scripts, examples and intentionally insecure test
+  fixtures were being analysed as consumer application code, so a required Semgrep gate could fail on
+  clean consumer source and findings depended on the pinned engine version.
+- **`doctor.sh` reports an unexcluded checkout** — including a **non-default** `SENTINEL_SHIELD_PATH`,
+  read from the installed workflows, with the exact rule to add. `.semgrepignore` is project-owned, so
+  `sync-baseline.sh` deliberately does not rewrite an existing consumer file; doctor is the migration
+  signal.
+- **New `tests/prod/282-scanner-image-pinning.sh`** and **`tests/prod/283-semgrep-scope.sh`**.
+  `283` derives its matrix from the **resolved profiles**, so a future profile cannot reintroduce
+  self-scanning unnoticed; both carry isolated negative controls.
+
 ### Fixed — canonical release status, template pins, and publication integrity (#81, #82, #83)
 
 - **New `config/release-status.json`** (+ [`schemas/release-status.schema.json`](schemas/release-status.schema.json))
