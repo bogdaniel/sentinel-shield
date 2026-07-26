@@ -146,6 +146,9 @@ else fail "builder lost per-stack coverage visibility"; fi
 # judged, and a test asserting "the gate blocks" would read that refusal as "it did not
 # block". Fixtures derive from the SHIPPED EXAMPLE and override only the fields under test.
 mk_summary() { # mk_summary <coverage_thr> <regression> <mutation> <out>
+	# Derived from the shipped example so the fixture is a structurally complete,
+	# current-contract summary carrying a producer declaration; only the three quality counters
+	# under test are overridden.
 	jq --argjson c "$1" --argjson r "$2" --argjson m "$3" '
 		.tools = {tests:{status:"pass"}}
 		| .summary += { coverage_threshold_violations:$c, coverage_regression:$r,
@@ -188,9 +191,6 @@ else fail "enforcer report-only should skip quality gates"; fi
 
 # every blocking quality gate exercised: complexity + duplication block in strict, dead-code
 # only in regulated. Build a summary with all three nonzero.
-q_base=$(jq -nc '{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0, medium_vulnerabilities:0,
-	architecture_violations:0, type_errors:0, test_failures:0, unsafe_docker:0, unsafe_github_actions:0,
-	missing_sbom:false, missing_release_evidence:false, expired_exceptions:0}')
 jq '.tools = {tests:{status:"pass"}}
 	| .summary += {complexity_violations:1, duplication_violations:2, dead_code_violations:3}' \
 	"$ROOT/templates/security-summary.example.json" > "$WORK/q3.json"
@@ -376,6 +376,8 @@ for m in report-only baseline strict regulated; do
 done
 
 # --- (10) enforcer §2 failure paths ------------------------------------------
+# Derived from the shipped example (a current-contract, structurally complete summary) with the
+# gate fields under test overridden — enforcing modes reject hand-built partial summaries.
 qsum() { jq --argjson o "$2" '.tools = {tests:{status:"pass"}} | .summary += $o' \
 	"$ROOT/templates/security-summary.example.json" > "$1"; }
 _q2ov=$(jq -nc '{changed_lines_coverage_violations:1, debug_code_violations:2, focused_test_violations:1, missing_test_evidence:true, empty_test_suite:true, skipped_test_marker_violations:1, large_file_violations:1, large_function_violations:1, skipped_tests:2}')

@@ -284,12 +284,10 @@ for m in report-only baseline strict regulated; do
 	sh "$RESOLVE" --mode "$m" --output-dir "$WORK/enf-$m" --format env >/dev/null 2>&1
 done
 mkav() { # mkav <file> <violations> <missing_architecture_evidence>
-	# Derived from the SHIPPED EXAMPLE rather than hand-written. Every enforcing mode — baseline
-	# included — now validates the COMPLETE structure, so a partial summary with no `source`
-	# object is REFUSED as malformed input (exit 2) before any gate is judged, and a test
-	# asserting "the gate blocks" would read that refusal as "the gate did not block". This
-	# fixture is about the architecture gates, so it inherits a current-contract summary and
-	# overrides only the two fields under test.
+	# Derived from the SHIPPED EXAMPLE rather than hand-written: enforcing modes validate the
+	# complete structure, require a positive producer declaration, and hold a summary to the
+	# gate contract it declares. This fixture is about the architecture gates, so it inherits a
+	# current-contract summary and overrides only the two fields under test.
 	jq --argjson v "$2" --argjson mae "$3" '
 		.tools = {tests:{status:"pass"}}
 		| .summary.architecture_violations = $v

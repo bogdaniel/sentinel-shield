@@ -904,6 +904,7 @@ jq -n \
 	--argjson counts "$COUNTS" \
 	--argjson tools "$TOOLSOBJ" \
 	--arg version "1.0" \
+	--arg contract "2.2" \
 	--arg gen "$TS" \
 	--arg pname "$PNAME" --arg ptype "$PTYPE" --arg crit "$CRIT" \
 	--arg commit "$COMMIT" --arg branch "$BRANCH" --arg workflow "$WORKFLOW" \
@@ -918,6 +919,12 @@ jq -n \
 	--argjson misstce "$MISSING_TCE" --argjson missbdd "$MISSING_BDD" --argjson missatdd "$MISSING_ATDD" '
 	{
 		version: $version,
+		# The GATE/EVIDENCE contract this summary was built for. A summary that DECLARES it is
+		# held to it completely by the enforcer: a counter missing for an ENABLED gate is a
+		# build defect, never a clean zero. A summary that declares nothing is legacy, and the
+		# assurance modes refuse it rather than inferring evidence from absent fields.
+		# Additive: consumers that do not know the field ignore it.
+		gate_contract_version: $contract,
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },
