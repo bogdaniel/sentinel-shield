@@ -143,7 +143,9 @@ Options:
   --summary <path>     Normalized findings (default: reports/security-summary.json)
   --output-dir <path>  Output directory (default: reports)
   --format <fmt>       markdown | json | all   (default: all)
-  --strict-summary     Validate optional structure (source, evidence, tool statuses)
+  --strict-summary     Opt into the COMPLETE structural validation (source, evidence, tool
+                       statuses, version) in report-only. It is applied automatically —
+                       and cannot be turned off — in baseline/strict/regulated.
   --accepted-risks <path>  Accepted-risk records (default: .sentinel-shield/accepted-risks.json).
                        An APPROVED, unexpired, owned record may suppress a
                        suppressible gate (unsafe_docker, medium_vulnerabilities).
@@ -229,7 +231,19 @@ while IFS= read -r _line || [ -n "$_line" ]; do
 	fi
 done < "$GATES_ENV_FILE"
 
-# env_get <FULL_KEY> — value from the validated env content, or empty.
+# A lexically safe assignment can still be semantically AMBIGUOUS. env_get returns the FIRST
+# match, so a file carrying `...FAIL_ON_SECRETS=true` followed by `...FAIL_ON_SECRETS=false`
+# reads as enabled while a human reviewing the tail reads it as disabled — and a typo'd or
+# stale key was accepted silently, hiding resolver/enforcer drift. Validate the COMPLETE key
+# set before any value is read.
+_dupes=$(printf '%s\n' "$GATES_ENV" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' | sort | uniq -d)
+[ -z "$_dupes" ] || die_cfg "gates env declares duplicate key(s): $(printf '%s' "$_dupes" | tr '\n' ' ') — a duplicated gate flag is ambiguous policy, not a value to pick from ($GATES_ENV_FILE)"
+_unknown=$(printf '%s\n' "$GATES_ENV" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' |
+	grep -Ev '^SENTINEL_SHIELD_(MODE|PROJECT_[A-Z0-9_]+|FAIL_ON_[A-Z0-9_]+)$' || true)
+[ -z "$_unknown" ] || die_cfg "gates env declares unknown key(s): $(printf '%s' "$_unknown" | tr '\n' ' ') — regenerate it with scripts/resolve-gates.sh ($GATES_ENV_FILE)"
+
+# env_get <FULL_KEY> — value from the validated env content, or empty. Uniqueness is proven
+# above, so "first match" can no longer differ from "the value".
 env_get() { printf '%s\n' "$GATES_ENV" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,"");print;exit}'; }
 
 # gate_flag <gate_key> — resolved fail_on flag (true/false). Absent -> false+warn.
@@ -254,7 +268,51 @@ gate_flag() {
 	printf '%s' "$_n"
 }
 
-MODE=$(env_get "SENTINEL_SHIELD_MODE"); [ -n "$MODE" ] || MODE="unknown"
+# MODE is a POLICY ENUM, not display metadata: strict/regulated trigger evidence-integrity
+# preconditions, so an unvalidated value ("unknown", a typo, a case variant) silently selected
+# a weaker state than the product defines and enforcement could still report success under it.
+MODE=$(env_get "SENTINEL_SHIELD_MODE")
+case "$MODE" in
+	report-only | baseline | strict | regulated) ;;
+	'') die_cfg "gates env declares no SENTINEL_SHIELD_MODE. The adoption mode selects the evidence preconditions; it is never inferred ($GATES_ENV_FILE)" ;;
+	*) die_cfg "gates env declares SENTINEL_SHIELD_MODE='$MODE', which is not one of the canonical modes report-only|baseline|strict|regulated. An unknown mode is a configuration error, never a weaker custom state ($GATES_ENV_FILE)" ;;
+esac
+
+# The env file and the resolver's JSON artifact must agree. A hand-edited env claiming
+# report-only next to a strict resolution (or vice versa) is contradictory policy.
+_gates_json="$(dirname "$GATES_ENV_FILE")/sentinel-shield-gates.json"
+if [ -f "$_gates_json" ] && jq -e . "$_gates_json" >/dev/null 2>&1; then
+	_jmode=$(jq -r '(.mode // .adoption_mode // "")' "$_gates_json")
+	if [ -n "$_jmode" ] && [ "$_jmode" != "$MODE" ]; then
+		die_cfg "gate resolution disagrees with itself: '$GATES_ENV_FILE' says mode='$MODE' but '$_gates_json' says '$_jmode'. Regenerate both with scripts/resolve-gates.sh."
+	fi
+	# The resolver's JSON is the authoritative gate set, so a typo'd or stale FAIL_ON_ key is
+	# detectable without maintaining a second copy of the list here. POSIX sh: temp files, no
+	# process substitution.
+	_gk_tmp=$(mktemp); _ge_tmp=$(mktemp)
+	jq -r '(.gates // .fail_on // {}) | keys[] | "SENTINEL_SHIELD_FAIL_ON_" + (. | ascii_upcase)' "$_gates_json" 2>/dev/null | sort > "$_gk_tmp"
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_FAIL_ON_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_ge_tmp"
+	if [ -s "$_gk_tmp" ]; then
+		_extra=$(grep -Fxv -f "$_gk_tmp" "$_ge_tmp" 2>/dev/null || true)
+		_absent=$(grep -Fxv -f "$_ge_tmp" "$_gk_tmp" 2>/dev/null || true)
+		rm -f "$_gk_tmp" "$_ge_tmp"
+		if [ -n "$_extra" ]; then
+			die_cfg "gates env declares gate flag(s) the resolver does not know: $(printf '%s' "$_extra" | tr '\n' ' ')- a typo or a stale flag is a configuration error ($GATES_ENV_FILE)"
+		fi
+		if [ -n "$_absent" ]; then
+			die_cfg "gates env is missing resolver gate flag(s): $(printf '%s' "$_absent" | tr '\n' ' ')- regenerate it with scripts/resolve-gates.sh ($GATES_ENV_FILE)"
+		fi
+	else
+		rm -f "$_gk_tmp" "$_ge_tmp"
+	fi
+	_jbad=$(jq -r --arg env "$GATES_ENV" '
+		[ (.gates // .fail_on // {}) | to_entries[]
+		  | .key as $k | (.value | tostring) as $v
+		  | ("SENTINEL_SHIELD_FAIL_ON_" + ($k | ascii_upcase)) as $ek
+		  | select(($env | test("(^|\n)" + $ek + "=" + $v + "($|\n)")) | not)
+		  | $k ] | join(" ")' "$_gates_json" 2>/dev/null || printf '')
+	[ -z "$_jbad" ] || die_cfg "gate flags disagree between '$GATES_ENV_FILE' and '$_gates_json' for: $_jbad. Regenerate both with scripts/resolve-gates.sh."
+fi
 PROJ_NAME=$(env_get "SENTINEL_SHIELD_PROJECT_NAME"); [ -n "$PROJ_NAME" ] || PROJ_NAME="unknown"
 PROJ_TYPE=$(env_get "SENTINEL_SHIELD_PROJECT_TYPE"); [ -n "$PROJ_TYPE" ] || PROJ_TYPE="unknown"
 PROJ_CRIT=$(env_get "SENTINEL_SHIELD_PROJECT_CRITICALITY"); [ -n "$PROJ_CRIT" ] || PROJ_CRIT="unknown"
@@ -321,9 +379,11 @@ done
 #     enforce it would break a documented capability rather than close a hole;
 #   * a run where even one scanner produced pass/findings/fail/warn proceeds to the normal
 #     gates, which is where real findings are judged.
-# Residual gap, stated plainly rather than papered over: a caller who hand-writes
-# `"tools": {}` still bypasses this. Closing that needs the evidence-completeness policy
-# work tracked separately — it is not a hotfix-sized change.
+# CLOSED (was: "a caller who hand-writes `\"tools\": {}` still bypasses this"). Omission is
+# not an external-evidence contract: a summary with NO tools proves nothing ran, which is
+# exactly the state strict/regulated must refuse. An external pipeline that produces its own
+# evidence declares it positively — the tools object lists what ran — rather than by leaving
+# the object empty.
 case "$MODE" in
 	strict | regulated)
 		_evi=$(jq -r '
@@ -341,6 +401,15 @@ case "$MODE" in
 			log_error "  An unparseable summary is untrusted evidence, never a clean result."
 			die_cfg "refusing to certify '$MODE' from a summary that cannot be read"
 		fi
+		if [ "$_evi" = "no-tools" ]; then
+			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): '$SUMMARY' declares an EMPTY tools object."
+			log_error "  An empty tools object is an ABSENCE of evidence, not an external-evidence contract:"
+			log_error "  nothing in it states that any scanner, test, architecture or quality producer ran."
+			log_error "  Build the summary with scripts/build-security-summary.sh --profile <name> (internal"
+			log_error "  producers), or have your external pipeline declare each producer and its status in"
+			log_error "  .tools — see docs/security-summary-schema.md."
+			die_cfg "refusing to certify '$MODE' from a summary that declares no producers"
+		fi
 		if [ "$_evi" = "none" ]; then
 			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): every tool in this summary reports a non-evidence status."
 			log_error "  '$SUMMARY' lists $(jq -r '(.tools // {}) | length' "$SUMMARY" 2>/dev/null) tool(s) and NOT ONE of them ran:"
@@ -352,7 +421,15 @@ case "$MODE" in
 		;;
 esac
 
-# Strict mode: validate optional-but-recommended structure.
+# Complete structural validation is MANDATORY for every enforcing mode. It used to run only
+# when the caller passed --strict-summary, so a workflow that forgot the flag enforced
+# strict/regulated with WEAKER validation than an optional CLI option provided — and the flag
+# name suggested it belonged to the product's `strict` mode, which it never did.
+# report-only keeps the flag as an opt-in: it is a visibility mode whose summary may be the
+# explicitly non-production fallback.
+case "$MODE" in
+	baseline | strict | regulated) STRICT_SUMMARY=1 ;;
+esac
 if [ "$STRICT_SUMMARY" -eq 1 ]; then
 	log_info "strict-summary: validating optional structure (source, evidence, tool statuses)"
 	_ver=$(jqr '.version')
@@ -511,6 +588,11 @@ eval_count_gate() {
 	# builder SUMS across collectors — one negative can cancel another scanner's real
 	# findings to zero.
 	if [ "$_val" = "null" ]; then
+		# NOTE: an ENABLED gate whose summary key is ABSENT is still read as 0 here. That is
+		# issue #219 (evidence-contract negotiation) and is NOT fixed in this change: closing
+		# it requires the engine's own fixtures and the shipped example to be migrated to the
+		# current gate contract first, which is a separate, larger change. It is called out
+		# rather than silently left behind.
 		_val=0
 	else
 		case "$_val" in
@@ -543,7 +625,19 @@ UD_TOTAL=0; UD_ACCEPTED=0; UD_UNACCEPTED=0; UD_SCOPE="none"; UD_DETAIL="[]"
 eval_unsafe_docker() {
 	_key="unsafe_docker"
 	_flag=$(gate_flag "$_key")
-	_val=$(jqr ".summary.$_key"); case "$_val" in '' | *[!0-9]*) _val=0 ;; esac
+	# Use the SAME strict parser as every other count gate. This function kept the old
+	# coercion, so a negative, fractional, string, boolean or unreadable unsafe_docker count
+	# became a clean 0 and the gate recorded `pass` — the exact fail-open the generic
+	# evaluator had already closed.
+	_val=$(jqr ".summary.$_key")
+	if [ "$_val" = "null" ]; then
+		_val=0
+	else
+		case "$_val" in
+			'' | *[!0-9]*)
+				die_cfg "summary.unsafe_docker must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
+		esac
+	fi
 	UD_TOTAL=$_val
 	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
 	if [ "$_val" -eq 0 ]; then add_eval "$_key" true 0 pass; return; fi

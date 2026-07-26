@@ -65,9 +65,17 @@ cp "$E/rep/s.json" "$WORK/evid.json"
 jq '.tools.gitleaks = {"status":"pass","findings":0}' "$WORK/evid.json" > "$WORK/evid2.json"
 check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated)" "0"
 
-# A hand-built summary with no .tools at all is left alone (documented residual gap).
+# A hand-built summary with NO producers cannot certify an assurance mode. This was the
+# documented residual gap ("a caller who hand-writes \"tools\": {} still bypasses this"):
+# omission is not an external-evidence contract, so an empty — or absent — tools object is
+# now refused exactly like an all-unavailable one.
 jq '.tools = {}' "$WORK/evid.json" > "$WORK/notools.json"
-check "hand-built summary with empty .tools is not refused" "$(gate "$WORK/notools.json" regulated)" "0"
+check "hand-built summary with empty .tools is REFUSED in regulated" "$(gate "$WORK/notools.json" regulated)" "2"
+check "hand-built summary with empty .tools is REFUSED in strict" "$(gate "$WORK/notools.json" strict)" "2"
+jq 'del(.tools)' "$WORK/evid.json" > "$WORK/notoolskey.json"
+check "a summary with NO tools key at all is REFUSED in regulated" "$(gate "$WORK/notoolskey.json" regulated)" "2"
+# ...and report-only/baseline are unchanged: they are visibility/migration modes.
+check "empty .tools still enforces in report-only (visibility mode)" "$(gate "$WORK/notools.json" report-only)" "0"
 
 # --- (2) malformed / unrecognized scanner output -----------------------------
 # A valid-JSON document whose SHAPE the collector does not understand is untrusted
