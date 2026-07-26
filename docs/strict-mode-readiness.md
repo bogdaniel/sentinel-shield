@@ -35,16 +35,16 @@ Strict is computed by [`scripts/resolve-gates.sh`](../scripts/resolve-gates.sh)
 - `third_party_install_script_risk`, `third_party_network_behavior` — the
   higher-confidence third-party supply-chain signals.
 
-Strict also enables the **engineering-quality gates (v2.1)** — an unreleased, additive engine
-capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
-`v2.0.1`). In a **separate counter channel** from security, strict blocks
+Strict also enables the **engineering-quality gates (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only). It is off by default in existing modes, so upgrading changes
+no gate outcome until the mode or `gates.fail_on` opts in. In a **separate counter channel** from security, strict blocks
 `coverage_threshold_violations`, `coverage_regression`, `complexity_violations`, and
 `duplication_violations`; `mutation_score_violations` and `dead_code_violations` stay **non-blocking**
 until regulated. Thresholds live in `.sentinel-shield/quality-policy.yaml`; quality gates are **not**
 accepted-risk-suppressible. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
-Strict also enables **Architecture Governance v2 (v2.1)** — an unreleased, additive engine capability
-(**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains `v2.0.1`).
+Strict also enables **Architecture Governance v2 (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only), off by default in existing modes.
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
 Custom architecture tests can also emit the same contract. Relative to `baseline` — where violations

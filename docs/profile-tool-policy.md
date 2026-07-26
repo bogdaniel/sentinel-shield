@@ -243,8 +243,8 @@ way.
 
 ## 4a. Engineering-quality tool policies (v2.1)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
+> modes). Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family adds tool keys that fold into a **separate counter channel** from
 security (never mixed into `*_vulnerabilities`). They obey the same policy/state machine above:
@@ -293,8 +293,8 @@ satisfying the other's coverage.
 
 ## 4b. Architecture-governance tool policies (v2.1)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim. Full reference: [`architecture-governance.md`](architecture-governance.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
+> modes). Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.

@@ -297,6 +297,42 @@ else
 	fail "zizmor is REQUIRED at stage '$STAGE' but is not installed (fail closed)"
 fi
 
+# --- release-status contract gate --------------------------------------------
+# config/release-status.json is the single source of truth for "what is current and is
+# it actually published". A repository whose README/CHANGELOG/status docs or shipped
+# workflow templates disagree with it is not releasable: consumers would be pinned to,
+# or told to install, a different release than the one being promoted. The publication
+# check is NON-WAIVABLE — declaring a release published while no GitHub Release exists
+# is a false claim, not an unmet milestone.
+printf '\n[%s] release-status contract (config/release-status.json)\n' "$STAGE"
+_rs="$REPO_ROOT/scripts/validate-release-status.sh"
+if [ ! -f "$_rs" ]; then
+	failx "release-status validator not found: scripts/validate-release-status.sh (fail closed)"
+else
+	for _rsmode in contract docs changelog templates; do
+		if sh "$_rs" "$_rsmode" --repo-root "$REPO_ROOT" >/dev/null 2>&1; then
+			pass "release-status '$_rsmode' agrees with config/release-status.json"
+		else
+			fail "release-status '$_rsmode' DISAGREES with config/release-status.json (run: sh scripts/validate-release-status.sh $_rsmode)"
+		fi
+	done
+	set -- published --repo-root "$REPO_ROOT"
+	[ "$VERIFY_MODE" = verify-github ] && set -- "$@" --verify-github
+	_rsrc=0
+	sh "$_rs" "$@" >/dev/null 2>&1 || _rsrc=$?
+	if [ "$_rsrc" -eq 0 ]; then
+		if [ "$VERIFY_MODE" = verify-github ]; then
+			pass "every release declared published has a verified GitHub Release"
+		else
+			pass "publication declaration is self-consistent (structural-only; --verify-github proves the GitHub Release exists)"
+		fi
+	elif [ "$_rsrc" -eq 3 ]; then
+		fail "release-status publication check needs a tool that is unavailable (exit 3) — fail closed"
+	else
+		failx "a release is declared PUBLISHED but no valid GitHub Release was proven (run: sh scripts/validate-release-status.sh published --verify-github; backfill via the release-publish workflow_dispatch recovery path)"
+	fi
+fi
+
 # --- evidence gate: delegate to the evidence validator -----------------------
 # The validator owns evidence SHAPE and the cumulative ladder. FAIL CLOSED if it
 # is absent or reports the stage unmet. Validator exit 2 (malformed / integrity /

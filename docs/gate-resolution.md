@@ -117,8 +117,7 @@ them non-blocking except strict (install-script + network) and regulated (all).
 
 ## Engineering quality gates (v2.1)
 
-> **Unreleased, additive engine capability.** These six gate keys are **not** part of `v2.0.1`/`v2.0.0`
-> and are **not** a new release claim (latest release remains `v2.0.1`, engine-only). They are additive
+> **Additive engine capability, released in `v2.2.0`** (engine-only). These six gate keys are additive
 > to the resolver: existing gates and their mode defaults above are **unchanged**, and consumers may
 > ignore them entirely. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
@@ -191,9 +190,9 @@ falls back to documented defaults. Missing quality summary keys are treated as `
 
 ## Architecture governance gates (v2.1)
 
-> **Unreleased, additive engine capability.** `architecture_violations` is a **canonical** gate and its
-> mode defaults above are **unchanged**; v2.1 adds one new gate key alongside it and does **not** make a
-> new release claim (latest release remains `v2.0.1`, engine-only). Full reference:
+> **Additive engine capability, released in `v2.2.0`** (engine-only). `architecture_violations` is a
+> **canonical** gate and its mode defaults above are **unchanged**; `v2.2.0` adds one new gate key
+> alongside it. Full reference:
 > [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is

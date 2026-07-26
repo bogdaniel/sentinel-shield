@@ -1,9 +1,10 @@
 # Product Contract (v1.0.0)
 
-> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
-> on 2026-07-09 at tag target `32812ed`. It refreshes the **`v2.0.0`** engine-only production release
-> evidence after documentation reconciliation and workflow-action upgrades, with **no executable
-> engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
+> **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
+> on 2026-07-24 at tag target `99fcd27`. It supersedes **`v2.0.1`** (engine-only maintenance,
+> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families that
+> are off by default in existing modes. The machine-readable source of truth for this status is
+> [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
 > is **no longer the latest** overall release. The v2 line is scoped **engine-only**; **Laravel and
 > Symfony are supported by profiles, fixtures and engine tests but are not independently live-validated
 > in real consumer repositories.** **Framework-validated and full-platform GA are not claimed.** Single
@@ -144,9 +145,8 @@ its six new summary keys (`coverage_threshold_violations`, `coverage_regression`
 `mutation_score_violations`, `complexity_violations`, `duplication_violations`, `dead_code_violations`)
 and nine informational metrics are **new keys added, not renames/removals** — existing keys and their
 semantics are untouched, and consumers must tolerate the additions. Quality counters are a **separate
-channel** from security; they are **not** accepted-risk-suppressible. This is an **unreleased, additive
-engine capability**: it is **not** part of `v2.0.1`/`v2.0.0` and is **not** a new release claim (latest
-release remains `v2.0.1`, engine-only). Reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+channel** from security; they are **not** accepted-risk-suppressible. This is an **additive engine capability released in
+`v2.2.0`** (engine-only); it is off by default in existing modes. Reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 ---
 
@@ -168,8 +168,8 @@ Custom architecture tests can also emit the same contract. Consistent with §1 a
   schema-valid and an absent key reads as `0` / `false`. Consumers must tolerate the additions.
 - **Separate channel.** Architecture findings are never folded into vulnerability counters.
 
-This is an **unreleased, additive engine capability**: it is **not** part of `v2.0.1`/`v2.0.0` and is
-**not** a new release claim (latest release remains `v2.0.1`, engine-only). Reference:
+This is an **additive engine capability released in `v2.2.0`**
+(engine-only); it is off by default in existing modes. Reference:
 [`architecture-governance.md`](architecture-governance.md).
 
 ---

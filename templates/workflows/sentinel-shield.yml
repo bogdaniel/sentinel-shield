@@ -63,8 +63,10 @@ concurrency:
 
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO: set your Sentinel Shield repository
-  # v0.1.0 is acceptable for first adoption; pin to a FULL COMMIT SHA before production.
-  SENTINEL_SHIELD_REF: v2.0.1
+  # Pinned to the current Sentinel Shield release (config/release-status.json is the source of
+  # truth; scripts/validate-release-status.sh fails the build when this lags). A tag is immutable
+  # and fine for adoption; pin to the FULL COMMIT SHA the tag targets before production.
+  SENTINEL_SHIELD_REF: v2.2.0
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
   # Scanner images — readable tags by default; pin by @sha256 digest in production
   # (docs/scanner-image-digest-pinning.md). NEVER use a `latest` tag.

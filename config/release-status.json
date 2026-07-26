@@ -1,0 +1,93 @@
+{
+  "contract": "sentinel-shield/release-status@1",
+  "repository": "bogdaniel/sentinel-shield",
+  "current": {
+    "version": "2.2.0",
+    "tag": "v2.2.0",
+    "commit": "99fcd2767560b257344211aae57e027ea39a5304",
+    "stage": "ga",
+    "scope": "engine-only",
+    "published": true,
+    "published_at": "2026-07-24",
+    "release_url": "https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.2.0",
+    "notes": "docs/v2.2.0-release-notes.md"
+  },
+  "superseded": [
+    {
+      "version": "2.0.1",
+      "tag": "v2.0.1",
+      "commit": "32812ed43289104af61b0eb2fc20c784ca2b72c1",
+      "published": true,
+      "published_at": "2026-07-09",
+      "release_url": "https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.1"
+    },
+    {
+      "version": "2.0.0",
+      "tag": "v2.0.0",
+      "commit": "13be630a64d044e0ffca8850e3424c2f0799aebf",
+      "published": true,
+      "published_at": "2026-07-09",
+      "release_url": "https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0"
+    }
+  ],
+  "prior_supported_line": {
+    "version": "1.9.2",
+    "tag": "v1.9.2",
+    "commit": "4c76fada6f8525543369fdad1c3ea6a7691e9d87",
+    "published": true,
+    "published_at": "2026-06-27",
+    "release_url": "https://github.com/bogdaniel/sentinel-shield/releases/tag/v1.9.2"
+  },
+  "consumer_ref": {
+    "kind": "tag",
+    "value": "v2.2.0",
+    "rationale": "Shipped templates pin the current immutable GA tag so a fresh install runs the release the checkout documents. Production adopters SHOULD replace it with the full commit SHA the tag points at (99fcd2767560b257344211aae57e027ea39a5304); both forms are immutable, a branch never is."
+  },
+  "status_surfaces": [
+    "README.md",
+    "CHANGELOG.md",
+    "docs/index.md",
+    "docs/product-status.md",
+    "docs/product-contract.md",
+    "docs/product-readiness-checklist.md",
+    "docs/production-readiness-audit.md",
+    "docs/roadmap.md",
+    "docs/sentinel-shield-release-process.md",
+    "docs/support-policy.md",
+    "docs/v2-release-scope.md",
+    "docs/v2-tracking-issues.md"
+  ],
+  "historical_documents": [
+    "CHANGELOG.md",
+    "docs/v1-*.md",
+    "docs/v1.*.md",
+    "docs/v2.0.0-*.md",
+    "docs/v2.0.1-*.md",
+    "docs/v2.2.0-*.md",
+    "docs/v2-merge-commit-ci-evidence.md",
+    "docs/beta2-release-authorization.md",
+    "docs/migration-beta1-to-beta2.md",
+    "docs/consolidation-v0.1.9.md",
+    "docs/feature-completion-v0.1.14.md",
+    "docs/sprint-v140-report.md",
+    "docs/*-v0*.md",
+    "docs/*-v1*.md",
+    "docs/*-v2*.md"
+  ],
+  "historical_trees": [
+    "evidence/",
+    "integration/",
+    "prompts/",
+    "tests/"
+  ],
+  "active_workflow_templates": [
+    "templates/workflows/sentinel-shield.yml",
+    "templates/workflows/sentinel-shield-main.yml",
+    "templates/workflows/sentinel-shield-pr-fast.yml",
+    "templates/workflows/sentinel-shield-scheduled.yml",
+    "templates/workflows/sentinel-shield-dast.yml",
+    "templates/workflows/sentinel-shield-ai-review.yml",
+    "templates/workflows/sentinel-shield-dependency-check.yml",
+    "examples/laravel-react-docker/.github/workflows/sentinel-shield.yml"
+  ]
+}

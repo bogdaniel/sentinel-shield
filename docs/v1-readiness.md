@@ -3,9 +3,10 @@
 > **Canonical status — read first.** This document is **historical**: it defined the path to
 > `v1.0` before that milestone. The **v1.x line is now published** (latest tag `v1.9.2`), so any
 > "pre-1.0", "v1.0 is NOT reached", or "v1.0.0-rc.1 is next" statements below are **superseded** and
-> retained only as the historical readiness record. The latest release is now **`v2.0.1`** — an
-> engine-only maintenance release published 2026-07-09 at tag target `32812ed`, refreshing the
-> **`v2.0.0`** engine-only production release evidence with **no executable engine change**. The
+> retained only as the historical readiness record. The latest release is now **`v2.2.0`** — an
+> engine-only feature release published 2026-07-24 at tag target `99fcd276`, superseding the
+> **`v2.0.1`** and **`v2.0.0`** engine-only releases (canonical:
+> [`../config/release-status.json`](../config/release-status.json)). The
 > **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but is **no longer the latest**
 > overall release. The v2 line is scoped **engine-only**; **Laravel and Symfony are supported by
 > profiles, fixtures and engine tests but are not independently live-validated in real consumer

@@ -6,19 +6,22 @@ the two carry different validation guarantees. Where this document and marketing
 prose disagree, [`product-status.md`](product-status.md) is the canonical maturity source
 and this file is the canonical support-scope source.
 
-> Version identifiers below use immutable examples.
-> **`v2.0.1` is the published engine-only production release**, marked latest, tag target `32812ed`.
-> `v2.0.0` remains an intact release, tag target `13be630`.
+> Version identifiers below use immutable examples and are derived from
+> [`config/release-status.json`](../config/release-status.json), the canonical machine-readable
+> release-status contract.
+> **`v2.2.0` is the published engine-only release**, marked latest, tag target `99fcd276`.
+> `v2.0.1` (tag target `32812ed`) and `v2.0.0` (tag target `13be630`) remain intact releases.
 > An earlier revision of this note attributed v2.0.0's tag to v2.0.1. The **v1.x line (`v1.9.2`)
-> remains supported**; framework live-validation is still excluded from the v2.0.0 scope.
+> remains supported**; framework live-validation is still excluded from the v2 scope.
 
 ## Supported lines
 
 | Line | Status | Support |
 | --- | --- | --- |
-| **v2.0.0** (`v2.0.1`, engine-only) | Published production release, **latest** | **Supported — engine scope only.** Security and correctness patches for the STABLE engine surface. **No framework live-validation guarantee** (Laravel/Symfony not live-validated). |
+| **v2.2** (`v2.2.0`, engine-only) | Published feature release, **latest** | **Supported — engine scope only.** Security and correctness patches for the STABLE engine surface. **No framework live-validation guarantee** (Laravel/Symfony not live-validated). |
 | **v1.x** (latest `v1.9.2`) | Stable, GA | **Fully supported** — security and correctness patches. |
-| **v2.0.0 pre-releases** (`v2.0.0-beta.1`, `v2.0.0-rc.1`) | Superseded | **Unsupported.** Superseded by `v2.0.1`. Upgrade. |
+| **v2.0** (`v2.0.0`, `v2.0.1`, engine-only) | Superseded by `v2.2.0` | **Security patches only** until the next feature release; upgrade to `v2.2.0` (backward-compatible, see [`upgrading.md`](upgrading.md)). |
+| **v2.0.0 pre-releases** (`v2.0.0-beta.1`, `v2.0.0-rc.1`) | Superseded | **Unsupported.** Superseded by `v2.2.0`. Upgrade. |
 | **v2.0.0 alpha** (`v2.0.0-alpha.1`) | Superseded | **Unsupported.** Superseded by `v2.0.0-beta.1`. Upgrade. |
 | pre-1.0 (`v0.x`) | Historical | **Unsupported.** |
 

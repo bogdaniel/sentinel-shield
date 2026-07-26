@@ -34,8 +34,8 @@ run_syntax() {
 		[ -e "$f" ] || continue
 		sh -n "$f" || { log_error "sh -n failed: $f"; return 1; }
 	done
-	log_info "syntax: jq-validate templates/ schemas/ profiles/ JSON"
-	for f in $(find templates schemas profiles -name '*.json' 2>/dev/null); do
+	log_info "syntax: jq-validate templates/ schemas/ profiles/ config/ JSON"
+	for f in $(find templates schemas profiles config -name '*.json' 2>/dev/null); do
 		jq -e . "$f" >/dev/null 2>&1 || { log_error "invalid JSON: $f"; return 1; }
 	done
 	log_info "syntax: .semgrepignore templates carry the key SAST exclusions"

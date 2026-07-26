@@ -81,6 +81,51 @@ scripts/verify-published-release.sh smoke --manifest release/2.0.0-manifest.json
 if its signature is unverifiable. `smoke` re-confirms the published artifact digests still
 reproduce the manifest fingerprint.
 
+Publication is also asserted in the canonical contract
+([`config/release-status.json`](../config/release-status.json)) and is checked by
+`check-release-readiness.sh`. A release declared `published: true` with no GitHub Release
+behind it is a **non-waivable** readiness failure:
+
+```sh
+sh scripts/validate-release-status.sh published --verify-github
+```
+
+## Recovery: a tag exists but no GitHub Release was created
+
+A tag-push event publishes the release. If that event never produced one — the publisher
+workflow was added or fixed **after** the tag was pushed, the run failed, or the release
+notes were not yet merged to the default branch — the repository ends up with an immutable
+tag and no GitHub Release, while the documentation claims a published release.
+
+Recover with the publisher's **backfill** path. It publishes an **existing** tag and can
+never create, move, or force-update one:
+
+1. Confirm the gap (this is what fails the readiness gate):
+
+   ```sh
+   sh scripts/validate-release-status.sh published --verify-github
+   gh release view <tag> --repo <owner/name>     # expect: release not found
+   ```
+
+2. Make sure `docs/<tag>-release-notes.md` exists on the default branch (or in the tagged
+   commit). **Missing notes fail the job** — the publisher no longer skips silently.
+
+3. Run the recovery dispatch (Actions → `release-publish` → *Run workflow*), or:
+
+   ```sh
+   gh workflow run release-publish.yml --repo <owner/name> -f tag=<tag>
+   ```
+
+   The job re-validates the tag name grammar, requires the tag to already exist, requires it
+   to be an **annotated, signed** tag, publishes with `gh release create --verify-tag`, and
+   then re-verifies the published release. It is **idempotent**: if the release already
+   exists (including one created concurrently), it is left exactly as-is.
+
+4. Re-run step 1. It must now pass.
+
+Never "fix" a missed publication by deleting and re-pushing the tag. Released tags are
+immutable; a bad release rolls **forward** ([`rollback-policy.md`](rollback-policy.md)).
+
 ## Exit codes (both tools)
 
 | Code | Meaning |

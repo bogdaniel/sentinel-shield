@@ -1,35 +1,56 @@
-# Sentinel Shield — GitHub Release publisher.
+# Sentinel Shield — GitHub Release publisher (+ backfill recovery path).
 #
-# Fires ONLY when a human has already created and pushed a signed `v*` tag. It creates
-# the GitHub Release from docs/<tag>-release-notes.md and verifies the published release
-# — it NEVER creates, moves, or force-updates the tag itself, so the signed-tag airlock
-# (the human holding the signing key) is preserved. `gh release create --verify-tag`
-# refuses to publish if the pushed tag is missing/mismatched.
+# Two entry points, one publishing path:
+#   push (tags: v*)      Normal publication, immediately after a human pushes a signed tag.
+#   workflow_dispatch    RECOVERY/BACKFILL for an EXISTING tag whose tag-push event never
+#                        published a release (workflow added/fixed after the tag was pushed,
+#                        a failed run, or notes that were not yet on the default branch).
 #
-# Prerequisite: docs/<tag>-release-notes.md must exist in the tagged commit (the job fails
-# closed otherwise). Prerelease vs latest is derived from the tag suffix (-rc/-beta/-alpha).
+# It NEVER creates, moves, or force-updates a tag, so the signed-tag airlock (the human
+# holding the signing key) is preserved in both paths: the backfill can only publish a tag
+# that already exists. `gh release create --verify-tag` refuses to publish otherwise, and
+# publication is idempotent — an existing release is left untouched.
+#
+# Prerequisite: docs/<tag>-release-notes.md must exist in the tagged commit or on the default
+# branch (source-tag releases tag the CI-proven engine commit, which predates the notes). A
+# missing notes file FAILS the job: a release that is documented as published but has no
+# GitHub Release is exactly the drift scripts/validate-release-status.sh now blocks on.
+#
+# Prerelease vs latest is derived from the tag suffix (-rc/-beta/-alpha).
 name: release-publish
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'EXISTING tag to publish/backfill (e.g. v2.2.0). The tag is never created or moved.'
+        required: true
+        type: string
 
 permissions:
-  contents: write   # create the GitHub Release for the pushed tag
+  contents: read
 
 concurrency:
-  group: release-publish-${{ github.ref }}
+  # Backfill and tag-push publication of the same tag must never interleave.
+  group: release-publish-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write   # create the GitHub Release for the (already existing) tag
     steps:
+      # `inputs.tag` is used as a checkout REF (data, not shell). It is format-validated in
+      # the next step before any other use; an unknown ref simply fails the checkout.
       - name: Checkout tagged commit
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           persist-credentials: false
           fetch-depth: 0   # need the tag object + history for verification
 
@@ -37,24 +58,59 @@ jobs:
         id: meta
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Never interpolate an attacker-influenceable value directly into `run` (zizmor:
+          # template-injection) — it arrives as an environment variable and is validated below.
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -eu
-          TAG="${GITHUB_REF_NAME}"
+          if [ "$EVENT" = workflow_dispatch ]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          # A tag name reaches `gh` and the notes path; constrain it to the release grammar
+          # before it is used for anything. No slashes, no dots-dots, no shell metacharacters.
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "::error::refusing to publish '$TAG': not a v<semver> release tag"; exit 1 ;;
+          esac
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::refusing to publish '$TAG': not a valid v<major>.<minor>.<patch>[-pre] tag"
+            exit 1
+          fi
+          # BACKFILL SAFETY: the tag must already exist. This workflow publishes tags; it
+          # never creates them.
+          git fetch --quiet --tags --force origin || true
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::tag '$TAG' does not exist — push the signed tag first; this workflow never creates tags"
+            exit 1
+          fi
+          COMMIT=$(git rev-list -n1 "$TAG")
+          # The tag must be an ANNOTATED tag object (a lightweight tag carries no signature
+          # and no tagger identity), which is what the release process requires.
+          if [ "$(git cat-file -t "$TAG")" != tag ]; then
+            echo "::error::tag '$TAG' is a lightweight tag; the release process requires a signed annotated tag"
+            exit 1
+          fi
+          if ! git cat-file tag "$TAG" | grep -q 'BEGIN \(PGP\|SSH\) SIGNATURE'; then
+            echo "::error::tag '$TAG' carries no signature; the signed-tag airlock requires a signed annotated tag"
+            exit 1
+          fi
           NOTES="docs/${TAG}-release-notes.md"
           BR="${DEFAULT_BRANCH:-master}"
           # Source-tag releases tag the CI-proven engine commit, which predates the notes
           # (the notes are merged to the default branch separately). Resolve them from the
-          # tagged tree first, else from the default branch. Skip cleanly (never fail the
-          # tag push) if neither has them — a human can still publish manually.
+          # tagged tree first, else from the default branch. Missing notes FAIL the job —
+          # silently skipping publication is what left tags without releases.
           if [ ! -f "$NOTES" ]; then
             git fetch --quiet --depth=1 origin "$BR" 2>/dev/null || true
-            if git show "FETCH_HEAD:$NOTES" > "/tmp/${TAG}-notes.md" 2>/dev/null \
-               || git show "origin/${BR}:$NOTES" > "/tmp/${TAG}-notes.md" 2>/dev/null; then
-              NOTES="/tmp/${TAG}-notes.md"
+            if git show "FETCH_HEAD:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null \
+               || git show "origin/${BR}:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null; then
+              NOTES="${RUNNER_TEMP}/${TAG}-notes.md"
             else
-              echo "::warning::release notes for '$TAG' not found in the tagged commit or the default branch; skipping auto-publish (publish manually)"
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
+              echo "::error::release notes for '$TAG' not found in the tagged commit or on '$BR' (expected docs/${TAG}-release-notes.md). Merge the notes, then re-run this workflow via workflow_dispatch with tag=$TAG."
+              exit 1
             fi
           fi
           # Prerelease when the tag carries a pre-release suffix; GA otherwise.
@@ -63,15 +119,33 @@ jobs:
             *)                      KIND="--latest" ;;
           esac
           {
-            echo "skip=false"
             echo "tag=$TAG"
             echo "notes=$NOTES"
             echo "kind=$KIND"
-            echo "commit=$(git rev-list -n1 "$TAG")"
+            echo "commit=$COMMIT"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Report the tag's GitHub signature-verification state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          OBJ=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha') || OBJ=""
+          [ -n "$OBJ" ] || { echo "::warning::could not resolve the tag object for $TAG"; exit 0; }
+          V=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '.verification.verified' 2>/dev/null) || V="unknown"
+          R=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '.verification.reason' 2>/dev/null) || R="unknown"
+          if [ "$V" = true ]; then
+            echo "tag $TAG: signature GitHub-verified"
+          else
+            # The previous step already proved a signature is PRESENT and that the tag targets
+            # the published commit. GitHub can only mark it verified when the signing key is
+            # registered on the account — say so instead of implying verified provenance.
+            echo "::warning::tag $TAG carries a signature but GitHub reports verified=$V (reason=$R). Register the signing key on the account to get verified provenance."
+          fi
+
       - name: Create GitHub Release (verifies the pushed tag)
-        if: steps.meta.outputs.skip != 'true'
         # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand
         # into the shell as code — a tag name is attacker-influenceable. (zizmor: template-injection)
         env:
@@ -82,7 +156,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -eu
-          # Idempotent: if a human already published this tag manually, do not fail.
+          # Idempotent: if a human already published this tag manually, do not fail. This is
+          # what makes the backfill path safe to re-run.
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists; leaving it as-is (idempotent)."
             exit 0
@@ -103,7 +178,6 @@ jobs:
           fi
 
       - name: Verify the published release
-        if: steps.meta.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}

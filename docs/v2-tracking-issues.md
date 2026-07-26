@@ -23,9 +23,10 @@ framework-validated release can be claimed. They are not won't-fix.
 
 **Context:**
 v2 documentation and version references must be reconciled with reality.
-The latest published release is **`v2.0.1`** — an engine-only maintenance release
-(2026-07-09, tag target `32812ed`) refreshing the **`v2.0.0`** engine-only production
-release (tag target `13be630`) with no executable engine change. The **v1.x** line
+The latest published release is **`v2.2.0`** — an engine-only feature release
+(2026-07-24, tag target `99fcd276`) superseding **`v2.0.1`** (engine-only maintenance,
+2026-07-09, tag target `32812ed`), which refreshed the **`v2.0.0`** engine-only production
+release (tag target `13be630`). The **v1.x** line
 (latest `v1.9.2`) remains a supported prior stable line but is no longer the latest
 overall release. `v2.0.0-beta.1` / `v2.0.0-alpha.1` are historical pre-release
 milestones. Docs must not imply a stable, framework-validated v2.

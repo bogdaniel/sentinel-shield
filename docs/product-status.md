@@ -6,12 +6,18 @@ It is deliberately conservative: a capability is only `proven` if there is cited
 
 ## Canonical status (current)
 
+The machine-readable form of this table is [`config/release-status.json`](../config/release-status.json).
+`scripts/validate-release-status.sh` fails closed when this document, the README, the CHANGELOG
+introduction, or any shipped workflow template disagrees with it — the version literal is maintained
+in exactly one place.
+
 | Field | Value |
 | --- | --- |
-| Latest release | **v2.0.1** — engine-only maintenance release, **published and marked latest** (2026-07-09, tag target `32812ed`, evidence PR #39); refreshes v2.0.0 evidence after docs reconciliation + workflow-action upgrades, **no executable engine change**; **not** framework-validated, **not** full-platform GA |
-| Prior production release | **v2.0.0** — engine-only production release (2026-07-09, tag target `13be630`, evidence PR #36); superseded as latest by v2.0.1 |
+| Latest release | **v2.2.0** — engine-only **feature** release, **published and marked latest** (2026-07-24, tag target `99fcd276`); adds three additive engineering-governance gate families (testing-discipline, engineering-quality, architecture governance v2), all off by default in existing modes; **not** framework-validated, **not** full-platform GA |
+| Prior release | **v2.0.1** — engine-only maintenance release (2026-07-09, tag target `32812ed`, evidence PR #39); superseded as latest by v2.2.0 |
+| Prior production release | **v2.0.0** — engine-only production release (2026-07-09, tag target `13be630`, evidence PR #36) |
 | Prior stable line | **v1.x** (`v1.9.2`) — still supported |
-| Current default branch (`master`) | post-v2.0.1 (v2.0.1 evidence bundle merged, PR #39) |
+| Current default branch (`master`) | post-v2.2.0 |
 | Released scope | **engine-only** (see [`v2-release-scope.md`](v2-release-scope.md)) |
 | Laravel & Symfony | **supported by profiles, fixtures and engine tests; NOT independently live-validated in real consumer repositories** |
 | Release scope | engine and reusable-baseline release; **not** a claim of framework-specific production proof |
@@ -103,16 +109,15 @@ third-party production adopter — which is **false for everything** this cycle.
 > as cited evidence for the v1 line. They are accurate for v1.x and are **not** superseded, but the
 > canonical current status is the table above.
 
-### Engineering quality gates (v2.1) — unreleased, additive engine capability
+### Engineering quality gates — additive engine capability, released in `v2.2.0`
 
 An **engineering-quality** gate family (coverage, coverage regression, mutation, complexity,
 duplication, dead code) is implemented and tested as an **additive** engine capability, in a **separate
-counter channel** from security. It is **NOT part of a release**: it is **not** in `v2.0.1` or `v2.0.0`
-and makes **no** new release claim — the latest release remains **`v2.0.1`** (engine-only), and this
-row does **not** change the canonical release status above. It is not framework live-validated. Full
+counter channel** from security. It was released in **`v2.2.0`** (engine-only) and is
+off by default in existing modes, so upgrading changes no gate outcome until you opt in. It is not framework live-validated. Full
 reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
-### Architecture Governance v2 (v2.1) — unreleased, additive engine capability
+### Architecture Governance v2 — additive engine capability, released in `v2.2.0`
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.
@@ -123,9 +128,8 @@ evidence, and three informational keys (`architecture_rule_count`, `architecture
 `architecture_context_count`) travel alongside it. All four are optional/additive — older summaries
 stay valid. Mode defaults: `architecture_violations` is `false`/`true`/`true`/`true` and
 `missing_architecture_evidence` is `false`/`false`/`true`/`true` across
-report-only/baseline/strict/regulated. It is **NOT part of a release**: it is **not** in `v2.0.1` or
-`v2.0.0` and makes **no** new release claim — the latest release remains **`v2.0.1`** (engine-only),
-and this row does **not** change the canonical release status above. Full reference:
+report-only/baseline/strict/regulated. It was released in **`v2.2.0`** (engine-only) and is off by
+default in existing modes, so upgrading changes no gate outcome until you opt in. Full reference:
 [`architecture-governance.md`](architecture-governance.md).
 
 > **Evidence honesty.** Architecture governance is supported by engine tests and fixtures

@@ -48,6 +48,47 @@ never touches `accepted-risks.json`, `phpstan-baseline.neon`, project-owned
 and [`workflow-execution-model.md`](workflow-execution-model.md) for migrating the
 CI workflow itself.
 
+## Upgrading `v2.0.1` → `v2.2.0` (current release)
+
+Shipped workflow templates now pin `SENTINEL_SHIELD_REF: v2.2.0` — the current release
+recorded in [`config/release-status.json`](../config/release-status.json). Existing
+consumers installed from an older checkout are still pinned to `v2.0.1` and keep running
+that engine until they bump the ref: **nothing changes under you**, because the pin is
+immutable and consumer-owned.
+
+`v2.2.0` is backward-compatible with `v2.0.1` — no stable CLI, exit code, environment
+variable, or schema was renamed or removed, and the three new engineering-governance gate
+families (testing-discipline, engineering-quality, architecture governance v2) are **off by
+default in existing modes**. A project that bumps the ref and changes nothing else sees no
+new blocking gate.
+
+```sh
+# 1. Bump the pin in every installed Sentinel Shield workflow.
+#    A tag is immutable and fine; production SHOULD use the full commit the tag targets:
+#    v2.2.0 -> 99fcd2767560b257344211aae57e027ea39a5304
+SENTINEL_SHIELD_REF=v2.2.0
+
+# 2. Re-acquire and preview managed-file drift BEFORE writing anything.
+sh scripts/acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield \
+  --ref "$SENTINEL_SHIELD_REF" --destination "$SENTINEL_SHIELD_PATH" --verify
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile <profile>
+
+# 3. Apply, then verify locally before pushing.
+sh "$SENTINEL_SHIELD_PATH/scripts/sync-baseline.sh" --target . --profile <profile> --apply --force
+sh "$SENTINEL_SHIELD_PATH/scripts/doctor.sh" --target . --profile <profile>
+sh "$SENTINEL_SHIELD_PATH/scripts/run-local-pipeline.sh" --profile <profile> --target . --stage pr
+```
+
+**Opting into the new gate families** is a separate, deliberate step: raise the mode
+(`strict` / `regulated`) or list the new gate keys in `gates.fail_on`. Do it report-only
+first, exactly like every other gate ([`production-rollout.md`](production-rollout.md)).
+
+**Rolling back to `v2.0.1`** is the standard rollback below: set `SENTINEL_SHIELD_REF`
+back to `v2.0.1` (tag target `32812ed43289104af61b0eb2fc20c784ca2b72c1`), re-acquire, and
+re-run `sync-baseline.sh --apply --force` from that checkout. Both tags are immutable, so
+the prior managed files are always reproducible. `v2.0.x` stays on security patches only
+until the next feature release ([`support-policy.md`](support-policy.md)).
+
 ## Preview a tool plan while you sync
 
 Both installer and sync can emit the read-only resolver plan (no mutation, no

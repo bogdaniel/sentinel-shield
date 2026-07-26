@@ -246,8 +246,8 @@ not.
 
 ## 220 — Adopting engineering quality gates (v2.1)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim (latest release remains `v2.0.1`). Adopt it the same report-only-first way as every
+> **Additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in existing
+> modes, so upgrading changes no gate outcome until you opt in. Adopt it the same report-only-first way as every
 > other gate. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality gates (coverage, coverage regression, mutation, complexity, duplication, dead
@@ -269,8 +269,8 @@ code) live in a **separate counter channel** from security and default to **non-
 
 ## 221 — Adopting architecture governance (v2.1)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim (latest release remains `v2.0.1`). Adopt it the same report-only-first way as every
+> **Additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in existing
+> modes, so upgrading changes no gate outcome until you opt in. Adopt it the same report-only-first way as every
 > other gate. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is

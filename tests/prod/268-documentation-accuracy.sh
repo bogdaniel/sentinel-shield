@@ -102,7 +102,10 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
 	# Assert the claim count so under-coverage fails loudly instead of reading as clean.
 	_tagclaims=$(grep -ohE '`v[0-9]+\.[0-9]+\.[0-9]+`[^`]{0,120}tag target `[0-9a-f]{7,40}`' docs/support-policy.md 2>/dev/null | grep -c . || true)
 	case "$_tagclaims" in '' | *[!0-9]*) _tagclaims=0 ;; esac
-	check "support-policy.md states both tag-target claims on single lines (grep-visible)" "$_tagclaims" "2"
+	# Three claims since v2.2.0 became current: v2.2.0 (latest) plus the intact v2.0.1/v2.0.0.
+	# The literal is the COUNT, not the versions — the loop below checks each cited target
+	# against the real tag, and config/release-status.json is the canonical version source.
+	check "support-policy.md states all three tag-target claims on single lines (grep-visible)" "$_tagclaims" "3"
 
 	while IFS= read -r _line; do
 		[ -n "$_line" ] || continue

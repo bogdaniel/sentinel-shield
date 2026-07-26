@@ -37,17 +37,17 @@ to `strict`, regulated **promotes these from advisory to hard blockers**:
   + allowlist + approval are configured** ([`dast-policy.md`](dast-policy.md)).
 - `repository_health_warnings` — OpenSSF Scorecard / repo-health gates here (`✗/✗/✓`).
 
-Regulated also completes the **engineering-quality gates (v2.1)** — an unreleased, additive engine
-capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
-`v2.0.1`). On top of the four quality gates strict already blocks (coverage threshold, coverage
+Regulated also completes the **engineering-quality gates (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only). It is off by default in existing modes, so upgrading changes
+no gate outcome until the mode or `gates.fail_on` opts in. On top of the four quality gates strict already blocks (coverage threshold, coverage
 regression, complexity, duplication), regulated **additionally enables** `mutation_score_violations`
 and `dead_code_violations` — so all six quality gates block in regulated, in a **separate counter
 channel** from security. These are **not** accepted-risk-suppressible. See
 [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
-Regulated also completes **Architecture Governance v2 (v2.1)** — an unreleased, additive engine
-capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
-`v2.0.1`). Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Regulated also completes **Architecture Governance v2 (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only). It is off by default in existing modes, so upgrading changes
+no gate outcome until the mode or `gates.fail_on` opts in. Sentinel Shield enforces architecture governance through normalized architecture evidence.
 Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
 producers. Custom architecture tests can also emit the same contract. Regulated keeps the strict
 behavior — `architecture_violations` (summed across all producers) and `missing_architecture_evidence`
