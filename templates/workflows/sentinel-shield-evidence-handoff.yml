@@ -1,0 +1,168 @@
+# Sentinel Shield — TRUSTED cross-workflow security-evidence handoff (OPT-IN).
+#
+# ============================ READ THIS FIRST ============================
+# The RECOMMENDED topology is unchanged: run the release gate in the SAME workflow run as the
+# scanners, wired with `needs:`, so the summary artifact is in-run and there is no trust
+# decision to get wrong. `templates/workflows/sentinel-shield.yml` does exactly that, and it
+# is what `install-baseline.sh` installs.
+#
+# Install THIS workflow only when your organisation separates the scanner workflow from a
+# protected release/deploy workflow. It is disabled until you enable it (see `on:` below).
+#
+# WHY IT IS NOT `actions/download-artifact` WITH A SEARCH:
+#   download-artifact in the same run is a plumbing detail — the artifact provably came from
+#   this run. Reaching ACROSS runs is a TRUST decision: "the latest successful run" can be a
+#   fork pull-request run, a different branch, a different commit, a re-run of an older
+#   commit, or a workflow you never meant to trust. This workflow therefore consumes EXPLICIT
+#   producer metadata from the `workflow_run` event and hands it to
+#   scripts/verify-evidence-handoff.sh, which fails closed on repository, workflow, run id,
+#   status, conclusion, event, ref, commit, freshness, ambiguity, artifact name, checksum
+#   manifest and the summary's own embedded commit metadata.
+#
+# SECURITY MODEL:
+#   * `workflow_run` runs in the context of the DEFAULT BRANCH with the repository's
+#     permissions. It therefore NEVER checks out or executes the producer's head code — only
+#     this repository's default-branch checkout is used, and only artifacts are read.
+#   * Permissions are minimal: `actions: read` to list/download artifacts, `contents: read`
+#     for the checkout. No write scope, no `pull_request_target`.
+#   * A producer run from a FORK is rejected by the verifier, so an untrusted contributor
+#     cannot supply evidence.
+# PRODUCER SIDE (required): the scanner workflow must upload a checksum manifest with its
+# evidence, or this consumer has no way to prove the artifact it downloaded is the artifact the
+# producer uploaded for that commit. Add this to the producer job, right before the upload:
+#
+#     - name: Bind the evidence to this run (checksum manifest)
+#       run: |
+#         sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-evidence-manifest.sh \
+#           --dir reports --repository "${GITHUB_REPOSITORY}" --run-id "${GITHUB_RUN_ID}" \
+#           --commit "${GITHUB_SHA}" --workflow "${GITHUB_WORKFLOW}"
+#     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+#       with:
+#         name: sentinel-shield-security-summary
+#         path: |
+#           reports/security-summary.json
+#           reports/sentinel-shield-artifact-manifest.json
+#         if-no-files-found: error
+#
+name: sentinel-shield-evidence-handoff
+
+on:
+  # OPT-IN: uncomment to enable, and name YOUR producer workflow(s).
+  # workflow_run:
+  #   workflows: ["sentinel-shield"]      # the producer workflow name(s) — the allowlist
+  #   types: [completed]
+  #   branches: [main, master]            # trusted branches only
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        description: "Producer workflow run id whose evidence should be verified"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # One verification per producer run; never cancel an in-flight verification.
+  group: sentinel-shield-evidence-handoff-${{ github.event.workflow_run.id || inputs.producer_run_id }}
+  cancel-in-progress: false
+
+env:
+  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO: set your Sentinel Shield repository
+  SENTINEL_SHIELD_REF: v2.2.0
+  SENTINEL_SHIELD_PATH: tools/sentinel-shield
+  # The producer workflow name(s) you trust, and the refs you trust them from.
+  SENTINEL_SHIELD_TRUSTED_WORKFLOW: sentinel-shield
+  SENTINEL_SHIELD_TRUSTED_REF: refs/heads/main
+  # Evidence older than this is stale and is rejected.
+  SENTINEL_SHIELD_EVIDENCE_MAX_AGE_SECONDS: "86400"
+
+jobs:
+  verify-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read   # list + download the producer run's artifacts (no write scope)
+    steps:
+      - name: Checkout this repository (default branch — never the producer's head code)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout Sentinel Shield
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: ${{ env.SENTINEL_SHIELD_REPOSITORY }}
+          ref: ${{ env.SENTINEL_SHIELD_REF }}
+          path: ${{ env.SENTINEL_SHIELD_PATH }}
+          persist-credentials: false
+
+      - name: Fetch the producer run's metadata
+        id: producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Never interpolated into the shell as code (zizmor: template-injection).
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.producer_run_id }}
+        run: |
+          set -eu
+          case "$RUN_ID" in
+            '' ) echo "::error::no producer run id"; exit 1 ;;
+            *[!0-9]* ) echo "::error::producer run id is not numeric: $RUN_ID"; exit 1 ;;
+          esac
+          mkdir -p handoff
+          gh api "repos/$REPO/actions/runs/$RUN_ID" > handoff/producer-run.json
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "commit=$(jq -r '.head_sha' handoff/producer-run.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Download the producer run's evidence artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sentinel-shield-security-summary
+          path: handoff/artifact
+          run-id: ${{ steps.producer.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify the handoff (fail closed on ANY mismatch)
+        env:
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ steps.producer.outputs.commit }}
+          RUN_ID: ${{ steps.producer.outputs.run_id }}
+        run: |
+          set -eu
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/verify-evidence-handoff.sh verify \
+            --producer-run handoff/producer-run.json \
+            --expected-repository "$REPO" \
+            --expected-workflow "${SENTINEL_SHIELD_TRUSTED_WORKFLOW}" \
+            --expected-commit "$COMMIT" \
+            --expected-run-id "$RUN_ID" \
+            --expected-ref "${SENTINEL_SHIELD_TRUSTED_REF}" \
+            --artifact-dir handoff/artifact \
+            --max-age-seconds "${SENTINEL_SHIELD_EVIDENCE_MAX_AGE_SECONDS}"
+
+      - name: Enforce the gate on the VERIFIED evidence
+        run: |
+          set -eu
+          mkdir -p reports
+          cp handoff/artifact/reports/security-summary.json reports/security-summary.json
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
+            --profile .sentinel-shield/profile.yaml --output-dir reports --format all
+          # No fallback to the example summary here: this topology exists to consume REAL
+          # evidence, and unverifiable evidence has already failed the step above.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh \
+            --summary reports/security-summary.json \
+            --gates-env reports/sentinel-shield-gates.env \
+            --output-dir reports --format all
+
+      - name: Upload the verification record
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sentinel-shield-evidence-handoff
+          path: |
+            handoff/producer-run.json
+            reports/sentinel-shield-enforcement.json
+            reports/sentinel-shield-enforcement.md
+          retention-days: 30
+          if-no-files-found: warn
