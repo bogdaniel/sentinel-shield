@@ -321,6 +321,38 @@ if [ -f "$IM_FILE" ] && command_exists jq; then
   [ "$_managed_missing" -eq 0 ] && ok "managed files present (run sync-baseline to compare content)"
 fi
 
+# (4a) Engine source configuration: an installed workflow still carrying the shipped
+#      placeholder cannot check the engine out, so the pipeline is guaranteed to fail on its
+#      first run. This is a CONFIGURATION failure (exit 2), caught before the workflow is
+#      committed rather than by a red CI run.
+if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
+  _ph=""
+  _mutable_ref=""
+  for _wf in "$TARGET"/.github/workflows/*.y*ml; do
+    [ -e "$_wf" ] || continue
+    grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wf" 2>/dev/null || continue
+    if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*(YOUR_ORG/|<)' "$_wf" 2>/dev/null; then
+      _ph="$_ph $(basename "$_wf")"
+      continue
+    fi
+    _r=$(grep -E '^[[:space:]]*SENTINEL_SHIELD_REF:' "$_wf" 2>/dev/null | head -n1 |
+      sed -E 's/^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//; s/^"(.*)"$/\1/')
+    case "$_r" in
+      '') _mutable_ref="$_mutable_ref $(basename "$_wf"):<unset>" ;;
+      *) printf '%s' "$_r" | grep -Eq '^([0-9a-fA-F]{40}|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$' \
+        || _mutable_ref="$_mutable_ref $(basename "$_wf"):$_r" ;;
+    esac
+  done
+  if [ -n "$_ph" ]; then
+    cfgfail "managed workflow(s) still carry the SENTINEL_SHIELD_REPOSITORY placeholder:$_ph — the engine cannot be checked out and the pipeline will fail on its first run. Re-run install-baseline.sh with --source-repository <owner/name> (do not hand-edit the YAML)."
+  else
+    ok "engine source configuration is set (no placeholder in the installed workflows)"
+  fi
+  if [ -n "$_mutable_ref" ]; then
+    degraded "SENTINEL_SHIELD_REF is not provably immutable in:$_mutable_ref — pin a release tag or a full 40-hex commit SHA (a moving branch lets the engine change under the gate)"
+  fi
+fi
+
 # (4b) Semgrep scope: the embedded Sentinel Shield checkout must not be scanned as
 #      application code. The managed workflows check the engine out at SENTINEL_SHIELD_PATH
 #      and run Semgrep from the repository ROOT, so an ignore file that does not exclude that

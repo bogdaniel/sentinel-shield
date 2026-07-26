@@ -58,9 +58,12 @@ Do **not** auto-run `composer install` / `npm ci` against private registries wit
 full **commit SHA** — never a moving branch, never a speculative future-GA default. Pin it once:
 
 ```sh
-export SENTINEL_SHIELD_REF=v2.0.0   # or a full 40-char commit SHA
+export SENTINEL_SHIELD_REF=v2.2.0   # or a full 40-char commit SHA
 export SENTINEL_SHIELD_PATH=.sentinel-shield-tools
 ```
+
+The current release is recorded in `config/release-status.json` (`.consumer_ref.value`); read it
+there rather than assuming a version.
 
 **4. Acquire an immutable checkout.** Fetch Sentinel Shield at the pinned ref into
 `$SENTINEL_SHIELD_PATH` using the acquire bootstrap (the one script you obtain from the Sentinel
@@ -138,8 +141,17 @@ Two **independent** flags: `--tool-mode` (`config-only` | `require-existing` | `
 
 ```sh
 sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" \
-  --target . --profile <name> --tool-mode <mode> --emit-plan plan.json
+  --target . --profile <name> --tool-mode <mode> --emit-plan plan.json \
+  --source-repository <owner/name> --source-ref "$SENTINEL_SHIELD_REF"
 ```
+
+`--source-repository` / `--source-ref` are what make the installed workflow **runnable**: they are
+rendered into `SENTINEL_SHIELD_REPOSITORY` / `SENTINEL_SHIELD_REF`. **Do not hand-edit the workflow
+YAML to set them** — they are validated configuration data (repository grammar, immutable-ref
+policy, injection-safe rendering), and editing the file directly bypasses every one of those checks.
+Omit `--source-repository` only when installing from a checkout whose `origin` remote already points
+at the Sentinel Shield repository the consumer should use; the installer derives it then. The dry-run
+prints the exact substitutions it would make.
 
 **12. Review managed vs project-owned files.** From the dry-run output and `plan.json`, list every
 file the installer would write (managed) and confirm it would **not** touch project-owned files
@@ -150,8 +162,13 @@ file the installer would write (managed) and confirm it would **not** touch proj
 
 ```sh
 sh "$SENTINEL_SHIELD_PATH/scripts/install-baseline.sh" \
-  --target . --profile <name> --tool-mode <mode> --mode baseline --apply [--non-interactive]
+  --target . --profile <name> --tool-mode <mode> --mode baseline --apply [--non-interactive] \
+  --source-repository <owner/name> --source-ref "$SENTINEL_SHIELD_REF"
 ```
+
+`--mode strict` / `--mode regulated` require an immutable ref (a full 40-hex commit SHA, or the
+release tag the release-status contract approves) and refuse a moving branch. After applying,
+`doctor.sh` fails closed if any installed workflow still carries the `YOUR_ORG` placeholder.
 
 (`--non-interactive` for CI/automation; omit `--mode` to keep the default `report-only`.) Confirm
 project-local files (`accepted-risks.json`, baselines) were **not** touched. Re-run

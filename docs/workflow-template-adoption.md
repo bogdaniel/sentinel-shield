@@ -51,9 +51,14 @@ workflow body.
    vendor `scripts/ schemas/ templates/` into the project and repoint `${{ env.SENTINEL_SHIELD_PATH }}`.
 2. **Copy the templates you need** into `.github/workflows/`. Most projects: `pr-fast` + `main` +
    `scheduled`. The installer manages the combined `sentinel-shield.yml` for Laravel+React+Docker.
-3. **Set env vars** at the top of each file: `SENTINEL_SHIELD_REPOSITORY`, `SENTINEL_SHIELD_REF`
-   (replace the `YOUR_ORG`/`TODO` placeholders). If Sentinel Shield is private, add
-   `token: ${{ secrets.SENTINEL_SHIELD_RO_TOKEN }}` to the checkout steps.
+3. **Set env vars** at the top of each file: `SENTINEL_SHIELD_REPOSITORY`, `SENTINEL_SHIELD_REF`.
+   For the **installer-managed** workflow you do not do this by hand —
+   `install-baseline.sh --source-repository <owner/name> --source-ref <tag-or-SHA>` renders and
+   validates both (it derives the repository from the installing checkout's `origin` remote when
+   you omit the flag, and `doctor.sh` fails closed on a leftover `YOUR_ORG` placeholder). For the
+   per-job templates you copy manually, set them to the same values. If Sentinel Shield is
+   private, add `token: ${{ secrets.SENTINEL_SHIELD_RO_TOKEN }}` to the checkout steps — never
+   put a credential in `SENTINEL_SHIELD_REPOSITORY`.
 4. **Add `.sentinel-shield/profile.yaml`** with your profile mode (`report-only` → `baseline` →
    `strict`/`regulated`) and criticality. The gate resolves from this.
 5. **Wire real test reporters** (PHPUnit JUnit, Vitest/Jest JSON) so `tests.json` is real — never

@@ -35,7 +35,13 @@ if [ -f "$SCRIPT_DIR/lib/output-contract.sh" ]; then
   oc_intercept "sync-baseline" "$0" "$@"
 fi
 
+# shellcheck source=scripts/lib/source-config.sh
+. "$SCRIPT_DIR/lib/source-config.sh"
+
 TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; EMIT_INSTALL_PLAN=""; NONINTERACTIVE=0; RECOVER=0
+# Engine source configuration (SENTINEL_SHIELD_REPOSITORY/REF) is CONSUMER-OWNED: a managed
+# workflow update preserves whatever the consumer configured unless this is passed.
+UPDATE_SOURCE_CONFIG=0; SOURCE_REPOSITORY=""; SOURCE_REF=""; ALLOW_BRANCH_REF=0
 
 # usage — print CLI usage/help to stdout.
 usage() {
@@ -46,6 +52,12 @@ Usage: sync-baseline.sh --target <dir> [--profile <name>] [--apply] [--force]
   --profile <name>   Profile manifest (default: laravel-react-docker).
   --apply            Write changes (default: dry-run drift report).
   --force            Update MANAGED files (overwrite-if-force / sync-managed-block) only.
+  --update-source-config   Intentionally UPDATE the consumer-owned engine source configuration
+                     (SENTINEL_SHIELD_REPOSITORY/REF) while updating the managed workflow. Without
+                     it the consumer's values are preserved across the update. The change is printed.
+  --source-repository <r>  New repository for --update-source-config (owner/name or a URL).
+  --source-ref <r>   New immutable ref for --update-source-config (release tag or 40-hex SHA).
+  --allow-branch-ref Permit a moving branch as --source-ref (local preview only).
   --emit-plan <path> Write the read-only tool resolution plan (JSON) to <path> while syncing.
   --emit-install-plan <path> Write the DETERMINISTIC installation plan (JSON) to <path>
                      (schemas/installation-plan.schema.json): the per-file actions this sync would take.
@@ -64,6 +76,10 @@ while [ $# -gt 0 ]; do
 		--apply) APPLY=1; shift ;;
 		--force) FORCE=1; shift ;;
 		--dry-run) APPLY=0; shift ;;
+		--update-source-config) UPDATE_SOURCE_CONFIG=1; shift ;;
+		--source-repository) SOURCE_REPOSITORY="${2:?--source-repository requires a value}"; shift 2 ;;
+		--source-ref) SOURCE_REF="${2:?--source-ref requires a value}"; shift 2 ;;
+		--allow-branch-ref) ALLOW_BRANCH_REF=1; shift ;;
 		--emit-plan) EMIT_PLAN="${2:?--emit-plan requires a value}"; shift 2 ;;
 		--emit-install-plan) EMIT_INSTALL_PLAN="${2:?--emit-install-plan requires a value}"; shift 2 ;;
 		--non-interactive) NONINTERACTIVE=1; shift ;;
@@ -197,6 +213,39 @@ sb_missing_lines() {
 
 SUM=$(mktemp); : > "$SUM"
 
+# effective_source <template> <target-path> — echo the path to compare/install for a MANAGED
+# file. For a workflow carrying engine source configuration, the consumer's own
+# SENTINEL_SHIELD_REPOSITORY/REF are CONSUMER-OWNED data inside a MANAGED file: an update must
+# bring the new workflow logic without resetting the consumer back to the shipped placeholder
+# (which would make their CI unable to check the engine out). A rendered temp copy is returned,
+# so both the drift comparison and the write see the same, correct content.
+_EFF_TMP=""
+effective_source() {
+	_es_src="$1"; _es_tgt="$TARGET/$2"
+	_EFF_TMP=""
+	grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_es_src" 2>/dev/null || { printf '%s' "$_es_src"; return 0; }
+	[ -f "$_es_tgt" ] || { printf '%s' "$_es_src"; return 0; }
+	_es_repo=$(sc_workflow_value "$_es_tgt" SENTINEL_SHIELD_REPOSITORY)
+	_es_ref=$(sc_workflow_value "$_es_tgt" SENTINEL_SHIELD_REF)
+	if [ "$UPDATE_SOURCE_CONFIG" -eq 1 ]; then
+		[ -n "$SOURCE_REPOSITORY" ] && _es_repo="$SOURCE_REPOSITORY"
+		[ -n "$SOURCE_REF" ] && _es_ref="$SOURCE_REF"
+	fi
+	# Never render an invalid or placeholder value: leave the template as-is so the normal
+	# managed-file rules apply and the placeholder stays visible to doctor.
+	sc_normalize_repository "$_es_repo" >/dev/null 2>&1 || { printf '%s' "$_es_src"; return 0; }
+	sc_ref_kind "$_es_ref" >/dev/null 2>&1 || { printf '%s' "$_es_src"; return 0; }
+	_es_tmp=$(mktemp) || { printf '%s' "$_es_src"; return 0; }
+	cp "$_es_src" "$_es_tmp" || { rm -f "$_es_tmp"; printf '%s' "$_es_src"; return 0; }
+	if sc_render_workflow "$_es_tmp" "$_es_repo" "$_es_ref"; then
+		_EFF_TMP="$_es_tmp"
+		printf '%s' "$_es_tmp"
+	else
+		rm -f "$_es_tmp"
+		printf '%s' "$_es_src"
+	fi
+}
+
 sync_entry() { # <source> <target> <mode>
 	_src="$ROOT/$1"; _tgt="$TARGET/$2"; _mode="$3"
 	if is_protected "$2" || [ "$(basename "$2")" = "accepted-risks.json" ]; then
@@ -208,7 +257,21 @@ sync_entry() { # <source> <target> <mode>
 		if [ "$APPLY" -eq 1 ]; then tx_install_file "$_src" "$2"; echo "created (was missing): $2"; else echo "would create (missing): $2"; fi
 		echo created >> "$SUM"; return
 	fi
-	if diff "$_src" "$_tgt" >/dev/null 2>&1; then echo "up-to-date: $2"; echo uptodate >> "$SUM"; return; fi
+	_EFF_TMP=""
+	case "$_mode" in
+		overwrite-if-force | sync-managed-block)
+			# effective_source runs in THIS shell (not a subshell) so the temp path it records
+			# can be cleaned up on every exit path below.
+			_src=$(effective_source "$_src" "$2"); [ -f "$_src" ] || _src="$ROOT/$1"
+			case "$_src" in "$ROOT"/*) _EFF_TMP="" ;; *) _EFF_TMP="$_src" ;; esac ;;
+	esac
+	if diff "$_src" "$_tgt" >/dev/null 2>&1; then
+		echo "up-to-date: $2"; echo uptodate >> "$SUM"
+		[ -n "$_EFF_TMP" ] && rm -f -- "$_EFF_TMP"
+		# Explicit 0: the caller runs under `set -e`, and a bare `return` would propagate the
+		# false test above and abort the whole sync (rolling the transaction back).
+		return 0
+	fi
 	# Differs:
 	case "$_mode" in
 		create-if-missing)
@@ -240,12 +303,22 @@ sync_entry() { # <source> <target> <mode>
 			fi ;;
 		overwrite-if-force|sync-managed-block)
 			if [ "$APPLY" -eq 1 ] && [ "$FORCE" -eq 1 ]; then
-				tx_install_file "$_src" "$2"; echo "updated (managed): $2"; echo updated >> "$SUM"
+				_old_repo=$(sc_workflow_value "$_tgt" SENTINEL_SHIELD_REPOSITORY)
+				_old_ref=$(sc_workflow_value "$_tgt" SENTINEL_SHIELD_REF)
+				tx_install_file "$_src" "$2"
+				_new_repo=$(sc_workflow_value "$_tgt" SENTINEL_SHIELD_REPOSITORY)
+				_new_ref=$(sc_workflow_value "$_tgt" SENTINEL_SHIELD_REF)
+				if [ -n "$_old_repo$_old_ref" ] && { [ "$_old_repo" != "$_new_repo" ] || [ "$_old_ref" != "$_new_ref" ]; }; then
+					echo "source-config CHANGED in $2: repository ${_old_repo:-<unset>} -> ${_new_repo:-<unset>}, ref ${_old_ref:-<unset>} -> ${_new_ref:-<unset>}"
+				fi
+				echo "updated (managed): $2"; echo updated >> "$SUM"
 			else
 				echo "manual-review-needed (managed drift; --apply --force to update): $2"; echo manual >> "$SUM"
 			fi ;;
 		*) echo "manual-review-needed: $2"; echo manual >> "$SUM" ;;
 	esac
+	[ -n "$_EFF_TMP" ] && rm -f -- "$_EFF_TMP"
+	return 0
 }
 
 # Emit the COMPLETE plan BEFORE any mutation, then open the transaction (apply only). A stale

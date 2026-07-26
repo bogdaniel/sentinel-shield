@@ -15,6 +15,37 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Added — one-command installation renders a runnable, validated engine source config (#90)
+
+- **`install-baseline.sh` now renders `SENTINEL_SHIELD_REPOSITORY` / `SENTINEL_SHIELD_REF`.** New
+  `--source-repository`, `--source-ref`, `--allow-branch-ref` and `--no-source-render`. With no
+  flags the repository is derived from the installing checkout's `origin` remote (when
+  unambiguous) and the ref defaults to the current release in `config/release-status.json`. A
+  successful `--apply` previously left `YOUR_ORG/sentinel-shield` in the installed workflow, so CI
+  was guaranteed to fail on its first run and the documented fix was a hand edit of the YAML.
+- **New `scripts/lib/source-config.sh`** treats both values as **configuration data**: a strict
+  repository grammar (`owner/name`, or an https/ssh URL of one, including GitHub Enterprise hosts),
+  a ref grammar (release tag or full 40-hex SHA), and an anchored whole-line render performed with
+  awk **variables** — a supplied value cannot introduce YAML structure, a workflow expression or a
+  shell substitution. The render is atomic and verified before it replaces the file.
+- **Production policy**: `--mode strict|regulated` requires an immutable ref — a full commit SHA or
+  the release tag the release-status contract approves. A moving branch is refused outright unless
+  `--allow-branch-ref` is passed, and never in those modes.
+- **Dry-run prints the exact substitutions** and writes nothing.
+- **`sync-baseline.sh` treats the source configuration as consumer-owned.** A managed workflow
+  update preserves the consumer's repository/ref (so `--force` no longer resets them to the
+  placeholder, and the workflow no longer reports permanent drift). `--update-source-config`
+  changes them deliberately and prints the before/after.
+- **`doctor.sh` fails closed on a leftover placeholder** and warns when `SENTINEL_SHIELD_REF` is not
+  provably immutable — before the workflow is committed, rather than via a red CI run.
+- **The AI-assisted install prompt uses the same validated CLI** and explicitly forbids hand-editing
+  the workflow YAML.
+- **New `tests/prod/284-installer-source-config.sh`** — happy path, remote derivation, dry-run
+  no-write, 12 malformed/injection repository inputs, 5 malformed refs, branch policy, the
+  production immutability matrix for both modes, opt-out, byte-identical idempotency, interrupted
+  install rollback, sync preservation and audited update, doctor placeholder/mutable-ref detection,
+  and the AI-path assertions.
+
 ### Fixed — shipped scanner images are immutable, and Semgrep no longer scans the engine (#85, #86)
 
 - **`owasp/dependency-check:latest` is gone as a shipped default.** The scheduled and dedicated
