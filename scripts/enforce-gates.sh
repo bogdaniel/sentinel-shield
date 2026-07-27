@@ -549,18 +549,42 @@ case "$MODE" in
 			die_cfg "'$MODE' requires a summary bound to a repository: source.repository is absent. A commit with no repository does not identify evidence — rebuild with --repository <owner/name> (it is derived automatically in CI)."
 		fi ;;
 esac
+# Trust vocabulary. The BUILDER always emits `unverified`; only a verified platform
+# attestation raises it to `github-actions-attested`. `local` is the pre-attestation spelling
+# and is accepted as a synonym of `unverified` for summaries built before this contract.
+_strust=$(jqr '.source.trust // ""')
+case "$_strust" in
+	unverified | local | github-actions-attested | "" | null) : ;;
+	*) die_cfg "unrecognised source.trust='$_strust'. The engine knows 'unverified' (a claim) and 'github-actions-attested' (a verified platform attestation); an unknown level is never treated as the trusted one." ;;
+esac
 case "$MODE" in
+	strict)
+		# Strict accepts evidence that is exactly bound to a repository and a full commit SHA
+		# (checked above), but it must stay LABELLED for what it is: a claim, not a platform
+		# attestation. It is never relabelled as attested.
+		if [ "$_strust" != "github-actions-attested" ]; then
+			log_warn "strict: source provenance is ATTESTATION-LIMITED (source.trust='${_strust:-unverified}') — the summary is bound to $(jqr '.source.repository // "?"')@$(jqr '.source.commit // "?"') by its own claim, and no platform attestation was verified. 'regulated' requires one."
+		fi ;;
 	regulated)
-		# A LOCAL build is attestation-limited by construction: nothing outside the machine
-		# that produced it vouches for its inputs. Regulated is the mode that claims audited
-		# evidence, so it takes CI-produced summaries only.
-		_strust=$(jqr '.source.trust // ""')
-		case "$_strust" in
-			github-actions) : ;;
-			"" | null) die_cfg "'regulated' requires a source attestation: this summary declares no source.trust. Rebuild it with a build-security-summary.sh that emits the attestation (docs/security-summary-schema.md)." ;;
-			local) die_cfg "'regulated' does not accept a LOCAL build as production evidence (source.trust=local). Run the gate on the summary a CI workflow produced, or use 'strict' for a local assurance run." ;;
-			*) die_cfg "'regulated' does not recognise source.trust='$_strust'" ;;
-		esac ;;
+		# Regulated certifies audited evidence, so it requires a VERIFIED platform attestation.
+		# Environment variables are claims, and the builder emits `unverified` precisely so
+		# that no amount of environment control can reach this branch.
+		_averified=$(jqr '(.attestation | if type == "object" and (.verified == true) then "true" else "false" end)')
+		if [ "$_averified" != "true" ] || [ "$_strust" != "github-actions-attested" ]; then
+			die_cfg "'regulated' requires a VERIFIED platform attestation: source.trust='${_strust:-unverified}', attestation.verified=$(jqr '(.attestation.verified // "absent")'). Environment variables are claims, not provenance — run the attestation verification step against the producer artifact, or use 'strict' for an attestation-limited assurance run (docs/security-summary-schema.md)."
+		fi
+		# The attestation must name what it attests. A verified flag with no bound identity is
+		# not provenance.
+		for _af in repository commit workflow run_id artifact_digest; do
+			_av=$(jqr "(.attestation.$_af // \"\")")
+			[ -n "$_av" ] && [ "$_av" != "null" ] \
+				|| die_cfg "'regulated': the attestation does not bind $_af. A verified flag with no bound identity is not provenance."
+		done
+		# …and it must attest THIS summary's source.
+		_ar=$(jqr '(.attestation.repository // "")'); _sr=$(jqr '(.source.repository // "")')
+		_ac=$(jqr '(.attestation.commit // "")'); _sc=$(jqr '(.source.commit // "")')
+		[ "$_ar" = "$_sr" ] || die_cfg "'regulated': the attestation is for repository '$_ar' but the summary claims '$_sr'"
+		[ "$_ac" = "$_sc" ] || die_cfg "'regulated': the attestation is for commit '$_ac' but the summary claims '$_sc'" ;;
 esac
 
 # --- accepted-risk suppression (v0.1.8: finding-scoped by default) -----------

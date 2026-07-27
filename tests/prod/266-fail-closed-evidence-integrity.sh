@@ -88,7 +88,13 @@ cp "$E/rep/s.json" "$WORK/evid.json"
 jq '.tools.gitleaks = {"status":"pass","findings":0}
 	| .source += {commit:"0123456789abcdef0123456789abcdef01234567", repository:"example-org/example-repo",
 		ref:"refs/heads/main", event:"push", run_id:"1", run_attempt:"1",
-		trust:"github-actions", attestation_version:"1"}
+		trust:"github-actions-attested", attestation_version:"1"}
+	# regulated requires a VERIFIED platform attestation (the builder only ever emits
+	# `unverified`), so the fixture carries what a real attested run would.
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:"example-org/example-repo", commit:"0123456789abcdef0123456789abcdef01234567",
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1", artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}
 	| .summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
 		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
 		missing_architecture_evidence:false, missing_test_change_evidence:false,

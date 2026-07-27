@@ -46,7 +46,9 @@ src() { jq -r --arg f "$2" '.source[$f] | if . == null then "null" else tostring
 # ---------------------------------------------------------------------------
 check "a local build with no commit succeeds" "$(b "$WORK/local.json")" 0
 check "  and says so: the commit is the explicit non-claim" "$(src "$WORK/local.json" commit)" "unknown"
-check "  the trust level is local" "$(src "$WORK/local.json" trust)" "local"
+# The BUILDER never asserts trust: environment variables are claims supplied to the
+# process, so everything it emits is `unverified` until an attestation is verified.
+check "  the builder emits an UNVERIFIED trust level" "$(src "$WORK/local.json" trust)" "unverified"
 check "  the attestation is versioned" "$(src "$WORK/local.json" attestation_version)" "1"
 check "  and is bound to the inputs it was built from" \
 	"$(jq -r '(.source.inputs_digest // "") | test("^[0-9a-f]{64}$")' "$WORK/local.json")" "true"
@@ -75,18 +77,31 @@ check "  as is the repository" "$(src "$WORK/ci.json" repository)" "acme/shield"
 check "  the ref" "$(src "$WORK/ci.json" ref)" "refs/heads/main"
 check "  the event" "$(src "$WORK/ci.json" event)" "push"
 check "  the run id and attempt" "$(src "$WORK/ci.json" run_id),$(src "$WORK/ci.json" run_attempt)" "1234,2"
-check "  and the trust level is the platform" "$(src "$WORK/ci.json" trust)" "github-actions"
+check "  and a CI environment does NOT raise the trust level" "$(src "$WORK/ci.json" trust)" "unverified"
 
-check "a CLI commit contradicting the platform is refused" "$(ci "$WORK/x.json" --commit "$SHA_B")" 2
-contains "  and says the summary may not be relabelled" "$(cat "$WORK/log")" "may not be relabelled onto another commit"
-check "a CLI repository contradicting the platform is refused" "$(ci "$WORK/x.json" --repository other/repo)" 2
-check "a CLI run-id contradicting the platform is refused" "$(ci "$WORK/x.json" --run-id 9999)" 2
+# Neither the CLI value nor the environment claim is trusted, so a disagreement is RECORDED
+# rather than fatal — refusing it would only push callers to unset the variable, buying no
+# security while breaking fixture and replay builds.
+check "a CLI commit differing from the environment is recorded, not refused" "$(ci "$WORK/div.json" --commit "$SHA_B")" 0
+check "  the value the caller passed is what is recorded" "$(src "$WORK/div.json" commit)" "$SHA_B"
+check "  and the divergence is declared" \
+	"$(jq -r '[.source.diverged_claims[]] | index("commit") != null' "$WORK/div.json")" "true"
+contains "  with a warning that neither value is trusted" "$(cat "$WORK/log")" "Neither is trusted"
+check "a CLI repository differing from the environment is recorded" "$(ci "$WORK/div2.json" --repository other/repo)" 0
+check "  the caller value is recorded" "$(src "$WORK/div2.json" repository)" "other/repo"
+check "  and declared" "$(jq -r '[.source.diverged_claims[]] | index("repository") != null' "$WORK/div2.json")" "true"
 check "a matching CLI value is accepted (agreement is not a conflict)" "$(ci "$WORK/agree.json" --commit "$SHA_A" --repository acme/shield)" 0
 
-# A local build may not impersonate a run.
-check "a local build claiming a run id is refused" "$(b "$WORK/x.json" --run-id 5)" 2
-contains "  and says it is attestation-limited" "$(cat "$WORK/log")" "attestation-limited"
-check "a local build claiming a run attempt is refused" "$(b "$WORK/x.json" --run-attempt 2)" 2
+# A run id is metadata like everything else: it confers nothing, because the builder emits
+# `unverified` regardless. What matters is that no environment can reach an ATTESTED level.
+check "a local build may record a run id (it confers nothing)" "$(b "$WORK/runid.json" --run-id 5)" 0
+check "  and is still unverified" "$(src "$WORK/runid.json" trust)" "unverified"
+for _spoof in GITHUB_ACTIONS GITHUB_RUN_ID GITHUB_REPOSITORY GITHUB_SHA; do
+	_c=0
+	env GITHUB_ACTIONS=true GITHUB_RUN_ID=1 GITHUB_REPOSITORY=evil/repo GITHUB_SHA="$SHA_B" \
+		sh "$BUILD" --raw-dir "$WORK/raw" --output "$WORK/spoof.json" >/dev/null 2>&1 || _c=$?
+	check "spoofing $_spoof cannot raise the trust level" "$(src "$WORK/spoof.json" trust)" "unverified"
+done
 
 # The attestation is bound to the evidence: different inputs, different digest.
 printf '{"results":[]}\n' > "$WORK/raw/semgrep.json"
@@ -110,8 +125,29 @@ gate() {
 		--output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }
-jq '.tools = {"tests":{"status":"pass"}}' "$EXAMPLE" > "$WORK/attested.json"
+# regulated requires a VERIFIED platform attestation — the builder never emits one, so an
+# attested fixture is what a real attestation-verification step would have produced.
+jq '.tools = {"tests":{"status":"pass"}}
+	| .source.trust = "github-actions-attested"
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:.source.repository, commit:.source.commit, workflow:"sentinel-shield",
+		workflow_sha:"1111111111111111111111111111111111111111", run_id:"1234567890",
+		run_attempt:"1", artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
+	"$EXAMPLE" > "$WORK/attested.json"
 check "a fully attested summary passes regulated" "$(gate "$WORK/attested.json" regulated)" 0
+# …and every way of removing the attestation fails closed.
+jq 'del(.attestation)' "$WORK/attested.json" > "$WORK/noatt.json"
+check "regulated refuses a summary with NO attestation" "$(gate "$WORK/noatt.json" regulated)" 2
+jq '.attestation.verified = false' "$WORK/attested.json" > "$WORK/unver.json"
+check "regulated refuses attestation.verified=false" "$(gate "$WORK/unver.json" regulated)" 2
+jq 'del(.attestation.artifact_digest)' "$WORK/attested.json" > "$WORK/nodig.json"
+check "regulated refuses an attestation that binds no artifact digest" "$(gate "$WORK/nodig.json" regulated)" 2
+jq '.attestation.commit = "ffffffffffffffffffffffffffffffffffffffff"' "$WORK/attested.json" > "$WORK/wrongc.json"
+check "regulated refuses an attestation for another commit" "$(gate "$WORK/wrongc.json" regulated)" 2
+jq '.attestation.repository = "evil/repo"' "$WORK/attested.json" > "$WORK/wrongr.json"
+check "regulated refuses an attestation for another repository" "$(gate "$WORK/wrongr.json" regulated)" 2
+jq '.source.trust = "github-actions"' "$WORK/attested.json" > "$WORK/oldtrust.json"
+check "an unrecognised trust level is never treated as the trusted one" "$(gate "$WORK/oldtrust.json" regulated)" 2
 check "  and strict" "$(gate "$WORK/attested.json" strict)" 0
 check "  and baseline" "$(gate "$WORK/attested.json" baseline)" 0
 
@@ -128,10 +164,11 @@ jq 'del(.source.repository)' "$WORK/attested.json" > "$WORK/norepo.json"
 check "strict refuses a summary with no repository" "$(gate "$WORK/norepo.json" strict)" 2
 contains "  saying a commit alone does not identify evidence" "$(cat "$G/log")" "does not identify evidence"
 
-jq '.source.trust = "local"' "$WORK/attested.json" > "$WORK/localtrust.json"
-check "regulated refuses a LOCAL build as production evidence" "$(gate "$WORK/localtrust.json" regulated)" 2
-contains "  and points at strict for a local assurance run" "$(cat "$G/log")" "use 'strict' for a local assurance run"
-check "strict still accepts a local build" "$(gate "$WORK/localtrust.json" strict)" 0
+jq '.source.trust = "unverified" | del(.attestation)' "$WORK/attested.json" > "$WORK/localtrust.json"
+check "regulated refuses UNVERIFIED provenance as production evidence" "$(gate "$WORK/localtrust.json" regulated)" 2
+contains "  and points at strict for an attestation-limited run" "$(cat "$G/log")" "attestation-limited assurance run"
+check "strict still accepts it, bound to repository+commit" "$(gate "$WORK/localtrust.json" strict)" 0
+contains "  but labels it attestation-limited rather than attested" "$(cat "$G/log")" "ATTESTATION-LIMITED"
 
 jq 'del(.source.trust)' "$WORK/attested.json" > "$WORK/notrust.json"
 check "regulated refuses a summary with no attestation at all" "$(gate "$WORK/notrust.json" regulated)" 2
@@ -142,7 +179,8 @@ check "regulated refuses an unknown trust level" "$(gate "$WORK/badtrust.json" r
 CID="$WORK/cirun"; mkdir -p "$CID"
 ci "$CID/s.json" >/dev/null
 jq '.tools = {"tests":{"status":"pass"}}' "$CID/s.json" > "$CID/s2.json"
-check "a summary built in CI is bound to its run without hand-editing" "$(src "$CID/s2.json" trust)" "github-actions"
+check "a summary built in CI records its run but claims no trust" "$(src "$CID/s2.json" trust)" "unverified"
+check "  while still recording the platform run id" "$(src "$CID/s2.json" run_id)" "1234"
 check "  with the platform commit" "$(src "$CID/s2.json" commit)" "$SHA_A"
 
 printf '\n'

@@ -341,35 +341,53 @@ esac
 # --- source attestation (#241) -----------------------------------------------
 # `commit`, `branch` and `workflow` were free-form CLI labels defaulting to
 # `unknown`/`master`/`local`, emitted verbatim: a summary could claim any commit, and
-# nothing distinguished a real CI run from a local build asserting one. Source identity is
-# now DERIVED from the platform when it is present, cross-checked against anything the
-# caller passed, and classified by how much it can be trusted.
+# nothing distinguished a real CI run from a local build asserting one.
+#
+# THE BUILDER NEVER ASSERTS TRUST. `GITHUB_*` variables are CLAIMS supplied to this process —
+# any local shell can export them — so they populate source METADATA and nothing more. The
+# emitted trust level is always `unverified`; only a separate attestation-verification step
+# (scripts/verify-source-attestation.sh) may raise it to `github-actions-attested`, and it
+# does that by verifying platform provenance, not by reading the environment.
+#
+# Because neither the CLI value nor the environment value is trusted, a disagreement between
+# them is RECORDED (both are kept, and the platform claim is reported) rather than fatal: a
+# fixture or replay build legitimately names a commit the surrounding process does not have,
+# and refusing it would only push callers to unset the variable — buying no security while
+# breaking honest use.
 ss_token_ok() { printf '%s' "$1" | LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$'; }
 
-# Derive-or-cross-check: in CI the platform value wins and a CONFLICTING CLI value is a
-# configuration failure — that is the "manually edited metadata" case.
-sa_bind() {   # sa_bind <label> <cli-value> <platform-value>
-	if [ -n "$3" ]; then
-		if [ -n "$2" ] && [ "$2" != "$3" ]; then
-			die_cfg "--$1 '$2' contradicts the CI platform value '$3'. Source identity is evidence, not a label: fix the caller rather than relabelling the run."
+# sa_claim <label> <cli-value> <platform-value> — record the value. The caller wins when it
+# supplied one; otherwise the platform claim fills it in. A disagreement is reported and
+# recorded in SA_DIVERGED.
+#
+# This assigns to SA_DIVERGED rather than echoing, because a command substitution runs in a
+# SUBSHELL — an assignment made there is discarded, which silently emptied the divergence
+# list. The resolved value comes back in SA_VALUE.
+sa_claim() {
+	if [ -n "$2" ]; then
+		SA_VALUE="$2"
+		if [ -n "$3" ] && [ "$2" != "$3" ]; then
+			log_warn "source: --$1 '$2' differs from the environment claim '$3'; recording the value you passed. Neither is trusted — trust comes from attestation verification, not from either of these."
+			SA_DIVERGED="${SA_DIVERGED}${1} "
 		fi
-		printf '%s' "$3"
 	else
-		printf '%s' "$2"
+		SA_VALUE="$3"
 	fi
 }
 
-SOURCE_TRUST="local"
-if [ -n "${GITHUB_ACTIONS:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then SOURCE_TRUST="github-actions"; fi
+# Always `unverified` out of this script. See the note above.
+SOURCE_TRUST="unverified"
+SA_DIVERGED=""
 
-REPOSITORY=$(sa_bind repository "$REPOSITORY" "${GITHUB_REPOSITORY:-}")
-REF=$(sa_bind ref "$REF" "${GITHUB_REF:-}")
-EVENT=$(sa_bind event "$EVENT" "${GITHUB_EVENT_NAME:-}")
-RUN_ID=$(sa_bind run-id "$RUN_ID" "${GITHUB_RUN_ID:-}")
-RUN_ATTEMPT=$(sa_bind run-attempt "$RUN_ATTEMPT" "${GITHUB_RUN_ATTEMPT:-}")
+sa_claim repository "$REPOSITORY" "${GITHUB_REPOSITORY:-}";   REPOSITORY="$SA_VALUE"
+sa_claim ref "$REF" "${GITHUB_REF:-}";                        REF="$SA_VALUE"
+sa_claim event "$EVENT" "${GITHUB_EVENT_NAME:-}";             EVENT="$SA_VALUE"
+sa_claim run-id "$RUN_ID" "${GITHUB_RUN_ID:-}";               RUN_ID="$SA_VALUE"
+sa_claim run-attempt "$RUN_ATTEMPT" "${GITHUB_RUN_ATTEMPT:-}"; RUN_ATTEMPT="$SA_VALUE"
 if [ -n "${GITHUB_SHA:-}" ] && [ "$COMMIT" = "unknown" ]; then COMMIT="${GITHUB_SHA}"; fi
 if [ -n "${GITHUB_SHA:-}" ] && [ "$COMMIT" != "unknown" ] && [ "$COMMIT" != "${GITHUB_SHA}" ]; then
-	die_cfg "--commit '$COMMIT' contradicts the CI platform commit '${GITHUB_SHA}'. A summary may not be relabelled onto another commit."
+	log_warn "source: --commit '$COMMIT' differs from the environment claim '${GITHUB_SHA}'; recording the value you passed. Neither is trusted — a summary is bound to a commit by attestation verification, not by this field."
+	SA_DIVERGED="${SA_DIVERGED}commit "
 fi
 
 # A COMMIT is either a full 40-hex SHA or the explicit non-claim `unknown`. An abbreviated
@@ -395,10 +413,8 @@ for _sn in run-id run-attempt; do
 	if [ -z "$_svv" ]; then continue; fi
 	case "$_svv" in *[!0-9]*) die_cfg "--$_sn must be numeric (got '$_svv')" ;; esac
 done
-# A LOCAL build may not impersonate a CI run: attestation-limited means it says so.
-if [ "$SOURCE_TRUST" = "local" ] && { [ -n "$RUN_ID" ] || [ -n "$RUN_ATTEMPT" ]; }; then
-	die_cfg "a local build cannot claim a CI run (--run-id/--run-attempt given with no GitHub Actions run in the environment). A local summary is attestation-limited by definition."
-fi
+# A run id is metadata like everything else here; it confers nothing, because the trust level
+# this script emits is always `unverified`.
 command_exists jq || die_cfg "jq is required but was not found. Install jq."
 
 REPORTS_DIR=$(dirname -- "$OUTPUT")
@@ -1349,6 +1365,7 @@ jq -n \
 	--arg commit "$COMMIT" --arg branch "$BRANCH" --arg workflow "$WORKFLOW" \
 	--arg repository "$REPOSITORY" --arg ref "$REF" --arg event "$EVENT" \
 	--arg run_id "$RUN_ID" --arg run_attempt "$RUN_ATTEMPT" --arg trust "$SOURCE_TRUST" \
+	--arg diverged "$SA_DIVERGED" \
 	--arg inputs_digest "$INPUTS_DIGEST" \
 	--argjson ms "$MS" --argjson mr "$MR" \
 	--argjson sp "$SP" --argjson rp "$RP" \
@@ -1388,7 +1405,12 @@ jq -n \
 			event: (if $event == "" then null else $event end),
 			run_id: (if $run_id == "" then null else $run_id end),
 			run_attempt: (if $run_attempt == "" then null else $run_attempt end),
+			# ALWAYS "unverified" from the builder. Only scripts/verify-source-attestation.sh
+			# may raise this, and only by verifying platform provenance.
 			trust: $trust,
+			# Fields whose CLI value and environment claim disagreed. Neither is trusted, so
+			# the disagreement is recorded rather than resolved here.
+			diverged_claims: ($diverged | split(" ") | map(select(length > 0))),
 			inputs_digest: (if $inputs_digest == "" then null else $inputs_digest end) },
 		summary: ($counts
 			+ { missing_sbom: $ms, missing_release_evidence: $mr }

@@ -17,8 +17,9 @@
     "event": "push",
     "run_id": "1234567890",
     "run_attempt": "1",
-    "trust": "github-actions",
-    "inputs_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "trust": "unverified",
+    "inputs_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diverged_claims": []
   },
   "summary": {
     "secrets": 0,
