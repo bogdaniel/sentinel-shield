@@ -1889,7 +1889,10 @@ json_finding_ids() {
 #
 # Everything is staged next to the destination, validated, and published together at the end.
 REPORT_TMPDIR=""
-_report_cleanup() { [ -n "$REPORT_TMPDIR" ] && rm -rf -- "$REPORT_TMPDIR" 2>/dev/null || true; }
+# A failed or interrupted publisher removes only its own STAGING generation and its own lock.
+# A published generation is immutable and is never touched by cleanup, so the last valid
+# generation always survives.
+_report_cleanup() { _gen_cleanup; }
 trap '_report_cleanup' EXIT INT TERM HUP
 
 # report_dest_ok <path> — refuse a destination that is not a plain file we may replace.
@@ -1909,17 +1912,206 @@ report_dest_ok() {
 report_stage() {
 	[ -n "$REPORT_TMPDIR" ] && return 0
 	ensure_dir "$OUTPUT_DIR"
-	REPORT_TMPDIR=$(mktemp -d "$OUTPUT_DIR/.sentinel-shield-report.XXXXXX") \
-		|| die_cfg "could not create a staging directory in $OUTPUT_DIR"
+	# Artifacts are rendered directly into the STAGING GENERATION, so the generation is the
+	# thing that gets validated and published; the flat files beside it are a mirror written
+	# from the published generation afterwards.
+	gen_prepare
+	REPORT_TMPDIR="$GEN_STAGE"
 	return 0
 }
 
 # report_publish <staged> <final> — replace atomically after the destination is proven safe.
+# This publishes the COMPATIBILITY MIRROR only; the authoritative artifact set is the
+# generation published by report_publish_generation() below.
 report_publish() {
 	report_dest_ok "$2"
 	chmod 0644 "$1" 2>/dev/null || true
-	mv -- "$1" "$2" || die_cfg "could not publish the enforcement report at $2"
+	cp -- "$1" "$2.tmp.$$" 2>/dev/null || die_cfg "could not stage the mirrored report at $2"
+	mv -- "$2.tmp.$$" "$2" || { rm -f -- "$2.tmp.$$"; die_cfg "could not publish the enforcement report at $2"; }
 	log_info "wrote $2"
+	return 0
+}
+
+# --- generation-based publication ---------------------------------------------------------
+# Two sequential renames are NOT a transactional pair: a failure, a signal or a crash between
+# them leaves a new JSON beside an old Markdown, which is exactly the mismatch this code
+# claims to prevent. So the artifacts are published as ONE IMMUTABLE GENERATION and made
+# visible by a single atomic pointer switch:
+#
+#   <output-dir>/enforcement/
+#     <generation-id>/                 immutable once published; never mutated
+#       sentinel-shield-enforcement.json
+#       sentinel-shield-enforcement.md
+#       manifest.json                  what the generation contains, with digests
+#     current.json                     THE pointer: names the one complete generation
+#
+# A reader resolves current.json once and consumes that generation. Nothing else is evidence:
+# file existence alone never means "complete", because a generation directory can exist while
+# its manifest is still being written.
+ENFORCEMENT_ROOT=""
+GENERATION_ID=""
+GEN_STAGE=""
+GEN_KEEP="${SENTINEL_SHIELD_REPORT_GENERATIONS:-5}"
+case "$GEN_KEEP" in '' | *[!0-9]*) GEN_KEEP=5 ;; esac
+[ "$GEN_KEEP" -ge 1 ] || GEN_KEEP=1
+
+_gen_cleanup() {
+	if [ -n "$GEN_STAGE" ] && [ -d "$GEN_STAGE" ]; then rm -rf -- "$GEN_STAGE" 2>/dev/null || true; fi
+	if [ -n "$ENFORCEMENT_ROOT" ] && [ -d "$ENFORCEMENT_ROOT/.publish.lock" ]; then
+		# Only ever remove OUR lock: another publisher's lock is theirs to clear.
+		if [ -f "$ENFORCEMENT_ROOT/.publish.lock/owner" ] &&
+		   grep -q "pid=$$\b" "$ENFORCEMENT_ROOT/.publish.lock/owner" 2>/dev/null; then
+			rm -rf -- "$ENFORCEMENT_ROOT/.publish.lock" 2>/dev/null || true
+		fi
+	fi
+	return 0
+}
+
+# gen_lock — single publisher per report root. mkdir is atomic on POSIX, so it IS the lock;
+# the owner file makes a stale lock diagnosable rather than mysterious.
+gen_lock() {
+	_gl="$ENFORCEMENT_ROOT/.publish.lock"
+	if mkdir "$_gl" 2>/dev/null; then
+		printf 'pid=%s host=%s user=%s started=%s run=%s\n' \
+			"$$" "$(uname -n 2>/dev/null || printf unknown)" "$(id -un 2>/dev/null || printf unknown)" \
+			"$TS" "${GITHUB_RUN_ID:-local}" > "$_gl/owner" 2>/dev/null || true
+		return 0
+	fi
+	_owner=$(cat "$_gl/owner" 2>/dev/null || printf 'unknown holder')
+	die_cfg "another enforcement run is publishing into '$ENFORCEMENT_ROOT' ($_owner). Two publishers must not interleave. If that run is gone, remove the stale lock directory: rm -rf '$_gl'"
+}
+
+# gen_prepare — create the private staging generation.
+gen_prepare() {
+	ENFORCEMENT_ROOT="$OUTPUT_DIR/enforcement"
+	# The generation root must live INSIDE the verified report root and must not be reached
+	# through a symlink.
+	[ -L "$OUTPUT_DIR" ] && die_cfg "output directory is a symlink: $OUTPUT_DIR"
+	if [ -e "$ENFORCEMENT_ROOT" ] && [ ! -d "$ENFORCEMENT_ROOT" ]; then
+		die_cfg "'$ENFORCEMENT_ROOT' exists and is not a directory"
+	fi
+	[ -L "$ENFORCEMENT_ROOT" ] && die_cfg "enforcement generation root is a symlink: $ENFORCEMENT_ROOT"
+	ensure_dir "$ENFORCEMENT_ROOT"
+	gen_lock
+	# Unpredictable, exclusive, private: mktemp creates it, 0700 keeps it unreadable while it
+	# is incomplete, and the name cannot be guessed and pre-created.
+	GEN_STAGE=$(mktemp -d "$ENFORCEMENT_ROOT/.staging.XXXXXX") \
+		|| die_cfg "could not create a staging generation in $ENFORCEMENT_ROOT"
+	chmod 0700 "$GEN_STAGE" 2>/dev/null || true
+	GENERATION_ID="$(printf '%s' "$TS" | tr -c 'A-Za-z0-9' '-')-$(basename "$GEN_STAGE" | sed 's/^\.staging\.//')"
+	return 0
+}
+
+# gen_manifest — describe the generation, with a digest for every artifact.
+gen_manifest() {
+	_gm="$GEN_STAGE/manifest.json"
+	_files=""
+	for _a in sentinel-shield-enforcement.json sentinel-shield-enforcement.md; do
+		[ -f "$GEN_STAGE/$_a" ] || continue
+		_sz=$(wc -c < "$GEN_STAGE/$_a" | tr -d ' ')
+		_dg=$(ss_sha256_file "$GEN_STAGE/$_a" 2>/dev/null || printf '')
+		[ -n "$_dg" ] || die_cfg "could not hash generation artifact '$_a'"
+		_files="${_files}${_files:+,}$(printf '{"path":"%s","bytes":%s,"sha256":"%s"}' "$_a" "$_sz" "$_dg")"
+	done
+	[ -n "$_files" ] || die_cfg "the generation contains no artifacts"
+	printf '{\n' > "$_gm"
+	printf '  "schema_version": "1",\n' >> "$_gm"
+	printf '  "generation_id": "%s",\n' "$(json_escape "$GENERATION_ID")" >> "$_gm"
+	printf '  "created_at": "%s",\n' "$(json_escape "$TS")" >> "$_gm"
+	printf '  "producer": "enforce-gates.sh",\n' >> "$_gm"
+	printf '  "target_repository": %s,\n' "$(jqr '(.source.repository // "") | if . == "" then "null" else "\"" + . + "\"" end' 2>/dev/null || printf 'null')" >> "$_gm"
+	printf '  "target_commit": "%s",\n' "$(json_escape "$(jqr '.source.commit // "unknown"')")" >> "$_gm"
+	printf '  "profile": "%s",\n' "$(json_escape "$PROJ_TYPE")" >> "$_gm"
+	printf '  "mode": "%s",\n' "$(json_escape "$MODE")" >> "$_gm"
+	printf '  "result": "%s",\n' "$(json_escape "$RESULT")" >> "$_gm"
+	printf '  "expected_artifacts": [%s],\n' "$(printf '%s' "$_files" | sed 's/{"path":"\([^"]*\)"[^}]*}/"\1"/g')" >> "$_gm"
+	printf '  "artifacts": [%s],\n' "$_files" >> "$_gm"
+	printf '  "summary_schema_version": "%s",\n' "$(json_escape "$(jqr '.version // "unknown"')")" >> "$_gm"
+	printf '  "validation": "passed"\n' >> "$_gm"
+	printf '}\n' >> "$_gm"
+	jq -e . "$_gm" >/dev/null 2>&1 || die_cfg "the generation manifest is not valid JSON"
+	return 0
+}
+
+# gen_validate — every artifact readable, non-empty, and matching its recorded digest.
+gen_validate() {
+	_n=$(jq -r '.artifacts | length' "$GEN_STAGE/manifest.json")
+	[ "$_n" -ge 1 ] || die_cfg "the generation manifest lists no artifacts"
+	_i=0
+	while [ "$_i" -lt "$_n" ]; do
+		_p=$(jq -r --argjson i "$_i" '.artifacts[$i].path' "$GEN_STAGE/manifest.json")
+		_d=$(jq -r --argjson i "$_i" '.artifacts[$i].sha256' "$GEN_STAGE/manifest.json")
+		_i=$((_i + 1))
+		[ -f "$GEN_STAGE/$_p" ] || die_cfg "generation artifact missing before publication: $_p"
+		[ -s "$GEN_STAGE/$_p" ] || die_cfg "generation artifact is empty: $_p"
+		_a=$(ss_sha256_file "$GEN_STAGE/$_p" 2>/dev/null || printf '')
+		[ "$_a" = "$_d" ] || die_cfg "generation artifact '$_p' does not match its manifest digest (expected $_d, got ${_a:-unreadable})"
+		# A digest proves the bytes are the recorded ones; it does not prove they are USABLE.
+		# Every artifact is validated for its own content type, so a corrupt report can never
+		# become the current generation.
+		case "$_p" in
+			*.json)
+				jq -e . "$GEN_STAGE/$_p" >/dev/null 2>&1 \
+					|| die_cfg "generation artifact '$_p' is not valid JSON" ;;
+			*.md)
+				grep -q '[^[:space:]]' "$GEN_STAGE/$_p" \
+					|| die_cfg "generation artifact '$_p' has no content" ;;
+		esac
+	done
+	# Cross-artifact invariant: the JSON verdict and the Markdown must describe the SAME run.
+	if [ -f "$GEN_STAGE/sentinel-shield-enforcement.json" ] && [ -f "$GEN_STAGE/sentinel-shield-enforcement.md" ]; then
+		_jr=$(jq -r '(.result // "")' "$GEN_STAGE/sentinel-shield-enforcement.json" 2>/dev/null || printf '')
+		[ -n "$_jr" ] || die_cfg "the generation JSON declares no result"
+		grep -qi "$_jr" "$GEN_STAGE/sentinel-shield-enforcement.md" \
+			|| die_cfg "the generation Markdown does not carry the JSON verdict '$_jr' — the pair would describe different runs"
+	fi
+	return 0
+}
+
+# gen_commit — finalize durably, then make the generation visible with ONE atomic rename.
+gen_commit() {
+	_final="$ENFORCEMENT_ROOT/$GENERATION_ID"
+	[ -e "$_final" ] && die_cfg "generation '$GENERATION_ID' already exists — refusing to mutate a published generation"
+	chmod 0755 "$GEN_STAGE" 2>/dev/null || true
+	# Best-effort durability before the generation becomes reachable. POSIX sh has no fsync;
+	# `sync` is the portable approximation and its absence is not fatal.
+	command_exists sync && sync 2>/dev/null || true
+	mv -- "$GEN_STAGE" "$_final" || die_cfg "could not finalize the generation at $_final"
+	GEN_STAGE=""
+	# THE pointer switch: written to a temp file in the same directory and renamed, so a
+	# reader sees either the old pointer or the new one, never a half-written name.
+	_ptmp="$ENFORCEMENT_ROOT/.current.$$.tmp"
+	printf '{ "schema_version": "1", "generation_id": "%s", "updated_at": "%s", "path": "enforcement/%s", "manifest": "enforcement/%s/manifest.json" }\n' \
+		"$(json_escape "$GENERATION_ID")" "$(json_escape "$TS")" \
+		"$(json_escape "$GENERATION_ID")" "$(json_escape "$GENERATION_ID")" > "$_ptmp" \
+		|| die_cfg "could not stage the current-generation pointer"
+	jq -e . "$_ptmp" >/dev/null 2>&1 || { rm -f -- "$_ptmp"; die_cfg "the staged pointer is not valid JSON"; }
+	command_exists sync && sync 2>/dev/null || true
+	if [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+		rm -f -- "$_ptmp"
+		die_cfg "'$ENFORCEMENT_ROOT/current.json' is a symlink; refusing to publish through it"
+	fi
+	mv -- "$_ptmp" "$ENFORCEMENT_ROOT/current.json" \
+		|| { rm -f -- "$_ptmp"; die_cfg "could not switch the current-generation pointer"; }
+	log_info "published enforcement generation $GENERATION_ID (pointer: $ENFORCEMENT_ROOT/current.json)"
+	return 0
+}
+
+# gen_gc — keep GEN_KEEP generations. The ACTIVE one is never a candidate.
+gen_gc() {
+	_active=$(jq -r '.generation_id // ""' "$ENFORCEMENT_ROOT/current.json" 2>/dev/null || printf '')
+	[ -n "$_active" ] || return 0
+	_all=$(ls -1 "$ENFORCEMENT_ROOT" 2>/dev/null | grep -v '^current\.json$' | grep -v '^\.' | sort || true)
+	_count=$(printf '%s\n' "$_all" | grep -c '[^[:space:]]' || true)
+	[ "$_count" -gt "$GEN_KEEP" ] || return 0
+	_drop=$((_count - GEN_KEEP))
+	printf '%s\n' "$_all" | while IFS= read -r _g; do
+		[ -n "$_g" ] || continue
+		[ "$_drop" -gt 0 ] || break
+		if [ "$_g" = "$_active" ]; then continue; fi
+		[ -d "$ENFORCEMENT_ROOT/$_g" ] || continue
+		rm -rf -- "$ENFORCEMENT_ROOT/$_g" 2>/dev/null && _drop=$((_drop - 1))
+	done
 	return 0
 }
 
@@ -2197,21 +2389,33 @@ case "$FORMAT" in
 	markdown) write_markdown ;;
 	all) write_json; write_markdown ;;
 esac
-# Prove EVERY destination is safe before replacing ANY of them: publishing the JSON and then
-# failing on the Markdown would leave the pair describing different runs, which is the failure
-# mode this pairing exists to prevent.
+# Prove EVERY mirror destination is safe BEFORE anything is published, so a refusal cannot
+# leave the pair describing different runs.
 case "$FORMAT" in
 	json | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
 esac
 case "$FORMAT" in
 	markdown | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
 esac
+
+# ONE atomic commit: describe the generation, validate every artifact against its digest,
+# finalize it durably, then switch the pointer. Any failure before the pointer switch leaves
+# the previous current generation exactly as it was.
+gen_manifest
+gen_validate
+gen_commit
+
+# Compatibility mirror. The pointer is authoritative; these flat paths exist so consumers that
+# predate generations keep working, and they are copied FROM the published generation, so they
+# can never describe a run that was not published.
+_gen_dir="$ENFORCEMENT_ROOT/$GENERATION_ID"
 case "$FORMAT" in
-	json | all) report_publish "$REPORT_TMPDIR/sentinel-shield-enforcement.json" "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
+	json | all) report_publish "$_gen_dir/sentinel-shield-enforcement.json" "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
 esac
 case "$FORMAT" in
-	markdown | all) report_publish "$REPORT_TMPDIR/sentinel-shield-enforcement.md" "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
+	markdown | all) report_publish "$_gen_dir/sentinel-shield-enforcement.md" "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
 esac
+gen_gc
 _report_cleanup
 
 log_info "Enforcement complete (mode=$MODE, result=$RESULT, exit=$EXIT)."

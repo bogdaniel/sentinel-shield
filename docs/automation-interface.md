@@ -76,6 +76,59 @@ Consumers should branch on `status` (coarse) or `exit_category` (precise), and
 use `reason_codes` for stable programmatic decisions. **Do not** parse the human
 text on `stderr`.
 
+## Enforcement report generations (the `current` pointer)
+
+`enforce-gates.sh` publishes its reports as **one immutable generation**, made visible by a
+single atomic pointer switch. Two sequential renames are not a transactional pair: a failure or
+a signal between them leaves a new JSON beside an old Markdown, which is the mismatch the
+pairing exists to prevent.
+
+```text
+<output-dir>/enforcement/
+  <generation-id>/                        immutable once published; never mutated
+    sentinel-shield-enforcement.json
+    sentinel-shield-enforcement.md
+    manifest.json
+  current.json                            THE pointer
+<output-dir>/sentinel-shield-enforcement.json   compatibility mirror
+<output-dir>/sentinel-shield-enforcement.md     compatibility mirror
+```
+
+**How to consume it.** Resolve `enforcement/current.json` **once**, then read that generation
+and nothing else:
+
+```sh
+GEN=$(jq -r '.generation_id' reports/enforcement/current.json)
+MAN="reports/enforcement/$GEN/manifest.json"
+jq -e '.validation == "passed"' "$MAN" >/dev/null || exit 1     # never trust existence alone
+jq -r '.artifacts[] | "\(.sha256)  reports/enforcement/'"$GEN"'/\(.path)"' "$MAN" | shasum -a 256 -c -
+jq -r '.result' "reports/enforcement/$GEN/sentinel-shield-enforcement.json"
+```
+
+The manifest records the generation id, creation timestamp, target repository and commit (or
+the explicit `unknown`), profile, mode, result, the expected artifact list, and a byte size and
+SHA-256 for every artifact. **File existence is never evidence of completeness** — a generation
+directory can exist while its manifest is still being written, which is exactly why the pointer,
+not the directory listing, is authoritative.
+
+**Guarantees.**
+
+- Artifacts are rendered into an unpredictable, private (`0700`) staging generation, validated
+  against their recorded digests **and** their content type (the JSON must parse, the Markdown
+  must carry the JSON verdict), then finalized and made visible by one rename.
+- A published generation is **never mutated**. A failed or interrupted publisher removes only
+  its own staging directory, so the last valid generation always survives and stays current.
+- A single publisher at a time: an atomic `mkdir` lock records pid, host, user, start time and
+  run id, so a stale lock is diagnosable and the recovery command is printed. A refused
+  publisher never removes another's lock.
+- The generation root must be a real directory inside the output directory; a symlinked root,
+  a symlinked `current.json`, or a non-directory in either place is refused.
+- Retention keeps `SENTINEL_SHIELD_REPORT_GENERATIONS` generations (default 5, minimum 1). The
+  **active** generation is never collected.
+- The flat `sentinel-shield-enforcement.*` files remain for consumers that predate generations.
+  They are copied **from the published generation**, so they can never describe a run that was
+  not published — but the pointer is what a new consumer should read.
+
 ## Redaction guarantees
 
 Everything placed into the envelope is redacted **before emission** by the shared

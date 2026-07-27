@@ -333,9 +333,10 @@ fi
 # ---------------------------------------------------------------------------
 D=$(mkfix nofs)
 # A record for a DIFFERENT gate: medium_vulnerabilities has no finding-scope record at all.
-jq -n '{version:"1", risks:[
+jq -n --arg t "$AR_TODAY" --arg s "$AR_SOON" '{version:"2", risks:[
 	{ id:"AR-OTHER", gate:"unsafe_docker", scope:"finding", rule_ids:["DL3018"],
-	  owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved" }]}' > "$D/ar.json"
+	  owner:"o", reason:"r", created_at:$t, approved_at:$t, expires_at:$s,
+	  status:"approved" }]}' > "$D/ar.json"
 check "with no finding-scope record the gate still fails" "$(enforce "$D" "$D/ar.json")" 1
 check "  and the whole count is published as unaccepted" "$(acct "$D" unaccepted)" 2
 check "  with nothing claimed as accepted" "$(acct "$D" accepted)" 0
