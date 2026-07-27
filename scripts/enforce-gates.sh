@@ -618,6 +618,27 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 		printf '%s\n' "$_ar_bad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "  - $_l"; done
 		die_cfg "accepted-risk input changes release decisions; refusing to enforce against an invalid governance file"
 	fi
+	# REAL calendar dates. The jq pass above proves the shape and rejects an out-of-range
+	# month/day, but 2026-02-31, 2026-04-31 and non-leap 2025-02-29 all have the shape of a
+	# date without being one — and each sorts as unexpired. The canonical calendar check is
+	# cw__valid_date (the control-waiver validator, already sourced); it is reused here rather
+	# than approximated a second time in jq.
+	_ard=$(jq -r '(.risks // [])[] | "\(.id // "?")\t\(.expires_at // "")\t\(.review_at // "")"' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	_arrc=0
+	_artab="$(printf '\t')"
+	while IFS="$_artab" read -r _arid _arexp _arrev; do
+		[ -n "$_arid" ] || continue
+		if ! cw__valid_date "$_arexp"; then
+			log_error "accepted-risks: record $_arid: expires_at '$_arexp' is not a real calendar date"; _arrc=1
+		fi
+		if [ -n "$_arrev" ] && ! cw__valid_date "$_arrev"; then
+			log_error "accepted-risks: record $_arid: review_at '$_arrev' is not a real calendar date"; _arrc=1
+		fi
+	done <<EOF
+$_ard
+EOF
+	[ "$_arrc" -eq 0 ] || die_cfg "accepted-risk input changes release decisions; refusing to enforce against impossible dates in $ACCEPTED_RISKS_FILE"
+
 	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
 	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
 	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")

@@ -160,6 +160,27 @@ enf --format json >/dev/null 2>&1 || true
 check "--format json publishes only the JSON" \
 	"$([ -f "$WORK/out/sentinel-shield-enforcement.json" ] && [ ! -f "$WORK/out/sentinel-shield-enforcement.md" ] && echo yes || echo no)" "yes"
 
+# --- second-reviewer round: shape-of-a-date is not a date ---------------------
+# The jq `realdate` check only bounded month 1-12 and day 1-31, so 2026-02-31, 2026-04-31 and
+# non-leap 2025-02-29 all validated — and each sorts as unexpired, i.e. an accepted risk that
+# never expires. The canonical calendar validator is reused now.
+for _bad in 2026-02-31 2026-04-31 2025-02-29 2026-06-31 2026-11-31; do
+	jq -n --arg e "$_bad" '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate",
+		owner:"o", reason:"r", expires_at:$e, status:"approved"}]}' > "$WORK/ar-bad.json"
+	check "an impossible calendar date ($_bad) is refused" "$(enf --accepted-risks "$WORK/ar-bad.json" --format json)" 2
+done
+# Real AND unexpired: an expired record legitimately fails the gate (exit 1), which would
+# not tell us anything about date VALIDATION.
+for _ok in 2028-02-29 2026-12-31 2099-04-30; do
+	jq -n --arg e "$_ok" '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate",
+		owner:"o", reason:"r", expires_at:$e, status:"approved"}]}' > "$WORK/ar-ok.json"
+	check "a real calendar date ($_ok) is accepted" "$(enf --accepted-risks "$WORK/ar-ok.json" --format json)" 0
+done
+# review_at gets the same treatment.
+jq -n '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate", owner:"o",
+	reason:"r", expires_at:"2099-01-01", review_at:"2026-02-31", status:"approved"}]}' > "$WORK/ar-rev.json"
+check "an impossible review_at is refused" "$(enf --accepted-risks "$WORK/ar-rev.json" --format json)" 2
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '292-governance-io-integrity: ALL CHECKS PASSED\n'
