@@ -242,6 +242,69 @@ printf '%s' "$_prompt" | grep -qi 'do not hand-edit' \
 	&& pass "the AI install prompt forbids hand-editing the workflow YAML" \
 	|| fail "the AI install prompt does not forbid hand-editing the workflow YAML"
 
+# ---------------------------------------------------------------------------
+# CodeRabbit review follow-ups: unvalidated sync input, a late unresolvable ref,
+# and a quoted placeholder passing the fail-closed preflight.
+# ---------------------------------------------------------------------------
+# sync must reject a malformed CLI source value INSTEAD of silently falling back to the
+# shipped placeholder — that fallback reverted a configured consumer under --apply --force.
+SC="$WORK/sync-consumer"; mkdir -p "$SC"
+sh "$INSTALL" --target "$SC" --profile laravel --apply --source-repository acme/shield \
+	--source-ref v2.2.0 >/dev/null 2>&1 || fail "sync fixture install failed"
+_wf=$(ls "$SC"/.github/workflows/*.yml 2>/dev/null | head -1)
+_before=$(cat "$_wf" 2>/dev/null || true)
+for _bad in 'not a repo' 'https://example.com' '../../etc'; do
+	_c=0
+	sh "$SYNC" --target "$SC" --profile laravel --apply --force --update-source-config \
+		--source-repository "$_bad" >/dev/null 2>&1 || _c=$?
+	check "sync refuses the malformed --source-repository '$_bad'" "$_c" 2
+done
+_c=0
+sh "$SYNC" --target "$SC" --profile laravel --apply --force --update-source-config \
+	--source-ref main >/dev/null 2>&1 || _c=$?
+check "sync refuses a moving branch ref without --allow-branch-ref" "$_c" 2
+check "  the configured workflow was not reverted to the placeholder" \
+	"$(cat "$_wf" 2>/dev/null)" "$_before"
+if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*.?YOUR_ORG/' "$_wf" 2>/dev/null; then
+	fail "  a refused sync reverted the workflow to the shipped placeholder"
+else
+	pass "  the workflow still carries its configured repository"
+fi
+_c=0
+sh "$SYNC" --target "$SC" --profile laravel --dry-run --update-source-config >/dev/null 2>&1 || _c=$?
+check "sync refuses --update-source-config with nothing to update" "$_c" 2
+
+# A QUOTED placeholder is the same unrunnable placeholder.
+QP="$WORK/quoted"; mkdir -p "$QP/.github/workflows"
+for _q in '"YOUR_ORG/sentinel-shield"' "'YOUR_ORG/sentinel-shield'" 'YOUR_ORG/sentinel-shield'; do
+	printf 'name: x\nenv:\n  SENTINEL_SHIELD_REPOSITORY: %s\n' "$_q" > "$QP/.github/workflows/w.yml"
+	if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$QP/.github/workflows/w.yml" ); then
+		pass "the placeholder preflight detects the form $_q"
+	else
+		fail "the placeholder preflight MISSED the form $_q"
+	fi
+done
+printf 'name: x\nenv:\n  SENTINEL_SHIELD_REPOSITORY: "acme/shield"\n' > "$QP/.github/workflows/w.yml"
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$QP/.github/workflows/w.yml" ); then
+	fail "the placeholder preflight false-positives on a real quoted repository"
+else
+	pass "a real quoted repository is not a placeholder"
+fi
+
+# An unresolvable ref must fail EARLY and say why, not die inside the renderer and roll back.
+NOREF="$WORK/noref"; mkdir -p "$NOREF"
+FAKEROOT="$WORK/fakeroot"; rm -rf "$FAKEROOT"; mkdir -p "$FAKEROOT"
+cp -R "$ROOT/scripts" "$ROOT/profiles" "$ROOT/templates" "$FAKEROOT/" 2>/dev/null || true
+# no config/release-status.json in the fake root => no approved ref is readable
+_out=$(sh "$FAKEROOT/scripts/install-baseline.sh" --target "$NOREF" --profile laravel --apply 2>&1) && _c=0 || _c=$?
+check "an unresolvable engine ref fails closed" "$_c" 2
+case "$_out" in
+	*"no engine ref to pin"*) pass "  and says exactly what is missing and how to fix it" ;;
+	*) fail "  with a misleading late error instead: $_out" ;;
+esac
+check "  nothing was installed into the consumer" \
+	"$([ -e "$NOREF/.github/workflows" ] && echo installed || echo clean)" "clean"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '284-installer-source-config: ALL CHECKS PASSED\n'

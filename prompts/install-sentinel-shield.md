@@ -62,8 +62,13 @@ export SENTINEL_SHIELD_REF=v2.2.0   # or a full 40-char commit SHA
 export SENTINEL_SHIELD_PATH=.sentinel-shield-tools
 ```
 
-The current release is recorded in `config/release-status.json` (`.consumer_ref.value`); read it
-there rather than assuming a version.
+The current release is recorded in the Sentinel Shield repository's
+`config/release-status.json` (`.consumer_ref.value`) — read it there rather than assuming a version.
+This step runs in the CONSUMER repository, before step 4 acquires the checkout, so there is no local
+copy yet: read it from the engine repository at the ref you intend to pin
+(`https://raw.githubusercontent.com/<owner>/sentinel-shield/<ref>/config/release-status.json`), or
+re-check `$SENTINEL_SHIELD_PATH/config/release-status.json` once step 4 has run and correct the pin
+if they disagree.
 
 **4. Acquire an immutable checkout.** Fetch Sentinel Shield at the pinned ref into
 `$SENTINEL_SHIELD_PATH` using the acquire bootstrap (the one script you obtain from the Sentinel

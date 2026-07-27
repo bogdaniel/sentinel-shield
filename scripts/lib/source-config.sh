@@ -140,8 +140,10 @@ sc_render_workflow() {
 }
 
 # sc_has_placeholder <file> — true when a workflow still carries the shipped placeholder and
-# is therefore not runnable.
+# is therefore not runnable. YAML lets the value be quoted, so `SENTINEL_SHIELD_REPOSITORY:
+# "YOUR_ORG/sentinel-shield"` is the SAME unrunnable placeholder as the bare form; matching only
+# the bare form let it through the fail-closed preflight.
 sc_has_placeholder() {
 	[ -f "${1:-}" ] || return 1
-	grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*(YOUR_ORG/|<)" "$1" 2>/dev/null
+	grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*[\"']?(YOUR_ORG/|<)" "$1" 2>/dev/null
 }

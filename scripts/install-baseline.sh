@@ -434,9 +434,23 @@ if [ "$RENDER_SOURCE" -eq 1 ]; then
 	# PRODUCTION policy: strict/regulated adopt an enforcing gate, so the engine they execute
 	# must be immutable — a full commit SHA, or the release tag the release-status contract
 	# approves for consumers. A tag-shaped NAME alone never proves immutability.
+	# An EMPTY ref is not "the approved ref": it means --source-ref was omitted and
+	# sc_approved_ref could not read config/release-status.json (missing, unreadable, or no
+	# jq). Both guards below compare equal to an empty $_approved, so the run used to sail
+	# past them and die much later inside render_source_config with "could not render the
+	# engine source configuration", rolling the whole install back for an unrelated-looking
+	# reason.
+	if [ -z "$SOURCE_REF" ]; then
+		echo "error: no engine ref to pin. --source-ref was not given and the approved release ref could not be read from '$ROOT/config/release-status.json' (missing, unreadable, or jq unavailable). Pass --source-ref <tag|40-hex commit>, or install jq and run from a complete checkout." >&2
+		exit 2
+	fi
 	case "$MODE" in
 		strict | regulated)
 			_approved=$(sc_approved_ref "$ROOT")
+			if [ -z "$_approved" ]; then
+				echo "error: --mode $MODE requires the approved engine ref, but none is declared in '$ROOT/config/release-status.json'. Pass an explicit --source-ref <40-hex commit>, or restore the release-status contract." >&2
+				exit 2
+			fi
 			if [ "$SRC_REF_KIND" != "commit" ] && [ "$SOURCE_REF" != "$_approved" ]; then
 				echo "error: --mode $MODE requires an immutable engine ref: a full 40-hex commit SHA, or the approved release tag '${_approved:-<none declared>}'. Got '$SOURCE_REF'." >&2
 				exit 2

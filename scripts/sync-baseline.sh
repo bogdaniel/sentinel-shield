@@ -90,6 +90,33 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$TARGET" ] || { echo "error: --target is required" >&2; usage; exit 2; }
+
+# CLI-supplied engine source values are POLICY, and were previously recorded at parse time
+# and consumed unvalidated: a malformed --source-repository silently fell back to the
+# shipped `YOUR_ORG/sentinel-shield` template, so `--apply --force` REVERTED a configured
+# consumer's workflow to an unrunnable placeholder, and a branch ref was accepted whether or
+# not --allow-branch-ref was passed. Validate them here, before any mutation, and fail
+# closed — the silent template fallback stays only for values read from the TARGET, where it
+# means "leave what is there for doctor to report".
+if [ -n "$SOURCE_REPOSITORY" ]; then
+	_sync_repo=$(sc_normalize_repository "$SOURCE_REPOSITORY") || {
+		echo "error: --source-repository '$SOURCE_REPOSITORY' is not a GitHub/GHE repository identifier (expected owner/name, https://host/owner/name[.git] or git@host:owner/name[.git])" >&2
+		exit 2; }
+	SOURCE_REPOSITORY="$_sync_repo"
+fi
+if [ -n "$SOURCE_REF" ]; then
+	_sync_kind=$(sc_ref_kind "$SOURCE_REF") || {
+		echo "error: --source-ref '$SOURCE_REF' is not a valid ref (expected a release tag or a full 40-hex commit SHA)" >&2
+		exit 2; }
+	if [ "$_sync_kind" = "branch" ] && [ "$ALLOW_BRANCH_REF" -eq 0 ]; then
+		echo "error: --source-ref '$SOURCE_REF' is a moving branch. A moving ref means the engine can change under the gate with no consumer change. Pass a release tag or a full 40-hex commit SHA, or --allow-branch-ref for a local preview." >&2
+		exit 2
+	fi
+fi
+if [ "$UPDATE_SOURCE_CONFIG" -eq 1 ] && [ -z "$SOURCE_REPOSITORY" ] && [ -z "$SOURCE_REF" ]; then
+	echo "error: --update-source-config was given with neither --source-repository nor --source-ref; there is nothing to update." >&2
+	exit 2
+fi
 [ -d "$TARGET/.sentinel-shield" ] || { echo "error: '$TARGET/.sentinel-shield' not found — run install-baseline.sh first." >&2; exit 2; }
 # Canonicalise the target so the operation-lock 'target'/'snapshot_dir' are canonical
 # (CONTRACT(2)) and recovery can compare them against the current canonical target.
