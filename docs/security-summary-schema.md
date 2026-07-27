@@ -359,8 +359,22 @@ per-tool collectors over `reports/raw/*.json` and merges them:
   are reported as `not-yet-effective` and counted separately in
   `exceptions.not_yet_effective`.
 
-- **`project` / `source` / `generated_at` / `version`** = from CLI flags and the
-  clock.
+- **`project` / `generated_at` / `version`** = from CLI flags and the clock.
+- **`source`** = a versioned ATTESTATION, not labels (#241). In CI the repository, ref,
+  event, run id, run attempt and commit are derived from the GitHub Actions environment;
+  a CLI value that **contradicts** the platform fails the build rather than overriding it.
+  `--commit` must be a full 40-hex SHA or the literal `unknown` (an explicit non-claim) —
+  an abbreviated or invented commit is refused. `trust` is `github-actions` or `local`;
+  a local build may not claim a run id or attempt. `inputs_digest` is a SHA-256 over the
+  sorted producer/report/checksum manifest, so an attestation cannot be transplanted onto
+  another set of evidence.
+
+  **The assurance modes require it.** `strict` and `regulated` refuse a summary whose
+  `source.commit` is not a full SHA or whose `source.repository` is absent — evidence that
+  does not say what it describes cannot certify it. `regulated` additionally requires
+  `source.trust == "github-actions"`: a local build is attestation-limited by construction,
+  so use `strict` for a local assurance run. `report-only` and `baseline` keep the
+  migration tolerance.
 
 ### Tool status meanings
 

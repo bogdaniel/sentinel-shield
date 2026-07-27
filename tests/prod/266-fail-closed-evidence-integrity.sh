@@ -82,7 +82,13 @@ cp "$E/rep/s.json" "$WORK/evid.json"
 # evidence gates need. The fixture is built without one (it is about scanner evidence, not
 # applicability), so add the overlay's neutral values — otherwise the enforcer refuses it for
 # the unrelated reason that evidence gates cannot be judged without the overlay.
+# A regulated run also requires a CI-attested source (#241): a LOCAL build is
+# attestation-limited by construction, and this fixture is built locally. Stamping the
+# attestation is exactly what a real CI build does from the platform environment.
 jq '.tools.gitleaks = {"status":"pass","findings":0}
+	| .source += {commit:"0123456789abcdef0123456789abcdef01234567", repository:"example-org/example-repo",
+		ref:"refs/heads/main", event:"push", run_id:"1", run_attempt:"1",
+		trust:"github-actions", attestation_version:"1"}
 	| .summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
 		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
 		missing_architecture_evidence:false, missing_test_change_evidence:false,

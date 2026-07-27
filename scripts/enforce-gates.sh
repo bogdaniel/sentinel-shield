@@ -532,6 +532,37 @@ if [ "$STRICT_SUMMARY" -eq 1 ]; then
 	fi
 fi
 
+# --- source attestation (#241) -----------------------------------------------
+# `source` used to be three free-form labels defaulting to unknown/master/local, and the
+# enforcer only checked that the object existed. An assurance mode has to know WHICH commit
+# in WHICH repository the evidence describes, otherwise a summary from anywhere can be
+# judged as this run's.
+case "$MODE" in
+	strict | regulated)
+		_scommit=$(jqr '.source.commit')
+		case "$_scommit" in
+			[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) : ;;
+			*) die_cfg "'$MODE' requires a summary bound to a specific commit: source.commit is '$_scommit', not a full 40-hex SHA. The default 'unknown' is an explicit non-claim, not evidence — rebuild with scripts/build-security-summary.sh in a checkout (docs/security-summary-schema.md)." ;;
+		esac
+		_srepo=$(jqr '.source.repository // ""')
+		if [ -z "$_srepo" ] || [ "$_srepo" = "null" ]; then
+			die_cfg "'$MODE' requires a summary bound to a repository: source.repository is absent. A commit with no repository does not identify evidence — rebuild with --repository <owner/name> (it is derived automatically in CI)."
+		fi ;;
+esac
+case "$MODE" in
+	regulated)
+		# A LOCAL build is attestation-limited by construction: nothing outside the machine
+		# that produced it vouches for its inputs. Regulated is the mode that claims audited
+		# evidence, so it takes CI-produced summaries only.
+		_strust=$(jqr '.source.trust // ""')
+		case "$_strust" in
+			github-actions) : ;;
+			"" | null) die_cfg "'regulated' requires a source attestation: this summary declares no source.trust. Rebuild it with a build-security-summary.sh that emits the attestation (docs/security-summary-schema.md)." ;;
+			local) die_cfg "'regulated' does not accept a LOCAL build as production evidence (source.trust=local). Run the gate on the summary a CI workflow produced, or use 'strict' for a local assurance run." ;;
+			*) die_cfg "'regulated' does not recognise source.trust='$_strust'" ;;
+		esac ;;
+esac
+
 # --- accepted-risk suppression (v0.1.8: finding-scoped by default) -----------
 # Records are FINDING-SCOPED unless they explicitly declare "scope":"gate".
 #   - scope=="gate"    : BROAD — suppresses the whole gate (reported as broad).

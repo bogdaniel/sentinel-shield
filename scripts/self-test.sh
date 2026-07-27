@@ -163,7 +163,7 @@ run_lifecycle() {
 		--project-name proxyflux \
 		--project-type laravel \
 		--criticality high \
-		--commit testcommit \
+		--commit 0123456789abcdef0123456789abcdef01234567 \
 		--branch master \
 		--workflow self-test
 
