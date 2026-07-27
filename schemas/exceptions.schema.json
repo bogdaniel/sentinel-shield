@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/exceptions.schema.json",
+  "title": "Sentinel Shield exception evidence",
+  "description": "reports/exceptions.json — the governed exceptions in force for a run. It used to be two unauthenticated integers (.active/.expired): a forged zero hid every expired exception, `{}` asserted clean governance, and no count could be audited, deduplicated or attributed. It is now a versioned RECORD set; scripts/build-security-summary.sh derives the counts from the records and refuses a count-only file. An ABSENT file still means 'this project has no exceptions'.",
+  "type": "object",
+  "required": ["version", "exceptions"],
+  "properties": {
+    "version": {
+      "const": "1",
+      "description": "Schema version. Only \"1\" is supported; consumers fail closed on anything else."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "When this record set was produced (informational)."
+    },
+    "active": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OPTIONAL declared aggregate. It is never trusted as evidence: the builder derives the count from the records and fails closed when a declared aggregate disagrees with them."
+    },
+    "expired": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OPTIONAL declared aggregate, checked against the derived count exactly as `active` is."
+    },
+    "exceptions": {
+      "type": "array",
+      "description": "Every governed exception in force. Counts are derived from these records.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "scope", "owner", "approved_by", "created_at", "expires_at", "reason", "source"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$",
+            "description": "Stable unique identity. Duplicates are rejected: an exception you cannot name is one you cannot audit or revoke."
+          },
+          "type": { "type": "string", "minLength": 1, "description": "What kind of exception this is (e.g. vulnerability, control, policy)." },
+          "scope": { "type": "string", "minLength": 1, "description": "What it applies to." },
+          "owner": { "type": "string", "minLength": 1, "description": "Accountable owner." },
+          "approved_by": { "type": "string", "minLength": 1, "description": "Approver. Must differ from owner — enforced by the builder, which JSON Schema cannot express." },
+          "created_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Real calendar date (UTC), not after expires_at." },
+          "expires_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Real calendar date (UTC). A record is ACTIVE while expires_at >= today and EXPIRED below it." },
+          "reason": { "type": "string", "minLength": 1 },
+          "source": {
+            "enum": ["accepted-risk", "control-waiver", "manual"],
+            "description": "Which governance channel produced this exception. Recorded per-source in the summary so one exception cannot be counted twice through two channels."
+          },
+          "status": {
+            "enum": ["active", "expired"],
+            "description": "OPTIONAL. When present it must AGREE with what the dates imply; a contradiction fails closed rather than letting a declared status override the calendar."
+          },
+          "reference": { "type": "string", "description": "Ticket / record the exception is tracked in." }
+        }
+      }
+    }
+  }
+}

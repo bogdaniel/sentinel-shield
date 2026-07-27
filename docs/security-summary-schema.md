@@ -330,12 +330,29 @@ per-tool collectors over `reports/raw/*.json` and merges them:
 - **`build`** = `operation_id` (CI run id and attempt, or a local timestamp+pid) and
   `inputs`, the SHA-256 of every raw report actually consumed. The summary states which
   bytes it was derived from.
-- **`evidence`** = set by file existence: `reports/sbom.spdx.json` and
-  `reports/release-evidence.md`.
+- **`evidence`** = a VERIFIED state, never `test -f` (#237). An artifact must be a
+  non-empty regular file (not a symlink) whose content validates — the SBOM as an SPDX
+  document with a producer and at least one complete package, the release evidence as
+  Markdown with a heading and actual content — and, when
+  `scripts/build-evidence-manifest.sh` produced `reports/sentinel-shield-artifact-manifest.json`,
+  it must be covered by that manifest with a matching SHA-256 for **this** commit. Each
+  entry carries `verification: { status, reason, provenance, sha256, validator }`, so a
+  consumer can distinguish "no SBOM" from "an SBOM we refused, and why". Pass
+  `--require-evidence-provenance` to treat an artifact no manifest binds to this run as
+  missing rather than merely unattributed.
 - **`summary.missing_sbom` / `summary.missing_release_evidence`** = the inverse of
   the corresponding `evidence.*.present`.
-- **`exceptions` + `summary.expired_exceptions`** = read from
-  `reports/exceptions.json` if present, else 0.
+- **`exceptions` + `summary.expired_exceptions`** = DERIVED from validated records in
+  `reports/exceptions.json` (`schemas/exceptions.schema.json`), or 0 when the file is
+  absent (#242). A present file must be `{ "version": "1", "exceptions": [ … ] }`; a
+  count-only object is refused, because two unauthenticated integers cannot be audited,
+  deduplicated or attributed and a forged `expired: 0` hid every expired exception. Each
+  record needs a unique stable id, type, scope, owner, a **different** approver, real
+  calendar `created_at`/`expires_at` (validated by the same calendar code as control
+  waivers) and a `source` of `accepted-risk`/`control-waiver`/`manual`. A declared
+  `active`/`expired` aggregate is allowed only as a check: if it disagrees with the
+  records, the build fails. The summary carries `exceptions.records` and
+  `exceptions.by_source` so one exception cannot be counted twice through two channels.
 - **`project` / `source` / `generated_at` / `version`** = from CLI flags and the
   clock.
 
