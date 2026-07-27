@@ -146,12 +146,29 @@ check "a 60-day window validates under the default ceiling" "$(v "$WORK/d60.json
 _c=0; ( CW_MAX_WAIVER_DAYS="$CW_MAX_WAIVER_DAYS_REGULATED"; cw_validate_file "$WORK/d60.json" "" "$T" ) >/dev/null 2>&1 || _c=$?
 check "  and is refused under the regulated ceiling (30d)" "$_c" 2
 
-# A loosened environment cannot exceed the hard ceiling.
+# An invalid or oversized environment value must never select the LEAST restrictive policy.
+# Falling back to the 365-day ceiling meant `CW_MAX_WAIVER_DAYS=oops` bought a longer waiver
+# than the default allows; every unusable value now resolves to the 90-day default, and the
+# environment may only TIGHTEN the policy.
+for _bad in 99999 366 91 0 -5 'not-a-number' ''; do
+	check "CW_MAX_WAIVER_DAYS='$_bad' resolves to the 90-day default, never looser" \
+		"$( CW_MAX_WAIVER_DAYS="$_bad"; cw__max_days 2>/dev/null )" 90
+done
+check "a value BELOW the default is honoured (tightening is allowed)" \
+	"$( CW_MAX_WAIVER_DAYS=30; cw__max_days 2>/dev/null )" 30
+check "the regulated ceiling is a tightening value" \
+	"$( CW_MAX_WAIVER_DAYS="$CW_MAX_WAIVER_DAYS_REGULATED"; cw__max_days 2>/dev/null )" 30
+# …and a 120-day window is refused under every one of those settings.
+wf "$WORK/d120.json" "[$(rec WVR-1 phpstan 2026-03-01 2026-06-29)]"
+for _bad in 99999 'not-a-number' 91 0; do
+	_c=0; ( CW_MAX_WAIVER_DAYS="$_bad"; cw_validate_file "$WORK/d120.json" "" "$T" ) >/dev/null 2>&1 || _c=$?
+	check "  a 120-day window is still refused with CW_MAX_WAIVER_DAYS='$_bad'" "$_c" 2
+done
 wf "$WORK/d400.json" "[$(rec WVR-1 phpstan 2026-06-01 2027-07-31)]"
 _c=0; ( CW_MAX_WAIVER_DAYS=99999; cw_validate_file "$WORK/d400.json" "" "$T" ) >/dev/null 2>&1 || _c=$?
-check "an environment-loosened ceiling cannot exceed the hard limit" "$_c" 2
+check "an environment-loosened ceiling cannot exceed the policy maximum" "$_c" 2
 _c=0; ( CW_MAX_WAIVER_DAYS='not-a-number'; cw_validate_file "$WORK/d400.json" "" "$T" ) >/dev/null 2>&1 || _c=$?
-check "a non-numeric ceiling falls back to the hard limit" "$_c" 2
+check "a non-numeric ceiling falls back to the default" "$_c" 2
 
 # Creation time.
 wf "$WORK/future.json" "[$(rec WVR-1 phpstan 2026-08-01 2026-09-01)]"
