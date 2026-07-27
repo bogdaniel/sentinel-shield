@@ -78,7 +78,9 @@ Usage: install-baseline.sh --target <dir> [--profile <name>] [--mode <mode>] [--
                                          install plan (dry-run); with --apply, install packages,
                                          validate the lockfile, run tests, and roll back on failure.
   --source-repository <r>  Sentinel Shield repository the managed workflow checks out
-                     (owner/name, or an https/ssh URL of one — GitHub or GitHub Enterprise).
+                     (owner/name, or an https/ssh github.com URL of one). A URL for another
+                     host is refused: actions/checkout resolves owner/name against the
+                     runner's server, so the host cannot be honoured by dropping it.
                      Default: derived from THIS checkout's `origin` remote when unambiguous.
   --source-ref <r>   Immutable ref to pin (release tag or full 40-hex commit SHA).
                      Default: the current release from config/release-status.json.
@@ -405,7 +407,7 @@ SRC_REF_KIND=""
 if [ "$RENDER_SOURCE" -eq 1 ]; then
 	if [ -n "$SOURCE_REPOSITORY" ]; then
 		_srepo=$(sc_normalize_repository "$SOURCE_REPOSITORY") || {
-			echo "error: --source-repository '$SOURCE_REPOSITORY' is not a GitHub/GHE repository identifier (expected owner/name, https://host/owner/name[.git] or git@host:owner/name[.git])" >&2
+			echo "error: --source-repository '$SOURCE_REPOSITORY' is not usable. Expected owner/name, or an https/ssh URL on github.com. A URL for a different host is refused rather than retargeted: actions/checkout resolves owner/name against the RUNNER's GitHub server, so the host you supplied would be ignored. Plain http:// is refused as insecure." >&2
 			exit 2; }
 		SOURCE_REPOSITORY="$_srepo"; SRC_REPO_ORIGIN="--source-repository"
 	else

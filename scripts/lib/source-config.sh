@@ -29,9 +29,11 @@ SC_PLACEHOLDER_REPOSITORY="YOUR_ORG/sentinel-shield"
 # `ssh://git@host/owner/name[.git]`. Returns 1 (and prints nothing) when the value is not a
 # repository identifier this installer will write into a workflow.
 #
-# GitHub Enterprise: `actions/checkout` resolves `owner/name` against the runner's own GitHub
-# host, so a GHE URL is accepted and reduced to `owner/name` — the host is not written into
-# the workflow, because writing it there would be meaningless to the action.
+# GitHub Enterprise: `actions/checkout` resolves `owner/name` against the RUNNER's GitHub
+# host, and this installer does not render a `github-server-url`. Reducing a GHE URL to
+# `owner/name` would therefore silently retarget the request to whatever server the runner
+# uses, so a non-github.com host is REFUSED. A GHE consumer passes the bare `owner/name` and
+# runs on the matching server, which is the only form the action can honour.
 # sc__single_line <value> — 0 only when the value is exactly ONE line.
 #
 # `grep -Eq '^…$'` is LINE-oriented: with an embedded newline the anchors match per line, so a
@@ -59,13 +61,29 @@ sc_normalize_repository() {
 	esac
 	case "$_sc_in" in *..*) return 1 ;; esac
 	# Strip a recognised transport prefix, then a trailing .git.
+	#
+	# THE HOST IS NOT COSMETIC. `actions/checkout` resolves a bare `owner/name` against the
+	# RUNNER's GitHub server, so silently discarding the host turns
+	# `https://ghe.example/acme/engine` into `github.com/acme/engine` on a github.com runner —
+	# a different repository than the caller asked for. A URL whose host is not a GitHub.com
+	# host is therefore REFUSED rather than retargeted; pass the bare `owner/name` (and run on
+	# the matching server) if that is what you mean. Plain `http://` is refused outright.
 	_sc_v="$_sc_in"
+	_sc_host=""
 	case "$_sc_v" in
-		https://* | http://*) _sc_v="${_sc_v#*://}"; _sc_v="${_sc_v#*/}" ;;
-		ssh://*) _sc_v="${_sc_v#ssh://}"; _sc_v="${_sc_v#*@}"; _sc_v="${_sc_v#*/}" ;;
-		git@*:*) _sc_v="${_sc_v#*:}" ;;
+		http://*) return 1 ;;
+		https://*) _sc_v="${_sc_v#https://}"; _sc_host="${_sc_v%%/*}"; _sc_v="${_sc_v#*/}" ;;
+		ssh://*) _sc_v="${_sc_v#ssh://}"; _sc_v="${_sc_v#*@}"; _sc_host="${_sc_v%%/*}"; _sc_v="${_sc_v#*/}" ;;
+		git@*:*) _sc_host="${_sc_v#git@}"; _sc_host="${_sc_host%%:*}"; _sc_v="${_sc_v#*:}" ;;
 		*@*) return 1 ;;
 	esac
+	if [ -n "$_sc_host" ]; then
+		_sc_host="${_sc_host%%:*}"   # drop a :port
+		case "$_sc_host" in
+			github.com | www.github.com | ssh.github.com) : ;;
+			*) return 1 ;;
+		esac
+	fi
 	_sc_v="${_sc_v%.git}"
 	_sc_v="${_sc_v%/}"
 	# Exactly owner/name, both non-empty, GitHub's identifier charset.
@@ -144,7 +162,17 @@ sc_render_workflow() {
 	# consume. Capturing it here makes this the single safety net for every caller.
 	_sc_repo=$(sc_normalize_repository "$_sc_repo") || return 1
 	sc_ref_kind "$_sc_ref" >/dev/null 2>&1 || return 1
-	_sc_tmp="$_sc_f.sc.tmp.$$"
+	# SECURELY-CREATED temp file. `$_sc_f.sc.tmp.$$` is predictable, so anyone able to write
+	# in that directory could pre-create it as a SYMLINK and the render would be written
+	# through the link before the final `mv` — defeating the atomic-render guarantee this
+	# function exists to provide. mktemp creates the file itself, with a private mode, and
+	# refuses to follow an existing path; the result is re-checked as a regular non-symlink
+	# file before anything is written into it.
+	_sc_tmp=$(mktemp "$_sc_f.sc.tmp.XXXXXX") || return 1
+	if [ -L "$_sc_tmp" ] || [ ! -f "$_sc_tmp" ]; then rm -f -- "$_sc_tmp"; return 1; fi
+	chmod 600 "$_sc_tmp" 2>/dev/null || { rm -f -- "$_sc_tmp"; return 1; }
+	# Clean up on every exit path, including a signal between create and rename.
+	trap 'rm -f -- "$_sc_tmp" 2>/dev/null || true' INT TERM HUP
 	awk -v repo="$_sc_repo" -v ref="$_sc_ref" '
 		function indent(s,   m) { m = s; sub(/[^ \t].*$/, "", m); return m }
 		/^[ \t]*SENTINEL_SHIELD_REPOSITORY:/ { print indent($0) "SENTINEL_SHIELD_REPOSITORY: " repo; next }
@@ -157,7 +185,22 @@ sc_render_workflow() {
 	if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_sc_f"; then
 		grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY: ${_sc_repo}\$" "$_sc_tmp" || { rm -f -- "$_sc_tmp"; return 1; }
 	fi
+	# Preserve the destination's mode deliberately: mktemp made the staging file private, and
+	# a workflow file the runner cannot read is useless. Copy the original mode when it can be
+	# read, else fall back to the conventional 0644.
+	_sc_mode=$(ls -l "$_sc_f" 2>/dev/null | cut -c2-10)
+	if [ -n "$_sc_mode" ]; then
+		chmod "$(printf '%s' "$_sc_mode" | awk '{
+			s = $0; m = 0
+			if (substr(s,1,1) == "r") m += 400; if (substr(s,2,1) == "w") m += 200; if (substr(s,3,1) == "x") m += 100
+			if (substr(s,4,1) == "r") m += 40;  if (substr(s,5,1) == "w") m += 20;  if (substr(s,6,1) == "x") m += 10
+			if (substr(s,7,1) == "r") m += 4;   if (substr(s,8,1) == "w") m += 2;   if (substr(s,9,1) == "x") m += 1
+			printf "%04d", m }')" "$_sc_tmp" 2>/dev/null || chmod 644 "$_sc_tmp" 2>/dev/null || true
+	else
+		chmod 644 "$_sc_tmp" 2>/dev/null || true
+	fi
 	mv -- "$_sc_tmp" "$_sc_f" || { rm -f -- "$_sc_tmp"; return 1; }
+	trap - INT TERM HUP
 	return 0
 }
 

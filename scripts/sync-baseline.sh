@@ -100,7 +100,7 @@ done
 # means "leave what is there for doctor to report".
 if [ -n "$SOURCE_REPOSITORY" ]; then
 	_sync_repo=$(sc_normalize_repository "$SOURCE_REPOSITORY") || {
-		echo "error: --source-repository '$SOURCE_REPOSITORY' is not a GitHub/GHE repository identifier (expected owner/name, https://host/owner/name[.git] or git@host:owner/name[.git])" >&2
+		echo "error: --source-repository '$SOURCE_REPOSITORY' is not usable. Expected owner/name, or an https/ssh URL on github.com. A URL for a different host is refused rather than retargeted (actions/checkout resolves owner/name against the runner's server); plain http:// is refused as insecure." >&2
 		exit 2; }
 	SOURCE_REPOSITORY="$_sync_repo"
 fi

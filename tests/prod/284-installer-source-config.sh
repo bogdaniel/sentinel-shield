@@ -101,7 +101,11 @@ for bad in \
 	'acme/shield
 SOMETHING_ELSE: injected' \
 	'acme/shield #comment' \
-	'ftp://host/acme/shield'
+	'ftp://host/acme/shield' \
+	'http://github.com/acme/shield' \
+	'https://ghe.corp.example/acme/shield.git' \
+	'ssh://git@ghe.corp.example/acme/shield.git' \
+	'git@ghe.corp.example:acme/shield.git'
 do
 	i=$((i + 1))
 	D=$(newdir "badrepo$i")
@@ -111,9 +115,11 @@ done
 
 # Accepted URL forms all normalise to owner/name.
 i=0
+# A NON-github.com host is no longer an accepted form: actions/checkout resolves owner/name
+# against the RUNNER's server, so reducing a GHE URL to owner/name silently retargets the
+# request to a different repository. Those cases moved to the refusal list below.
 for good in 'acme/shield' 'https://github.com/acme/shield' 'https://github.com/acme/shield.git' \
-	'git@github.com:acme/shield.git' 'ssh://git@ghe.corp.example/acme/shield.git' \
-	'https://ghe.corp.example/acme/shield.git'
+	'git@github.com:acme/shield.git' 'ssh://git@github.com/acme/shield.git'
 do
 	i=$((i + 1))
 	D=$(newdir "goodrepo$i")
@@ -366,6 +372,40 @@ check "sync accepts a URL form" "$_c" 0
 _wf=$(ls "$URLD"/.github/workflows/*.yml 2>/dev/null | head -1)
 check "  and writes the CANONICAL owner/name, not the URL" \
 	"$(sh -c '. "'"$ROOT"'/scripts/lib/source-config.sh"; sc_workflow_value "'"$_wf"'" SENTINEL_SHIELD_REPOSITORY')" "acme/other"
+
+# --- second-reviewer round: predictable temp file, cross-host retarget ---------
+# `$workflow.sc.tmp.$$` was predictable, so anyone able to write in the directory could
+# pre-create it as a SYMLINK and the render would be written THROUGH the link before the
+# final mv — defeating the atomic-render guarantee.
+SY="$WORK/tmpsym"; mkdir -p "$SY"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield\n  SENTINEL_SHIELD_REF: v0.0.0\n' > "$SY/w.yml"
+# every plausible pid-suffixed name an attacker could pre-create
+for _pid in $$ $(($$ + 1)) $(($$ + 2)) 1234; do
+	ln -s "$SY/victim" "$SY/w.yml.sc.tmp.$_pid" 2>/dev/null || true
+done
+( . "$ROOT/scripts/lib/source-config.sh"; sc_render_workflow "$SY/w.yml" acme/shield v2.2.0 ) >/dev/null 2>&1 \
+	&& pass "the renderer still works with hostile temp paths pre-created" \
+	|| fail "the renderer failed outright with hostile temp paths pre-created"
+check "  nothing was written through the pre-created symlink" \
+	"$([ -e "$SY/victim" ] && echo written || echo clean)" "clean"
+check "  and the workflow itself was rendered" \
+	"$(sh -c '. "'"$ROOT"'/scripts/lib/source-config.sh"; sc_workflow_value "'"$SY"'/w.yml" SENTINEL_SHIELD_REPOSITORY')" "acme/shield"
+check "  the rendered workflow is readable (mode preserved, not the private staging mode)" \
+	"$([ -r "$SY/w.yml" ] && echo yes || echo no)" "yes"
+
+# A non-github.com host must be REFUSED, not silently reduced to owner/name: actions/checkout
+# resolves owner/name against the RUNNER's server, so dropping the host retargets the request.
+for _u in 'https://ghe.corp.example/acme/shield.git' 'ssh://git@ghe.corp.example/acme/shield.git' 'git@ghe.corp.example:acme/shield.git' 'http://github.com/acme/shield'; do
+	if ( . "$ROOT/scripts/lib/source-config.sh"; sc_normalize_repository "$_u" >/dev/null 2>&1 ); then
+		fail "a non-github.com/insecure URL was accepted and silently retargeted: $_u"
+	else
+		pass "refused (never retargeted): $_u"
+	fi
+done
+for _u in 'acme/shield' 'https://github.com/acme/shield.git' 'git@github.com:acme/shield.git'; do
+	check "github.com form normalises: $_u" \
+		"$( . "$ROOT/scripts/lib/source-config.sh"; sc_normalize_repository "$_u" )" "acme/shield"
+done
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
