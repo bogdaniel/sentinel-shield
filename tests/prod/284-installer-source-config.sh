@@ -291,6 +291,25 @@ else
 	pass "a real quoted repository is not a placeholder"
 fi
 
+# A full commit SHA is immutable on its own: strict/regulated must accept it even when the
+# release contract is unreadable, instead of telling a user who passed a 40-hex SHA to pass
+# a 40-hex SHA.
+SHAOK="$WORK/sha-no-contract"; mkdir -p "$SHAOK"
+FR2="$WORK/fakeroot2"; rm -rf "$FR2"; mkdir -p "$FR2"
+cp -R "$ROOT/scripts" "$ROOT/profiles" "$ROOT/templates" "$FR2/" 2>/dev/null || true
+_c=0
+sh "$FR2/scripts/install-baseline.sh" --target "$SHAOK" --profile laravel --apply --mode strict \
+	--source-repository acme/shield --source-ref 0123456789abcdef0123456789abcdef01234567 >/dev/null 2>&1 || _c=$?
+check "strict accepts a commit SHA with no readable release contract" "$_c" 0
+SHABAD="$WORK/tag-no-contract"; mkdir -p "$SHABAD"
+_out=$(sh "$FR2/scripts/install-baseline.sh" --target "$SHABAD" --profile laravel --apply --mode strict \
+	--source-repository acme/shield --source-ref v2.2.0 2>&1) && _c=0 || _c=$?
+check "strict still refuses a TAG with no readable release contract" "$_c" 2
+case "$_out" in
+	*"is not a commit SHA"*) pass "  and the message says why the tag specifically is refused" ;;
+	*) fail "  with a message that does not distinguish tag from commit: $_out" ;;
+esac
+
 # An unresolvable ref must fail EARLY and say why, not die inside the renderer and roll back.
 NOREF="$WORK/noref"; mkdir -p "$NOREF"
 FAKEROOT="$WORK/fakeroot"; rm -rf "$FAKEROOT"; mkdir -p "$FAKEROOT"
@@ -304,6 +323,49 @@ case "$_out" in
 esac
 check "  nothing was installed into the consumer" \
 	"$([ -e "$NOREF/.github/workflows" ] && echo installed || echo clean)" "clean"
+
+# --- CodeRabbit round 2: YAML injection via an embedded newline ---------------
+# `grep -Eq '^…$'` is line-oriented, so a two-line value passed the grammar check on its FIRST
+# line while the validator returned the WHOLE string — which sc_render_workflow substituted
+# verbatim, adding a new key to the installed workflow. Reachable straight from the CLI.
+NL=$(printf 'acme/shield\nSENTINEL_SHIELD_EVIL: pwned')
+NLREF=$(printf 'v2.2.0\nSENTINEL_SHIELD_EVIL: pwned')
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_normalize_repository "$NL" >/dev/null 2>&1 ); then
+	fail "sc_normalize_repository ACCEPTS an embedded-newline repository (YAML injection)"
+else
+	pass "an embedded-newline repository is refused"
+fi
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_ref_kind "$NLREF" >/dev/null 2>&1 ); then
+	fail "sc_ref_kind ACCEPTS an embedded-newline ref (YAML injection)"
+else
+	pass "an embedded-newline ref is refused"
+fi
+# …and it cannot reach the installed workflow through either entry point.
+INJ="$WORK/inject"; mkdir -p "$INJ"
+_c=0; sh "$INSTALL" --target "$INJ" --profile laravel --apply --source-repository "$NL" >/dev/null 2>&1 || _c=$?
+check "install-baseline refuses an embedded-newline --source-repository" "$_c" 2
+_c=0; sh "$INSTALL" --target "$INJ" --profile laravel --apply --source-ref "$NLREF" >/dev/null 2>&1 || _c=$?
+check "install-baseline refuses an embedded-newline --source-ref" "$_c" 2
+INJ2="$WORK/inject2"; mkdir -p "$INJ2"
+sh "$INSTALL" --target "$INJ2" --profile laravel --apply --source-repository acme/shield --source-ref v2.2.0 >/dev/null 2>&1 \
+	|| fail "injection fixture install failed"
+_c=0; sh "$SYNC" --target "$INJ2" --profile laravel --apply --force --update-source-config \
+	--source-repository "$NL" >/dev/null 2>&1 || _c=$?
+check "sync-baseline refuses an embedded-newline --source-repository" "$_c" 2
+_evil=$(grep -rc 'SENTINEL_SHIELD_EVIL' "$INJ2"/.github/workflows/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
+check "  no injected key reached any installed workflow" "$_evil" 0
+
+# The renderer substitutes the CANONICAL value, so a URL never reaches the workflow verbatim.
+URLD="$WORK/urlrepo"; mkdir -p "$URLD"
+sh "$INSTALL" --target "$URLD" --profile laravel --apply --source-repository acme/shield --source-ref v2.2.0 >/dev/null 2>&1 \
+	|| fail "url fixture install failed"
+_c=0
+sh "$SYNC" --target "$URLD" --profile laravel --apply --force --update-source-config \
+	--source-repository https://github.com/acme/other.git >/dev/null 2>&1 || _c=$?
+check "sync accepts a URL form" "$_c" 0
+_wf=$(ls "$URLD"/.github/workflows/*.yml 2>/dev/null | head -1)
+check "  and writes the CANONICAL owner/name, not the URL" \
+	"$(sh -c '. "'"$ROOT"'/scripts/lib/source-config.sh"; sc_workflow_value "'"$_wf"'" SENTINEL_SHIELD_REPOSITORY')" "acme/other"
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

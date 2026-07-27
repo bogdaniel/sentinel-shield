@@ -446,9 +446,13 @@ if [ "$RENDER_SOURCE" -eq 1 ]; then
 	fi
 	case "$MODE" in
 		strict | regulated)
+			# A full commit SHA is immutable ON ITS OWN and is accepted below, so it must not
+			# depend on the contract being readable. Only a NON-commit ref needs the approved
+			# release tag — telling a user who already passed a 40-hex SHA to "pass a 40-hex
+			# SHA" was the previous behaviour whenever jq or the contract was unavailable.
 			_approved=$(sc_approved_ref "$ROOT")
-			if [ -z "$_approved" ]; then
-				echo "error: --mode $MODE requires the approved engine ref, but none is declared in '$ROOT/config/release-status.json'. Pass an explicit --source-ref <40-hex commit>, or restore the release-status contract." >&2
+			if [ "$SRC_REF_KIND" != "commit" ] && [ -z "$_approved" ]; then
+				echo "error: --mode $MODE requires an immutable engine ref. '$SOURCE_REF' is not a commit SHA, and no approved release ref is readable from '$ROOT/config/release-status.json' (missing, unreadable, or jq unavailable) to compare it against. Pass --source-ref <40-hex commit>, or restore the release-status contract." >&2
 				exit 2
 			fi
 			if [ "$SRC_REF_KIND" != "commit" ] && [ "$SOURCE_REF" != "$_approved" ]; then

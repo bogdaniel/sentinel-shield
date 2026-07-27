@@ -32,9 +32,26 @@ SC_PLACEHOLDER_REPOSITORY="YOUR_ORG/sentinel-shield"
 # GitHub Enterprise: `actions/checkout` resolves `owner/name` against the runner's own GitHub
 # host, so a GHE URL is accepted and reduced to `owner/name` — the host is not written into
 # the workflow, because writing it there would be meaningless to the action.
+# sc__single_line <value> — 0 only when the value is exactly ONE line.
+#
+# `grep -Eq '^…$'` is LINE-oriented: with an embedded newline the anchors match per line, so a
+# two-line value passes whenever ANY line matches while the validator hands the caller back the
+# WHOLE multi-line string. `sc_render_workflow` then substitutes it verbatim and the extra line
+# becomes a new key in the installed workflow YAML — the exact thing this file promises cannot
+# happen. Every validator below rejects a multi-line value before any grep sees it.
+sc__single_line() {
+	# `$(printf '\n')` cannot be used as a case pattern: command substitution strips trailing
+	# newlines, so the pattern collapses to `**` and matches everything. Count the newlines
+	# instead — a single-line value has none — and reject a carriage return separately.
+	[ "$(printf '%s' "${1:-}" | wc -l | tr -d ' ')" = "0" ] || return 1
+	case "${1:-}" in *"$(printf '\r')"*) return 1 ;; esac
+	return 0
+}
+
 sc_normalize_repository() {
 	_sc_in="${1:-}"
 	[ -n "$_sc_in" ] || return 1
+	sc__single_line "$_sc_in" || return 1
 	# Reject anything that could escape the YAML scalar or reach a shell/expression context.
 	case "$_sc_in" in
 		*'$'* | *'`'* | *'{'* | *'}'* | *'"'* | *"'"* | *'\'* | *' '* | *"$(printf '\t')"* | *'#'* | *'&'* | *';'* | *'|'* | *'<'* | *'>'* | *'('* | *')'* | *'!'* | *'*'* | *'?'* | *'['* | *']'*)
@@ -69,6 +86,7 @@ sc_normalize_repository() {
 sc_ref_kind() {
 	_sc_r="${1:-}"
 	[ -n "$_sc_r" ] || return 1
+	sc__single_line "$_sc_r" || return 1
 	case "$_sc_r" in
 		*'$'* | *'`'* | *'{'* | *'}'* | *'"'* | *"'"* | *'\'* | *' '* | *"$(printf '\t')"* | *'#'* | *'&'* | *';'* | *'|'* | *'<'* | *'>'* | *'('* | *')'* | *'~'* | *'^'* | *':'* | *'?'* | *'*'* | *'['* | *']'*)
 			return 1 ;;
@@ -120,7 +138,11 @@ sc_workflow_value() {
 sc_render_workflow() {
 	_sc_f="${1:-}"; _sc_repo="${2:-}"; _sc_ref="${3:-}"
 	[ -f "$_sc_f" ] || return 1
-	sc_normalize_repository "$_sc_repo" >/dev/null 2>&1 || return 1
+	# Substitute the CANONICAL value, not the caller's input. The docstring puts normalisation
+	# on the caller, and a caller that only validated (sync-baseline's effective_source) would
+	# otherwise write a raw URL into SENTINEL_SHIELD_REPOSITORY, which actions/checkout cannot
+	# consume. Capturing it here makes this the single safety net for every caller.
+	_sc_repo=$(sc_normalize_repository "$_sc_repo") || return 1
 	sc_ref_kind "$_sc_ref" >/dev/null 2>&1 || return 1
 	_sc_tmp="$_sc_f.sc.tmp.$$"
 	awk -v repo="$_sc_repo" -v ref="$_sc_ref" '

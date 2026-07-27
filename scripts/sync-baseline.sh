@@ -259,8 +259,11 @@ effective_source() {
 		[ -n "$SOURCE_REF" ] && _es_ref="$SOURCE_REF"
 	fi
 	# Never render an invalid or placeholder value: leave the template as-is so the normal
-	# managed-file rules apply and the placeholder stays visible to doctor.
-	sc_normalize_repository "$_es_repo" >/dev/null 2>&1 || { printf '%s' "$_es_src"; return 0; }
+	# managed-file rules apply and the placeholder stays visible to doctor. CAPTURE the
+	# canonical owner/name — validating and then rendering the raw input wrote a URL like
+	# https://github.com/acme/shield.git straight into SENTINEL_SHIELD_REPOSITORY, which
+	# actions/checkout's `repository:` input cannot consume.
+	_es_repo=$(sc_normalize_repository "$_es_repo") || { printf '%s' "$_es_src"; return 0; }
 	sc_ref_kind "$_es_ref" >/dev/null 2>&1 || { printf '%s' "$_es_src"; return 0; }
 	_es_tmp=$(mktemp) || { printf '%s' "$_es_src"; return 0; }
 	cp "$_es_src" "$_es_tmp" || { rm -f "$_es_tmp"; printf '%s' "$_es_src"; return 0; }
