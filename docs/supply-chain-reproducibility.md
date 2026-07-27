@@ -93,10 +93,12 @@ env:
   SENTINEL_SHIELD_DOCKLE_IMAGE:  goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
 ```
 
-The upstream Sentinel Shield templates ship the **readable tag** form (`semgrep/semgrep:1.165.0`)
+~~The upstream Sentinel Shield templates ship the **readable tag** form (`semgrep/semgrep:1.165.0`)
 with the digest in a `# or …@sha256:…` comment — readability for the template, digest-pinning as a
 consumer-side production decision. Do not replace the readable tag in the upstream templates with a
-digest.
+digest.~~ **Superseded from v2.2+:** shipped defaults are digest-pinned and enforced against
+`config/scanner-images.json` by `scripts/validate-scanner-images.sh`; the readable tag survives as
+the `resolved_from` field in the contract and as a comment, not as the executed reference.
 
 ---
 
@@ -172,8 +174,9 @@ Only after steps 3–6 is the new digest a "validated baseline" eligible for rol
       digest still equals the table in `scanner-image-digest-pinning.md`.
 - [ ] Each pinned digest, run by `@sha256:`, reports the **expected version** (§2b).
 - [ ] No digest was hand-written/invented — every one traces to a `docker` command output.
-- [ ] No production doc or template recommends `latest` (the Dependency-Check placeholder is the one
-      documented exception and carries a pin-before-prod comment — §6).
+- [ ] No production doc or template recommends `latest` — from v2.2+ there is **no** exception:
+      `latest` is listed under `mutable_tags` in `config/scanner-images.json` and any template
+      referencing it fails `scripts/validate-scanner-images.sh`.
 - [ ] `SENTINEL_SHIELD_*_IMAGE` override env vars present in the relevant templates (§5).
 - [ ] GitHub Actions pinned to full-length commit SHAs (§9).
 - [ ] SBOM inputs deterministic; Grype scans SBOM-first (§10).
@@ -228,6 +231,7 @@ scans that SBOM rather than re-walking the image. Reproducibility properties:
   verify / update / rollback narrative.
 - [`pinned-tool-references.md`](pinned-tool-references.md) — Action SHA table + image digests.
 - [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md) — why
-  Dependency-Check is attempted, not validated (the `latest` exception).
+  Dependency-Check is attempted, not validated (its former `latest` exception was removed by the
+  v2.2+ approved-image contract).
 - [`main-gate-live-evidence.md`](main-gate-live-evidence.md) — citable live validation runs.
 - [`github-actions-security.md`](github-actions-security.md) — Action pinning rationale.

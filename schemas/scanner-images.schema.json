@@ -5,66 +5,98 @@
   "description": "Canonical registry (config/scanner-images.json) of the container images the shipped workflow templates may execute, each recorded with the tag it was resolved from and the immutable digest that tag pointed at. scripts/validate-scanner-images.sh enforces it against the templates; scripts/audits/tool-provenance-audit.sh enforces it against what a run actually executed. It exists because a moving tag (`owasp/dependency-check:latest`) shipped as a production default, so the scanner implementation could change with no repository change and no review.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contract", "resolved_at", "mutable_tags", "images", "templates"],
+  "required": [
+    "contract",
+    "resolved_at",
+    "mutable_tags",
+    "images",
+    "templates"
+  ],
   "properties": {
-    "contract": { "const": "sentinel-shield/scanner-images@1" },
+    "contract": {
+      "const": "sentinel-shield/scanner-images@1"
+    },
     "resolved_at": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
       "description": "Date the recorded digests were last re-resolved from the registry."
     },
-    "resolution_method": { "type": "string" },
+    "resolution_method": {
+      "type": "string"
+    },
     "mutable_tags": {
       "type": "array",
       "minItems": 1,
       "description": "Tags that are, by definition, not immutable. No shipped template may execute one.",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "images": {
       "type": "object",
       "minProperties": 1,
       "description": "Keyed by the SENTINEL_SHIELD_*_IMAGE environment variable that selects the image.",
-      "propertyNames": { "pattern": "^SENTINEL_SHIELD_[A-Z0-9_]+_IMAGE$" },
-      "additionalProperties": { "$ref": "#/$defs/image" }
+      "propertyNames": {
+        "pattern": "^SENTINEL_SHIELD_[A-Z0-9_]+_IMAGE$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "resolved_from",
+          "digest",
+          "default_pin",
+          "default_reference"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "pattern": "^[a-z0-9._/-]+$"
+          },
+          "resolved_from": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The tag whose manifest resolved to `digest` at `resolved_at`."
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "Full immutable digest. Abbreviated digests are rejected: they are not a pin."
+          },
+          "default_pin": {
+            "enum": [
+              "digest",
+              "tag"
+            ],
+            "description": "digest: the shipped default MUST be repository@digest. tag: the shipped default may be the readable immutable version tag, and the digest here is the documented production override."
+          },
+          "default_reference": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The exact value a shipped template must set for this variable."
+          },
+          "engine_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Scanner version behind `digest`, recorded from a validated run. When non-null, a produced report whose reported engine version differs is drift and fails visibly. Null means it has not been recorded from a real run yet \u2014 it is never guessed."
+          },
+          "rationale": {
+            "type": "string"
+          }
+        }
+      }
     },
     "templates": {
       "type": "array",
       "minItems": 1,
       "description": "Shipped workflow templates/examples whose *_IMAGE defaults are checked against this contract.",
-      "items": { "type": "string", "minLength": 1 }
-    }
-  },
-  "$defs": {
-    "image": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["repository", "resolved_from", "digest", "default_pin", "default_reference"],
-      "properties": {
-        "repository": { "type": "string", "pattern": "^[a-z0-9._/-]+$" },
-        "resolved_from": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The tag whose manifest resolved to `digest` at `resolved_at`."
-        },
-        "digest": {
-          "type": "string",
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "description": "Full immutable digest. Abbreviated digests are rejected: they are not a pin."
-        },
-        "default_pin": {
-          "enum": ["digest", "tag"],
-          "description": "digest: the shipped default MUST be repository@digest. tag: the shipped default may be the readable immutable version tag, and the digest here is the documented production override."
-        },
-        "default_reference": {
-          "type": "string",
-          "minLength": 1,
-          "description": "The exact value a shipped template must set for this variable."
-        },
-        "engine_version": {
-          "type": ["string", "null"],
-          "description": "Scanner version behind `digest`, recorded from a validated run. When non-null, a produced report whose reported engine version differs is drift and fails visibly. Null means it has not been recorded from a real run yet — it is never guessed."
-        },
-        "rationale": { "type": "string" }
+      "items": {
+        "type": "string",
+        "minLength": 1
       }
     }
   }

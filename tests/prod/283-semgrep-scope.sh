@@ -231,6 +231,49 @@ else
 	fail "only $_n ignore template(s) found — the manifest sweep is not covering the profiles"
 fi
 
+# Every spelling Semgrep honours for excluding a directory must satisfy doctor. Matching
+# only `path` and `path/` produced a false WARN on correctly configured projects, which
+# teaches adopters to ignore the check.
+SPELL="$WORK/spell"
+for _form in '.sentinel-shield' '.sentinel-shield/' '/.sentinel-shield' '/.sentinel-shield/' '.sentinel-shield/**' '/.sentinel-shield/**'; do
+	rm -rf "$SPELL"; mkdir -p "$SPELL"
+	sh scripts/install-baseline.sh --target "$SPELL" --profile laravel --apply >/dev/null 2>&1 \
+		|| { fail "spelling fixture install failed"; break; }
+	for _wf in "$SPELL"/.github/workflows/*.yml; do
+		[ -e "$_wf" ] || continue
+		sed 's#SENTINEL_SHIELD_PATH: [^[:space:]]*#SENTINEL_SHIELD_PATH: .sentinel-shield#' "$_wf" > "$_wf.tmp" && mv "$_wf.tmp" "$_wf"
+	done
+	printf '%s\n' "$_form" > "$SPELL/.semgrepignore"
+	_doc=$(sh scripts/doctor.sh --target "$SPELL" --profile laravel 2>&1 || true)
+	if printf '%s' "$_doc" | grep -q 'does not exclude the configured Sentinel Shield checkout'; then
+		fail "doctor false-WARNs on the valid .semgrepignore spelling '$_form'"
+	else
+		pass "doctor accepts the .semgrepignore spelling '$_form'"
+	fi
+done
+# …and a genuinely unrelated exclusion still fails closed.
+printf '%s\n' 'src/generated' > "$SPELL/.semgrepignore"
+_doc=$(sh scripts/doctor.sh --target "$SPELL" --profile laravel 2>&1 || true)
+if printf '%s' "$_doc" | grep -q 'does not exclude the configured Sentinel Shield checkout'; then
+	pass "doctor still reports an ignore file that excludes something else entirely"
+else
+	fail "doctor accepted an ignore file that does not exclude the engine checkout"
+fi
+
+# Multiple unexcluded paths must produce one suggestion PER path, not a joined nonsense
+# token like 'a b/'.
+MULTI="$WORK/multi"
+rm -rf "$MULTI"; mkdir -p "$MULTI/.github/workflows"
+printf 'name: a\nenv:\n  SENTINEL_SHIELD_PATH: vendor/engine-a\n' > "$MULTI/.github/workflows/a.yml"
+printf 'name: b\nenv:\n  SENTINEL_SHIELD_PATH: vendor/engine-b\n' > "$MULTI/.github/workflows/b.yml"
+printf 'src/generated\n' > "$MULTI/.semgrepignore"
+_doc=$(sh scripts/doctor.sh --target "$MULTI" --profile laravel 2>&1 || true)
+if printf '%s' "$_doc" | grep -q "add 'vendor/engine-a/' 'vendor/engine-b/' to .semgrepignore"; then
+	pass "doctor suggests one exclusion per unexcluded path"
+else
+	fail "doctor's multi-path remediation hint is not per-path: $(printf '%s' "$_doc" | grep 'does not exclude' || true)"
+fi
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '283-semgrep-scope: ALL CHECKS PASSED\n'

@@ -287,6 +287,32 @@ if [ "$_rowchecked" -eq 0 ]; then
 	fail "profile-compatibility table parsed 0 rows — the count check is not actually running"
 fi
 
+# --- every profile manifest appears in the managed-file inventory ------------
+# The inventory is hand-written prose describing an executable contract (what install
+# writes into a consumer). `hardened-enterprise` shipped without an entry, so a reader
+# could not learn that it installs a `.semgrepignore`. Assert the set of documented
+# profiles equals the set of manifests, and that each documented row names a target the
+# manifest actually declares.
+_invmiss=""
+for _pm in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.manifest.json; do
+	[ -f "$_pm" ] || continue
+	case "$_pm" in
+		*/combinations/*) _pname=$(basename "$_pm" .manifest.json) ;;
+		*) _pname=$(basename "$(dirname "$_pm")") ;;
+	esac
+	grep -q "Profile: \`$_pname\`" "$ROOT/docs/managed-file-inventory.md" || _invmiss="$_invmiss $_pname"
+	# every managed target declared by the manifest must be listed for that profile
+	for _tgt in $(jq -r '(.files // [])[].target' "$_pm" 2>/dev/null); do
+		grep -q "\`$_tgt\`" "$ROOT/docs/managed-file-inventory.md" \
+			|| _invmiss="$_invmiss ${_pname}:${_tgt}"
+	done
+done
+if [ -n "$_invmiss" ]; then
+	fail "managed-file inventory is missing:$_invmiss"
+else
+	pass "every profile manifest and managed target is documented in the managed-file inventory"
+fi
+
 # --- "off by default" must not be claimed for the v2.2 gate families ---------
 # The families are ADDITIVE, not uniformly disabled: resolve-gates.sh enables
 # architecture_violations, changed_lines_coverage_violations, acceptance_test_failures,

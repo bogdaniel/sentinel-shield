@@ -339,10 +339,19 @@ if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
     else
       _ss_unexcluded=""
       for _p in $_ss_paths; do
-        grep -qE "^${_p}/?$" "$TARGET/.semgrepignore" 2>/dev/null || _ss_unexcluded="$_ss_unexcluded $_p"
+        # A path is excluded by any of the spellings Semgrep honours for a directory:
+        #   .sentinel-shield        .sentinel-shield/       (bare / trailing slash)
+        #   /.sentinel-shield       /.sentinel-shield/      (root-anchored)
+        #   .sentinel-shield/**     /.sentinel-shield/**    (explicit recursive glob)
+        # Matching only the first two spellings produced a false WARN on a correctly
+        # configured project.
+        grep -qE "^/?${_p}/?(\*\*)?/?[[:space:]]*$" "$TARGET/.semgrepignore" 2>/dev/null \
+          || _ss_unexcluded="$_ss_unexcluded $_p"
       done
       if [ -n "$_ss_unexcluded" ]; then
-        degraded ".semgrepignore does not exclude the configured Sentinel Shield checkout path(s):$_ss_unexcluded — add '${_ss_unexcluded# }/' to .semgrepignore, or set SENTINEL_SHIELD_PATH back to the excluded path; otherwise Semgrep scans the engine's own fixtures as your code"
+        # One suggestion PER path: joining them produced nonsense like "a b/".
+        _ss_hint=$(for _u in $_ss_unexcluded; do printf "'%s/' " "$_u"; done)
+        degraded ".semgrepignore does not exclude the configured Sentinel Shield checkout path(s):$_ss_unexcluded — add ${_ss_hint% } to .semgrepignore, or set SENTINEL_SHIELD_PATH back to the excluded path; otherwise Semgrep scans the engine's own fixtures as your code"
       else
         ok "Semgrep scope excludes the embedded Sentinel Shield checkout ($(printf '%s' "$_ss_paths" | tr '\n' ' '))"
       fi
