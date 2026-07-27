@@ -117,8 +117,20 @@ check "an UNEXPLAINED gate_enforced:false on a required tool fails" \
 	"$(enf "$(base '.tools.tests.gate_enforced = false')" baseline)" 1
 check "gate_enforced:false with status not-applicable is accepted" \
 	"$(enf "$(base '.tools.tests.gate_enforced = false | .tools.tests.status = "not-applicable"')" baseline)" 0
-check "gate_enforced:false is accepted in a STAGE-SCOPED summary" \
-	"$(enf "$(base '.stage = "pr" | .tools.tests.gate_enforced = false')" baseline)" 0
+# A declared stage is NOT on its own a scope statement: accepting any non-empty `.stage` let
+# a hand-built summary mark arbitrary required tools non-enforced. The per-tool
+# `stage_selected: false` the builder derives from the effective-profile execution matrix is
+# what proves this tool is out of scope at this stage.
+check "a declared stage ALONE does not excuse gate_enforced:false" \
+	"$(enf "$(base '.stage = "pr" | .tools.tests.gate_enforced = false')" baseline)" 1
+check "gate_enforced:false IS accepted with the derived stage_selected:false marker" \
+	"$(enf "$(base '.stage = "pr" | .tools.tests.gate_enforced = false | .tools.tests.stage_selected = false')" baseline)" 0
+check "…and stage_selected:true still fails (the tool IS selected at this stage)" \
+	"$(enf "$(base '.stage = "pr" | .tools.tests.gate_enforced = false | .tools.tests.stage_selected = true')" baseline)" 1
+# `disabled` is a required-control FAILURE state, not an exemption: a producer could
+# otherwise switch off its own required control with two fields.
+check "required + status disabled + gate_enforced:false FAILS without a waiver" \
+	"$(enf "$(base '.tools.tests.status = "disabled" | .tools.tests.gate_enforced = false')" baseline)" 1
 # not-applicable must be substantiated by the tool-policy overlay.
 check "not-applicable without the tool-policy overlay is unsubstantiated" \
 	"$(enf "$(base '.tools.tests.status = "not-applicable" | del(.summary.required_tool_failures)')" baseline)" 1

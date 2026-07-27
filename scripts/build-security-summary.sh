@@ -601,6 +601,12 @@ if [ -n "$PROFILE_NAME" ]; then
 		# Gating + counters. Only REQUIRED tools fail the gate per-tool; one-of is
 		# gated at the GROUP level (see one_of_groups), recommended/optional are
 		# visibility-only here (the enforcer downgrades them to warn/info).
+		# WHY a required tool is not gate-enforced has to travel with the summary. The
+		# enforcer used to accept any non-empty top-level `stage`, so a hand-built summary
+		# could mark arbitrary required tools non-enforced by declaring a stage. The reason is
+		# now per-tool and derived from the effective profile's own execution matrix.
+		stage_selected=true
+		[ "${tstage:-yes}" = "yes" ] || stage_selected=false
 		if [ "$tpol" = "required" ] && [ "$status" != "not-applicable" ] && [ "${tstage:-yes}" = "yes" ]; then
 			gate_enforced=true
 			case "$status" in
@@ -617,10 +623,16 @@ if [ -n "$PROFILE_NAME" ]; then
 		obj=$(jq -n --arg emit "$emit" --arg tool "$tkey" --arg pol "$tpol" \
 			--arg appl "$tappl" --argjson inst "$installed" --argjson cfg "$configured" \
 			--argjson exec "$executed" --argjson ge "$gate_enforced" --arg st "$status" \
-			--arg rep "$trep" --arg msg "$msg" '
+			--arg rep "$trep" --arg msg "$msg" --argjson stagesel "$stage_selected" \
+			--arg stage "$STAGE" '
 			{ _emit: $emit, tool: $tool, policy: $pol, applicability: $appl,
 			  installed: $inst, configured: $cfg, executed: $exec, gate_enforced: $ge,
-			  status: $st, report: $rep, message: $msg }')
+			  status: $st, report: $rep, message: $msg,
+			  # Per-tool execution scope, derived from the effective profile: stage_selected
+			  # is false ONLY when the profile execution matrix excludes this tool at THIS
+			  # stage.
+			  stage: (if $stage == "" then null else $stage end),
+			  stage_selected: $stagesel }')
 		POLICY_COLLECTED="${POLICY_COLLECTED}${obj}
 "
 	done <<EOF

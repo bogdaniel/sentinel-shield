@@ -1226,9 +1226,40 @@ if [ "$HAS_POLICY" = "1" ]; then
 				# say WHICH: an unexplained opt-out is a configuration error, not a pass.
 				if [ "$_ge" != "true" ]; then
 					case "$_st" in
-						not-applicable | disabled) continue ;;
+						# `not-applicable` is an applicability statement, and the only status
+						# that legitimately needs no further proof.
+						not-applicable) continue ;;
+						# `disabled` is a required-control FAILURE state, not an exemption. It
+						# used to skip the tool outright, so a summary producer could switch
+						# off its own required control by emitting status=disabled with
+						# gate_enforced:false. It now needs a validated control waiver, exactly
+						# like an unavailable required tool.
+						disabled)
+							if is_waived "$_tkey"; then
+								WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}|$(waiver_fields "$_tkey")
+"
+							else
+								REQF_REC="${REQF_REC}${_emit}|${_tkey}|disabled(no waiver)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|disabled(no waiver)
+"
+							fi
+							continue ;;
 						*)
-							if [ -n "$STAGE_SCOPED" ]; then continue; fi
+							# Stage scope must be proven PER TOOL. Accepting any non-empty
+							# top-level `.stage` let a hand-built summary mark arbitrary
+							# required tools non-enforced simply by declaring a stage; the
+							# enforcer never checked whether THIS tool is excluded at THAT
+							# stage. The builder now derives `stage_selected` from the
+							# effective-profile execution matrix, and only an explicit
+							# `stage_selected: false` — together with a declared stage — is a
+							# scope statement.
+							# `//` is NOT usable here: jq treats `false` as empty, so
+							# `.stage_selected // "absent"` turns the very value being looked
+							# for into the default. has() is the only correct probe.
+							_ssel=$(jqr "(.tools[\"$_emit\"] | if (type == \"object\") and has(\"stage_selected\") then (.stage_selected | tostring) else \"absent\" end)")
+							if [ -n "$STAGE_SCOPED" ] && [ "$_ssel" = "false" ]; then
+								continue
+							fi
 							REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-gate-enforced(${_st:-unknown})
 "; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-gate-enforced(${_st:-unknown})
 "; continue ;;
