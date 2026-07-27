@@ -445,8 +445,13 @@ Rules (fail closed on any violation):
   `CW_MAX_CLOCK_SKEW_DAYS` (default 1) ahead of the trusted UTC date — a record dated
   next month is a pre-positioned approval, not clock skew — and
   `expires_at - created_at` may not exceed `CW_MAX_WAIVER_DAYS` (default **90**;
-  **30** in `regulated`; hard ceiling 365 that no environment can raise). Renew by
-  adding a **new** record that supersedes the old one, never by extending a date.
+  **30** in `regulated`; absolute ceiling **365**). Configuration may only TIGHTEN this.
+  An **invalid** setting — non-numeric, fractional, zero, negative, empty, above the policy
+  maximum, or absurdly long — is a **configuration error that fails closed** (exit 2). It is
+  never clamped, normalised or replaced by a fallback, because substituting a number would
+  enforce a policy nobody chose while the operator believed another was in force. Only an
+  **unset** variable uses the documented 90-day default. Renew by adding a **new** record that
+  supersedes the old one, never by extending a date.
 - **One authoritative approval per tool.** Two records that nothing supersedes may not
   cover the same tool over overlapping validity windows; that is a configuration
   failure naming both ids. Use `"supersedes": "<older-id>"` to make exactly one

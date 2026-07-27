@@ -175,25 +175,49 @@ cw__resolve_today() {
 # cw__max_days — the effective maximum waiver duration, clamped to the hard ceiling so a
 # loosened environment cannot manufacture a permanent waiver. Non-numeric => ceiling.
 cw__max_days() {
-	# An INVALID setting must never select the least restrictive policy. Falling back to the
-	# CEILING meant `CW_MAX_WAIVER_DAYS=oops` or `=999` silently loosened the maximum from the
-	# 90-day default to 365 — a malformed governance value buying a longer waiver than the
-	# default allows. Anything unusable falls back to the DEFAULT, and a value above the
-	# default is clamped to it: the environment may TIGHTEN this policy, never loosen it.
-	case "${CW_MAX_WAIVER_DAYS:-}" in
-		'' | *[!0-9]*)
-			log_warn "control-waivers: CW_MAX_WAIVER_DAYS='${CW_MAX_WAIVER_DAYS:-}' is not a positive integer — using the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day default (an invalid setting never loosens the policy)"
-			printf '%s' "$CW_MAX_WAIVER_DAYS_DEFAULT"; return 0 ;;
-	esac
-	if [ "$CW_MAX_WAIVER_DAYS" -lt 1 ]; then
-		log_warn "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS is not a usable duration — using the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day default"
-		printf '%s' "$CW_MAX_WAIVER_DAYS_DEFAULT"
-	elif [ "$CW_MAX_WAIVER_DAYS" -gt "$CW_MAX_WAIVER_DAYS_DEFAULT" ]; then
-		log_warn "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day policy maximum — clamped (the environment may tighten this, never loosen it)"
-		printf '%s' "$CW_MAX_WAIVER_DAYS_DEFAULT"
-	else
-		printf '%s' "$CW_MAX_WAIVER_DAYS"
+	# An INVALID setting FAILS CLOSED. It is not clamped, normalised, or replaced by a
+	# fallback: a governance duration nobody can read is a configuration error, and quietly
+	# substituting ANY number — the ceiling or the default — means the operator believes one
+	# policy is in force while another is. Only an ABSENT setting uses the documented default.
+	#
+	# Returns 2 and prints nothing when the value is unusable; callers must treat that as fatal.
+	# UNSET uses the documented default. Explicitly EMPTY does not: someone wrote
+	# `CW_MAX_WAIVER_DAYS=` meaning something, and guessing which policy they meant is exactly
+	# what this function refuses to do.
+	if [ "${CW_MAX_WAIVER_DAYS+set}" != "set" ]; then
+		printf '%s' "$CW_MAX_WAIVER_DAYS_DEFAULT"; return 0
 	fi
+	if [ -z "$CW_MAX_WAIVER_DAYS" ]; then
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS is set but empty. Unset it to use the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day default, or give it a value — an empty policy is not a policy."
+		return 2
+	fi
+	# An absurdly long digit string overflows shell arithmetic, and a silently wrapped
+	# comparison would let it through as "in range". Bound the LENGTH before comparing.
+	if [ "${#CW_MAX_WAIVER_DAYS}" -gt 9 ]; then
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS='$CW_MAX_WAIVER_DAYS' is out of range (the ceiling is ${CW_MAX_WAIVER_DAYS_CEILING} days)."
+		return 2
+	fi
+	case "$CW_MAX_WAIVER_DAYS" in
+		*[!0-9]*)
+			log_error "control-waivers: CW_MAX_WAIVER_DAYS='$CW_MAX_WAIVER_DAYS' is not a whole number of days. A governance duration that cannot be read is a configuration error — it is never clamped or defaulted, because that would enforce a policy nobody chose. Set a positive integer no greater than ${CW_MAX_WAIVER_DAYS_DEFAULT}, or unset it to use the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day default."
+			return 2 ;;
+	esac
+	# Canonicalise leading zeros with the engine-wide helper, so `00090` and `90` are the same
+	# policy and the value reported downstream is the canonical one.
+	CW_MAX_WAIVER_DAYS=$(cw_decimal "$CW_MAX_WAIVER_DAYS")
+	if [ "$CW_MAX_WAIVER_DAYS" -lt 1 ] 2>/dev/null; then
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS is not a usable duration (must be >= 1). Refusing to guess a policy."
+		return 2
+	fi
+	if [ "$CW_MAX_WAIVER_DAYS" -gt "$CW_MAX_WAIVER_DAYS_CEILING" ] 2>/dev/null; then
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the absolute ${CW_MAX_WAIVER_DAYS_CEILING}-day ceiling. Configuration may TIGHTEN the policy, never loosen it — refusing to run under an out-of-policy duration."
+		return 2
+	fi
+	if [ "$CW_MAX_WAIVER_DAYS" -gt "$CW_MAX_WAIVER_DAYS_DEFAULT" ]; then
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day policy maximum. Configuration may TIGHTEN the policy, never loosen it."
+		return 2
+	fi
+	printf '%s' "$CW_MAX_WAIVER_DAYS"
 }
 
 # cw__skew_days — the effective future-clock tolerance (non-numeric/negative => 0).
@@ -280,7 +304,11 @@ cw_validate_file() {
 	_recs=$(cw__records "$_f")
 	_rc=0
 	_ktab="$(printf '\t')"
-	_maxd=$(cw__max_days); _skew=$(cw__skew_days)
+	# cw__max_days FAILS CLOSED on an unusable setting; a command substitution swallows its
+	# exit status, so it is captured explicitly and the failure is propagated.
+	_maxd=$(cw__max_days) || return 2
+	[ -n "$_maxd" ] || return 2
+	_skew=$(cw__skew_days)
 	_todayn=$(cw__days "$_vt")
 	# ACTIVE = every record nothing else supersedes; only those can conflict (below).
 	_active=""
