@@ -110,6 +110,64 @@ A record suppresses its gate **only if all** hold:
 - `reason` is non-empty.
 - `gate` is a **suppressible** gate.
 
+## Schema v2 (closed objects, explicit extensions)
+
+Accepted risks are **executable policy**: a record can stop a gate from failing. v1.1 left
+every object open, and an ignored unknown field is dangerous in exactly one direction — a
+field meant to **narrow** a record (`paths` where `files` was meant, a misspelled
+`components`) is silently dropped, and the record then suppresses **more** than its author
+intended. v2 closes every object:
+
+- `additionalProperties: false` on the document, on every risk record, and on `approval`;
+- unknown status, scope and severity values fail closed;
+- ids are required, unique, and match `^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$`;
+- every array member is type-checked; empty strings are refused where a value is required;
+- a value of the wrong type (`emergency: "yes"`, `owner: 123`) is refused rather than coerced;
+- paths are repository-relative, exactly matched, and reject absolute/traversing/globbed forms;
+- `created_at` is required on every record and `approved_at` on every **approved** record —
+  a pending record has not been approved, so demanding its approval date would be incoherent.
+
+Deliberate consumer or vendor metadata goes in `extensions`, keyed `vendor.example/key`, at
+the document level or per record. Extension data is **informational only**: it never alters
+matching, suppression, status, expiry, approval or gate behaviour.
+
+Schema: [`schemas/accepted-risks-v2.schema.json`](../schemas/accepted-risks-v2.schema.json).
+
+## Migrating from legacy (v1 / v1.1)
+
+Legacy files are **never silently reinterpreted as v2**:
+
+- **`report-only` / `baseline`** — read with a prominent deprecation warning naming the file,
+  its version, the required target version, the migration command and the removal timeline.
+  Support ends in **Sentinel Shield v3**.
+- **`strict` / `regulated`** — refused with the migration command in the message.
+
+```sh
+# See exactly what would change, writing nothing:
+sh scripts/migrate-accepted-risks.sh --input .sentinel-shield/accepted-risks.json --report
+
+# Print the proposed v2 document without writing it:
+sh scripts/migrate-accepted-risks.sh --input .sentinel-shield/accepted-risks.json --dry-run
+
+# Write a NEW file (the source is never modified):
+sh scripts/migrate-accepted-risks.sh \
+  --input  .sentinel-shield/accepted-risks.json \
+  --output .sentinel-shield/accepted-risks.v2.json
+```
+
+The tool preserves ids, dates, owner, reason, mitigation, scope, matching dimensions and
+status; records the source version, source SHA-256 and migration timestamp in
+`migrated_from`; and produces deterministic output.
+
+It **never invents an approval**. An approved record with no `approved_at` migrates as
+`status: pending` — it suppresses nothing until a human records when it was authorised — and
+the run exits **1** so the migration cannot be mistaken for finished. A record carrying a
+field v2 does not define is **refused**, named, and left for a person to decide whether it was
+meant to narrow the record (rename it) or is metadata (move it under `extensions`).
+
+Exit codes: `0` migrated cleanly · `1` manual completion required · `2` invalid invocation or
+unusable input · `3` a required tool is missing.
+
 ## Bounded validity (the exception is time-boxed, and enforced as such)
 
 An accepted risk is a **temporary** exception, so its window is governed with the same policy

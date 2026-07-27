@@ -54,10 +54,23 @@ AR_SOON=$(date -u -d '+30 days' +%Y-%m-%d 2>/dev/null || date -u -v+30d +%Y-%m-%
 risk() {
 	printf '%s' "$1" | jq --arg today "$AR_TODAY" --arg soon "$AR_SOON" '
 		(.risks // []) |= map(
-			if (.status // "") == "approved" then
+			# Only stamp an authorisation date on a record whose expiry is still ahead:
+			# giving an ALREADY-EXPIRED fixture today's approval date would make the expiry
+			# precede the approval, which is a contradiction the enforcer rightly refuses —
+			# and these cases are about expiry and dates, not about the window.
+			if (.status // "") == "approved" and ((.expires_at // "") >= $today) then
 				(if has("approved_at") or has("created_at") then . else . + {approved_at: $today} end)
 				| (if (.expires_at // "") == "2099-01-01" then .expires_at = $soon else . end)
-			else . end)' > "$WORK/ar.json" 2>/dev/null || printf '%s' "$1" > "$WORK/ar.json"
+			else . end)
+		# v2 closes every object and requires created_at (plus approved_at when approved), so
+		# a fixture that DECLARES v2 gets those fields; a legacy fixture is left alone because
+		# it is exercising the deprecation path.
+		| (if (.version // "") == "2" then
+			(.risks // []) |= map(
+				(if has("created_at") then . else . + {created_at: (.approved_at // $today)} end)
+				| (if (.status // "") == "approved" and (has("approved_at") | not)
+				   then . + {approved_at: $today} else . end))
+		   else . end)' > "$WORK/ar.json" 2>/dev/null || printf '%s' "$1" > "$WORK/ar.json"
 	printf '%s' "$WORK/ar.json"
 }
 R='{"id":"a","gate":"unsafe_docker","scope":"gate","owner":"o","reason":"r","expires_at":"2099-01-01","status":"approved"}'
@@ -183,7 +196,7 @@ check "--format json publishes only the JSON" \
 # non-leap 2025-02-29 all validated — and each sorts as unexpired, i.e. an accepted risk that
 # never expires. The canonical calendar validator is reused now.
 for _bad in 2026-02-31 2026-04-31 2025-02-29 2026-06-31 2026-11-31; do
-	jq -n --arg e "$_bad" '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate",
+	jq -n --arg e "$_bad" '{version:"1.1", risks:[{id:"AR-1", gate:"unsafe_docker", scope:"gate",
 		owner:"o", reason:"r", expires_at:$e, status:"approved"}]}' > "$WORK/ar-bad.json"
 	check "an impossible calendar date ($_bad) is refused" "$(enf --accepted-risks "$WORK/ar-bad.json" --format json)" 2
 done
@@ -192,7 +205,7 @@ done
 # Real AND inside the governed window: the authorisation date moves with the expiry so this
 # section tests the CALENDAR, not the 90-day policy (which has its own section below).
 for _ok in 2028-02-29 2026-12-31 2099-04-30; do
-	jq -n --arg e "$_ok" --arg t "$AR_TODAY" '{version:"1.1", risks:[{id:"R1",
+	jq -n --arg e "$_ok" --arg t "$AR_TODAY" '{version:"1.1", risks:[{id:"AR-1",
 		gate:"unsafe_docker", scope:"gate", owner:"o", reason:"r",
 		approved_at:$t, expires_at:$e, status:"approved"}]}' > "$WORK/ar-ok.json"
 	# A far-future expiry is refused by the WINDOW policy, so use one inside it while still
@@ -209,7 +222,7 @@ for _ok in 2028-02-29 2026-12-31 2099-04-30; do
 	fi
 done
 # review_at gets the same treatment.
-jq -n '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate", owner:"o",
+jq -n '{version:"1.1", risks:[{id:"AR-1", gate:"unsafe_docker", scope:"gate", owner:"o",
 	reason:"r", expires_at:"2099-01-01", review_at:"2026-02-31", status:"approved"}]}' > "$WORK/ar-rev.json"
 check "an impossible review_at is refused" "$(enf --accepted-risks "$WORK/ar-rev.json" --format json)" 2
 
@@ -219,8 +232,8 @@ check "an impossible review_at is refused" "$(enf --accepted-risks "$WORK/ar-rev
 # exception was authorised) or created_at.
 armk() {  # armk <approved_at> <expires_at> [status]
 	jq -n --arg a "$1" --arg e "$2" --arg s "${3:-approved}" \
-		'{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate", owner:"o",
-			reason:"r", approved_at:$a, expires_at:$e, status:$s}]}' > "$WORK/ar-win.json"
+		'{version:"2", risks:[{id:"AR-1", gate:"unsafe_docker", scope:"gate", owner:"o",
+			reason:"r", created_at:$a, approved_at:$a, expires_at:$e, status:$s}]}' > "$WORK/ar-win.json"
 	printf '%s' "$WORK/ar-win.json"
 }
 arrun() {  # arrun <mode> [env-assignment]

@@ -555,6 +555,134 @@ AR_FINDING_DETAIL=""   # "gate|id|rule_id|files-csv" per finding-scope record
 
 if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 	jq -e . "$ACCEPTED_RISKS_FILE" >/dev/null 2>&1 || die_cfg "accepted-risks file is not valid JSON: $ACCEPTED_RISKS_FILE"
+
+	# --- schema version + closed-object enforcement (v2) ---------------------------------
+	# An IGNORED unknown field is dangerous in executable policy: a field meant to NARROW an
+	# exception — a misspelled `components`, a `paths` that should have been `files` — is
+	# silently dropped, and the record then matches MORE than its author intended. v2 closes
+	# every object; deliberate additions live in `extensions` and are informational only.
+	AR_SCHEMA_VERSION=$(jq -r '(.version // "") | tostring' "$ACCEPTED_RISKS_FILE")
+	case "$AR_SCHEMA_VERSION" in
+		2) AR_IS_V2=1 ;;
+		1 | 1.1)
+			AR_IS_V2=0
+			case "$MODE" in
+				strict | regulated)
+					die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares legacy schema version \"$AR_SCHEMA_VERSION\". '$MODE' requires schema v2, which closes every object so an unknown field cannot silently broaden a suppression, and which carries the authorisation dates the validity policy needs. Migrate it: sh scripts/migrate-accepted-risks.sh --input '$ACCEPTED_RISKS_FILE' --output <new-file>" ;;
+				*)
+					log_warn "accepted-risks: DEPRECATED schema version \"$AR_SCHEMA_VERSION\" in '$ACCEPTED_RISKS_FILE'. Legacy records are read in '$MODE' only, and support ends in Sentinel Shield v3. Required target: version \"2\". Migrate with: sh scripts/migrate-accepted-risks.sh --input '$ACCEPTED_RISKS_FILE' --output <new-file>. strict and regulated refuse legacy files today." ;;
+			esac ;;
+		"") die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares no schema version. The version selects how the file is interpreted; it is never inferred." ;;
+		*) die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares unsupported schema version \"$AR_SCHEMA_VERSION\" (known: \"2\", and legacy \"1\"/\"1.1\" under the migration policy). An unknown version is never read as the newest one." ;;
+	esac
+
+	if [ "$AR_IS_V2" -eq 1 ]; then
+		# Closed objects, strict types, and the extension grammar. Reported all at once so a
+		# fix is one edit rather than a game of whack-a-mole.
+		_arv2=$(jq -r '
+			def extkey: test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+			def known_top: ["version","generated_at","migrated_from","risks","extensions"];
+			def known_risk: ["id","gate","scope","status","owner","reason","mitigation",
+				"created_at","approved_at","expires_at","review_at","approval","severity",
+				"category","scanner","rule_id","rule_ids","files","components","fingerprints",
+				"finding_id","issue","incident","emergency","supersedes","extensions"];
+			def known_approval: ["approved_by","authority","reference"];
+			[
+			  ( keys[] | select(. as $k | known_top | index($k) | not)
+			    | "unknown top-level property \"\(.)\" (deliberate additions belong under `extensions`)" ),
+			  ( (.extensions // {}) | keys[] | select(extkey | not)
+			    | "malformed extension key \"\(.)\" (expected `vendor.example/key`)" ),
+			  ( (.risks // []) | to_entries[]
+			    | .key as $i | .value as $r
+			    | if ($r | type) != "object" then "record \($i): not an object"
+			      else empty end ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( keys[] | select(. as $k | known_risk | index($k) | not)
+			        | "record \($rid): unknown property \"\(.)\" — an ignored field that was meant to NARROW this record would BROADEN the suppression; put consumer metadata under `extensions`" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( ($r.extensions // {}) | keys[] | select(extkey | not)
+			        | "record \($rid): malformed extension key \"\(.)\"" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    # approved_at is required only for an APPROVED record: a pending record has
+			    # not been approved, so demanding its approval date is incoherent.
+			    | ( ( [ "id","gate","scope","status","owner","reason","created_at","expires_at" ]
+			          + (if ($r.status // "") == "approved" then [ "approved_at" ] else [] end) )
+			        | map(select(($r[.] // null) == null or ($r[.] == ""))) ) as $missing
+			    | select(($missing | length) > 0)
+			    | ($missing | join(" ")) as $ms
+			    | "record \($rid): missing required field(s): \($ms)" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "id","gate","scope","status","owner","reason","mitigation","created_at",
+			          "approved_at","expires_at","review_at","severity","category","scanner",
+			          "rule_id","finding_id","issue","incident","supersedes" ]
+			        | map(select(($r[.] // null) != null and (($r[.] | type) != "string"))) ) as $wrong
+			    | select(($wrong | length) > 0)
+			    | ($wrong | join(" ")) as $ws
+			    | "record \($rid): field(s) [\($ws)] must be strings — a bare yes/no/number is not a string, and coercing one would change what the record means" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "rule_ids","files","components","fingerprints" ]
+			        | map(select(($r[.] // null) != null and (($r[.] | type) != "array"))) ) as $wrong
+			    | select(($wrong | length) > 0)
+			    | ($wrong | join(" ")) as $ws
+			    | "record \($rid): field(s) [\($ws)] must be arrays" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "rule_ids","files","components","fingerprints" ][]
+			        | . as $f | ($r[$f] // [])[]
+			        | select((type != "string") or (length == 0))
+			        | "record \($rid): every member of `\($f)` must be a non-empty string" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.emergency // null) != null and (($r.emergency | type) != "boolean"))
+			    | "record \($rid): `emergency` must be a boolean" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.id | type) == "string" and (($r.id | test("^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$")) | not))
+			    | "record \($rid): id does not match ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.status | type) == "string" and (([ "pending","approved","rejected","expired","superseded" ] | index($r.status)) | not))
+			    | "record \($rid): unknown status \"\($r.status)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.scope | type) == "string" and (([ "finding","gate" ] | index($r.scope)) | not))
+			    | "record \($rid): unknown scope \"\($r.scope)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.severity // null) != null and (([ "low","medium","high","critical" ] | index($r.severity)) | not))
+			    | "record \($rid): unknown severity \"\($r.severity)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.approval // null) != null and (($r.approval | type) != "object"))
+			    | "record \($rid): `approval` must be an object" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid | ($r.approval // {}) as $a
+			    | select(($r.approval // null) != null)
+			    | ( $a | keys[] | select(. as $k | known_approval | index($k) | not)
+			        | "record \($rid): unknown approval property \"\(.)\"" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.approval.approved_by // null) != null and ($r.approval.approved_by == $r.owner))
+			    | "record \($rid): approved_by == owner (self-approval)" ),
+			  ( [ (.risks // [])[] | select(type == "object") | .id ] as $ids
+			    | $ids | group_by(.) | map(select(length > 1)) | .[]
+			    | "duplicate record id \"\(.[0])\" — an approval must have exactly one identity" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( ($r.files // [])[]
+			        | select((type == "string") and ((test("^([.]/)?[A-Za-z0-9][A-Za-z0-9._/+-]*$") | not) or test("[.][.]")))
+			        | "record \($rid): unsafe path \"\(.)\" (absolute, traversing, globbed or control characters)" ) )
+			] | join("\n")' "$ACCEPTED_RISKS_FILE" 2>/dev/null || printf 'accepted-risks v2 document could not be validated')
+		if [ -n "$_arv2" ]; then
+			printf '%s\n' "$_arv2" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "accepted-risks: $_l"; done
+			die_cfg "accepted-risk input changes release decisions; refusing to enforce against a document that does not satisfy schema v2 ($ACCEPTED_RISKS_FILE)"
+		fi
+	fi
 	# Accepted-risk input CHANGES RELEASE DECISIONS, so it is validated as executable policy
 	# before any record is counted or matched. Previously only "is it JSON?" was checked and the
 	# rest was ad-hoc jq with `|| true`, so a jq error over a malformed record produced an EMPTY
@@ -717,6 +845,13 @@ EOF
 		if [ "$_wfromn" -gt $((_artodayn + 1)) ]; then
 			_wlbl=created_at; [ -n "$_wapp" ] && _wlbl=approved_at
 			log_error "accepted-risks: record $_wid: $_wlbl '$_wfrom' is in the future (today is $_artoday UTC, clock-skew tolerance 1d)"
+			_arwrc=1; continue
+		fi
+		# An expiry BEFORE the authorisation date is not a short window, it is a contradiction:
+		# the record claims to have been approved after it stopped applying.
+		if [ "$_wexpn" -lt "$_wfromn" ]; then
+			_wlbl2=created_at; [ -n "$_wapp" ] && _wlbl2=approved_at
+			log_error "accepted-risks: record $_wid: expires_at '$_wexp' is BEFORE $_wlbl2 '$_wfrom'"
 			_arwrc=1; continue
 		fi
 		if [ $((_wexpn - _wfromn)) -gt "$AR_MAX_DAYS" ]; then
