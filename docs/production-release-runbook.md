@@ -78,7 +78,9 @@ scripts/verify-published-release.sh smoke --manifest release/2.0.0-manifest.json
 ```
 
 `verify-tag` fails closed if the tag peels to a different commit (a moved/mis-targeted tag) or
-if its signature is unverifiable. `smoke` re-confirms the published artifact digests still
+if its signature is unverifiable. The publisher additionally requires GitHub to *attribute* the
+signature to a registered signing identity — see
+[`TAG_SIGNING_IDENTITY_UNVERIFIED`](#tag_signing_identity_unverified--publication-refused). `smoke` re-confirms the published artifact digests still
 reproduce the manifest fingerprint.
 
 Publication is also asserted in the canonical contract
@@ -89,6 +91,62 @@ behind it is a **non-waivable** readiness failure:
 ```sh
 sh scripts/validate-release-status.sh published --verify-github
 ```
+
+## `TAG_SIGNING_IDENTITY_UNVERIFIED` — publication refused
+
+The publisher requires `verification.verified == true` from the GitHub API before it will
+create a release. **Every** other state blocks:
+
+| Reported state | Blocks | Why |
+| --- | --- | --- |
+| `verified: true` | no | the only publishing state |
+| `unknown_key` | **yes** | the tag carries signature bytes GitHub cannot attribute to a registered key |
+| `unknown_signature_type` | **yes** | same — the signature type is not one GitHub can attribute |
+| `bad_signature`, `expired_key`, `revoked_key`, `unsigned` | **yes** | the signature itself does not verify |
+| verification fields absent / `null` | **yes** | a missing verification result is not a passed one |
+| malformed or empty API response | **yes** | an unreadable check is not a passed check |
+| API request failure (after 3 attempts) | **yes** | an unknown integrity state is not a verified one |
+
+**Signature material is not release authorization.** `unknown_key` means the tag is signed by
+*something*; it does not establish *who*, and it does not establish that the signer may publish
+Sentinel Shield releases. There is deliberately **no** bootstrap exception, owner-approved
+bypass, expiring waiver, or warning-only path — publication either proves the signing identity
+or does not happen.
+
+### What the failure tells you
+
+The diagnostic names the tag, the tag target, the published commit, GitHub's verification
+reason, the signer when the API can name one, and the remediation.
+
+### Remediation
+
+1. **Register the public signing key** on the account that signed the tag
+   (GitHub → Settings → SSH and GPG keys). This is the preferred fix: it makes the *existing*
+   tag verifiable.
+2. Re-run publication for the same tag:
+
+   ```sh
+   gh workflow run release-publish.yml -f tag=<tag>
+   ```
+
+   The workflow is idempotent: re-running it for an already-published tag does not fail.
+3. **If the signing key cannot be registered or recovered**, cut a **new** reviewed release
+   tag. Do not attempt to rescue the old one.
+
+### What you must NOT do
+
+An existing tag in this state is **immutable**:
+
+- do **not** force-update, move, or delete-and-recreate it;
+- do **not** re-sign it in place;
+- do **not** replace it silently with a new tag of the same name;
+- do **not** add an exception file, environment variable, or workflow input to get past the
+  check — none exists, and adding one would defeat the control.
+
+Such a tag stays in the repository as **tagged but unpublished / unverified**. Record it that
+way in `config/release-status.json` and in the release notes; it is an honest historical fact,
+not a defect to be edited away. Publication may be retried at any later time once the key is
+registered.
 
 ## Recovery: a tag exists but no GitHub Release was created
 

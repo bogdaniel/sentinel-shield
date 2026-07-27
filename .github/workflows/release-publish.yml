@@ -127,10 +127,11 @@ jobs:
             echo "commit=$COMMIT"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Report the tag's GitHub signature-verification state
+      - name: Require a GitHub-verified tag signing identity
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
           REPO: ${{ github.repository }}
         run: |
           set -eu
@@ -158,32 +159,47 @@ jobs:
             sleep $((_try * 5))
           done
           if [ -z "$VR" ]; then
-            echo "::error::could not read the signature-verification state for $TAG after 3 attempts — refusing to publish on an unknown integrity check."
+            echo "::error::TAG_SIGNING_IDENTITY_UNVERIFIED"
+            echo "::error::the signature-verification result for tag '$TAG' could not be read after 3 attempts (empty response). A missing verification result is not a passed one — refusing to publish."
+            echo "::error::  tag: $TAG / target: $OBJ / remediation: re-run once the API is reachable; if it persists, the tag is not verifiable and a new reviewed release tag is required."
             exit 1
           fi
           V=${VR%%|*}
           R=${VR#*|}
-          if [ "$V" = true ]; then
-            echo "tag $TAG: signature GitHub-verified"
-            exit 0
-          fi
-          # NOT verified. Two very different situations hide behind that, and collapsing them
-          # into one warning was wrong:
-          #
-          #   * the signature itself is BAD or absent — malformed, unsigned, wrong key, expired,
-          #     revoked. That is a failed integrity check and must fail the publication.
-          #   * the signature is well-formed but GitHub cannot attribute it, because the signing
-          #     key is not registered on the account (unknown_key / unknown_signature_type).
-          #     That is an account-configuration gap, not evidence of a bad signature, and the
-          #     previous step already proved the tag carries a signature and targets the
-          #     published commit.
-          case "$R" in
-            unknown_key|unknown_signature_type)
-              echo "::warning::tag $TAG carries a signature but GitHub cannot attribute it (reason=$R). Register the signing key on the account to get verified provenance." ;;
+          # The signer, when GitHub can name one. Reported in the failure so an operator can
+          # see WHICH identity was rejected, not merely that one was.
+          SIGNER=$(gh api "repos/$REPO/git/tags/$OBJ" \
+            --jq '"\(.verification.signature // "" | if . == "" then "none" else "present" end)/\(.tagger.name // "unknown") <\(.tagger.email // "unknown")>"' 2>/dev/null) || SIGNER="unavailable"
+          # A malformed API response is not a verified tag. `verified` is a JSON boolean; jq
+          # renders anything else (null, absent, a string) as something other than `true`
+          # or `false`, and only the literal `true` publishes.
+          case "$V" in
+            true)
+              echo "tag $TAG: signing identity GitHub-verified (target $OBJ, signer $SIGNER)"
+              exit 0 ;;
+            false) : ;;
             *)
-              echo "::error::tag $TAG failed GitHub signature verification (verified=$V, reason=$R). Refusing to publish a release for a tag whose signature does not verify."
+              echo "::error::TAG_SIGNING_IDENTITY_UNVERIFIED"
+              echo "::error::the GitHub verification response for tag '$TAG' is missing or malformed (verified='$V', reason='$R'). An unreadable integrity check is not a passed one — refusing to publish."
               exit 1 ;;
           esac
+          # NOT verified. THERE IS NO EXCEPTION PATH. `unknown_key` and
+          # `unknown_signature_type` mean the tag carries signature BYTES that GitHub cannot
+          # attribute to an approved signing identity — signature material is not release
+          # authorization, so this blocks exactly like a bad signature. An existing tag in this
+          # state stays immutable: register the signing key and re-run publication, or cut a
+          # NEW reviewed release tag. Never move, re-sign or replace the old one.
+          echo "::error::TAG_SIGNING_IDENTITY_UNVERIFIED"
+          echo "::error::The tag contains signature material, but GitHub cannot attribute it to an approved signing identity. Register the signing key and rerun publication."
+          echo "::error::  tag:                 $TAG"
+          echo "::error::  tag target:          $OBJ"
+          echo "::error::  published commit:    ${COMMIT:-unknown}"
+          echo "::error::  verification.verified: $V"
+          echo "::error::  verification.reason:   $R"
+          echo "::error::  signer:              $SIGNER"
+          echo "::error::  remediation:         register the public signing key on the account that signed this tag (GitHub -> Settings -> SSH and GPG keys), then re-run this workflow via workflow_dispatch with tag=$TAG. If the key cannot be registered or recovered, cut a NEW reviewed release tag — do NOT move, re-sign or replace '$TAG'."
+          echo "::error::  reference:           docs/production-release-runbook.md#tag_signing_identity_unverified--publication-refused"
+          exit 1
 
       - name: Create GitHub Release (verifies the pushed tag)
         # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand
