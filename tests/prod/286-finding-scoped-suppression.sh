@@ -59,11 +59,17 @@ enforce() {
 acct() { jq -r ".accepted_risks.medium_vulnerabilities.$2" "$1/reports/sentinel-shield-enforcement.json"; }
 
 # risk <file> <extra-json> — write an approved, unexpired, owner-bound record.
+# The suite runs in STRICT, where an accepted risk must be BOUNDED: an approved record needs
+# an authorisation date and a window inside the 90-day policy. The fixture is therefore
+# authorised today and expires inside the window — the assertions here are about MATCHING,
+# not about expiry.
+AR_TODAY=$(date -u +%Y-%m-%d)
+AR_SOON=$(date -u -d '+30 days' +%Y-%m-%d 2>/dev/null || date -u -v+30d +%Y-%m-%d)
 risk() {
-	jq -n --argjson extra "$2" '{version:"1", risks:[
+	jq -n --argjson extra "$2" --arg t "$AR_TODAY" --arg s "$AR_SOON" '{version:"1", risks:[
 		({ id:"AR-1", gate:"medium_vulnerabilities", scope:"finding",
 		   owner:"sec@example.com", reason:"reviewed; compensating control",
-		   expires_at:"2099-01-01", status:"approved" } + $extra) ]}' > "$1"
+		   approved_at:$t, expires_at:$s, status:"approved" } + $extra) ]}' > "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -163,7 +169,7 @@ check "  nothing accepted for the moved path" "$(acct "$D" accepted)" 0
 # 4. Governance: invalid, expired, pending, ambiguous and never-suppressible.
 # ---------------------------------------------------------------------------
 D=$(mkfix expired)
-jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"o", reason:"r", expires_at:"2000-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"o", reason:"r", approved_at:"1999-12-01", expires_at:"2000-01-01", status:"approved"}]}' > "$D/ar.json"
 check "an EXPIRED record suppresses nothing" "$(enforce "$D" "$D/ar.json")" 1
 check "  it is counted as expired" "$(jq -r '.accepted_risks.expired_ignored' "$D/reports/sentinel-shield-enforcement.json")" 1
 
@@ -172,18 +178,18 @@ jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"fi
 check "a PENDING record suppresses nothing" "$(enforce "$D" "$D/ar.json")" 1
 
 D=$(mkfix noowner)
-jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 check "an ownerless record suppresses nothing" "$(enforce "$D" "$D/ar.json")" 1
 
 D=$(mkfix ambiguous)
-jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 check "an AMBIGUOUS finding-scoped record (no matching field) suppresses nothing" "$(enforce "$D" "$D/ar.json")" 1
 check "  it is reported as legacy/unscoped" "$(jq -r '.accepted_risks.legacy_unscoped_ignored' "$D/reports/sentinel-shield-enforcement.json")" 1
 
 D=$(mkfix neversup)
 jq '.summary.secrets = 1' "$D/reports/security-summary.json" > "$D/s.json" && mv "$D/s.json" "$D/reports/security-summary.json"
-jq -n '{version:"1", risks:[{id:"AR-S", gate:"secrets", scope:"gate", owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"},
-                            {id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-S", gate:"secrets", scope:"gate", owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"},
+                            {id:"AR-1", gate:"medium_vulnerabilities", scope:"finding", components:["lodash","symfony/http-kernel"], owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 check "a NEVER-suppressible gate (secrets) still fails despite a record" "$(enforce "$D" "$D/ar.json")" 1
 grep -q 'secrets' "$D/reports/sentinel-shield-enforcement.md" && pass "the secrets failure is reported" || fail "the secrets failure is not reported"
 
@@ -214,7 +220,7 @@ check "  the shortfall is unaccepted" "$(acct "$D" unaccepted)" 3
 # 6. Backward compatibility: broad scope:gate still works, and is surfaced as broad.
 # ---------------------------------------------------------------------------
 D=$(mkfix broad)
-jq -n '{version:"1", risks:[{id:"AR-B", gate:"medium_vulnerabilities", scope:"gate", owner:"o", reason:"legacy broad record", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-B", gate:"medium_vulnerabilities", scope:"gate", owner:"o", reason:"legacy broad record", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 check "an existing broad scope:gate record still suppresses" "$(enforce "$D" "$D/ar.json")" 0
 check "  it is reported as broad, not as finding-scoped" "$(acct "$D" scope)" "gate"
 grep -q 'BROAD' "$D/reports/sentinel-shield-enforcement.md" && pass "broad suppression is surfaced in the Markdown output" || fail "broad suppression is not surfaced in the Markdown output"
@@ -232,9 +238,9 @@ D=$(mkfix docker)
 jq '.summary.unsafe_docker = 1 | .summary.medium_vulnerabilities = 0' "$D/reports/security-summary.json" > "$D/s.json" && mv "$D/s.json" "$D/reports/security-summary.json"
 printf '[{"code":"DL3018","level":"warning","file":"Dockerfile","line":3,"message":"pin versions"}]' > "$D/reports/raw/hadolint.json"
 printf '[]' > "$D/reports/raw/docker-base-digest.json"
-jq -n '{version:"1", risks:[{id:"AR-D", gate:"unsafe_docker", scope:"finding", rule_id:"DL3018", files:["Dockerfile"], owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+jq -n '{version:"1", risks:[{id:"AR-D", gate:"unsafe_docker", scope:"finding", rule_id:"DL3018", files:["Dockerfile"], owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 check "unsafe_docker finding scope still accepts a matched finding" "$(enforce "$D" "$D/ar.json")" 0
-jq -n '{version:"1", risks:[{id:"AR-D", gate:"unsafe_docker", scope:"finding", rule_id:"DL3008", files:["Dockerfile"], owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar2.json"
+jq -n '{version:"1", risks:[{id:"AR-D", gate:"unsafe_docker", scope:"finding", rule_id:"DL3008", files:["Dockerfile"], owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar2.json"
 check "unsafe_docker finding scope still rejects a different rule" "$(enforce "$D" "$D/ar2.json")" 1
 
 # ---------------------------------------------------------------------------
@@ -264,7 +270,7 @@ for _gate in unsafe_docker medium_vulnerabilities; do
 	D="$WORK/empty-$_gate"; mkdir -p "$D/reports/raw"
 	jq -n --arg g "$_gate" '{version:"1.1", risks:[{id:"oops", gate:$g, scope:"finding",
 		rule_id:"", rule_ids:[], files:[], components:[], fingerprints:[],
-		owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+		owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 	jq --arg g "$_gate" '.tools = {"tests":{"status":"pass"}} | .summary[$g] = 2' \
 		"$ROOT/templates/security-summary.example.json" > "$D/s.json"
 	# medium_vulnerabilities is not enabled in baseline; strict enables both gates so the
@@ -287,7 +293,7 @@ for _gate in unsafe_docker medium_vulnerabilities; do
 	# A record that DOES constrain still works — the fix must not disable finding scope.
 	jq -n --arg g "$_gate" '{version:"1.1", risks:[{id:"real", gate:$g, scope:"finding",
 		rule_ids:["DL3018"], files:[], components:[], fingerprints:[],
-		owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar2.json"
+		owner:"o", reason:"r", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar2.json"
 	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" \
 		--summary "$D/s.json" --accepted-risks "$D/ar2.json" --output-dir "$D" --format json \
 		>"$D/log2" 2>&1 || true

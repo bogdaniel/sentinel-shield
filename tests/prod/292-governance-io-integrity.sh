@@ -23,6 +23,7 @@ FAILED=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 check() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected '$3', got '$2')"; fi; }
+contains() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3')" ;; esac; }
 
 command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
 
@@ -41,7 +42,24 @@ enf() {
 	printf '%s' "$_c"
 }
 # risk <json> — write an accepted-risks file and echo its path.
-risk() { printf '%s' "$1" > "$WORK/ar.json"; printf '%s' "$WORK/ar.json"; }
+# Accepted risks are now TIME-BOXED (90 days by default), so a fixture cannot use a
+# decade-long window unless that is what it is testing. risk() stamps every APPROVED record
+# that does not set its own authorisation date with approved_at = today, and rewrites a
+# far-future expiry to a compliant one — the assertions here are about shape, paths and
+# dates, not about the window, which has its own section below.
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$ROOT/scripts/lib/control-waivers.sh"
+AR_TODAY=$(date -u +%Y-%m-%d)
+AR_SOON=$(date -u -d '+30 days' +%Y-%m-%d 2>/dev/null || date -u -v+30d +%Y-%m-%d)
+risk() {
+	printf '%s' "$1" | jq --arg today "$AR_TODAY" --arg soon "$AR_SOON" '
+		(.risks // []) |= map(
+			if (.status // "") == "approved" then
+				(if has("approved_at") or has("created_at") then . else . + {approved_at: $today} end)
+				| (if (.expires_at // "") == "2099-01-01" then .expires_at = $soon else . end)
+			else . end)' > "$WORK/ar.json" 2>/dev/null || printf '%s' "$1" > "$WORK/ar.json"
+	printf '%s' "$WORK/ar.json"
+}
 R='{"id":"a","gate":"unsafe_docker","scope":"gate","owner":"o","reason":"r","expires_at":"2099-01-01","status":"approved"}'
 
 # ---------------------------------------------------------------------------
@@ -171,15 +189,87 @@ for _bad in 2026-02-31 2026-04-31 2025-02-29 2026-06-31 2026-11-31; do
 done
 # Real AND unexpired: an expired record legitimately fails the gate (exit 1), which would
 # not tell us anything about date VALIDATION.
+# Real AND inside the governed window: the authorisation date moves with the expiry so this
+# section tests the CALENDAR, not the 90-day policy (which has its own section below).
 for _ok in 2028-02-29 2026-12-31 2099-04-30; do
-	jq -n --arg e "$_ok" '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate",
-		owner:"o", reason:"r", expires_at:$e, status:"approved"}]}' > "$WORK/ar-ok.json"
-	check "a real calendar date ($_ok) is accepted" "$(enf --accepted-risks "$WORK/ar-ok.json" --format json)" 0
+	jq -n --arg e "$_ok" --arg t "$AR_TODAY" '{version:"1.1", risks:[{id:"R1",
+		gate:"unsafe_docker", scope:"gate", owner:"o", reason:"r",
+		approved_at:$t, expires_at:$e, status:"approved"}]}' > "$WORK/ar-ok.json"
+	# A far-future expiry is refused by the WINDOW policy, so use one inside it while still
+	# proving the date itself parses.
+	# >90 days from today is refused by the window policy; anything closer is accepted.
+	_exp=0
+	if [ "$(cw__days "$_ok")" -gt "$(( $(cw__days "$AR_TODAY") + 90 ))" ]; then _exp=2; fi
+	check "a real calendar date ($_ok) parses; window policy decides the verdict" \
+		"$(enf --accepted-risks "$WORK/ar-ok.json" --format json)" "$_exp"
+	if [ "$_exp" -eq 2 ]; then
+		grep -q 'over the .*-day maximum' "$WORK/log" 2>/dev/null \
+			&& pass "  refused for the WINDOW, not the date" \
+			|| fail "  refused for something other than the window"
+	fi
 done
 # review_at gets the same treatment.
 jq -n '{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate", owner:"o",
 	reason:"r", expires_at:"2099-01-01", review_at:"2026-02-31", status:"approved"}]}' > "$WORK/ar-rev.json"
 check "an impossible review_at is refused" "$(enf --accepted-risks "$WORK/ar-rev.json" --format json)" 2
+
+# --- Decision 4: accepted risks are time-boxed (90 / 30 / 365) ----------------
+# `expires_at: 9999-12-31` was a permanent suppression wearing a date. The window is now
+# governed with the same policy as control waivers, measured from approved_at (when the
+# exception was authorised) or created_at.
+armk() {  # armk <approved_at> <expires_at> [status]
+	jq -n --arg a "$1" --arg e "$2" --arg s "${3:-approved}" \
+		'{version:"1.1", risks:[{id:"R1", gate:"unsafe_docker", scope:"gate", owner:"o",
+			reason:"r", approved_at:$a, expires_at:$e, status:$s}]}' > "$WORK/ar-win.json"
+	printf '%s' "$WORK/ar-win.json"
+}
+arrun() {  # arrun <mode> [env-assignment]
+	sh "$RESOLVE" --mode "$1" --output-dir "$WORK/w" --format all >/dev/null 2>&1
+	_c=0
+	env ${2:+"$2"} sh "$ENFORCE" --gates-env "$WORK/w/sentinel-shield-gates.env" \
+		--summary "$WORK/win-summary.json" --accepted-risks "$WORK/ar-win.json" \
+		--output-dir "$WORK/w" --format json >"$WORK/w/log" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+mkdir -p "$WORK/w"
+jq '.tools = {"tests":{"status":"pass"}}' "$ROOT/templates/security-summary.example.json" > "$WORK/win-summary.json"
+
+armk 2026-05-01 2026-07-30 >/dev/null; check "exactly 90 days is accepted in baseline" "$(arrun baseline)" 0
+armk 2026-05-01 2026-07-31 >/dev/null; check "91 days is refused in baseline" "$(arrun baseline)" 2
+contains "  naming the maximum" "$(cat "$WORK/w/log")" "over the 90-day maximum"
+armk 2026-05-01 2026-07-30 >/dev/null; check "exactly 90 days is accepted in strict" "$(arrun strict)" 0
+armk 2026-05-01 2026-07-31 >/dev/null; check "91 days is refused in strict" "$(arrun strict)" 2
+armk 2026-07-01 2026-07-31 >/dev/null; check "exactly 30 days is accepted in regulated" "$(arrun regulated)" 0
+armk 2026-07-01 2026-08-01 >/dev/null; check "31 days is refused in regulated" "$(arrun regulated)" 2
+contains "  naming the regulated maximum" "$(cat "$WORK/w/log")" "over the 30-day maximum"
+# 365 is the ABSOLUTE ceiling — never reachable through configuration, because configuration
+# may only tighten below the 90-day policy maximum.
+armk 2026-01-01 2026-12-31 >/dev/null
+check "365 days is refused even with a configured maximum" "$(arrun baseline SS_MAX_ACCEPTED_RISK_DAYS=365)" 2
+check "366 days is refused" "$(arrun baseline SS_MAX_ACCEPTED_RISK_DAYS=90)" 2
+
+# Invalid policy configuration FAILS CLOSED — never clamped, never defaulted.
+armk 2026-07-01 2026-07-15 >/dev/null
+for _bad in oops 0 -5 1.5 366 999 '' '  ' 99999999999999999999; do
+	check "SS_MAX_ACCEPTED_RISK_DAYS='$_bad' is a configuration error" "$(arrun baseline "SS_MAX_ACCEPTED_RISK_DAYS=$_bad")" 2
+done
+check "an UNSET maximum uses the 90-day default" "$(arrun baseline)" 0
+check "a tightening value is honoured" "$(arrun baseline SS_MAX_ACCEPTED_RISK_DAYS=30)" 0
+armk 2026-07-01 2026-08-15 >/dev/null
+check "  and actually tightens (45 days refused at max=30)" "$(arrun baseline SS_MAX_ACCEPTED_RISK_DAYS=30)" 2
+
+# The window is measured from approved_at; a future authorisation is pre-positioning.
+armk 2099-01-01 2099-02-01 >/dev/null
+check "a future approved_at is refused" "$(arrun baseline)" 2
+contains "  naming the field" "$(cat "$WORK/w/log")" "approved_at"
+# Leap-year arithmetic is exact.
+armk 2024-01-01 2024-03-31 >/dev/null
+check "a leap-year window of exactly 90 days is accepted" "$(arrun baseline)" 0
+armk 2024-01-01 2024-04-01 >/dev/null
+check "  and 91 days is refused" "$(arrun baseline)" 2
+# Only APPROVED records are bounded — a pending record suppresses nothing.
+armk 2026-01-01 2099-01-01 pending >/dev/null
+check "a PENDING record is not bounded (it suppresses nothing)" "$(arrun baseline)" 0
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

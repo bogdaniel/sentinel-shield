@@ -44,6 +44,24 @@ if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
 	fi
 fi
 
+# cw__days <YYYY-MM-DD> — days since 1970-01-01 (days-from-civil; exact, no date(1), leap
+# years and centuries included). Only call on a date cw__valid_date accepted. Governance
+# durations are measured with THIS function everywhere, so no consumer re-implements a
+# calendar.
+cw__days() {
+	_dy=${1%%-*}; _dr=${1#*-}
+	_y=$(cw_decimal "$_dy"); _m=$(cw_decimal "${_dr%%-*}"); _d=$(cw_decimal "${_dr#*-}")
+	[ "$_m" -le 2 ] && _y=$((_y - 1))
+	# cw__valid_date rejects year 0000, so _y >= 0 here and the negative-era branch of the
+	# civil algorithm is unreachable (no POSIX-portable ternary needed).
+	_era=$((_y / 400))
+	_yoe=$((_y - _era * 400))
+	_mp=$(((_m + 9) % 12))
+	_doy=$(((153 * _mp + 2) / 5 + _d - 1))
+	_doe=$((_yoe * 365 + _yoe / 4 - _yoe / 100 + _doy))
+	printf '%s' $((_era * 146097 + _doe - 719468))
+}
+
 # cw_today_utc — current date as YYYY-MM-DD in UTC.
 cw_today_utc() { date -u +%Y-%m-%d; }
 

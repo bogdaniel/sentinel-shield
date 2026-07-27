@@ -110,6 +110,47 @@ A record suppresses its gate **only if all** hold:
 - `reason` is non-empty.
 - `gate` is a **suppressible** gate.
 
+## Bounded validity (the exception is time-boxed, and enforced as such)
+
+An accepted risk is a **temporary** exception, so its window is governed with the same policy
+as control waivers:
+
+| Mode | Maximum window |
+| --- | --- |
+| `report-only`, `baseline` | **90 days** |
+| `strict` | **90 days** |
+| `regulated` | **30 days** |
+| absolute ceiling (never reachable by configuration) | **365 days** |
+
+The window is measured from **`approved_at`** — when the exception was authorised — falling
+back to `created_at`. `expires_at: "9999-12-31"` is a permanent suppression wearing a date, and
+is refused.
+
+`SS_MAX_ACCEPTED_RISK_DAYS` may only **tighten** this. An **invalid** setting — non-numeric,
+fractional, zero, negative, empty, above the 90-day policy maximum, or long enough to overflow
+arithmetic — is a **configuration error that fails closed** (exit 2). It is never clamped or
+defaulted: substituting a number would enforce a policy nobody chose. Only an **unset**
+variable uses the documented 90-day default.
+
+An `approved_at` in the future (beyond one day of clock skew) is a pre-positioned approval and
+is refused.
+
+### Renewal
+
+Renewal creates a **new record** that supersedes the old one. Do not extend the original
+approval by editing its `expires_at` — that rewrites history and, once approvals are attested,
+invalidates the attestation. The original record stays as the historical fact that it was
+approved for the window it was approved for.
+
+### Legacy records without an authorisation date
+
+A `version: "1.1"` record with neither `approved_at` nor `created_at` cannot be bounded at all:
+
+- **`report-only` / `baseline`** — tolerated with a prominent deprecation warning naming the
+  record. This is migration debt, not an approval.
+- **`strict` / `regulated`** — refused. An unbounded exception is precisely what this policy
+  exists to prevent.
+
 ## Suppressible vs. never-suppressible
 
 | Suppressible (v0.1.3) | Never suppressible |

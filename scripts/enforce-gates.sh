@@ -639,6 +639,95 @@ $_ard
 EOF
 	[ "$_arrc" -eq 0 ] || die_cfg "accepted-risk input changes release decisions; refusing to enforce against impossible dates in $ACCEPTED_RISKS_FILE"
 
+	# --- bounded lifetime (#223, same governance timing policy as control waivers) --------
+	# An accepted risk is a time-boxed exception. Without a ceiling, `expires_at: 9999-12-31`
+	# is a permanent suppression wearing a date. The policy mirrors CW_MAX_WAIVER_DAYS:
+	#   default 90 · strict 90 · regulated 30 · absolute ceiling 365
+	# Configuration may only TIGHTEN it, and an unusable setting is a configuration ERROR —
+	# never clamped, normalised or defaulted, because substituting a number enforces a policy
+	# nobody chose. Only an UNSET variable uses the documented default.
+	AR_MAX_DAYS_DEFAULT=90
+	AR_MAX_DAYS_CEILING=365
+	AR_MAX_DAYS_REGULATED=30
+	if [ "${SS_MAX_ACCEPTED_RISK_DAYS+set}" != "set" ]; then
+		_armax="$AR_MAX_DAYS_DEFAULT"
+	elif [ -z "$SS_MAX_ACCEPTED_RISK_DAYS" ]; then
+		die_cfg "SS_MAX_ACCEPTED_RISK_DAYS is set but empty. Unset it to use the ${AR_MAX_DAYS_DEFAULT}-day default, or give it a value — an empty policy is not a policy."
+	elif [ "${#SS_MAX_ACCEPTED_RISK_DAYS}" -gt 9 ]; then
+		die_cfg "SS_MAX_ACCEPTED_RISK_DAYS='$SS_MAX_ACCEPTED_RISK_DAYS' is out of range (the absolute ceiling is ${AR_MAX_DAYS_CEILING} days)."
+	else
+		case "$SS_MAX_ACCEPTED_RISK_DAYS" in
+			*[!0-9]*) die_cfg "SS_MAX_ACCEPTED_RISK_DAYS='$SS_MAX_ACCEPTED_RISK_DAYS' is not a whole number of days. A governance duration that cannot be read is a configuration error — it is never clamped or defaulted." ;;
+		esac
+		_armax=$(cw_decimal "$SS_MAX_ACCEPTED_RISK_DAYS")
+		[ "$_armax" -ge 1 ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$SS_MAX_ACCEPTED_RISK_DAYS is not a usable duration (must be >= 1)."
+		[ "$_armax" -le "$AR_MAX_DAYS_CEILING" ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$_armax exceeds the absolute ${AR_MAX_DAYS_CEILING}-day ceiling. Configuration may TIGHTEN this policy, never loosen it."
+		[ "$_armax" -le "$AR_MAX_DAYS_DEFAULT" ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$_armax exceeds the ${AR_MAX_DAYS_DEFAULT}-day policy maximum. Configuration may TIGHTEN this policy, never loosen it."
+	fi
+	# regulated tightens to 30 days; strict keeps the 90-day default. A caller-supplied value
+	# is honoured only when it is STRICTER than the mode's own maximum.
+	case "$MODE" in
+		regulated) [ "$_armax" -le "$AR_MAX_DAYS_REGULATED" ] || _armax="$AR_MAX_DAYS_REGULATED" ;;
+	esac
+	AR_MAX_DAYS="$_armax"
+	log_info "accepted-risks: maximum validity window ${AR_MAX_DAYS} days (mode=$MODE, source=$( [ "${SS_MAX_ACCEPTED_RISK_DAYS+set}" = "set" ] && printf 'SS_MAX_ACCEPTED_RISK_DAYS' || printf 'policy default' ))"
+
+	# The window is measured from approved_at for an APPROVED record (that is when the
+	# exception was authorised), and from created_at otherwise. A record with neither cannot
+	# be bounded at all.
+	# Empty fields are emitted as "-": TAB is an IFS *whitespace* character, so `read` with
+	# IFS=tab COLLAPSES consecutive tabs and silently shifts every later field into the wrong
+	# variable. A placeholder keeps the columns aligned.
+	_arw=$(jq -r '(.risks // [])[]
+		| [ (.id // "?"), (.status // "-"), (.created_at // "-"), (.approved_at // "-"), (.expires_at // "-") ]
+		| map(if . == "" then "-" else . end) | join("\t")' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	_arwrc=0
+	_artab2="$(printf '\t')"
+	_artoday=$(cw_today_utc) || die_cfg "no trusted UTC date is available to judge accepted-risk validity windows"
+	_artodayn=$(cw__days "$_artoday")
+	while IFS="$_artab2" read -r _wid _wst _wcre _wapp _wexp; do
+		[ -n "$_wid" ] || continue
+		# Only APPROVED records suppress anything, so only they are bounded here.
+		[ "$_wst" = "approved" ] || continue
+		[ "$_wapp" = "-" ] && _wapp=""
+		[ "$_wcre" = "-" ] && _wcre=""
+		[ "$_wexp" = "-" ] && _wexp=""
+		_wfrom="$_wapp"
+		[ -n "$_wfrom" ] || _wfrom="$_wcre"
+		if [ -z "$_wfrom" ] || [ -z "$_wexp" ]; then
+			# A LEGACY record (v1.1: no approved_at, no created_at) carries no authorisation
+			# date, so its window cannot be measured at all. The assurance modes refuse it —
+			# an unbounded exception is exactly what this policy exists to prevent — while the
+			# visibility modes report it as the migration debt it is (see the accepted-risk
+			# schema v2 migration policy in docs/).
+			case "$MODE" in
+				strict | regulated)
+					log_error "accepted-risks: record $_wid is approved but carries no approved_at or created_at, so its validity window cannot be bounded. '$MODE' requires a bounded exception — migrate the record to accepted-risk schema v2."
+					_arwrc=1 ;;
+				*)
+					log_warn "accepted-risks: DEPRECATED — record $_wid has no approved_at/created_at, so its ${AR_MAX_DAYS}-day validity window cannot be enforced. This is tolerated in '$MODE' only; strict and regulated refuse it. Migrate to accepted-risk schema v2." ;;
+			esac
+			continue
+		fi
+		if ! cw__valid_date "$_wfrom"; then
+			log_error "accepted-risks: record $_wid: '$_wfrom' is not a real calendar date"; _arwrc=1; continue
+		fi
+		_wfromn=$(cw__days "$_wfrom"); _wexpn=$(cw__days "$_wexp")
+		# A future authorisation date is a pre-positioned approval, not clock skew.
+		if [ "$_wfromn" -gt $((_artodayn + 1)) ]; then
+			_wlbl=created_at; [ -n "$_wapp" ] && _wlbl=approved_at
+			log_error "accepted-risks: record $_wid: $_wlbl '$_wfrom' is in the future (today is $_artoday UTC, clock-skew tolerance 1d)"
+			_arwrc=1; continue
+		fi
+		if [ $((_wexpn - _wfromn)) -gt "$AR_MAX_DAYS" ]; then
+			log_error "accepted-risks: record $_wid: validity window $_wfrom..$_wexp is $((_wexpn - _wfromn)) days, over the ${AR_MAX_DAYS}-day maximum for mode '$MODE'. Renew with a NEW record that supersedes this one — do not extend the original approval."
+			_arwrc=1
+		fi
+	done <<EOF
+$_arw
+EOF
+	[ "$_arwrc" -eq 0 ] || die_cfg "accepted-risk records exceed the governed validity window in $ACCEPTED_RISKS_FILE"
+
 	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
 	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
 	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")
