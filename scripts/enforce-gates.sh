@@ -555,6 +555,69 @@ AR_FINDING_DETAIL=""   # "gate|id|rule_id|files-csv" per finding-scope record
 
 if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 	jq -e . "$ACCEPTED_RISKS_FILE" >/dev/null 2>&1 || die_cfg "accepted-risks file is not valid JSON: $ACCEPTED_RISKS_FILE"
+	# Accepted-risk input CHANGES RELEASE DECISIONS, so it is validated as executable policy
+	# before any record is counted or matched. Previously only "is it JSON?" was checked and the
+	# rest was ad-hoc jq with `|| true`, so a jq error over a malformed record produced an EMPTY
+	# suppression set rather than a clear configuration failure — safe by accident, but it hid
+	# governance corruption and made the loaded/invalid counts disagree with the file.
+	_ar_bad=$(jq -r --arg today "$TODAY" '
+		def isdate: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+		def realdate:
+			# Reject lexicographically-orderable impossibilities such as 9999-99-99, which sort
+			# far into the future and therefore never expire.
+			(.[5:7] | tonumber) as $m | (.[8:10] | tonumber) as $d
+			| ($m >= 1 and $m <= 12 and $d >= 1 and $d <= 31);
+		# A repository-relative path built from an explicit safe character set: this rejects
+		# absolute paths, traversal, control characters, whitespace, quotes and glob
+		# metacharacters in one rule rather than trying to enumerate what is dangerous.
+		def safepath:
+			type == "string" and (length > 0)
+			# A leading `./` is a legitimate spelling of the same repository-relative path and
+			# is normalised away before matching, so accept it here rather than rejecting a
+			# record for punctuation.
+			and test("^([.]/)?[A-Za-z0-9][A-Za-z0-9._/+-]*$")
+			and (test("[.][.]") | not);
+		[ (.risks // []) | to_entries[]
+		  | .key as $i | .value as $r
+		  | [
+			(if ($r | type) != "object" then "record \($i): not an object" else empty end),
+			(if ($r.id // "") == "" then "record \($i): missing id" else empty end),
+			(if ($r.gate // "") == "" then "record \($i) (\($r.id // "?")): missing gate" else empty end),
+			(if ($r.status // "") | IN("approved","pending","rejected","expired") | not
+				then "record \($r.id // $i): unknown status \"\($r.status // "")\"" else empty end),
+			(if ($r.scope // "finding") | IN("finding","gate") | not
+				then "record \($r.id // $i): unknown scope \"\($r.scope)\"" else empty end),
+			(if ($r.expires_at // "") | isdate | not
+				then "record \($r.id // $i): expires_at is not YYYY-MM-DD" else empty end),
+			(if (($r.expires_at // "") | isdate) and (($r.expires_at) | realdate | not)
+				then "record \($r.id // $i): expires_at \"\($r.expires_at)\" is not a real date" else empty end),
+			(if ($r.review_at // null) != null and (($r.review_at | isdate | not) or ($r.review_at | realdate | not))
+				then "record \($r.id // $i): review_at is not a real YYYY-MM-DD date" else empty end),
+			(if ($r.files // null) != null and (($r.files | type) != "array")
+				then "record \($r.id // $i): files must be an array" else empty end),
+			(if ($r.rule_ids // null) != null and (($r.rule_ids | type) != "array")
+				then "record \($r.id // $i): rule_ids must be an array" else empty end),
+			(if ($r.components // null) != null and (($r.components | type) != "array")
+				then "record \($r.id // $i): components must be an array" else empty end),
+			(if ($r.fingerprints // null) != null and (($r.fingerprints | type) != "array")
+				then "record \($r.id // $i): fingerprints must be an array" else empty end),
+			(($r.files // [])[] | select(safepath | not) | "record \($r.id // $i): unsafe file pattern \"\(.)\" (absolute, traversal, or control characters)"),
+			(($r.rule_ids // [])[] | select(type != "string") | "record \($r.id // $i): rule_ids must contain strings"),
+			(($r.components // [])[] | select(type != "string") | "record \($r.id // $i): components must contain strings"),
+			(($r.fingerprints // [])[] | select(type != "string") | "record \($r.id // $i): fingerprints must contain strings")
+		  ] | .[] ]
+		+ ( [ (.risks // [])[] | .id // "" ] | group_by(.) | map(select(length > 1)) | map("duplicate record id \"\(.[0])\"") )
+		+ ( [ (.risks // [])[] | select((.status // "") == "approved" and ((.expires_at // "") >= $today)) ]
+			| group_by(.gate)
+			| map(select((map(select((.scope // "finding") == "gate")) | length) > 0
+					and (map(select((.scope // "finding") == "finding")) | length) > 0)
+				| "gate \(.[0].gate): both a BROAD (scope:gate) and a finding-scoped record are active — conflicting suppression identity") )
+		| .[]' "$ACCEPTED_RISKS_FILE" 2>&1) || _ar_bad="accepted-risks file could not be evaluated (malformed structure)"
+	if [ -n "$_ar_bad" ]; then
+		log_error "accepted-risks file is INVALID: $ACCEPTED_RISKS_FILE"
+		printf '%s\n' "$_ar_bad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "  - $_l"; done
+		die_cfg "accepted-risk input changes release decisions; refusing to enforce against an invalid governance file"
+	fi
 	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
 	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
 	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")
@@ -1572,9 +1635,53 @@ json_finding_ids() {
 	done
 }
 
+# --- report publication (atomic, validated, paired) ---------------------------------------
+# The report set IS the release-decision evidence. Both writers used to redirect straight to
+# their final path: the JSON destination was truncated before generation finished and validated
+# only after it had already replaced the previous report, the Markdown was never validated at
+# all, a symlinked destination redirected the write out of the reports directory, and a failure
+# between the two left callers reading a JSON and a Markdown that described different runs.
+#
+# Everything is staged next to the destination, validated, and published together at the end.
+REPORT_TMPDIR=""
+_report_cleanup() { [ -n "$REPORT_TMPDIR" ] && rm -rf -- "$REPORT_TMPDIR" 2>/dev/null || true; }
+trap '_report_cleanup' EXIT INT TERM HUP
+
+# report_dest_ok <path> — refuse a destination that is not a plain file we may replace.
+report_dest_ok() {
+	_rd=$(dirname -- "$1")
+	[ -d "$_rd" ] || die_cfg "report directory does not exist: $_rd"
+	[ -L "$_rd" ] && die_cfg "report directory is a symlink: $_rd"
+	if [ -e "$1" ] || [ -L "$1" ]; then
+		[ -L "$1" ] && die_cfg "refusing to write the enforcement report through a symlink: $1"
+		[ -d "$1" ] && die_cfg "enforcement report destination is a directory: $1"
+		[ -f "$1" ] || die_cfg "enforcement report destination is not a regular file (FIFO/device?): $1"
+	fi
+	return 0
+}
+
+# report_stage — create the staging directory inside OUTPUT_DIR so the final renames are atomic.
+report_stage() {
+	[ -n "$REPORT_TMPDIR" ] && return 0
+	ensure_dir "$OUTPUT_DIR"
+	REPORT_TMPDIR=$(mktemp -d "$OUTPUT_DIR/.sentinel-shield-report.XXXXXX") \
+		|| die_cfg "could not create a staging directory in $OUTPUT_DIR"
+	return 0
+}
+
+# report_publish <staged> <final> — replace atomically after the destination is proven safe.
+report_publish() {
+	report_dest_ok "$2"
+	chmod 0644 "$1" 2>/dev/null || true
+	mv -- "$1" "$2" || die_cfg "could not publish the enforcement report at $2"
+	log_info "wrote $2"
+	return 0
+}
+
 # write_json — write the json output report.
 write_json() {
-	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
+	report_stage
+	_f="$REPORT_TMPDIR/sentinel-shield-enforcement.json"
 	{
 		printf '{\n'
 		printf '  "version": "1.0",\n'
@@ -1615,13 +1722,16 @@ write_json() {
 		printf '\n  ]\n'
 		printf '}\n'
 	} > "$_f"
-	jq -e . "$_f" >/dev/null 2>&1 || die_cfg "internal error: produced invalid enforcement JSON ($_f)"
-	log_info "wrote $_f"
+	# Validate the STAGED file: an invalid report must never have replaced a valid one.
+	jq -e . "$_f" >/dev/null 2>&1 || die_cfg "internal error: produced invalid enforcement JSON (staged at $_f)"
+	jq -e '(.result != null) and (.mode != null) and ((.failed_gates | type) == "array")' "$_f" >/dev/null 2>&1 \
+		|| die_cfg "internal error: staged enforcement JSON is missing its result/mode/failed_gates contract"
 }
 
 # write_markdown — write the markdown output report.
 write_markdown() {
-	_f="$OUTPUT_DIR/sentinel-shield-enforcement.md"
+	report_stage
+	_f="$REPORT_TMPDIR/sentinel-shield-enforcement.md"
 	_result_up=$(printf '%s' "$RESULT" | tr '[:lower:]' '[:upper:]')
 	{
 		printf '# Sentinel Shield — Gate Enforcement\n\n'
@@ -1829,14 +1939,35 @@ write_markdown() {
 			printf -- '2. Tighten the mode in .sentinel-shield/profile.yaml as the project matures.\n'
 		fi
 	} > "$_f"
-	log_info "wrote $_f"
+	# The Markdown was previously published unvalidated; at minimum it must be non-empty and
+	# carry the verdict, so a truncated render cannot masquerade as the decision record.
+	[ -s "$_f" ] || die_cfg "internal error: staged enforcement Markdown is empty ($_f)"
+	grep -q "^## Overall result: " "$_f" || die_cfg "internal error: staged enforcement Markdown carries no verdict ($_f)"
 }
 
+# Generate everything FIRST, then publish as one set: a failure while rendering the second
+# format can no longer leave a JSON and a Markdown describing different runs.
 case "$FORMAT" in
 	json) write_json ;;
 	markdown) write_markdown ;;
 	all) write_json; write_markdown ;;
 esac
+# Prove EVERY destination is safe before replacing ANY of them: publishing the JSON and then
+# failing on the Markdown would leave the pair describing different runs, which is the failure
+# mode this pairing exists to prevent.
+case "$FORMAT" in
+	json | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
+esac
+case "$FORMAT" in
+	markdown | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
+esac
+case "$FORMAT" in
+	json | all) report_publish "$REPORT_TMPDIR/sentinel-shield-enforcement.json" "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
+esac
+case "$FORMAT" in
+	markdown | all) report_publish "$REPORT_TMPDIR/sentinel-shield-enforcement.md" "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
+esac
+_report_cleanup
 
 log_info "Enforcement complete (mode=$MODE, result=$RESULT, exit=$EXIT)."
 exit "$EXIT"
