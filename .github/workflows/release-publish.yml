@@ -104,9 +104,11 @@ jobs:
           # tagged tree first, else from the default branch. Missing notes FAIL the job —
           # silently skipping publication is what left tags without releases.
           if [ ! -f "$NOTES" ]; then
-            git fetch --quiet --depth=1 origin "$BR" 2>/dev/null || true
-            if git show "FETCH_HEAD:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null \
-               || git show "origin/${BR}:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null; then
+            # Fetch into an EXPLICIT ref. `FETCH_HEAD` is whatever the last fetch in this job
+            # left behind — including the earlier tag fetch — so reading notes from it could
+            # take them from an unintended ref. The refspec below names exactly one source.
+            git fetch --quiet --depth=1 origin "+refs/heads/${BR}:refs/remotes/origin/${BR}" 2>/dev/null || true
+            if git show "refs/remotes/origin/${BR}:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null; then
               NOTES="${RUNNER_TEMP}/${TAG}-notes.md"
             else
               echo "::error::release notes for '$TAG' not found in the tagged commit or on '$BR' (expected docs/${TAG}-release-notes.md). Merge the notes, then re-run this workflow via workflow_dispatch with tag=$TAG."
