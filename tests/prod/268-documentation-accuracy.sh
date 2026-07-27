@@ -203,8 +203,15 @@ fi
 # focused_test_violations in EVERY mode. Prose saying "off by default in existing modes"
 # tells an adopter upgrading changes no gate outcome, which is false. Published release
 # notes are excluded: they are immutable historical records of what was said at the time.
-_offclaim=$(grep -rln 'off by default in existing modes' "$ROOT"/docs/*.md "$ROOT/README.md" 2>/dev/null \
-	| grep -v -- '-release-notes\.md$' || true)
+# `grep -r "$ROOT"/docs/*.md` is a shell glob over TOP-LEVEL files only — `-r` never sees a
+# nested directory. Walk the whole docs tree so a stale claim under docs/<subdir>/ cannot hide.
+_offclaim=$(find "$ROOT/docs" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort |
+	{ xargs grep -l 'off by default in existing modes' 2>/dev/null || true; } |
+	grep -v -- '-release-notes\.md$' || true)
+if grep -q 'off by default in existing modes' "$ROOT/README.md" 2>/dev/null; then
+	_offclaim="$_offclaim
+$ROOT/README.md"
+fi
 if [ -n "$_offclaim" ]; then
 	fail "these docs still claim the v2.2 gate families are off by default in existing modes: $(printf '%s' "$_offclaim" | tr '\n' ' ')"
 else

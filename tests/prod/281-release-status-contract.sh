@@ -163,7 +163,10 @@ else
 		# before the summary and before every remaining check).
 		D=$(mkrepo c3b); mutate "$D" '.superseded = [] | .consumer_ref = {kind: "tag", value: "v3.1.0"}'
 		check "an empty superseded array is accepted" "$(frc "$D" contract)" 0
-		_out=$(cd "$D" && sh "$VALIDATOR" contract 2>&1 || true)
+		# --repo-root/--status, exactly as frc() does: the validator resolves its paths from
+		# its OWN location, so `cd` into the fixture would have run this against the real
+		# repository (whose superseded array is non-empty) and passed for the wrong reason.
+		_out=$(sh "$VALIDATOR" contract --repo-root "$D" --status "$D/config/release-status.json" 2>&1 || true)
 		case "$_out" in
 			*"validate-release-status: contract PASSED"*) pass "  the run reaches its summary (no set -e abort)" ;;
 			*) fail "  the run did not reach its summary: $_out" ;;

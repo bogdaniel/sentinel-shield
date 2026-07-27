@@ -25,18 +25,177 @@
       "description": "owner/name of the repository that owns these releases."
     },
     "current": {
-      "$ref": "#/$defs/release",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "tag",
+        "commit",
+        "published"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full 40-hex commit the tag targets. Short SHAs are rejected: they are ambiguous."
+        },
+        "stage": {
+          "enum": [
+            "alpha",
+            "beta",
+            "rc",
+            "ga"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "engine-only",
+            "framework-validated",
+            "full-platform"
+          ]
+        },
+        "published": {
+          "type": "boolean",
+          "description": "TRUE only when a GitHub Release exists for `tag`. A pushed Git tag alone is NOT publication."
+        },
+        "published_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "release_url": {
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Repository-relative release-notes path."
+        }
+      },
       "description": "The current stable release. `published: true` asserts a real GitHub Release exists and is verifiable."
     },
     "superseded": {
       "type": "array",
       "description": "Previously current releases of the same major line, newest first. No active status document may present any of these as latest.",
       "items": {
-        "$ref": "#/$defs/release"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "tag",
+          "commit",
+          "published"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+          },
+          "tag": {
+            "type": "string",
+            "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "Full 40-hex commit the tag targets. Short SHAs are rejected: they are ambiguous."
+          },
+          "stage": {
+            "enum": [
+              "alpha",
+              "beta",
+              "rc",
+              "ga"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "engine-only",
+              "framework-validated",
+              "full-platform"
+            ]
+          },
+          "published": {
+            "type": "boolean",
+            "description": "TRUE only when a GitHub Release exists for `tag`. A pushed Git tag alone is NOT publication."
+          },
+          "published_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "release_url": {
+            "type": "string",
+            "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Repository-relative release-notes path."
+          }
+        }
       }
     },
     "prior_supported_line": {
-      "$ref": "#/$defs/release",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "tag",
+        "commit",
+        "published"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+        },
+        "tag": {
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "Full 40-hex commit the tag targets. Short SHAs are rejected: they are ambiguous."
+        },
+        "stage": {
+          "enum": [
+            "alpha",
+            "beta",
+            "rc",
+            "ga"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "engine-only",
+            "framework-validated",
+            "full-platform"
+          ]
+        },
+        "published": {
+          "type": "boolean",
+          "description": "TRUE only when a GitHub Release exists for `tag`. A pushed Git tag alone is NOT publication."
+        },
+        "published_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "release_url": {
+          "type": "string",
+          "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Repository-relative release-notes path."
+        }
+      },
       "description": "Latest release of the prior still-supported major line (v1.x)."
     },
     "consumer_ref": {
@@ -118,64 +277,6 @@
       "items": {
         "type": "string",
         "minLength": 1
-      }
-    }
-  },
-  "$defs": {
-    "release": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "version",
-        "tag",
-        "commit",
-        "published"
-      ],
-      "properties": {
-        "version": {
-          "type": "string",
-          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
-        },
-        "tag": {
-          "type": "string",
-          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$"
-        },
-        "commit": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{40}$",
-          "description": "Full 40-hex commit the tag targets. Short SHAs are rejected: they are ambiguous."
-        },
-        "stage": {
-          "enum": [
-            "alpha",
-            "beta",
-            "rc",
-            "ga"
-          ]
-        },
-        "scope": {
-          "enum": [
-            "engine-only",
-            "framework-validated",
-            "full-platform"
-          ]
-        },
-        "published": {
-          "type": "boolean",
-          "description": "TRUE only when a GitHub Release exists for `tag`. A pushed Git tag alone is NOT publication."
-        },
-        "published_at": {
-          "type": "string",
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
-        },
-        "release_url": {
-          "type": "string",
-          "pattern": "^https://[A-Za-z0-9.-]+/[^ ]+/releases/tag/[^ ]+$"
-        },
-        "notes": {
-          "type": "string",
-          "description": "Repository-relative release-notes path."
-        }
       }
     }
   }

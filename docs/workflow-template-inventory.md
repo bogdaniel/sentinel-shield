@@ -7,7 +7,16 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 > **Pinning status (applies to all consumer templates):** third-party actions/images carry
 > version tags or `YOUR_ORG`/TODO placeholders by default — **not digest-pinned**. The consumer
 > must pin to SHAs/digests before production ([`pinned-tool-references.md`](pinned-tool-references.md)).
-> ALL workflows and templates are SHA-pinned: **131 of 131** `uses:` lines across `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). An earlier revision of this line claimed only `ci-self-test.yml` was pinned.
+> **What IS pinned:** every GitHub **Action reference** — **131 of 131** `uses:` lines across
+> `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced
+> fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). The count is asserted against
+> the repository by `tests/prod/268-documentation-accuracy.sh`, so it cannot go stale.
+>
+> **What is NOT pinned by this claim:** container **images** and the Sentinel Shield
+> **ref** (`SENTINEL_SHIELD_REF`) in consumer templates. Scanner images are governed
+> separately by `config/scanner-images.json`; the engine ref is the consumer's decision and
+> is validated by `scripts/validate-release-status.sh`. Do not read "SHA-pinned" as
+> "nothing left to pin before production" — see the paragraph above.
 
 ---
 

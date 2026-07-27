@@ -249,7 +249,9 @@ not.
 > **Additive engine capability, released in `v2.2.0`** (engine-only). Its gate keys are additive, but
 > only SOME of them are off until you opt in — `changed_lines_coverage_violations` already enforces
 > from `baseline` once its evidence exists, and `focused_test_violations` enforces in every mode. The
-> per-gate mode matrix is [`gate-resolution.md`](gate-resolution.md). Adopt it the same
+> per-gate mode matrix is [`gate-resolution.md`](gate-resolution.md). **If you already run `strict` or
+> `regulated`, upgrading can block you on the first run** — those modes enable several of these gates
+> by default. Preflight in report-only before promoting the engine. Adopt it the same
 > report-only-first way as every other gate. Full reference:
 > [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
@@ -273,10 +275,12 @@ code) live in a **separate counter channel** from security and default to **non-
 ## 221 — Adopting architecture governance (v2.1)
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). Architecture governance is not
-> wholly disabled in existing modes: `architecture_violations` enforces from `baseline`, and the new
-> `missing_architecture_evidence` gate is the part that waits for `strict`. The per-gate mode matrix
-> is [`gate-resolution.md`](gate-resolution.md). Adopt it the same report-only-first way as every
-> other gate. Full reference: [`architecture-governance.md`](architecture-governance.md).
+> wholly disabled in existing modes: `architecture_violations` keeps its existing `baseline`-upward
+> defaults, and the new `missing_architecture_evidence` gate is the part that waits for `strict`. The
+> per-gate mode matrix is [`gate-resolution.md`](gate-resolution.md). **If you already run `strict` or
+> `regulated`, missing architecture evidence starts blocking on the first run after upgrading** —
+> preflight in report-only. Adopt it the same report-only-first way as every other gate. Full
+> reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.

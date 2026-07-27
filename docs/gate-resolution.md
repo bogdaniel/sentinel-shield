@@ -118,8 +118,16 @@ them non-blocking except strict (install-script + network) and regulated (all).
 ## Engineering quality gates (v2.1)
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). These six gate keys are additive
-> to the resolver: existing gates and their mode defaults above are **unchanged**, and consumers may
-> ignore them entirely. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> to the resolver: existing gates and their mode defaults above are **unchanged**.
+>
+> **Upgrade impact — read this before upgrading a `strict` or `regulated` consumer.** "Additive" means
+> no existing gate changed, NOT that nothing new can block you: the mode matrices below enable several
+> of these gates in `strict` and `regulated`, and `changed_lines_coverage_violations` and
+> `focused_test_violations` enforce from `baseline` and report-only respectively once their evidence
+> exists. A consumer already running `strict`/`regulated` can therefore see NEW blocking outcomes on
+> the first run after upgrading. Preflight with `--mode report-only` (or
+> `SENTINEL_SHIELD_FAIL_ON_*=false`) on one branch before promoting the engine.
+> Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family is a **separate counter channel** from security (the two are never
 folded together). The resolver emits these alongside the canonical keys, uppercased and prefixed

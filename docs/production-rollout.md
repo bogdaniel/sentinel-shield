@@ -78,9 +78,10 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > and blocks from `baseline`; `strict` adds `missing_architecture_evidence`
 > (`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`), so absent/unavailable/errored expected
 > evidence blocks too; `regulated` keeps that and additionally requires the raw architecture reports to
-> be retained as evidence. `architecture_violations` already enforces from `baseline`; it is the
-> evidence gate that `strict` adds ([`gate-resolution.md`](gate-resolution.md)). Adopt it
-> report-only-first via
+> be retained as evidence. To be exact about what v2.2.0 changed: `architecture_violations` is the
+> CANONICAL gate and keeps its existing blocking defaults (`baseline` upward) — upgrading does not
+> disable it — while `missing_architecture_evidence` is the NEW gate, and it is the one `strict` adds
+> ([`gate-resolution.md`](gate-resolution.md)). Adopt it report-only-first via
 > `.sentinel-shield/architecture-policy.yaml`. See [`architecture-governance.md`](architecture-governance.md).
 
 Architecture-governance rollout ramp (same shape as every other gate):

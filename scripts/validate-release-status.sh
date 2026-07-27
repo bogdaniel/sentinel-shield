@@ -220,6 +220,10 @@ check_contract() {
 		[ -f "$REPO_ROOT/$_f" ] || fail "DECLARED_FILE_MISSING — $_f is declared in the contract but does not exist"
 	done
 	pass "declared status surfaces and workflow templates exist"
+	# Report through fail(), never through the exit status: a check whose last command
+	# happens to be false must not abort the run (and truncate every later check)
+	# under `set -e`.
+	return 0
 }
 
 # ============================================================================
@@ -254,6 +258,10 @@ check_docs() {
 	else
 		pass "stale-latest sweep over $_swept active document(s)"
 	fi
+	# Report through fail(), never through the exit status: a check whose last command
+	# happens to be false must not abort the run (and truncate every later check)
+	# under `set -e`.
+	return 0
 }
 
 # ============================================================================
@@ -277,6 +285,10 @@ check_changelog() {
 	_newest=$(grep -E '^## \[[0-9]' "$_cl" | head -n1 | sed -E 's/^## \[([^]]+)\].*/\1/')
 	if [ "$_newest" = "$CUR_VERSION" ]; then pass "newest released CHANGELOG section is [$CUR_VERSION]"
 	else fail "CHANGELOG_SECTION_MISMATCH — newest released section is [$_newest] but current release is $CUR_VERSION"; fi
+	# Report through fail(), never through the exit status: a check whose last command
+	# happens to be false must not abort the run (and truncate every later check)
+	# under `set -e`.
+	return 0
 }
 
 # ============================================================================
@@ -295,6 +307,10 @@ check_templates() {
 		done
 		if [ "$_bad" -eq 0 ]; then pass "$_f pins $REF_VALUE"; fi
 	done
+	# Report through fail(), never through the exit status: a check whose last command
+	# happens to be false must not abort the run (and truncate every later check)
+	# under `set -e`.
+	return 0
 }
 
 # ============================================================================
@@ -355,6 +371,10 @@ check_published() {
 	else
 		fail "GITHUB_RELEASE_ABSENT_OR_INVALID — $REPO_NAME declares $CUR_TAG published but no valid GitHub Release was verified (a pushed tag is not a release; backfill with the release-publish workflow_dispatch recovery path)"
 	fi
+	# Report through fail(), never through the exit status: a check whose last command
+	# happens to be false must not abort the run (and truncate every later check)
+	# under `set -e`.
+	return 0
 }
 
 case "$MODE" in

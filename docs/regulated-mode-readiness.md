@@ -47,8 +47,11 @@ channel** from security. These are **not** accepted-risk-suppressible. See
 [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 Regulated also completes **Architecture Governance v2 (v2.1)** — an additive engine capability
-**released in `v2.2.0`** (engine-only). `architecture_violations` enforces from `baseline`; the
-evidence gate is what strict and regulated add ([`gate-resolution.md`](gate-resolution.md)).
+**released in `v2.2.0`** (engine-only). `architecture_violations` enforces from `baseline` and
+regulated keeps it; `missing_architecture_evidence` is the new gate regulated adds on top
+([`gate-resolution.md`](gate-resolution.md)). **Upgrade impact:** regulated is itself an opt-in, so a
+consumer already running it can see NEW blocking outcomes on the first run after upgrading — preflight
+in report-only before promoting the engine.
 Sentinel Shield enforces architecture governance through normalized architecture evidence.
 Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
 producers. Custom architecture tests can also emit the same contract. Regulated keeps the strict

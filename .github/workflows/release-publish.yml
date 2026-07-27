@@ -132,10 +132,35 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -eu
-          OBJ=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha') || OBJ=""
-          [ -n "$OBJ" ] || { echo "::warning::could not resolve the tag object for $TAG"; exit 0; }
-          V=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '.verification.verified' 2>/dev/null) || V="unknown"
-          R=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '.verification.reason' 2>/dev/null) || R="unknown"
+          # FAIL CLOSED. This step exists to PROVE the GitHub-side verification state, and it
+          # used to `exit 0` on any API failure — a rate limit, a transient 5xx or a token
+          # scope problem skipped the only signature check in the workflow and publication
+          # continued. Every other integrity check here fails closed; so does this one.
+          # Transient failures get three attempts before the run is refused.
+          OBJ=""
+          for _try in 1 2 3; do
+            OBJ=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null) || OBJ=""
+            [ -n "$OBJ" ] && break
+            sleep $((_try * 5))
+          done
+          if [ -z "$OBJ" ]; then
+            echo "::error::could not resolve the tag object for $TAG after 3 attempts. The signature-verification state is UNKNOWN, and an unknown integrity check is not a passed one — refusing to publish."
+            exit 1
+          fi
+          # ONE call for both fields: two calls can observe inconsistent state (and double the
+          # API usage against the same rate limit that made this fail open before).
+          VR=""
+          for _try in 1 2 3; do
+            VR=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '"\(.verification.verified)|\(.verification.reason)"' 2>/dev/null) || VR=""
+            [ -n "$VR" ] && break
+            sleep $((_try * 5))
+          done
+          if [ -z "$VR" ]; then
+            echo "::error::could not read the signature-verification state for $TAG after 3 attempts — refusing to publish on an unknown integrity check."
+            exit 1
+          fi
+          V=${VR%%|*}
+          R=${VR#*|}
           if [ "$V" = true ]; then
             echo "tag $TAG: signature GitHub-verified"
             exit 0
