@@ -92,7 +92,18 @@ split|pr|templates/workflows/sentinel-shield-pr-fast.yml
 split|main|templates/workflows/sentinel-shield-main.yml
 split|scheduled|templates/workflows/sentinel-shield-scheduled.yml
 split|scheduled|templates/workflows/sentinel-shield-dependency-check.yml"
-[ -n "$WORKFLOWS" ] && WORKFLOW_MAP=$(for _w in $WORKFLOWS; do for _s in pr main scheduled; do printf 'custom|%s|%s\n' "$_s" "$_w"; done; done)
+if [ -n "$WORKFLOWS" ]; then
+	# A user-supplied --workflow path is checked HERE, before any coverage decision. A path
+	# the tool cannot read must fail loudly: silently reporting "no producer" for a file that
+	# was never opened turns a typo into a security finding (or, worse, hides one).
+	for _w in $WORKFLOWS; do
+		case "$_w" in
+			/*) [ -f "$_w" ] || { log_error "--workflow file not found: $_w"; exit 2; } ;;
+			*) [ -f "$REPO_ROOT/$_w" ] || [ -f "$_w" ] || { log_error "--workflow file not found: $_w (looked in '$REPO_ROOT/$_w' and '$_w')"; exit 2; } ;;
+		esac
+	done
+	WORKFLOW_MAP=$(for _w in $WORKFLOWS; do for _s in pr main scheduled; do printf 'custom|%s|%s\n' "$_s" "$_w"; done; done)
+fi
 
 # variants_for_stage <stage> — the variants that ship a workflow for this stage.
 variants_for_stage() {
@@ -112,14 +123,47 @@ fail() { FAILURES=$((FAILURES + 1)); [ "$FORMAT" = text ] && printf '  FAIL  %s\
 # runs from `^  <job>:` to the next key at the same indent, which is how a GitHub workflow
 # nests jobs; slicing by indent keeps this dependency-free (no yq needed to read a template).
 workflow_section() {
-	_ws_f="$REPO_ROOT/$1"; _ws_job="${2:-}"
-	[ -f "$_ws_f" ] || return 0
+	# An ABSOLUTE path became "$REPO_ROOT//tmp/…", `[ -f ]` failed, and the function returned
+	# nothing — so the tool reported "no producer" for a file it never opened, and the
+	# negative control asserting that passed for the wrong reason.
+	case "$1" in
+		/*) _ws_f="$1" ;;
+		*) if [ -f "$REPO_ROOT/$1" ]; then _ws_f="$REPO_ROOT/$1"; else _ws_f="$1"; fi ;;
+	esac
+	_ws_job="${2:-}"
+	if [ ! -f "$_ws_f" ]; then
+		log_error "workflow file not found: $1 (resolved '$_ws_f') — refusing to report 'no producer' for a file that was never read"
+		exit 2
+	fi
 	if [ -z "$_ws_job" ]; then cat "$_ws_f"; return 0; fi
 	awk -v job="$_ws_job" '
 		$0 ~ "^  " job ":[[:space:]]*$" { inb = 1; print; next }
 		inb && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { inb = 0 }
 		inb { print }
 	' "$_ws_f"
+}
+
+# workflow_superseded <file[#job]> <report-path> — 0 when every reference to <report-path> in
+# that workflow section comes BEFORE the run-tool-plan invocation.
+#
+# This is the ONLY safe form of a runner/workflow duplication, and it is safe for a proven
+# reason: scripts/run-tool-plan.sh removes a tool's declared report immediately before
+# invoking its runner (B17) and classifies status only from artifacts produced by that
+# invocation. So a workflow step that writes the same path EARLIER is redundant work whose
+# output is discarded, while a step that writes it LATER overwrites the runner's evidence —
+# a genuine stale-report hazard, and still a failure.
+workflow_superseded() {
+	_wsp_e="$1"; _wsp_path="$2"
+	_wsp_job=""; _wsp_f="$_wsp_e"
+	case "$_wsp_e" in *"#"*) _wsp_job="${_wsp_e#*#}"; _wsp_f="${_wsp_e%%#*}" ;; esac
+	_wsp_sec=$(workflow_section "$_wsp_f" "$_wsp_job")
+	_wsp_plan=$(printf '%s\n' "$_wsp_sec" | grep -n 'run-tool-plan\.sh' | head -n1 | cut -d: -f1)
+	# No run-tool-plan in this section: the runner is never executed here, so the workflow
+	# step is the SOLE producer at this stage and there is nothing to race.
+	[ -n "$_wsp_plan" ] || return 0
+	_wsp_last=$(printf '%s\n' "$_wsp_sec" | grep -Fn "$_wsp_path" | tail -n1 | cut -d: -f1)
+	[ -n "$_wsp_last" ] || return 1
+	[ "$_wsp_last" -lt "$_wsp_plan" ]
 }
 
 # workflow_producers <report-path> <stage> <variant> — echo the workflow (file[#job]) entries
@@ -183,11 +227,23 @@ for _p in $PROFILES; do
 					continue
 				fi
 				if [ "$_wfn" -gt 0 ]; then
-					# codeql is the documented exception: the workflow produces SARIF into a
-					# separate directory and the runner EXPORTS it to the report path, so both
-					# legitimately mention the path family without racing.
-					if printf '%s' "$_wfp" | grep -q . && grep -Fq "$_report" "$REPO_ROOT/$_runner" 2>/dev/null; then
+					# codeql is the DOCUMENTED exception, and it is now written as one: the
+					# workflow uploads SARIF through the CodeQL action into a separate
+					# directory and the runner EXPORTS it to the report path, so both mention
+					# the path without racing.
+					#
+					# The previous condition was "the runner file mentions the report path" —
+					# true of EVERY runner that writes its own output, so it absolved almost
+					# every ambiguous pairing and turned the stale-report check into a no-op.
+					# (`printf '%s' "$_wfp" | grep -q .` was also always true here: _wfn > 0.)
+					if [ "$_k" = "codeql" ] && grep -Fq "$_report" "$REPO_ROOT/$_runner" 2>/dev/null; then
 						pass "$_p/$_s/$_v/$_k: producer=runner:$_runner (exports into $_report)"
+					elif _all_before=1; for _wf1 in $_wfp; do
+							workflow_superseded "$_wf1" "$_report" || _all_before=0
+						done; [ "$_all_before" -eq 1 ]; then
+						# Redundant, not racy: every workflow reference precedes run-tool-plan,
+						# which deletes the report before the runner writes it.
+						pass "$_p/$_s/$_v/$_k: producer=runner:$_runner (workflow step(s) [$(printf '%s' "$_wfp" | tr '\n' ' ')] write $_report BEFORE run-tool-plan removes it — redundant work, superseded)"
 					else
 						fail "$_p/$_s/$_v/$_k: AMBIGUOUS producer — runner '$_runner' AND workflow step(s) [$(printf '%s' "$_wfp" | tr '\n' ' ')] both target $_report; run-tool-plan deletes the workflow's report before the runner runs"
 					fi

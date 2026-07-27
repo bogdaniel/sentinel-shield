@@ -169,7 +169,15 @@ jobs:
             --profile "$PROFILE" --target . --stage main --output-dir reports/raw
       - name: Build summary + enforce
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --profile "$(grep -E '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env | head -n1 | sed 's/^SENTINEL_SHIELD_PROJECT_TYPE=//')" --stage main --target . --raw-dir reports/raw --output reports/security-summary.json
+          set -eu
+          # Same fallback as the run-tool-plan step above: an EMPTY --profile silently drops
+          # the whole tool-policy overlay, so --stage would be inert and required-tool
+          # enforcement would vanish. Re-deriving it without the fallback is how that
+          # happened; without `set -eu` a failed extraction or a failed build then let
+          # enforce-gates run against a stale or missing summary.
+          PROFILE=$(grep -E '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env 2>/dev/null | head -n1 | sed 's/^SENTINEL_SHIELD_PROJECT_TYPE=//')
+          [ -n "$PROFILE" ] || PROFILE=laravel-react-docker
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --profile "$PROFILE" --stage main --target . --raw-dir reports/raw --output reports/security-summary.json
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # preserve raw reports even when the gate fails on real findings

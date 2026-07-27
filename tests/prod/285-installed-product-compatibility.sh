@@ -252,6 +252,23 @@ for _p in $PROFILES; do
 done
 [ "$_diff" -eq 0 ] && pass "the split and combined main gates produce the same required reports"
 
+# --- CodeRabbit round 2: a --workflow path the tool never read ----------------
+# workflow_section resolved "$REPO_ROOT/$1" unconditionally, so an ABSOLUTE path became
+# "$REPO_ROOT//tmp/…", `[ -f ]` failed and the function returned nothing — the tool then
+# reported "no producer" for a file it never opened, and the control asserting that passed
+# for the wrong reason. A typo must never be able to masquerade as "no producers".
+_c=0; sh "$ROOT/scripts/verify-producer-coverage.sh" --workflow "/nonexistent/definitely-not-here.yml" >/dev/null 2>&1 || _c=$?
+check "a nonexistent --workflow path exits 2, not 'no producer'" "$_c" 2
+_tmpwf=$(mktemp -d)/wf.yml; mkdir -p "$(dirname "$_tmpwf")"
+printf 'name: probe\njobs:\n  probe:\n    steps:\n      - run: echo reports/raw/gitleaks.json\n' > "$_tmpwf"
+_c=0; sh "$ROOT/scripts/verify-producer-coverage.sh" --workflow "$_tmpwf" >/dev/null 2>&1 || _c=$?
+if [ "$_c" -eq 2 ]; then
+	fail "an ABSOLUTE --workflow path that EXISTS is still treated as unreadable"
+else
+	pass "an absolute --workflow path is read from where it actually is"
+fi
+rm -rf "$(dirname "$_tmpwf")"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '285-installed-product-compatibility: ALL CHECKS PASSED\n'
