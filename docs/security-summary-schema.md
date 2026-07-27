@@ -319,8 +319,17 @@ from raw artifacts — see below and [`scanner-normalization.md`](scanner-normal
 per-tool collectors over `reports/raw/*.json` and merges them:
 
 - **`summary` counts** = the sum of every collector's count for that key.
-- **`tools.<tool>`** = each collector's `tool_report` (carrying a `status` of
-  `pass`/`fail`/`unavailable`).
+- **`tools.<channel>`** = the normalised CHANNEL view. Several producers may feed one
+  channel (`php-cs-fixer` and `php-style` both emit `php_style`), so the channel's own
+  fields come from the **highest-severity** contributor with ties broken by producer
+  name — registry order can never change the result — and **every** contributor is kept
+  under `tools.<channel>.producers` with its own producer id, report path, SHA-256 and
+  status. Two producers emitting one channel with no registered merger is a
+  configuration failure (exit 2): a silently overwritten report cannot explain the
+  aggregate counts it still contributes to.
+- **`build`** = `operation_id` (CI run id and attempt, or a local timestamp+pid) and
+  `inputs`, the SHA-256 of every raw report actually consumed. The summary states which
+  bytes it was derived from.
 - **`evidence`** = set by file existence: `reports/sbom.spdx.json` and
   `reports/release-evidence.md`.
 - **`summary.missing_sbom` / `summary.missing_release_evidence`** = the inverse of
@@ -336,13 +345,33 @@ per-tool collectors over `reports/raw/*.json` and merges them:
 (ran, advisory), `skipped` (intentionally not run), `unavailable` (no/empty raw
 artifact). Enforcement reads `summary`, not `tools`.
 
-### Consistency rules
+### Report paths
 
-The builder guarantees (and self-checks) that `summary.missing_sbom ==
-not evidence.sbom.present`, `summary.missing_release_evidence ==
-not evidence.release_evidence.present`, and `summary.expired_exceptions ==
-exceptions.expired`. A contradiction aborts with exit 2 — no inconsistent summary is
-written.
+A profile-declared `report` is consumed **exactly**: it must be a repository-relative
+path under `reports/raw/`, and its directory components are preserved when it is
+resolved against the actual raw directory (`--raw-dir`, e.g. downloaded CI artifacts).
+Absolute paths, `..`, backslash separators, glob and other unsafe characters, and a
+symlinked artifact all fail closed (exit 2). A missing declared report is **never**
+satisfied by a same-basename file elsewhere in the raw tree.
+
+### Publication and consistency rules
+
+The builder assembles the summary in a staging directory inside the reports directory,
+validates it **there**, and publishes it by atomic rename only after proving the
+destination is safe (no symlink, directory, FIFO/device or missing parent). A second
+concurrent builder is refused rather than raced (`reports/.security-summary.lock`, an
+atomic `mkdir`). Any validation failure leaves the **previous** summary untouched and
+publishes nothing.
+
+Validation covers the structural contract (`version`, `gate_contract_version`,
+`generated_at`, `stage`, `project`, `source`, `summary`, `tools`, `exceptions`,
+`evidence`, `build` present and correctly typed; every `summary` value a number or a
+boolean; every `tools` entry an object) and the consistency rules: `summary.missing_sbom
+== not evidence.sbom.present`, `summary.missing_release_evidence == not
+evidence.release_evidence.present`, and `summary.expired_exceptions >=
+exceptions.expired` (it aggregates the exceptions file **and** any collector-reported
+expiry). A contradiction aborts with exit 2 — no inconsistent summary is written, and
+none ever appears at the published path.
 
 > The collectors are a **first-pass, conservative** normalization layer. Severity
 > mappings and tool output shapes vary by version and will need tuning; this is not

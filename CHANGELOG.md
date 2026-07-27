@@ -15,6 +15,42 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — security-summary build integrity (#235, #236, #238)
+
+- **No collector report is silently overwritten (#235).** `.tools` was built with
+  `reduce .[] as $c ({}; .[$c.tool] = $c.tool_report)`, so two producers emitting one channel
+  name overwrote each other while **both** stayed in the aggregate counts — a clean report
+  could replace a failing one and the details no longer explained the numbers. Producer
+  identity (`php-cs-fixer`) is now separate from the normalised channel (`php_style`): every
+  contributor is preserved under `tools.<channel>.producers` with its report path, SHA-256 and
+  status; the channel's own fields come from the highest-severity contributor with ties broken
+  by producer name, so **registry order cannot change the result**; and a duplicate emit name
+  with no registered merger is a configuration failure naming both producers.
+- **Declared report paths are consumed exactly (#236).** The builder reduced each
+  profile-declared report to `$RAW_DIR/$(basename …)`, discarding every directory: same-basename
+  reports in different contexts collided, a missing report could be satisfied by an unrelated
+  artifact, and an absolute or traversing declared path was never checked because only its last
+  component survived. Paths are now validated as repository-relative under `reports/raw/`, keep
+  their directories when resolved against `--raw-dir`, and fail closed on absolute, traversing,
+  backslash-separated, glob/unsafe-character and **symlinked** artifacts.
+- **The summary is published atomically after full validation (#238).** jq wrote straight to the
+  final path: the previous summary was truncated before generation began, the self-check ran on
+  a file that had **already** replaced it, a symlinked destination redirected the write, and
+  concurrent builders raced with no interlock. The summary is now assembled in a staging
+  directory inside the reports directory, validated there against the structural contract and
+  the consistency rules, and published by atomic rename only after the destination is proven
+  safe. A second builder is refused via an atomic `mkdir` lock. Any failure leaves the previous
+  summary untouched.
+- **The summary states what produced it.** New `build.operation_id` (CI run id and attempt, or a
+  local timestamp+pid) and `build.inputs`, the SHA-256 of every raw report actually consumed.
+  Both are additive and documented in `schemas/security-summary.schema.json`.
+- **New `tests/prod/294-summary-build-integrity.sh`** — producer preservation and checksums,
+  worst-status channel resolution, write-order independence, an unregistered duplicate emit name
+  refused, four unsafe declared paths, a same-basename artifact not satisfying a missing nested
+  report, a symlinked artifact refused, symlink/directory destinations, a held lock, staging and
+  lock cleanup, and failure injection at assembly (a non-numeric summary value, a contradictory
+  evidence boolean) each leaving the previous summary byte-identical.
+
 ### Changed — control-waiver records are auditable approvals (#225, #226) **[breaking: waiver file `version` "1" → "2"]**
 
 - **A waiver now has an identity (#225).** It was a boolean fact about a *tool key*:
