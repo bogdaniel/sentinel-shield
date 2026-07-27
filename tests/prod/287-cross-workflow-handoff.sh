@@ -292,6 +292,26 @@ grep -q 'needs:' templates/workflows/sentinel-shield.yml \
 	&& pass "the default managed workflow still uses the same-run needs: topology" \
 	|| fail "the default managed workflow no longer uses the same-run topology"
 
+# --- CodeRabbit round 2: a nested decoy manifest, and the flattened layout ----
+# `! -name <basename>` excluded EVERY file with the manifest's name at any depth, so a decoy
+# at reports/sentinel-shield-artifact-manifest.json — not the real manifest, not listed in
+# .files — never reached the unverified-files check.
+D=$(mkcase decoy)
+printf '{"schema_version":"1","files":[]}\n' > "$D/artifact/reports/sentinel-shield-artifact-manifest.json"
+check "a nested decoy manifest is NOT accepted as verified content" "$(vrc "$D" --expected-run-id 42)" 1
+check "  and is reported as unverified content" "$(reason "$D")" "ARTIFACT_UNVERIFIED_FILES"
+
+# upload-artifact roots the archive at the least common ancestor of the uploaded paths, so a
+# real handoff arrives FLAT (no reports/ prefix). The verifier must accept that layout
+# instead of failing every real handoff on a directory level.
+D=$(mkcase flat)
+mv "$D/artifact/reports/security-summary.json" "$D/artifact/security-summary.json"
+rmdir "$D/artifact/reports"
+rm -f "$D/artifact/sentinel-shield-artifact-manifest.json"
+sh "$MANIFEST_TOOL" --dir "$D/artifact" --repository acme/app --run-id 42 \
+	--commit "$COMMIT" --workflow sentinel-shield >/dev/null 2>&1
+check "the FLAT artifact layout verifies" "$(vrc "$D" --expected-run-id 42)" 0
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '287-cross-workflow-handoff: ALL CHECKS PASSED\n'

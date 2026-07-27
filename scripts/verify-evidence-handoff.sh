@@ -140,7 +140,20 @@ push
 workflow_dispatch"
 [ -n "$EXP_ARTIFACTS" ] || EXP_ARTIFACTS="
 sentinel-shield-security-summary"
-[ -n "$MANIFEST" ] || MANIFEST="$ARTIFACT_DIR/sentinel-shield-artifact-manifest.json"
+# `actions/upload-artifact` roots the archive at the LEAST COMMON ANCESTOR of the uploaded
+# paths, so a producer uploading `reports/security-summary.json` and
+# `reports/sentinel-shield-artifact-manifest.json` yields an archive whose members have NO
+# `reports/` prefix. Both layouts are accepted, and which one was found is reported, so a
+# handoff cannot fail with "missing" for a file that is simply one directory up.
+if [ -z "$MANIFEST" ]; then
+	if [ -f "$ARTIFACT_DIR/sentinel-shield-artifact-manifest.json" ]; then
+		MANIFEST="$ARTIFACT_DIR/sentinel-shield-artifact-manifest.json"
+	elif [ -f "$ARTIFACT_DIR/reports/sentinel-shield-artifact-manifest.json" ]; then
+		MANIFEST="$ARTIFACT_DIR/reports/sentinel-shield-artifact-manifest.json"
+	else
+		MANIFEST="$ARTIFACT_DIR/sentinel-shield-artifact-manifest.json"
+	fi
+fi
 
 REJECTIONS=0
 REASONS=""
@@ -332,8 +345,14 @@ else
 		done
 		# Extra files that the manifest does not cover are unverified content.
 		# POSIX sh: no process substitution — the listed set goes through a temp file.
-		(cd "$ARTIFACT_DIR" && find . -type f ! -name "$(basename "$MANIFEST")" 2>/dev/null) |
-			sed 's|^\./||' | sort > "$TMPDIR_VH/present"
+		# Exclude the manifest by its EXACT path. `! -name <basename>` skipped EVERY file
+		# with that name at any depth, so a nested decoy
+		# (reports/sentinel-shield-artifact-manifest.json, not the real manifest and not
+		# listed in .files) never reached the unverified-files check — unverified content
+		# inside a verified artifact, which is exactly what this rule exists to prevent.
+		_mrel=${MANIFEST#"$ARTIFACT_DIR/"}
+		(cd "$ARTIFACT_DIR" && find . -type f 2>/dev/null) |
+			sed 's|^\./||' | grep -Fxv "$_mrel" | sort > "$TMPDIR_VH/present"
 		jq -r '(.files // [])[].path' "$MANIFEST" | sort > "$TMPDIR_VH/listed"
 		_unlisted=$(grep -Fxv -f "$TMPDIR_VH/listed" "$TMPDIR_VH/present" 2>/dev/null || true)
 		if [ -n "$_unlisted" ]; then
@@ -346,6 +365,11 @@ fi
 
 # --- (14) the summary's OWN metadata binds it to this commit ------------------------------
 _sum="$ARTIFACT_DIR/$SUMMARY_REL"
+# Flattened layout (see the manifest resolution above): try the basename at the artifact
+# root before falling back to a search.
+if [ ! -f "$_sum" ] && [ -f "$ARTIFACT_DIR/$(basename "$SUMMARY_REL")" ]; then
+	_sum="$ARTIFACT_DIR/$(basename "$SUMMARY_REL")"
+fi
 if [ ! -f "$_sum" ]; then
 	_found=$(find "$ARTIFACT_DIR" -type f -name "$(basename "$SUMMARY_REL")" -print -quit 2>/dev/null || true)
 	[ -n "$_found" ] && _sum="$_found"

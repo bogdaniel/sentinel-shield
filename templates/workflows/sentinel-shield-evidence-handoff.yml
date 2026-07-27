@@ -39,6 +39,9 @@
 #     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
 #       with:
 #         name: sentinel-shield-security-summary
+#         # NOTE: upload-artifact roots the archive at the least common ancestor of these
+#         # paths, so the extracted tree is `security-summary.json` (no `reports/` prefix).
+#         # The consumer below accepts either layout; do not assume one.
 #         path: |
 #           reports/security-summary.json
 #           reports/sentinel-shield-artifact-manifest.json
@@ -145,7 +148,18 @@ jobs:
         run: |
           set -eu
           mkdir -p reports
-          cp handoff/artifact/reports/security-summary.json reports/security-summary.json
+          # `actions/upload-artifact` roots the archive at the least common ancestor of the
+          # uploaded paths, so a producer uploading two files under reports/ yields an
+          # archive with NO reports/ prefix. Accept either layout rather than failing every
+          # real handoff on a directory level.
+          if [ -f handoff/artifact/reports/security-summary.json ]; then
+            cp handoff/artifact/reports/security-summary.json reports/security-summary.json
+          elif [ -f handoff/artifact/security-summary.json ]; then
+            cp handoff/artifact/security-summary.json reports/security-summary.json
+          else
+            echo "::error::the verified artifact contains no security-summary.json (looked in handoff/artifact/reports/ and handoff/artifact/)"
+            exit 1
+          fi
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
             --profile .sentinel-shield/profile.yaml --output-dir reports --format all
           # No fallback to the example summary here: this topology exists to consume REAL
