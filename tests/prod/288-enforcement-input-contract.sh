@@ -34,7 +34,16 @@ mkcase() {
 	_d="$WORK/$1"; mkdir -p "$_d"
 	sh "$RESOLVE" --mode "$2" --output-dir "$_d" --format all >/dev/null 2>&1
 	# Evidence-bearing: strict/regulated legitimately refuse a summary with no producers.
-	jq '.tools = {"gitleaks":{"status":"pass"},"tests":{"status":"pass"}}' \
+	# regulated additionally requires a VERIFIED platform attestation (#278), so a fixture
+	# aimed at the INPUT contract carries what a real attested run would produce.
+	jq '.tools = {"gitleaks":{"status":"pass"},"tests":{"status":"pass"}}
+		| .source.trust = "github-actions-attested"
+		| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+			repository:(.source.repository // "example-org/example-repo"),
+			commit:(.source.commit // "0123456789abcdef0123456789abcdef01234567"),
+			workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+			run_id:"1", run_attempt:"1",
+			artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
 		"$ROOT/templates/security-summary.example.json" > "$_d/s.json"
 	printf '%s' "$_d"
 }
