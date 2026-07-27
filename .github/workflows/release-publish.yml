@@ -35,7 +35,7 @@ permissions:
 
 concurrency:
   # Backfill and tag-push publication of the same tag must never interleave.
-  group: release-publish-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  group: release-publish-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:

@@ -128,9 +128,10 @@ evidence, and three informational keys (`architecture_rule_count`, `architecture
 `architecture_context_count`) travel alongside it. All four are optional/additive — older summaries
 stay valid. Mode defaults: `architecture_violations` is `false`/`true`/`true`/`true` and
 `missing_architecture_evidence` is `false`/`false`/`true`/`true` across
-report-only/baseline/strict/regulated. It was released in **`v2.2.0`** (engine-only) and is off by
-default in existing modes, so upgrading changes no gate outcome until you opt in. Full reference:
-[`architecture-governance.md`](architecture-governance.md).
+report-only/baseline/strict/regulated. It was released in **`v2.2.0`** (engine-only). Its keys are additive, but it is
+NOT wholly off in existing modes: the mode defaults above show `architecture_violations` enforcing
+from `baseline`, while the new `missing_architecture_evidence` evidence gate is the part you opt
+into at `strict`. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 > **Evidence honesty.** Architecture governance is supported by engine tests and fixtures
 > (`tests/prod/280-architecture-governance.sh`). Do not claim real consumer proof until a real

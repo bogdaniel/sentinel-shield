@@ -99,7 +99,7 @@ Enforcement is implemented by three scripts and the recorded evidence:
   the active scope.
 
 For the current release the engine's green default-branch CI is recorded in
-`evidence/releases/v2.0.1-ga.json` under `engine_ci[]` and is GitHub-verified via
+`evidence/releases/v2.2.0-ga.json` under `engine_ci[]` and is GitHub-verified via
 `validate-release-evidence.sh --verify-github`. The earlier
 `evidence/releases/v2.0.0-beta.1.json` bundle is retained as historical pre-release
 evidence only.

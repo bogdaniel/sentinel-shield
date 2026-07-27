@@ -157,6 +157,18 @@ else
 		D=$(mkrepo c3); mutate "$D" '.superseded[0].version = "4.0.0" | .superseded[0].tag = "v4.0.0"'
 		check "detects a superseded release newer than current" "$(frc "$D" contract)" 1
 
+		# An EMPTY superseded array is schema-valid: the very first release has nothing to
+		# supersede. It used to abort the validator mid-run (a trailing `[ … ] && pass` as a
+		# function's last command returns the test's status, and `set -e` killed the script
+		# before the summary and before every remaining check).
+		D=$(mkrepo c3b); mutate "$D" '.superseded = [] | .consumer_ref = {kind: "tag", value: "v3.1.0"}'
+		check "an empty superseded array is accepted" "$(frc "$D" contract)" 0
+		_out=$(cd "$D" && sh "$VALIDATOR" contract 2>&1 || true)
+		case "$_out" in
+			*"validate-release-status: contract PASSED"*) pass "  the run reaches its summary (no set -e abort)" ;;
+			*) fail "  the run did not reach its summary: $_out" ;;
+		esac
+
 		D=$(mkrepo c4); mutate "$D" '.consumer_ref.value = "v3.0.0"'
 		check "detects a consumer ref pinned to a superseded release" "$(frc "$D" contract)" 1
 

@@ -197,7 +197,12 @@ check_contract() {
 		fi
 		_i=$((_i + 1))
 	done
-	[ "$_n" -gt 0 ] && pass "$_n superseded release(s) are older than current and well-formed"
+	# `[ test ] && pass ...` as a function's LAST command returns the test's status, so an
+	# empty (schema-valid) superseded array killed the whole validator under `set -e` before
+	# the summary and before any remaining check in `all` mode.
+	if [ "$_n" -gt 0 ]; then
+		pass "$_n superseded release(s) are older than current and well-formed"
+	fi
 
 	# The consumer ref must be immutable and must not point at a superseded release.
 	case "$REF_KIND" in
@@ -288,7 +293,7 @@ check_templates() {
 		for _r in $_refs; do
 			[ "$_r" = "$REF_VALUE" ] || { fail "TEMPLATE_REF_STALE — $_f pins SENTINEL_SHIELD_REF='$_r' (contract requires '$REF_VALUE')"; _bad=1; }
 		done
-		[ "$_bad" -eq 0 ] && pass "$_f pins $REF_VALUE"
+		if [ "$_bad" -eq 0 ]; then pass "$_f pins $REF_VALUE"; fi
 	done
 }
 

@@ -2,8 +2,9 @@
 
 > **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
 > on 2026-07-24 at tag target `99fcd27`. It supersedes **`v2.0.1`** (engine-only maintenance,
-> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families that
-> are off by default in existing modes. The machine-readable source of truth for this status is
+> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families. Which of their gates enforce
+> in which mode varies per gate — several enforce from `baseline` once their evidence exists;
+> the matrix is [`docs/gate-resolution.md`](../docs/gate-resolution.md). The machine-readable source of truth for this status is
 > [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
 > is **no longer the latest** overall release. The v2 line is scoped **engine-only**; **Laravel and
 > Symfony are supported by profiles, fixtures and engine tests but are not independently live-validated
@@ -146,7 +147,9 @@ its six new summary keys (`coverage_threshold_violations`, `coverage_regression`
 and nine informational metrics are **new keys added, not renames/removals** — existing keys and their
 semantics are untouched, and consumers must tolerate the additions. Quality counters are a **separate
 channel** from security; they are **not** accepted-risk-suppressible. This is an **additive engine capability released in
-`v2.2.0`** (engine-only); it is off by default in existing modes. Reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+`v2.2.0`** (engine-only). Its gate keys are additive; which of them enforce in which
+mode is the per-gate matrix in [`gate-resolution.md`](gate-resolution.md) (several enforce
+from `baseline` once their evidence exists). Reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 ---
 
@@ -169,7 +172,8 @@ Custom architecture tests can also emit the same contract. Consistent with §1 a
 - **Separate channel.** Architecture findings are never folded into vulnerability counters.
 
 This is an **additive engine capability released in `v2.2.0`**
-(engine-only); it is off by default in existing modes. Reference:
+(engine-only). `architecture_violations` enforces from `baseline`; the new
+`missing_architecture_evidence` evidence gate is what `strict` adds. Reference:
 [`architecture-governance.md`](architecture-governance.md).
 
 ---

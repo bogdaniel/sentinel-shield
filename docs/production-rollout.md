@@ -65,8 +65,9 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > engineering-quality counter channel (coverage, coverage regression, mutation, complexity,
 > duplication, dead code) follows the **same promotion path** as the modes above: non-blocking in
 > report-only/baseline, `strict` adds coverage threshold/regression + complexity + duplication, and
-> `regulated` adds mutation + dead-code. It is off by default in existing modes;
-> adopt it report-only-first via
+> `regulated` adds mutation + dead-code. Not every gate in the family waits for an opt-in —
+> `changed_lines_coverage_violations` enforces from `baseline` and `focused_test_violations` in
+> every mode ([`gate-resolution.md`](gate-resolution.md)); adopt it report-only-first via
 > `.sentinel-shield/quality-policy.yaml`. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
 >
 > **Architecture Governance v2 (released in `v2.2.0`) — additive engine capability.** Sentinel Shield
@@ -77,8 +78,9 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > and blocks from `baseline`; `strict` adds `missing_architecture_evidence`
 > (`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`), so absent/unavailable/errored expected
 > evidence blocks too; `regulated` keeps that and additionally requires the raw architecture reports to
-> be retained as evidence. It is off by default in existing modes;
-> adopt it report-only-first via
+> be retained as evidence. `architecture_violations` already enforces from `baseline`; it is the
+> evidence gate that `strict` adds ([`gate-resolution.md`](gate-resolution.md)). Adopt it
+> report-only-first via
 > `.sentinel-shield/architecture-policy.yaml`. See [`architecture-governance.md`](architecture-governance.md).
 
 Architecture-governance rollout ramp (same shape as every other gate):

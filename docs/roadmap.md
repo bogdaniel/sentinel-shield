@@ -2,8 +2,9 @@
 
 > **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
 > on 2026-07-24 at tag target `99fcd27`. It supersedes **`v2.0.1`** (engine-only maintenance,
-> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families that
-> are off by default in existing modes. The machine-readable source of truth for this status is
+> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families. Which of their gates enforce
+> in which mode varies per gate — several enforce from `baseline` once their evidence exists;
+> the matrix is [`docs/gate-resolution.md`](../docs/gate-resolution.md). The machine-readable source of truth for this status is
 > [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
 > is **no longer the latest** overall release. The v2 line is scoped **engine-only**; **Laravel and
 > Symfony are supported by profiles, fixtures and engine tests but are not independently live-validated

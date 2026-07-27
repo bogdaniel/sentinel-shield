@@ -38,16 +38,18 @@ to `strict`, regulated **promotes these from advisory to hard blockers**:
 - `repository_health_warnings` — OpenSSF Scorecard / repo-health gates here (`✗/✗/✓`).
 
 Regulated also completes the **engineering-quality gates (v2.1)** — an additive engine capability
-**released in `v2.2.0`** (engine-only). It is off by default in existing modes, so upgrading changes
-no gate outcome until the mode or `gates.fail_on` opts in. On top of the four quality gates strict already blocks (coverage threshold, coverage
+**released in `v2.2.0`** (engine-only). Its gate keys are additive; which of them enforce in which
+mode is the per-gate matrix in [`gate-resolution.md`](gate-resolution.md) (several enforce
+from `baseline` once their evidence exists). On top of the four quality gates strict already blocks (coverage threshold, coverage
 regression, complexity, duplication), regulated **additionally enables** `mutation_score_violations`
 and `dead_code_violations` — so all six quality gates block in regulated, in a **separate counter
 channel** from security. These are **not** accepted-risk-suppressible. See
 [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 Regulated also completes **Architecture Governance v2 (v2.1)** — an additive engine capability
-**released in `v2.2.0`** (engine-only). It is off by default in existing modes, so upgrading changes
-no gate outcome until the mode or `gates.fail_on` opts in. Sentinel Shield enforces architecture governance through normalized architecture evidence.
+**released in `v2.2.0`** (engine-only). `architecture_violations` enforces from `baseline`; the
+evidence gate is what strict and regulated add ([`gate-resolution.md`](gate-resolution.md)).
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
 Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
 producers. Custom architecture tests can also emit the same contract. Regulated keeps the strict
 behavior — `architecture_violations` (summed across all producers) and `missing_architecture_evidence`

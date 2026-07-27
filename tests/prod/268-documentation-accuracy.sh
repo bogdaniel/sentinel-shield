@@ -196,6 +196,33 @@ if [ "$_rowchecked" -eq 0 ]; then
 	fail "profile-compatibility table parsed 0 rows — the count check is not actually running"
 fi
 
+# --- "off by default" must not be claimed for the v2.2 gate families ---------
+# The families are ADDITIVE, not uniformly disabled: resolve-gates.sh enables
+# architecture_violations, changed_lines_coverage_violations, acceptance_test_failures,
+# missing_test_evidence, empty_test_suite and debug_code_violations from `baseline`, and
+# focused_test_violations in EVERY mode. Prose saying "off by default in existing modes"
+# tells an adopter upgrading changes no gate outcome, which is false. Published release
+# notes are excluded: they are immutable historical records of what was said at the time.
+_offclaim=$(grep -rln 'off by default in existing modes' "$ROOT"/docs/*.md "$ROOT/README.md" 2>/dev/null \
+	| grep -v -- '-release-notes\.md$' || true)
+if [ -n "$_offclaim" ]; then
+	fail "these docs still claim the v2.2 gate families are off by default in existing modes: $(printf '%s' "$_offclaim" | tr '\n' ' ')"
+else
+	pass "no active doc claims the v2.2 gate families are off by default in existing modes"
+fi
+# The claim is false BECAUSE the resolver enables these in baseline — assert that, so the
+# check above cannot be satisfied by weakening the engine instead of the prose.
+_benv=$(mktemp -d)
+sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >/dev/null 2>&1
+for _g in architecture_violations changed_lines_coverage_violations focused_test_violations; do
+	if grep -q "^SENTINEL_SHIELD_FAIL_ON_$(printf '%s' "$_g" | tr 'a-z' 'A-Z')=true" "$_benv/sentinel-shield-gates.env" 2>/dev/null; then
+		pass "baseline really does enforce $_g (so the prose above must not say otherwise)"
+	else
+		fail "baseline no longer enforces $_g — the doc claim and the engine have swapped places"
+	fi
+done
+rm -rf "$_benv"
+
 if [ "$FAILED" -eq 0 ]; then
 	printf '\n268-documentation-accuracy: ALL CHECKS PASSED\n'
 else

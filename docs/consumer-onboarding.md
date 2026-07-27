@@ -246,9 +246,12 @@ not.
 
 ## 220 — Adopting engineering quality gates (v2.1)
 
-> **Additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in existing
-> modes, so upgrading changes no gate outcome until you opt in. Adopt it the same report-only-first way as every
-> other gate. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only). Its gate keys are additive, but
+> only SOME of them are off until you opt in — `changed_lines_coverage_violations` already enforces
+> from `baseline` once its evidence exists, and `focused_test_violations` enforces in every mode. The
+> per-gate mode matrix is [`gate-resolution.md`](gate-resolution.md). Adopt it the same
+> report-only-first way as every other gate. Full reference:
+> [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality gates (coverage, coverage regression, mutation, complexity, duplication, dead
 code) live in a **separate counter channel** from security and default to **non-blocking** in
@@ -269,8 +272,10 @@ code) live in a **separate counter channel** from security and default to **non-
 
 ## 221 — Adopting architecture governance (v2.1)
 
-> **Additive engine capability, released in `v2.2.0`** (engine-only). It is off by default in existing
-> modes, so upgrading changes no gate outcome until you opt in. Adopt it the same report-only-first way as every
+> **Additive engine capability, released in `v2.2.0`** (engine-only). Architecture governance is not
+> wholly disabled in existing modes: `architecture_violations` enforces from `baseline`, and the new
+> `missing_architecture_evidence` gate is the part that waits for `strict`. The per-gate mode matrix
+> is [`gate-resolution.md`](gate-resolution.md). Adopt it the same report-only-first way as every
 > other gate. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
