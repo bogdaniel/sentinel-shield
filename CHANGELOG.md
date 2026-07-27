@@ -15,6 +15,42 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Changed — control-waiver records are auditable approvals (#225, #226) **[breaking: waiver file `version` "1" → "2"]**
+
+- **A waiver now has an identity (#225).** It was a boolean fact about a *tool key*:
+  `cw_valid_keys` printed every unexpired record's tool and `cw_is_waived` did a membership
+  test, so several records with different owners, approvers, dates and tracking issues
+  collapsed into one waived state — a stale duplicate could keep a control waived after the
+  record meant to replace it expired, and no output could say which approval authorised the
+  waiver. Schema **v2** requires a unique `id` per record, rejects duplicates, and adds an
+  explicit `supersedes` relation: the referenced record must exist, waive the **same** tool,
+  be **strictly older** (which makes a cycle unrepresentable), and be superseded by at most
+  one record. Two records that nothing supersedes may not cover one tool over overlapping
+  windows — that is a configuration failure naming both ids. A superseded record never
+  applies, even inside its own window.
+- **Applied outputs name the approval.** The enforcement JSON carries `waiver_id`, `owner`,
+  `approved_by`, `created_at`, `expires_at` and `tracking_issue` per waived control; the
+  enforcement Markdown row and the console warning name the waiver id; `doctor` prints the
+  full identity on its `WAIVED` line; the maturity report gains a `waiver_id` field.
+- **Waivers are time-boxed for real (#226).** Validation proved the dates were real and
+  ordered and nothing else, so a record dated next year applied the moment its expiry
+  followed it, and a 2099 expiry made a "temporary" waiver permanent. `created_at` may now
+  be at most `CW_MAX_CLOCK_SKEW_DAYS` (default 1) ahead of the trusted UTC date, and
+  `expires_at - created_at` may not exceed `CW_MAX_WAIVER_DAYS` — default **90**, **30** in
+  `regulated`, with a hard 365-day ceiling no environment can raise. Renewal is a new,
+  superseding record rather than an edited date. A record that is not yet effective does not
+  apply. If no trusted UTC date can be read, validation fails closed instead of skipping the
+  time checks.
+- **Migration:** a `version: "1"` file is refused with the fix named — give every record a
+  unique `id` (`^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$`) and set `version` to `"2"`. Records whose
+  window now exceeds the maximum must be reissued, not extended.
+- **New `tests/prod/293-control-waiver-authority.sh`** — identity, duplicates, the full
+  supersession matrix (unknown/self/cross-tool/double/older target, cycle, shadowing,
+  record reordering), the duration boundary at exactly 90 and 91 days, the regulated
+  ceiling, an environment that tries to raise the ceiling, future creation and skew
+  tolerance, leap days, an untrusted clock, and the end-to-end enforcement report naming
+  the waiver it acted on.
+
 ### Fixed — governance input and report output integrity (#223, #228)
 
 - **Accepted-risk records are validated as executable policy (#223).** The file was only checked

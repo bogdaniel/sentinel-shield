@@ -419,26 +419,52 @@ that verdict does **not** depend on `jq` being on `PATH` (absent → success;
 present-but-jq-missing → fail closed; malformed → fail closed).
 
 ```json
-{ "version": "1",
+{ "version": "2",
   "waivers": [
-    { "tool": "phpstan", "owner": "alice", "approved_by": "bob",
+    { "id": "WVR-PHPSTAN-2026-08", "tool": "phpstan", "owner": "alice", "approved_by": "bob",
       "justification": "static-analysis upgrade in flight", "created_at": "2026-08-09",
       "expires_at": "2026-09-08", "tracking_issue": "SEC-123" } ] }
 ```
 
 Rules (fail closed on any violation):
 
-- `version` **must** be the string `"1"` (unsupported/missing/numeric ⇒ rejected).
+- `version` **must** be the string `"2"` (unsupported/missing/numeric ⇒ rejected). A
+  `"1"` file is refused with the migration named: give every record a unique `id` and
+  bump the version. A waiver without an identity cannot be reported, superseded or
+  revoked.
+- `id` must match `^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$` and be **unique** in the file.
+  It is the audit identity: every output that applies a waiver reports it.
 - `tool` must match `^[A-Za-z0-9_.-]+$` — a single shell-safe token, so a value can
   never split into multiple waived controls; whitespace/tabs/slashes/`..`/metachars
-  are rejected.
+  are rejected. No field may contain control characters.
 - `owner` ≠ `approved_by` (no self-approval — enforced in the validator, not just schema).
 - `created_at`/`expires_at` are real calendar dates (`YYYY-MM-DD`), validated with
   POSIX `/bin/sh` arithmetic (portable to `dash`; leading-zero months like `08`/`09`
   are handled). `created_at <= expires_at`.
-- A waiver **applies** only while `expires_at >= today` in **UTC** (a waiver expiring
-  today is valid through the end of that UTC day); expired waivers validate but do not
+- **Time-boxed, and enforced as such.** `created_at` may not be more than
+  `CW_MAX_CLOCK_SKEW_DAYS` (default 1) ahead of the trusted UTC date — a record dated
+  next month is a pre-positioned approval, not clock skew — and
+  `expires_at - created_at` may not exceed `CW_MAX_WAIVER_DAYS` (default **90**;
+  **30** in `regulated`; hard ceiling 365 that no environment can raise). Renew by
+  adding a **new** record that supersedes the old one, never by extending a date.
+- **One authoritative approval per tool.** Two records that nothing supersedes may not
+  cover the same tool over overlapping validity windows; that is a configuration
+  failure naming both ids. Use `"supersedes": "<older-id>"` to make exactly one
+  authoritative — the referenced record must exist, waive the **same** tool, be
+  **strictly older**, and be superseded by at most one record (which also makes a
+  supersession cycle unrepresentable).
+- A waiver **applies** only while it is not superseded and `created_at <= today <=
+  expires_at` in **UTC** (a waiver expiring today is valid through the end of that UTC
+  day). Expired, superseded and not-yet-effective records validate but do not
   downgrade the control.
+- The clock is a trust boundary: if no trusted UTC date can be read, validation fails
+  closed rather than skipping the time checks.
+
+Every consumer reports the approval it acted on, never just "waived": the enforcement
+JSON carries `waiver_id`/`owner`/`approved_by`/`created_at`/`expires_at`/
+`tracking_issue` per waived control, the enforcement Markdown and the console warning
+name the waiver id, `doctor` prints it on the `WAIVED` line, and the maturity report
+adds a `waiver_id` field.
 
 ## Testing Discipline Governance (v2.2.0)
 

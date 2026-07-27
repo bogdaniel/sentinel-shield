@@ -132,7 +132,11 @@ WAIVED_KEYS=""
 # malformed waiver must never skip validation just because jq is absent.
 cw_validate_file "$WAIVERS_FILE" || { log_error "doctor: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
 # Key extraction needs jq; the validity DECISION above does not depend on it.
+# WAIVER_RECS keeps the APPLIED records so a WAIVED line can name the approval that
+# authorised it (#225) instead of only the tool it covers.
+WAIVER_RECS=""
 if command_exists jq; then
+  WAIVER_RECS=$(cw_applied_records "$WAIVERS_FILE" 2>/dev/null || true)
   WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
 fi
 # is_waived <key> — 0 if <key> (tool or one-of group) has a valid, unexpired waiver.
@@ -548,7 +552,7 @@ else
           [ "$inst" = "no" ] && _why="not-installed"
           [ "$cfg" = "no" ] && _why="${_why:+$_why,}not-configured"
           if is_waived "$k"; then
-            waived "required tool '$k' ($_why) — covered by valid control-waiver ($WAIVERS_FILE)"
+            waived "required tool '$k' ($_why) — covered by control-waiver [$(cw_describe "$WAIVER_RECS" "$k")] ($WAIVERS_FILE)"
           else
             REQUIRED_MISSING="$REQUIRED_MISSING $k($_why)"
           fi
@@ -567,7 +571,7 @@ else
         [ "$QUIET" = 1 ] || printf '  one-of %-15s %-12s selected=%s (alts: %s)\n' "$g" "$gstatus" "${gsel:-none}" "$galt"
         if [ "$gstatus" = "unsatisfied" ]; then
           if is_waived "$g"; then
-            waived "required one-of group '$g' (unsatisfied; alts: $galt) — covered by valid control-waiver ($WAIVERS_FILE)"
+            waived "required one-of group '$g' (unsatisfied; alts: $galt) — covered by control-waiver [$(cw_describe "$WAIVER_RECS" "$g")] ($WAIVERS_FILE)"
           else
             REQUIRED_MISSING="$REQUIRED_MISSING $g(one-of-unsatisfied)"
           fi

@@ -12,8 +12,8 @@
   "properties": {
     "version": {
       "type": "string",
-      "const": "1",
-      "description": "Schema version. Only \"1\" is supported; consumers fail closed on anything else."
+      "const": "2",
+      "description": "Schema version. Only \"2\" is supported; consumers fail closed on anything else. Version 2 adds the required unique `id` and the optional `supersedes` relation."
     },
     "waivers": {
       "type": "array",
@@ -25,8 +25,9 @@
   "$defs": {
     "waiver": {
       "type": "object",
-      "description": "A single control-waiver record. All fields are mandatory: a waiver must name the tool, justify itself, identify an owner and an approver, be dated, expire, and link a tracking issue. additionalProperties:false so typos/extra fields are rejected.",
+      "description": "A single control-waiver record. All fields except `supersedes` are mandatory: a waiver must have a unique id, name the tool, justify itself, identify an owner and an approver, be dated, expire, and link a tracking issue. additionalProperties:false so typos/extra fields are rejected.",
       "required": [
+        "id",
         "tool",
         "justification",
         "owner",
@@ -37,6 +38,11 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$",
+          "description": "Stable unique waiver identity (3-64 chars). Reported in every applied output so an audit can say which approval waived the control. Duplicate ids are rejected by the validator."
+        },
         "tool": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_.-]+$",
@@ -62,18 +68,23 @@
           "type": "string",
           "format": "date",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-          "description": "ISO date (YYYY-MM-DD) the waiver was created."
+          "description": "ISO date (YYYY-MM-DD) the waiver was created. Must not be in the future beyond the documented clock-skew tolerance, and expires_at - created_at must not exceed the configured maximum waiver duration."
         },
         "expires_at": {
           "type": "string",
           "format": "date",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
-          "description": "ISO date (YYYY-MM-DD). The waiver only applies while expires_at >= today; expired waivers are ignored and the control fails."
+          "description": "ISO date (YYYY-MM-DD). The waiver only applies while created_at <= today <= expires_at; expired and not-yet-effective waivers are ignored and the control fails."
         },
         "tracking_issue": {
           "type": "string",
           "minLength": 1,
           "description": "Issue/ticket URL or id tracking remediation of the waived control."
+        },
+        "supersedes": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$",
+          "description": "Optional id of the OLDER waiver this record replaces. The referenced record must exist, waive the SAME tool, and have a strictly earlier created_at; a superseded record never applies. Two records for one tool whose validity windows overlap must be related by supersession, otherwise validation fails closed."
         }
       }
     }
