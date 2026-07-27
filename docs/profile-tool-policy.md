@@ -243,8 +243,12 @@ way.
 
 ## 4a. Engineering-quality tool policies (v2.1)
 
-> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
-> modes). Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
+> several of these gates are enabled by the mode matrices — `changed_lines_coverage_violations`
+> from `baseline`, `focused_test_violations` in every mode — so an existing `strict`/`regulated`
+> consumer can be blocked on the first run after upgrading. Per-gate matrix:
+> [`gate-resolution.md`](gate-resolution.md). Full reference:
+> [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family adds tool keys that fold into a **separate counter channel** from
 security (never mixed into `*_vulnerabilities`). They obey the same policy/state machine above:
@@ -293,8 +297,9 @@ satisfying the other's coverage.
 
 ## 4b. Architecture-governance tool policies (v2.1)
 
-> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
-> modes). Full reference: [`architecture-governance.md`](architecture-governance.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
+> several of these gates are enabled by the mode matrices — see
+> [`gate-resolution.md`](gate-resolution.md) for which enforce in which mode. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.

@@ -69,9 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      # Maintained Semgrep image. Pin to a digest (image: semgrep/semgrep@sha256:...)
-      # for reproducibility in sensitive pipelines.
-      image: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # SENTINEL_SHIELD_SEMGREP_IMAGE default; pin by digest before prod
+      # Maintained Semgrep image, DIGEST-pinned from config/scanner-images.json — a version
+      # tag is a mutable registry pointer and would let this job execute changed scanner
+      # bytes with no repository change.
+      image: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

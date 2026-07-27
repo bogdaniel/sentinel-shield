@@ -74,7 +74,8 @@ env:
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
 ```
 
-- **First run:** use the **tag** `v0.1.0` (readable, easy to update).
+- **First run:** use the **tag** `v2.2.0` (readable, easy to update) — the same ref the
+  snippet above pins.
 - **Before production:** replace with a **full commit SHA**, e.g.
   `SENTINEL_SHIELD_REF: 1a2b3c4d…` (40 hex chars), so the ref cannot move under you.
 - **Private Sentinel Shield repo:** add a read token to each

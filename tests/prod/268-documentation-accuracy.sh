@@ -301,9 +301,15 @@ for _pm in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combination
 		*) _pname=$(basename "$(dirname "$_pm")") ;;
 	esac
 	grep -q "Profile: \`$_pname\`" "$ROOT/docs/managed-file-inventory.md" || _invmiss="$_invmiss $_pname"
-	# every managed target declared by the manifest must be listed for that profile
+	# Every managed target must be listed IN THIS PROFILE'S OWN SECTION. Searching the whole
+	# document let a missing row pass because the same target name (`.semgrepignore`) appears
+	# under other profiles — the check would have reported success with the row absent.
+	_sec=$(awk -v p="Profile: \`$_pname\`" '
+		index($0, p) > 0 { inb = 1; next }
+		inb && /^### / { inb = 0 }
+		inb { print }' "$ROOT/docs/managed-file-inventory.md")
 	for _tgt in $(jq -r '(.files // [])[].target' "$_pm" 2>/dev/null); do
-		grep -q "\`$_tgt\`" "$ROOT/docs/managed-file-inventory.md" \
+		printf '%s\n' "$_sec" | grep -q -- "\`$_tgt\`" \
 			|| _invmiss="$_invmiss ${_pname}:${_tgt}"
 	done
 done
@@ -322,8 +328,11 @@ fi
 # notes are excluded: they are immutable historical records of what was said at the time.
 # `grep -r "$ROOT"/docs/*.md` is a shell glob over TOP-LEVEL files only — `-r` never sees a
 # nested directory. Walk the whole docs tree so a stale claim under docs/<subdir>/ cannot hide.
+# Every phrasing of the claim, not just one: the first sweep matched only the exact string
+# "off by default in existing modes", so `(engine-only; off by default in existing modes)` and
+# "additive, off by default in existing modes" shipped straight past it.
 _offclaim=$(find "$ROOT/docs" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort |
-	{ xargs grep -l 'off by default in existing modes' 2>/dev/null || true; } |
+	{ xargs grep -lE 'off by default[^.]{0,40}existing modes' 2>/dev/null || true; } |
 	grep -v -- '-release-notes\.md$' || true)
 if grep -q 'off by default in existing modes' "$ROOT/README.md" 2>/dev/null; then
 	_offclaim="$_offclaim

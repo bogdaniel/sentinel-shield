@@ -96,9 +96,11 @@ env:
 ~~The upstream Sentinel Shield templates ship the **readable tag** form (`semgrep/semgrep:1.165.0`)
 with the digest in a `# or …@sha256:…` comment — readability for the template, digest-pinning as a
 consumer-side production decision. Do not replace the readable tag in the upstream templates with a
-digest.~~ **Superseded from v2.2+:** shipped defaults are digest-pinned and enforced against
+digest.~~ **Superseded from v2.2+:** shipped defaults ARE digest pins, enforced against
 `config/scanner-images.json` by `scripts/validate-scanner-images.sh`; the readable tag survives as
-the `resolved_from` field in the contract and as a comment, not as the executed reference.
+the `resolved_from` field in the contract and as a trailing comment, not as the executed
+reference. Everything below this line describing templates as tag-based is the historical record
+of the superseded policy, not current guidance.
 
 ---
 

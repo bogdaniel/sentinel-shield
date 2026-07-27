@@ -23,7 +23,7 @@ env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v2.2.0                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
-  # Digest-pinned scanner images (resolved 2026-06-10; see docs/scanner-image-digest-pinning.md).
+  # Digest-pinned scanner images (resolved 2026-07-26; see docs/scanner-image-digest-pinning.md).
   # These ARE the shipped defaults: a version tag is a mutable registry pointer, so a tag default
   # would let these workflows execute changed scanner bytes with no repository change. The trailing
   # comment records the readable tag each digest was resolved from.

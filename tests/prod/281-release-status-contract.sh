@@ -62,8 +62,13 @@ check "show rejects a missing --field" "$(rc show)" 2
 # against the real files, not against another copy of the literal.
 _ref=$(jq -r '.consumer_ref.value' "$STATUS")
 _bad=0
+# The validator strips surrounding quotes and a trailing comment before comparing, and t4
+# codifies that `SENTINEL_SHIELD_REF: "v3.1.0"   # comment` is valid — so this assertion must
+# accept the same forms, or a legitimately quoted template fails the suite. The ref is also
+# ESCAPED: interpolated raw, its dots are ERE wildcards.
+_refe=$(printf '%s' "$_ref" | sed 's/[][\\.^$*+?(){}|]/\\&/g')
 for _t in $(jq -r '.active_workflow_templates[]' "$STATUS"); do
-	grep -Eq "^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*${_ref}([[:space:]]|#|\$)" "$ROOT/$_t" || _bad=1
+	grep -Eq "^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*[\"']?${_refe}[\"']?([[:space:]]|#|\$)" "$ROOT/$_t" || _bad=1
 done
 check "every active template pins the contract ref ($_ref)" "$_bad" 0
 

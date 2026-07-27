@@ -254,6 +254,15 @@ check_docs() {
 		done
 	done
 	if [ "$_swept" -eq 0 ]; then
+		# Distinguish "the sweep found nothing to check" from "the sweep could not run".
+		# The document list comes from `git ls-files`, which yields nothing in a tarball or a
+		# vendored copy — that is a MISSING TOOL (exit 3 by the documented contract), not
+		# drift. Reporting it as a contract violation blamed the repository for the absence
+		# of git.
+		if ! git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+			log_error "release-status: cannot enumerate documents — '$REPO_ROOT' is not a git checkout and the docs sweep needs one (exit 3: required tool unavailable)"
+			exit 3
+		fi
 		fail "SWEEP_EMPTY — no active markdown documents were swept (exclusions are too broad)"
 	else
 		pass "stale-latest sweep over $_swept active document(s)"

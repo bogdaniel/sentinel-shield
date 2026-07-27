@@ -345,7 +345,11 @@ if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
         #   .sentinel-shield/**     /.sentinel-shield/**    (explicit recursive glob)
         # Matching only the first two spellings produced a false WARN on a correctly
         # configured project.
-        grep -qE "^/?${_p}/?(\*\*)?/?[[:space:]]*$" "$TARGET/.semgrepignore" 2>/dev/null \
+        # ESCAPE the path first: interpolated raw, a literal `.` (every default path starts
+        # with one) is an ERE wildcard, so the check matched more than it claims — including
+        # a subtly wrong ignore line.
+        _pre=$(printf '%s' "$_p" | sed 's/[][\\.^$*+?(){}|]/\\&/g')
+        grep -qE "^/?${_pre}/?(\*\*)?/?[[:space:]]*$" "$TARGET/.semgrepignore" 2>/dev/null \
           || _ss_unexcluded="$_ss_unexcluded $_p"
       done
       if [ -n "$_ss_unexcluded" ]; then

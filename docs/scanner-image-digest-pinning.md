@@ -144,7 +144,7 @@ from, the immutable digest, and whether the shipped default is the **digest** or
 | Context | Form | Why |
 |---|---|---|
 | **shipped default (Dependency-Check)** | **digest** (`owasp/dependency-check@sha256:ad169904…cc77b9`) | the upstream publishes only a moving tag, so nothing else is reproducible |
-| **shipped default (Semgrep / Gitleaks / Grype / Dockle)** | **immutable version tag** (`1.165.0`, `v8.18.4`, `v0.114.0`, `v0.4.15`) | legible; the digest for each is recorded in the contract for the production override |
+| **shipped default (Semgrep / Gitleaks / Grype / Dockle)** | **digest** — the readable tag (`1.165.0`, `v8.18.4`, `v0.114.0`, `v0.4.15`) survives as `resolved_from` in the contract and as the trailing comment next to each pin | a version tag is a MUTABLE registry pointer: the publisher can retarget it, so a tag default lets a shipped workflow execute changed scanner bytes with no repository change |
 | **local development** | a readable tag override via the same env var | permitted, never the shipped default |
 | **production / release evidence** | **digest** for every scanner | reproducible, tamper-evident, deterministic rollback |
 

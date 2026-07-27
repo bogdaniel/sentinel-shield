@@ -1,0 +1,58 @@
+# Sentinel Shield — Semgrep scope for the hardened-enterprise profile.
+# It extends BOTH the Laravel and the Node stacks, so it carries both scopes.
+# Copy to your repository ROOT as `.semgrepignore`. Semgrep reads it from the scan
+# root, so the Sentinel Shield workflows run Semgrep with `-w /src` (repo root).
+#
+# SCOPE: this file affects SEMGREP / SAST ONLY. It does NOT change:
+#   composer audit · npm audit · Trivy (fs/deps) · Syft SBOM · Gitleaks · Hadolint
+# Those still scan dependencies, lockfiles, the whole tree, and the Dockerfile.
+# (See docs/semgrep-scoping.md.)
+#
+# Goal: scan application code (app/, Modules/, resources/js, routes/, config/);
+# do NOT treat vendored/generated/cache assets as application code.
+
+# PHP dependencies + framework runtime
+vendor/
+storage/
+bootstrap/cache/
+
+# JS toolchain + build output
+node_modules/
+public/build/
+public/hot
+dist/
+build/
+coverage/
+
+# Published / compiled vendor front-end assets (NOT your source)
+public/vendor/
+public/js/filament/
+# Uncomment if you publish more vendor JS/CSS under public/ that you do not author:
+# public/js/
+# public/css/
+
+# The embedded Sentinel Shield checkout is TOOLING, not application code. The managed
+# workflows check the engine out here (SENTINEL_SHIELD_PATH) and run Semgrep from the
+# repository root, so without this exclusion Semgrep analyses the engine's own scripts,
+# examples and INTENTIONALLY INSECURE test fixtures as if they were your application —
+# inflating findings, scan time and report size, and making your gate depend on which
+# Sentinel Shield version you pinned. Keep this in sync with SENTINEL_SHIELD_PATH.
+tools/sentinel-shield/
+
+# Do NOT exclude your application source — keep resources/js, app/, Modules/ scanned.
+
+# ---------------------------------------------------------------------------
+# hardened-enterprise ALSO extends the `node` stack (npm-audit, playwright
+# acceptance, JS quality producers), so the Laravel-only scope under-excluded
+# Node/React build output and Semgrep scanned generated JS/TS as application
+# code. These are the rules `profiles/node/.semgrepignore` carries that the
+# Laravel scope does not.
+# ---------------------------------------------------------------------------
+.cache/
+.next/
+.turbo/
+generated/
+lib-cov/
+out/
+**/*.generated.js
+**/*.generated.ts

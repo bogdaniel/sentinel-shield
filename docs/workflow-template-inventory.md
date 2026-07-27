@@ -4,9 +4,11 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 [`product-status.md`](product-status.md). All templates use minimal `permissions:` and have **no**
 `pull_request_target` trigger (enforced by `self-test workflow-sanity`).
 
-> **Pinning status (applies to all consumer templates):** third-party actions/images carry
-> version tags or `YOUR_ORG`/TODO placeholders by default — **not digest-pinned**. The consumer
-> must pin to SHAs/digests before production ([`pinned-tool-references.md`](pinned-tool-references.md)).
+> **Pinning status (applies to all consumer templates).** Actions are SHA-pinned and scanner
+> images are DIGEST-pinned in the shipped templates (see below). What still carries a
+> placeholder is the engine source: `SENTINEL_SHIELD_REPOSITORY`/`SENTINEL_SHIELD_REF` are
+> `YOUR_ORG`/TODO until the installer renders them, and the consumer decides which engine ref
+> to pin ([`pinned-tool-references.md`](pinned-tool-references.md)).
 > **What IS pinned:** every GitHub **Action reference** — **145 of 145** `uses:` lines across
 > `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced
 > fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). The count is asserted against
