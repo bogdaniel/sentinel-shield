@@ -23,9 +23,10 @@ env:
   # NOTE: this template runs Semgrep only. gitleaks / actionlint / zizmor run in the main and
   # scheduled gates, so their image variables are deliberately NOT declared here — overriding
   # SENTINEL_SHIELD_GITLEAKS_IMAGE in this file would have no effect because nothing reads it.
-  # Semgrep scanner image — readable tag by default; pin by digest in production (see
-  # docs/scanner-image-digest-pinning.md). Override with the digest form to harden supply chain:
-  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep:1.165.0   # or semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
+  # Semgrep scanner image — DIGEST-pinned by default (config/scanner-images.json). The trailing
+  # comment records the readable tag the digest was resolved from; see
+  # docs/scanner-image-digest-pinning.md. Override the variable to run a different build.
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
 jobs:
   pr-fast:
     runs-on: ubuntu-latest
@@ -67,7 +68,7 @@ jobs:
         # is honored via `-w /src`. Do NOT switch to --config=auto in production — it is noisy.
         continue-on-error: true
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
           # NOTE: gitleaks + actionlint + zizmor are NOT run here — they run in ci-security.yml.

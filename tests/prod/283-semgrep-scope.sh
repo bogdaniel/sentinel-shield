@@ -56,8 +56,21 @@ ignores() {
 PROFILES="laravel symfony php-library node react docker hardened-enterprise node-react laravel-react-docker"
 _covered=0
 for _p in $PROFILES; do
-	_sem=$(sh scripts/resolve-effective-profile.sh --profile "$_p" --format json 2>/dev/null |
-		jq -r '[.tools | to_entries[] | select(.key == "semgrep") | .value.policy] | join("")' 2>/dev/null || printf '')
+	# A resolver crash, an unknown profile or a jq schema change used to collapse into
+	# `_sem=''`, which the case below treats as "this profile does not select Semgrep" — the
+	# profile then passed WITHOUT its ignore file ever being checked. That is fail-open in
+	# the one suite whose job is to make self-scanning impossible to reintroduce unnoticed.
+	_rc=0
+	_eff=$(sh scripts/resolve-effective-profile.sh --profile "$_p" --format json 2>"$WORK/resolve-$_p.err") || _rc=$?
+	if [ "$_rc" -ne 0 ] || [ -z "$_eff" ]; then
+		fail "resolve-effective-profile failed for '$_p' (exit $_rc) — Semgrep scope UNKNOWN, refusing to treat that as 'not selected': $(tail -1 "$WORK/resolve-$_p.err" 2>/dev/null)"
+		continue
+	fi
+	_sem=$(printf '%s' "$_eff" |
+		jq -r '[.tools | to_entries[] | select(.key == "semgrep") | .value.policy] | join("")') || {
+		fail "could not read the semgrep policy out of the resolved profile for '$_p' — refusing to treat an unreadable policy as 'not selected'"
+		continue
+	}
 	_t="$WORK/install-$_p"
 	mkdir -p "$_t"
 	if ! sh scripts/install-baseline.sh --target "$_t" --profile "$_p" --apply >/dev/null 2>&1; then

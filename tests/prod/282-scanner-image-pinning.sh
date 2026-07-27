@@ -176,6 +176,36 @@ _tmpl=$(grep -rlE "$_pattern" templates/ examples/ 2>/dev/null | grep -c . || tr
 case "$_tmpl" in '' | *[!0-9]*) _tmpl=0 ;; esac
 check "no template or example assigns the moving Dependency-Check tag" "$_tmpl" 0
 
+# --- CodeRabbit round 2: the contract cannot be disabled by breaking it ------
+# A malformed contract used to be collapsed into "no contract", which silently switched OFF
+# mutable-tag and digest-drift enforcement in the provenance audit — corrupting the file was
+# a way to disable the check the file exists to perform.
+BAD="$TMPROOT/bad-contract"; mkdir -p "$BAD"
+printf 'not json at all\n' > "$BAD/scanner-images.json"
+_c=0; sh "$VALIDATOR" contract --contract "$BAD/scanner-images.json" >/dev/null 2>&1 || _c=$?
+check "a non-JSON contract is refused as invalid input" "$_c" 2
+printf '{"contract":"sentinel-shield/scanner-images@1","resolved_at":"2026-01-01","mutable_tags":["latest"],"images":{},"templates":["x"]}\n' > "$BAD/scanner-images.json"
+_c=0; sh "$VALIDATOR" contract --contract "$BAD/scanner-images.json" >/dev/null 2>&1 || _c=$?
+check "an EMPTY images object is refused (a contract that checks nothing)" "$_c" 2
+printf '{"contract":"sentinel-shield/scanner-images@1","resolved_at":"2026-01-01","mutable_tags":["latest"],"images":{"SENTINEL_SHIELD_X_IMAGE":{"repository":"a/b"}},"templates":["x"]}\n' > "$BAD/scanner-images.json"
+_c=0; sh "$VALIDATOR" contract --contract "$BAD/scanner-images.json" >/dev/null 2>&1 || _c=$?
+check "an image record missing its digest/pin fields is refused" "$_c" 2
+_c=0; sh "$VALIDATOR" templates --contract "$BAD/scanner-images.json" >/dev/null 2>&1 || _c=$?
+check "  and no mode can run against it" "$_c" 2
+
+# The schema enforces the per-image shape inline (this repo's jq-based validation does not
+# resolve $ref, so a $ref'd definition is not enforced at all).
+check "the scanner-image schema inlines the per-image constraints" \
+	"$(jq -r '(.properties.images.additionalProperties.required // []) | length > 0' "$ROOT/schemas/scanner-images.schema.json")" "true"
+check "  and no \$ref remains in it" \
+	"$(grep -c '"\$ref"' "$ROOT/schemas/scanner-images.schema.json" || true)" "0"
+
+# Shipped defaults are digest pins, not version tags.
+check "every shipped image default is digest-pinned" \
+	"$(jq -r '[.images[] | select(.default_pin != "digest")] | length' "$ROOT/config/scanner-images.json")" "0"
+check "  and every default_reference is a digest reference" \
+	"$(jq -r '[.images[] | select((.default_reference | test("@sha256:[0-9a-f]{64}$")) | not)] | length' "$ROOT/config/scanner-images.json")" "0"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '282-scanner-image-pinning: ALL CHECKS PASSED\n'

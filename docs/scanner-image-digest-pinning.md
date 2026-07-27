@@ -81,9 +81,11 @@ an update (below) and re-validate.
   `SENTINEL_SHIELD_GRYPE_IMAGE`, `SENTINEL_SHIELD_DOCKLE_IMAGE`.
 - ~~Do **not** replace the readable tag in the upstream Sentinel Shield templates with a digest — the
   digest is a consumer-side production decision; templates stay readable + overridable.~~
-  **Superseded** by the v2.2+ approved-image contract below: shipped defaults are digest-pinned
-  (`default_pin: "digest"` in `config/scanner-images.json`) and `scripts/validate-scanner-images.sh`
-  fails any template that ships a mutable tag. The override env vars remain.
+  **Superseded** by the v2.2+ approved-image contract below: **every** shipped image default is now
+  a digest (`default_pin: "digest"` for all entries in `config/scanner-images.json`),
+  `scripts/validate-scanner-images.sh` fails any template that ships a mutable tag, and the readable
+  tag survives as `resolved_from` and as the trailing comment next to each pin. The override env
+  vars remain, so a consumer can still run a different build deliberately.
 
 ## Rollback process
 

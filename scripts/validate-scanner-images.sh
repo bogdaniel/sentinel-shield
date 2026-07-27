@@ -62,6 +62,28 @@ command_exists jq || { log_error "jq is required but was not found"; exit 3; }
 [ -n "$CONTRACT" ] || CONTRACT="$REPO_ROOT/config/scanner-images.json"
 [ -f "$CONTRACT" ] || { log_error "scanner-image contract not found: $CONTRACT"; exit 2; }
 jq -e . "$CONTRACT" >/dev/null 2>&1 || { log_error "scanner-image contract is not valid JSON: $CONTRACT"; exit 2; }
+# Structure BEFORE any mode. A JSON-valid but structurally malformed contract used to reach
+# the modes, where a missing `.images` or a record without a digest read as "nothing to
+# check" — the contract validated by validating nothing.
+_ci_bad=$(jq -r '
+	[ (if (.contract | type) != "string" then "contract must be a string" else empty end),
+	  (if (.resolved_at | type) != "string" then "resolved_at must be a string" else empty end),
+	  (if (.mutable_tags | type) != "array" or ((.mutable_tags | length) == 0) then "mutable_tags must be a non-empty array" else empty end),
+	  (if (.images | type) != "object" or ((.images | length) == 0) then "images must be a non-empty object" else empty end),
+	  (if (.templates | type) != "array" or ((.templates | length) == 0) then "templates must be a non-empty array" else empty end),
+	  ( (.images // {}) | to_entries[]
+	    | .key as $k | .value as $v
+	    | ( [ "repository","resolved_from","digest","default_pin","default_reference" ]
+	        | map(select((($v[.]?) // "") | (type != "string") or (length == 0))) ) as $missing
+	    # SHAPE only. The VALUE rules (full-length digest, default_pin enum, template
+	    # agreement) belong to `contract` mode, which reports them as contract violations
+	    # (exit 1); this pre-check exists so a structurally broken file cannot reach a mode
+	    # and validate by having nothing to look at.
+	    | if ($v | type) != "object" then "images.\($k) must be an object"
+	      elif ($missing | length) > 0 then "images.\($k) missing/empty \($missing | join(","))"
+	      else empty end )
+	] | join("; ")' "$CONTRACT" 2>/dev/null || printf 'contract could not be validated')
+[ -z "$_ci_bad" ] || { log_error "scanner-image contract is structurally invalid: $_ci_bad"; exit 2; }
 
 if [ "$MODE" = show ]; then
 	[ -n "$VAR" ] || { log_error "show: --var is required"; exit 2; }

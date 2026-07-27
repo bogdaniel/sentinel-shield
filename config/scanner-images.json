@@ -19,39 +19,39 @@
       "digest": "sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9",
       "default_pin": "digest",
       "default_reference": "owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9",
-      "rationale": "Dependency-Check publishes only a moving `latest` tag, so a readable tag default meant every adopter executed whatever the tag pointed at that day. The digest below is the one behind `latest` on the recorded date and is the same digest the v0.1.26/v0.1.27/v0.1.30 consumer evidence runs used — it is validated, not merely current."
+      "rationale": "Dependency-Check publishes only a moving `latest` tag, so a readable tag default meant every adopter executed whatever the tag pointed at that day. The digest below is the one behind `latest` on the recorded date and is the same digest the v0.1.26/v0.1.27/v0.1.30 consumer evidence runs used \u2014 it is validated, not merely current."
     },
     "SENTINEL_SHIELD_SEMGREP_IMAGE": {
       "repository": "semgrep/semgrep",
       "resolved_from": "1.165.0",
       "digest": "sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b",
-      "default_pin": "tag",
-      "default_reference": "semgrep/semgrep:1.165.0",
-      "rationale": "An immutable, explicitly versioned upstream tag. Templates keep the readable form for legibility; production pins the digest recorded here."
+      "default_pin": "digest",
+      "default_reference": "semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b",
+      "rationale": "An immutable, explicitly versioned upstream tag. Templates keep the readable form for legibility; production pins the digest recorded here. Shipped default is the DIGEST: a version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default lets shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
     },
     "SENTINEL_SHIELD_GITLEAKS_IMAGE": {
       "repository": "zricethezav/gitleaks",
       "resolved_from": "v8.18.4",
       "digest": "sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba",
-      "default_pin": "tag",
-      "default_reference": "zricethezav/gitleaks:v8.18.4",
-      "rationale": "Versioned upstream tag; digest recorded for the production override."
+      "default_pin": "digest",
+      "default_reference": "zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba",
+      "rationale": "Versioned upstream tag; digest recorded for the production override. Shipped default is the DIGEST: a version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default lets shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
     },
     "SENTINEL_SHIELD_GRYPE_IMAGE": {
       "repository": "anchore/grype",
       "resolved_from": "v0.114.0",
       "digest": "sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28",
-      "default_pin": "tag",
-      "default_reference": "anchore/grype:v0.114.0",
-      "rationale": "Versioned upstream tag; digest recorded for the production override."
+      "default_pin": "digest",
+      "default_reference": "anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28",
+      "rationale": "Versioned upstream tag; digest recorded for the production override. Shipped default is the DIGEST: a version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default lets shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
     },
     "SENTINEL_SHIELD_DOCKLE_IMAGE": {
       "repository": "goodwithtech/dockle",
       "resolved_from": "v0.4.15",
       "digest": "sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9",
-      "default_pin": "tag",
-      "default_reference": "goodwithtech/dockle:v0.4.15",
-      "rationale": "Versioned upstream tag; digest recorded for the production override."
+      "default_pin": "digest",
+      "default_reference": "goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9",
+      "rationale": "Versioned upstream tag; digest recorded for the production override. Shipped default is the DIGEST: a version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default lets shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
     }
   },
   "templates": [

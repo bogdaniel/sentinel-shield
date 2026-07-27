@@ -62,7 +62,22 @@ PLATFORM=$(isolated_tool_platform)
 # copied tree in a fixture may not carry it, and its absence must not turn a provenance audit
 # into a hard error. When present, an executed image is checked against it.
 IMAGE_CONTRACT="$SCRIPT_DIR/../../config/scanner-images.json"
-[ -f "$IMAGE_CONTRACT" ] && jq -e . "$IMAGE_CONTRACT" >/dev/null 2>&1 || IMAGE_CONTRACT=""
+# ABSENT is tolerated (a minimal fixture tree may not carry it). MALFORMED is NOT: a contract
+# that cannot be parsed used to be collapsed into "no contract", which silently switched OFF
+# mutable-tag and digest-drift enforcement — corrupting the file was a way to disable the
+# check that the file exists to perform.
+if [ -f "$IMAGE_CONTRACT" ]; then
+	if ! jq -e . "$IMAGE_CONTRACT" >/dev/null 2>&1; then
+		log_error "scanner-image contract is present but not valid JSON: $IMAGE_CONTRACT — refusing to audit provenance with enforcement silently disabled"
+		exit 2
+	fi
+	if ! jq -e '(.images | type == "object") and ((.images | length) > 0) and (.mutable_tags | type == "array")' "$IMAGE_CONTRACT" >/dev/null 2>&1; then
+		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object and a .mutable_tags array): $IMAGE_CONTRACT"
+		exit 2
+	fi
+else
+	IMAGE_CONTRACT=""
+fi
 ensure_dir "$(dirname "$OUTPUT")"
 TMPV=$(mktemp); TMPR=$(mktemp); TMPP=$(mktemp)
 DPOUT=$(mktemp); DPERR=$(mktemp)
@@ -180,6 +195,10 @@ for tool in $TOOLS; do
 			case "$IMG" in
 				*@sha256:*) ;;
 				*:*) _ic_tag="${IMG##*:}" ;;
+				# A BARE reference carries no tag, and Docker resolves it to `:latest` — the
+				# most mutable tag there is. Leaving _ic_tag empty here skipped the
+				# mutable-tag check entirely for exactly the reference that needs it most.
+				*) _ic_tag="latest" ;;
 			esac
 			if [ -n "$_ic_tag" ] && jq -e --arg t "$_ic_tag" 'any(.mutable_tags[]; . == $t)' "$IMAGE_CONTRACT" >/dev/null 2>&1; then
 				add_violation "$tool" "image-mutable-tag" \
