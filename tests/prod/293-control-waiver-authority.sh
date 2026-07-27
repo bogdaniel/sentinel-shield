@@ -260,7 +260,14 @@ sh "$ROOT/scripts/resolve-gates.sh" --mode regulated --output-dir "$D2" --format
 # regulated refuses a summary in which NO tool produced evidence, so the fixture pairs the
 # unavailable required tool with one that ran: the case under test is the waiver window.
 jq '.tools = {"tests":{"tool":"tests","policy":"required","status":"pass","gate_enforced":true},
-	"phpstan":{"tool":"phpstan","policy":"required","status":"unavailable","gate_enforced":true}}' \
+	"phpstan":{"tool":"phpstan","policy":"required","status":"unavailable","gate_enforced":true}}
+	| .source.trust = "github-actions-attested"
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository // "example-org/example-repo"),
+		commit:(.source.commit // "0123456789abcdef0123456789abcdef01234567"),
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
 	"$ROOT/templates/security-summary.example.json" > "$D2/s.json"
 wf "$D2/cw.json" "[$(rec WVR-LONG phpstan "$(ds -10)" "$(ds +70)")]"
 _c=0

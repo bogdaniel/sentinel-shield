@@ -245,7 +245,16 @@ arrun() {  # arrun <mode> [env-assignment]
 	printf '%s' "$_c"
 }
 mkdir -p "$WORK/w"
-jq '.tools = {"tests":{"status":"pass"}}' "$ROOT/templates/security-summary.example.json" > "$WORK/win-summary.json"
+# regulated requires a VERIFIED platform attestation (#278); the window policy is what these
+# cases are about, so the fixture carries the attestation a real attested run would have.
+jq '.tools = {"tests":{"status":"pass"}}
+	| .source.trust = "github-actions-attested"
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository // "example-org/example-repo"),
+		commit:(.source.commit // "0123456789abcdef0123456789abcdef01234567"),
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' "$ROOT/templates/security-summary.example.json" > "$WORK/win-summary.json"
 
 armk 2026-05-01 2026-07-30 >/dev/null; check "exactly 90 days is accepted in baseline" "$(arrun baseline)" 0
 armk 2026-05-01 2026-07-31 >/dev/null; check "91 days is refused in baseline" "$(arrun baseline)" 2
