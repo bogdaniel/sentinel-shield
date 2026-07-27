@@ -330,11 +330,17 @@ rc=$(enf regulated "$WORK/mae.json")
 	|| fail "regulated should block on missing_architecture_evidence"
 [ "$(enf regulated "$WORK/clean.json")" = "0" ] \
 	&& pass "enforcer(regulated): clean architecture evidence passes" || fail "clean summary should pass in regulated"
-# an OLD summary that omits the key entirely must stay valid (additive, back-compat)
+# An older summary that omits the key is additive back-compat ONLY where the gate is not
+# enforced. missing_architecture_evidence is ENABLED from strict, and "we never recorded whether
+# the evidence exists" is not "the evidence exists" — strict/regulated refuse it, while the
+# visibility modes keep the documented tolerance.
 jq 'del(.summary.missing_architecture_evidence)' "$WORK/clean.json" > "$WORK/old.json"
-[ "$(enf strict "$WORK/old.json")" = "0" ] \
-	&& pass "enforcer(strict): summary without the new key still passes (absent reads as false)" \
-	|| fail "older summary without missing_architecture_evidence must not fail"
+[ "$(enf strict "$WORK/old.json")" = "2" ] \
+	&& pass "enforcer(strict): a summary missing the enabled evidence key is REFUSED" \
+	|| fail "strict accepted a summary with no missing_architecture_evidence field"
+[ "$(enf baseline "$WORK/old.json")" = "0" ] \
+	&& pass "enforcer(baseline): the same summary still enforces (gate not enabled there)" \
+	|| fail "baseline should still accept a summary without the new key"
 
 # --- (9) profile-aware missing architecture evidence --------------------------
 if command -v php >/dev/null 2>&1; then

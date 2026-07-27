@@ -905,6 +905,7 @@ jq -n \
 	--argjson tools "$TOOLSOBJ" \
 	--arg version "1.0" \
 	--arg contract "2.2" \
+	--arg stage "$STAGE" \
 	--arg gen "$TS" \
 	--arg pname "$PNAME" --arg ptype "$PTYPE" --arg crit "$CRIT" \
 	--arg commit "$COMMIT" --arg branch "$BRANCH" --arg workflow "$WORKFLOW" \
@@ -925,6 +926,10 @@ jq -n \
 		# assurance modes refuse it rather than inferring evidence from absent fields.
 		# Additive: consumers that do not know the field ignore it.
 		gate_contract_version: $contract,
+		# The STAGE this summary was built for, when the caller scoped it (--stage). Required-tool
+		# gating is stage-scoped, so the enforcer needs to know that a required tool marked
+		# not-gate-enforced is out of scope for this stage rather than quietly opted out.
+		stage: (if $stage == "" then null else $stage end),
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
 		source: { commit: $commit, branch: $branch, workflow: $workflow },

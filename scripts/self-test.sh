@@ -268,6 +268,15 @@ run_build_case() {
 	printf '%s' "$5" > "$_d/raw/$4"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
 		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+	# This case is about the COLLECTOR -> counter -> gate mapping, so the summary is built
+	# without --profile. The evidence gates need the tool-policy overlay to judge applicability
+	# and the enforcer refuses to certify strict/regulated without it, so add the overlay's
+	# neutral values here rather than letting an unrelated refusal mask the mapping under test.
+	jq '.summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
+		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
+		missing_architecture_evidence:false, missing_test_change_evidence:false,
+		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
+		"$_d/security-summary.json" > "$_d/s.tmp" && mv "$_d/s.tmp" "$_d/security-summary.json"
 	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
 	expect_exit_code "$1" "$3" \
 		sh scripts/enforce-gates.sh \

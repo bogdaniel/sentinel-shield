@@ -61,7 +61,14 @@
     "acceptance_test_failures": 0,
     "missing_test_change_evidence": false,
     "missing_behavior_specification": false,
-    "missing_acceptance_evidence": false
+    "missing_acceptance_evidence": false,
+    "required_tool_failures": 0,
+    "tool_configuration_failures": 0,
+    "tool_execution_failures": 0,
+    "missing_coverage_evidence": false,
+    "missing_test_evidence": false,
+    "empty_test_suite": false,
+    "missing_architecture_evidence": false
   },
   "tools": {
     "gitleaks": {
