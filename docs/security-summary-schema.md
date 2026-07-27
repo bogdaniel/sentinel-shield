@@ -70,7 +70,7 @@ keys and treats every optional key as absent→0.
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
 > several of these gates are enabled by the mode matrices — see
-> [`gate-resolution.md`](gate-resolution.md) for which enforce in which mode. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> [`gate-resolution.md`](gate-resolution.md) for which gates are enforced in which modes. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family adds **optional** summary keys. They are a **separate counter channel**
 from security (never folded into `*_vulnerabilities`), are additive to the schema, and are missing→`0`
@@ -121,7 +121,7 @@ accepted-risk-suppressible.
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
 > several of these gates are enabled by the mode matrices — see
-> [`gate-resolution.md`](gate-resolution.md) for which enforce in which mode. Full reference: [`architecture-governance.md`](architecture-governance.md).
+> [`gate-resolution.md`](gate-resolution.md) for which gates are enforced in which modes. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is
 the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers.

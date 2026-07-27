@@ -108,7 +108,7 @@ severity mapping) is documented in
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
 > several of these gates are enabled by the mode matrices — see
-> [`gate-resolution.md`](gate-resolution.md) for which enforce in which mode. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> [`gate-resolution.md`](gate-resolution.md) for which gates are enforced in which modes. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 Five additional collectors map coverage/mutation/complexity/duplication/dead-code raw reports into the
 engineering-quality summary keys. These are a **separate counter channel** from security — they are
@@ -132,7 +132,7 @@ the quality channel.
 
 > **Additive engine capability, released in `v2.2.0`** (engine-only). The keys are additive, but
 > several of these gates are enabled by the mode matrices — see
-> [`gate-resolution.md`](gate-resolution.md) for which enforce in which mode. Full reference: [`architecture-governance.md`](architecture-governance.md).
+> [`gate-resolution.md`](gate-resolution.md) for which gates are enforced in which modes. Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac
 is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
