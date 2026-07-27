@@ -230,6 +230,50 @@ jq -e '[.risks[] | select(.status != "pending")] | length == 0' templates/accept
 	&& pass "every example record is pending (an example never suppresses)" \
 	|| fail "a shipped example record is not pending and could suppress"
 
+# --- CodeRabbit round 2: an EMPTY dimension constrains nothing ----------------
+# The eligibility filter used `has(…)`, which accepts a record whose every dimension is
+# PRESENT BUT EMPTY, while the matcher treats an empty array as a wildcard. Such a record
+# matched every finding while still reporting as the quiet `scope: finding` — the "one
+# accepted risk silently covers everything" failure this model exists to prevent, reached
+# through an empty array.
+for _gate in unsafe_docker medium_vulnerabilities; do
+	D="$WORK/empty-$_gate"; mkdir -p "$D/reports/raw"
+	jq -n --arg g "$_gate" '{version:"1.1", risks:[{id:"oops", gate:$g, scope:"finding",
+		rule_id:"", rule_ids:[], files:[], components:[], fingerprints:[],
+		owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar.json"
+	jq --arg g "$_gate" '.tools = {"tests":{"status":"pass"}} | .summary[$g] = 2' \
+		"$ROOT/templates/security-summary.example.json" > "$D/s.json"
+	# medium_vulnerabilities is not enabled in baseline; strict enables both gates so the
+	# suppression path is actually reached.
+	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$D" --format env >/dev/null 2>&1
+	_c=0
+	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" \
+		--summary "$D/s.json" --accepted-risks "$D/ar.json" --output-dir "$D" --format json \
+		>"$D/log" 2>&1 || _c=$?
+	if [ "$_c" -eq 0 ]; then
+		fail "$_gate: an all-empty finding-scope record SUPPRESSED the gate (wildcard through an empty array)"
+	else
+		pass "$_gate: an all-empty finding-scope record does not suppress anything"
+	fi
+	if grep -q 'ambiguous' "$D/log"; then
+		pass "  and it is reported as ambiguous rather than silently applied"
+	else
+		fail "  but it was not reported as ambiguous: $(tail -2 "$D/log")"
+	fi
+	# A record that DOES constrain still works — the fix must not disable finding scope.
+	jq -n --arg g "$_gate" '{version:"1.1", risks:[{id:"real", gate:$g, scope:"finding",
+		rule_ids:["DL3018"], files:[], components:[], fingerprints:[],
+		owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved"}]}' > "$D/ar2.json"
+	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" \
+		--summary "$D/s.json" --accepted-risks "$D/ar2.json" --output-dir "$D" --format json \
+		>"$D/log2" 2>&1 || true
+	if grep -q 'ambiguous' "$D/log2"; then
+		fail "  a record constrained by rule_ids alone is wrongly reported as ambiguous"
+	else
+		pass "  a record constrained by rule_ids alone is still finding-scoped"
+	fi
+done
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '286-finding-scoped-suppression: ALL CHECKS PASSED\n'

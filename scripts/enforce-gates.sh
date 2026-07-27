@@ -419,11 +419,25 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 	# Classify each VALID record (approved, unexpired, owner+reason, suppressible gate) by
 	# effective scope. Default scope is "finding".
 	_valid=$(jq -r --arg today "$TODAY" --arg ok "$SUPPRESSIBLE_GATES" '
+	# `ss_constrains` — TRUE only when a finding-scope record actually narrows something.
+	# `has(…)` was the test, and it accepts a record whose every dimension is PRESENT BUT
+	# EMPTY — while the matcher below treats an empty array/string as a wildcard on that
+	# dimension. A record with rule_ids/files/components/fingerprints all set to []
+	# therefore passed the ambiguity check and then matched EVERY finding, while still being
+	# reported as the quiet `scope: finding` rather than the loud `scope: gate`. That is the
+	# "one accepted risk silently covers everything" failure this suppression model exists to
+	# prevent, reached through an empty array.
+	def ss_constrains:
+		(((.rule_id // "") | tostring | length) > 0)
+		or (((.rule_ids // []) | length) > 0)
+		or (((.files // []) | length) > 0)
+		or (((.components // []) | length) > 0)
+		or (((.fingerprints // []) | length) > 0);
 		($ok | split(" ")) as $S
 		| (.risks // [])[]
 		| select(.status == "approved" and ((.expires_at // "") >= $today) and ((.owner // "") != "") and ((.reason // "") != "") and (((.gate // "") | IN($S[]))))
 		| (.scope // "finding") as $scope
-		| (has("rule_id") or has("files") or has("rule_ids") or has("components") or has("fingerprints")) as $hasmatch
+		| (ss_constrains) as $hasmatch
 		| if $scope == "gate" then "gate|\(.gate)|\(.id // "?")"
 		  elif $hasmatch then "finding|\(.gate)|\(.id // "?")|\(.rule_id // "")|\((.files // []) | join(","))"
 		  else "legacy|\(.gate)|\(.id // "?")" end' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
@@ -554,12 +568,20 @@ eval_unsafe_docker() {
 		--slurpfile hado "$_HJ" \
 		--slurpfile base "$_DJ" \
 		--arg today "$TODAY" --argjson total "$_val" '
+		def ss_constrains:
+			(((.rule_id // "") | tostring | length) > 0)
+			or (((.rule_ids // []) | length) > 0)
+			or (((.files // []) | length) > 0)
+			or (((.components // []) | length) > 0)
+			or (((.fingerprints // []) | length) > 0);
 		def norm: sub("^\\./"; "");
 		([ ($risks[0].risks // [])[]
 			| select(.gate == "unsafe_docker" and .status == "approved" and ((.expires_at // "") >= $today)
 				and ((.owner // "") != "") and ((.reason // "") != "")
 				and ((.scope // "finding") == "finding")
-				and (has("rule_id") or has("files") or has("rule_ids"))) ]) as $fs
+				# A record whose every dimension is present but EMPTY constrains nothing and
+				# would match every finding while reporting as the quiet finding scope.
+				and (ss_constrains)) ]) as $fs
 		# Normalize each source into {source, rule_id, file, severity}.
 		| ( [ (($hado[0] // []))[]
 				| select((.level // "" | ascii_downcase) == "error" or (.level // "" | ascii_downcase) == "warning")
@@ -662,6 +684,12 @@ eval_medium_vulnerabilities() {
 	_acct=$(printf '%s' "$_finds" | jq \
 		--slurpfile risks "$ACCEPTED_RISKS_FILE" \
 		--arg today "$TODAY" --argjson total "$_val" '
+		def ss_constrains:
+			(((.rule_id // "") | tostring | length) > 0)
+			or (((.rule_ids // []) | length) > 0)
+			or (((.files // []) | length) > 0)
+			or (((.components // []) | length) > 0)
+			or (((.fingerprints // []) | length) > 0);
 		def norm: (. // "") | tostring | sub("^\\./"; "");
 		. as $finds
 		| ([ ($risks[0].risks // [])[]
@@ -669,7 +697,7 @@ eval_medium_vulnerabilities() {
 				and ((.expires_at // "") >= $today)
 				and ((.owner // "") != "") and ((.reason // "") != "")
 				and ((.scope // "finding") == "finding")
-				and (has("rule_id") or has("rule_ids") or has("files") or has("components") or has("fingerprints"))) ]) as $fs
+				and (ss_constrains)) ]) as $fs
 		| [ $finds[]
 			| . as $f
 			| ( ( first( $fs[]
