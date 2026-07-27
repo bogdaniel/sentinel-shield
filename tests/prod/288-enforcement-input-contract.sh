@@ -197,6 +197,38 @@ D=$(mkcase generic baseline)
 jq '.summary.critical_vulnerabilities = -1' "$D/s.json" > "$D/tmp" && mv "$D/tmp" "$D/s.json"
 check "a malformed generic count still fails closed" "$(enf "$D")" 2
 
+# --- second-reviewer round: the key check must not be optional ----------------
+# The lexical scan accepts ANY SENTINEL_SHIELD_FAIL_ON_* / _PROJECT_* name, so the resolver
+# JSON is what makes the key set authoritative. Treating it as optional meant deleting or
+# corrupting it removed the check entirely.
+K="$WORK/keyset"; rm -rf "$K"; mkdir -p "$K"
+sh "$RESOLVE" --mode baseline --output-dir "$K" --format all >/dev/null 2>&1
+jq '.tools = {"tests":{"status":"pass"}}' "$ROOT/templates/security-summary.example.json" > "$K/s.json"
+krun() { _c=0; sh "$ENFORCE" --gates-env "$K/sentinel-shield-gates.env" --summary "$K/s.json" \
+	--output-dir "$K" --format json >"$K/log" 2>&1 || _c=$?; printf '%s' "$_c"; }
+check "control: env + resolver JSON enforce cleanly" "$(krun)" 0
+printf 'not json at all\n' > "$K/sentinel-shield-gates.json"
+check "a malformed resolver JSON is refused, never ignored" "$(krun)" 2
+grep -q 'never a reason to fall back' "$K/log" && pass "  and says why it cannot be ignored" || fail "  without explaining why"
+sh "$RESOLVE" --mode baseline --output-dir "$K" --format all >/dev/null 2>&1
+check "  regenerating it restores the clean run" "$(krun)" 0
+printf 'SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO=true\n' >> "$K/sentinel-shield-gates.env"
+check "an unknown FAIL_ON_* key is refused (JSON present)" "$(krun)" 2
+sh "$RESOLVE" --mode baseline --output-dir "$K" --format all >/dev/null 2>&1
+printf 'SENTINEL_SHIELD_PROJECT_WHATEVER=x\n' >> "$K/sentinel-shield-gates.env"
+check "an unknown PROJECT_* metadata key is refused" "$(krun)" 2
+
+# The env-only flow (--format env) stays supported, but its key set is validated against the
+# engine's own gate registry instead of a wildcard prefix — otherwise deleting the JSON
+# removed the check entirely.
+sh "$RESOLVE" --mode baseline --output-dir "$K" --format env >/dev/null 2>&1
+check "  --format env leaves no stale sibling artifact" \
+	"$([ -e "$K/sentinel-shield-gates.json" ] && echo stale || echo clean)" "clean"
+check "an env-only resolution still enforces" "$(krun)" 0
+printf 'SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO=true\n' >> "$K/sentinel-shield-gates.env"
+check "an unknown FAIL_ON_* key is refused with NO JSON present" "$(krun)" 2
+grep -q 'gate registry' "$K/log" && pass "  naming the registry it was checked against" || fail "  without naming the registry"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '288-enforcement-input-contract: ALL CHECKS PASSED\n'

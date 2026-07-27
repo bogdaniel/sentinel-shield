@@ -281,6 +281,36 @@ esac
 # The env file and the resolver's JSON artifact must agree. A hand-edited env claiming
 # report-only next to a strict resolution (or vice versa) is contradictory policy.
 _gates_json="$(dirname "$GATES_ENV_FILE")/sentinel-shield-gates.json"
+# The reconciliation below is what makes the key check AUTHORITATIVE — the lexical scan
+# accepts any SENTINEL_SHIELD_FAIL_ON_* / _PROJECT_* name, so without the resolver artifact a
+# typo like SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO is simply an unknown key nothing rejects.
+# Treating the artifact as optional therefore meant that DELETING or CORRUPTING it removed the
+# check entirely. For the enforcing modes it is now REQUIRED; report-only keeps the tolerance
+# because it certifies nothing.
+# A MALFORMED artifact is never a reason to fall back to the env file alone: corrupting the
+# file would otherwise remove the reconciliation below.
+if [ -f "$_gates_json" ] && ! jq -e . "$_gates_json" >/dev/null 2>&1; then
+	die_cfg "'$_gates_json' is not valid JSON. A malformed resolver artifact is a configuration error, never a reason to fall back to the env file alone — regenerate it with scripts/resolve-gates.sh."
+fi
+# When the JSON is ABSENT (the documented `--format env` flow), the key set still has to be
+# authoritative: the lexical scan accepts ANY SENTINEL_SHIELD_FAIL_ON_* name, so a typo like
+# SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO would simply be an unknown key nothing rejects. The
+# canonical list is read from the RESOLVER ITSELF (its FAIL_ON_KEYS declaration), so this
+# check cannot drift from the producer and no second copy is maintained here.
+if [ ! -f "$_gates_json" ]; then
+	_reg_tmp=$(mktemp); _envk_tmp=$(mktemp)
+	sed -n 's/^FAIL_ON_KEYS="\(.*\)"$/\1/p' "$SCRIPT_DIR/resolve-gates.sh" 2>/dev/null |
+		tr ' ' '\n' | sed '/^$/d' | tr 'a-z' 'A-Z' | sed 's/^/SENTINEL_SHIELD_FAIL_ON_/' | sort > "$_reg_tmp"
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_FAIL_ON_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_envk_tmp"
+	if [ -s "$_reg_tmp" ]; then
+		_unknown=$(grep -Fxv -f "$_reg_tmp" "$_envk_tmp" 2>/dev/null || true)
+		rm -f "$_reg_tmp" "$_envk_tmp"
+		[ -z "$_unknown" ] || die_cfg "gates env declares gate flag(s) that are not in the engine's gate registry: $(printf '%s' "$_unknown" | tr '\n' ' ')- a mistyped or stale flag is a configuration error ($GATES_ENV_FILE)"
+	else
+		rm -f "$_reg_tmp" "$_envk_tmp"
+		die_cfg "could not read the canonical gate registry from '$SCRIPT_DIR/resolve-gates.sh'; refusing to accept an unvalidated gate-flag set"
+	fi
+fi
 if [ -f "$_gates_json" ] && jq -e . "$_gates_json" >/dev/null 2>&1; then
 	_jmode=$(jq -r '(.mode // .adoption_mode // "")' "$_gates_json")
 	if [ -n "$_jmode" ] && [ "$_jmode" != "$MODE" ]; then
@@ -312,6 +342,22 @@ if [ -f "$_gates_json" ] && jq -e . "$_gates_json" >/dev/null 2>&1; then
 		  | select(($env | test("(^|\n)" + $ek + "=" + $v + "($|\n)")) | not)
 		  | $k ] | join(" ")' "$_gates_json" 2>/dev/null || printf '')
 	[ -z "$_jbad" ] || die_cfg "gate flags disagree between '$GATES_ENV_FILE' and '$_gates_json' for: $_jbad. Regenerate both with scripts/resolve-gates.sh."
+	# PROJECT_* metadata gets the same treatment: the lexical allowlist accepts any
+	# SENTINEL_SHIELD_PROJECT_* name, so an unknown one used to pass silently.
+	_pk_tmp=$(mktemp)
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_PROJECT_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_pk_tmp"
+	# The canonical set is what resolve-gates.sh actually emits — read from the resolver
+	# script itself so this list cannot drift from the producer.
+	_pk_known=$(mktemp)
+	sed -n "s/^[[:space:]]*printf '\(SENTINEL_SHIELD_PROJECT_[A-Z0-9_]*\)=.*/\1/p" \
+		"$SCRIPT_DIR/resolve-gates.sh" 2>/dev/null | sort -u > "$_pk_known"
+	if [ ! -s "$_pk_known" ]; then
+		printf '%s\n' SENTINEL_SHIELD_PROJECT_NAME SENTINEL_SHIELD_PROJECT_TYPE \
+			SENTINEL_SHIELD_PROJECT_CRITICALITY SENTINEL_SHIELD_PROJECT_OWNER | sort > "$_pk_known"
+	fi
+	_punknown=$(grep -Fxv -f "$_pk_known" "$_pk_tmp" 2>/dev/null || true)
+	rm -f "$_pk_tmp" "$_pk_known"
+	[ -z "$_punknown" ] || die_cfg "gates env declares unknown project metadata key(s): $(printf '%s' "$_punknown" | tr '\n' ' ')- a mistyped or stale metadata key is a configuration error ($GATES_ENV_FILE)"
 fi
 PROJ_NAME=$(env_get "SENTINEL_SHIELD_PROJECT_NAME"); [ -n "$PROJ_NAME" ] || PROJ_NAME="unknown"
 PROJ_TYPE=$(env_get "SENTINEL_SHIELD_PROJECT_TYPE"); [ -n "$PROJ_TYPE" ] || PROJ_TYPE="unknown"
