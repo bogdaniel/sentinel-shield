@@ -70,7 +70,12 @@ jobs:
           docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.18.4}" \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
-      - name: Build summary (report-only; nightly does not block merges)
+      # "report-only" describes the GATE MODE: no nightly finding blocks a merge. It does NOT
+      # mean this step may fail quietly. A non-zero exit here is the summary BUILD failing —
+      # unreadable or contradictory raw evidence — and a nightly run that cannot produce its
+      # evidence must say so rather than publish a partial report as the result of the night.
+      # The gate decision stays non-blocking; producing the evidence does not.
+      - name: Build summary (findings are report-only; a BUILD failure still fails this job)
         run: |
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage scheduled --raw-dir reports/raw --output reports/security-summary.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -119,10 +124,14 @@ jobs:
         run: |
           mkdir -p reports/raw
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/audits/dependency-check.sh reports/raw/dependency-check.json || true
-      - name: Build summary (report-only)
+      # Same rule as the scan job above: `|| true` here turned a failed SUMMARY BUILD into a
+      # green nightly with a missing or partial report attached. `if: always()` is kept so the
+      # summary is still built when the Dependency-Check scan itself failed — that is the case
+      # this step exists for — but the build result is now reported honestly.
+      - name: Build summary (findings are report-only; a BUILD failure still fails this job)
         if: always()
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage scheduled --raw-dir reports/raw --output reports/security-summary.json || true
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --stage scheduled --raw-dir reports/raw --output reports/security-summary.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # scanner failure/findings must NOT erase the raw dependency-check.json
         with: { name: sentinel-shield-dependency-check, path: reports/**, retention-days: 30, if-no-files-found: warn }
