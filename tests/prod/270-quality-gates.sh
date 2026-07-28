@@ -16,6 +16,19 @@ command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
 WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ss270)
 trap 'rm -rf -- "$WORK"' EXIT INT TERM
 
+# The shipped example is the canonical current-contract summary, but it is generated locally
+# and therefore carries `trust: "unverified"` with no attestation — `regulated` refuses it.
+# These cases are about the QUALITY gates, so the example is raised once to what a real
+# attested CI build produces and every fixture below derives from that.
+EXAMPLE="$WORK/example.json"
+jq '.source += {trust:"github-actions-attested"}
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository), commit:(.source.commit),
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
+	"$ROOT/templates/security-summary.example.json" > "$EXAMPLE"
+
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
 BUILD="$ROOT/scripts/build-security-summary.sh"
@@ -153,7 +166,7 @@ mk_summary() { # mk_summary <coverage_thr> <regression> <mutation> <out>
 		.tools = {tests:{status:"pass"}}
 		| .summary += { coverage_threshold_violations:$c, coverage_regression:$r,
 		                mutation_score_violations:$m }' \
-		"$ROOT/templates/security-summary.example.json" > "$4"
+		"$EXAMPLE" > "$4"
 }
 mk_summary 2 0 1 "$WORK/sum.json"
 
@@ -193,7 +206,7 @@ else fail "enforcer report-only should skip quality gates"; fi
 # only in regulated. Build a summary with all three nonzero.
 jq '.tools = {tests:{status:"pass"}}
 	| .summary += {complexity_violations:1, duplication_violations:2, dead_code_violations:3}' \
-	"$ROOT/templates/security-summary.example.json" > "$WORK/q3.json"
+	"$EXAMPLE" > "$WORK/q3.json"
 rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3s" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-q3s/sentinel-shield-enforcement.json"
 if [ "$rc" -eq 1 ] \
@@ -213,7 +226,7 @@ else fail "enforcer regulated complexity/duplication/dead-code wrong: $(jq -c .f
 
 # missing_coverage_evidence (unit): true summary blocks strict; skipped in report-only.
 jq '.tools = {tests:{status:"pass"}} | .summary.missing_coverage_evidence = true' \
-	"$ROOT/templates/security-summary.example.json" > "$WORK/mce.json"
+	"$EXAMPLE" > "$WORK/mce.json"
 rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mce" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-mce/sentinel-shield-enforcement.json"
 [ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("missing_coverage_evidence")' "$ej")" != "null" ] \
@@ -379,7 +392,7 @@ done
 # Derived from the shipped example (a current-contract, structurally complete summary) with the
 # gate fields under test overridden — enforcing modes reject hand-built partial summaries.
 qsum() { jq --argjson o "$2" '.tools = {tests:{status:"pass"}} | .summary += $o' \
-	"$ROOT/templates/security-summary.example.json" > "$1"; }
+	"$EXAMPLE" > "$1"; }
 _q2ov=$(jq -nc '{changed_lines_coverage_violations:1, debug_code_violations:2, focused_test_violations:1, missing_test_evidence:true, empty_test_suite:true, skipped_test_marker_violations:1, large_file_violations:1, large_function_violations:1, skipped_tests:2}')
 qsum "$WORK/q2.json" "$_q2ov"
 # baseline: changed/debug/focused/missing_test/empty block; skipped_marker/large/skipped_tests do NOT

@@ -153,7 +153,16 @@ jq '.tools = {"tests":{"status":"pass"}} | del(.gate_contract_version) | del(.su
 check "an absent key for a DISABLED gate is fine in baseline" "$(enf "$WORK/legacy-disabled.json" baseline)" 0
 
 # A complete current-contract summary enforces normally everywhere.
-jq '.tools = {"tests":{"status":"pass"}}' "$EXAMPLE" > "$WORK/complete.json"
+jq '.tools = {"tests":{"status":"pass"}}
+	# `regulated` requires a VERIFIED platform attestation; the builder only ever emits
+	# `unverified`, so a fixture that must be CERTIFIABLE in regulated carries what a real
+	# attested run produces. The cases here are about gate behaviour, not provenance.
+	| .source += {trust:"github-actions-attested"}
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository), commit:(.source.commit),
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}'  "$EXAMPLE" > "$WORK/complete.json"
 for _m in report-only baseline strict regulated; do
 	check "$_m: a complete current-contract summary enforces" "$(enf "$WORK/complete.json" "$_m")" 0
 done

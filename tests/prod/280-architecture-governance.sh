@@ -291,7 +291,16 @@ mkav() { # mkav <file> <violations> <missing_architecture_evidence>
 	jq --argjson v "$2" --argjson mae "$3" '
 		.tools = {tests:{status:"pass"}}
 		| .summary.architecture_violations = $v
-		| .summary.missing_architecture_evidence = $mae' \
+		| .summary.missing_architecture_evidence = $mae
+	# `regulated` requires a VERIFIED platform attestation; the builder only ever emits
+	# `unverified`, so a fixture that must be CERTIFIABLE in regulated carries what a real
+	# attested run produces. The cases here are about gate behaviour, not provenance.
+	| .source += {trust:"github-actions-attested"}
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository), commit:(.source.commit),
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}'  \
 		"$ROOT/templates/security-summary.example.json" > "$1"
 }
 mkav "$WORK/av.json" 2 false

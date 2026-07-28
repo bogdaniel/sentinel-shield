@@ -60,6 +60,24 @@ st_evidence_overlay() {
 		"$1" > "$1.overlay" && mv "$1.overlay" "$1"
 }
 
+# st_attest <summary.json>
+# `strict` requires the evidence to be BOUND to a repository and a full commit, and
+# `regulated` additionally requires a VERIFIED platform attestation — the builder only ever
+# emits `unverified`. Fixtures whose subject is WHICH GATE FIRES carry what a real attested
+# run produces, so a provenance refusal cannot mask the mapping under test.
+st_attest() {
+	jq '.source.repository = "example-org/example-repo"
+		| .source.commit = "0123456789abcdef0123456789abcdef01234567"
+		| .source.trust = "github-actions-attested"
+		| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+			repository:"example-org/example-repo",
+			commit:"0123456789abcdef0123456789abcdef01234567",
+			workflow:"self-test", workflow_sha:"1111111111111111111111111111111111111111",
+			run_id:"1", run_attempt:"1",
+			artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
+		"$1" > "$1.attested" && mv "$1.attested" "$1"
+}
+
 SUB="${1:-all}"
 
 # --- syntax ------------------------------------------------------------------
@@ -216,7 +234,7 @@ run_fallback() {
 	sh scripts/build-security-summary.sh \
 		--raw-dir "$_work/raw" \
 		--output "$_work/real-summary.json" \
-		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+		--project-name selftest --commit unknown --workflow self-test >/dev/null 2>&1
 
 	_ex="templates/security-summary.example.json"
 	cp "$_ex" "$_work/copied.json"
@@ -291,15 +309,21 @@ run_build_case() {
 	mkdir -p "$_d/raw"
 	printf '%s' "$5" > "$_d/raw/$4"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
-		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+		--project-name selftest --commit unknown --workflow self-test >/dev/null 2>&1
 	# This case is about the COLLECTOR -> counter -> gate mapping, so the summary is built
 	# without --profile. The evidence gates need the tool-policy overlay to judge applicability
 	# and the enforcer refuses to certify strict/regulated without it, so add the overlay's
 	# neutral values here rather than letting an unrelated refusal mask the mapping under test.
+	# strict/regulated require evidence BOUND to a repository and a full commit (a claim is
+	# enough for strict; it is reported as attestation-limited). The fixture is built without a
+	# checkout, so bind it here rather than letting an unrelated provenance refusal mask the
+	# collector -> counter -> gate mapping this case is about.
 	jq '.summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
 		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
 		missing_architecture_evidence:false, missing_test_change_evidence:false,
-		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
+		missing_behavior_specification:false, missing_acceptance_evidence:false}
+		| .source.repository = "example-org/example-repo"
+		| .source.commit = "0123456789abcdef0123456789abcdef01234567"' \
 		"$_d/security-summary.json" > "$_d/s.tmp" && mv "$_d/s.tmp" "$_d/security-summary.json"
 	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
 	expect_exit_code "$1" "$3" \
@@ -496,8 +520,9 @@ run_third_party() {
 	mkdir -p "$_d/raw"
 	cp templates/raw/third-party-semgrep.example.json "$_d/raw/third-party-semgrep.json"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
-		--project-name tp --commit c --workflow self-test >/dev/null 2>&1
+		--project-name tp --commit unknown --workflow self-test >/dev/null 2>&1
 	st_evidence_overlay "$_d/security-summary.json"
+	st_attest "$_d/security-summary.json"
 	tp_check "build -> summary carries third_party_install_script_risk" \
 		"$(jq -r '.summary.third_party_install_script_risk' "$_d/security-summary.json")" "1"
 
@@ -878,6 +903,7 @@ run_scanner_matrix() {
 	mkdir -p "$_d/eraw"; echo '{"errors":2}' > "$_d/eraw/php-syntax.json"; echo '{"summary":{"failed":1}}' > "$_d/eraw/checkov.json"; echo '{"findings":[{"x":1}]}' > "$_d/eraw/ai-security-review.json"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/eraw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/sum.json"
+	st_attest "$_d/sum.json"
 	for _m in baseline strict regulated; do
 		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
 		_E="$_d/sentinel-shield-enforcement.json"
@@ -1572,6 +1598,7 @@ run_v023_coverage() {
 	st_bind_evidence "$_d/r2"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/r2/sum2.json"
+	st_attest "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
 	cv_check "regulated FAILS dast finding" "$(enforce_mode regulated "$_d/r2/sum2.json")" "fail"
 
@@ -1749,6 +1776,7 @@ run_v024_coverage() {
 	st_bind_evidence "$_d/cl"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/cl/sum.json"
+	st_attest "$_d/cl/sum.json"
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: regulated PASS" "$(enforce_mode regulated "$_d/cl/sum.json")" "pass"
@@ -1761,6 +1789,7 @@ run_v024_coverage() {
 	st_bind_evidence "$_d/da"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/da/sum.json"
+	st_attest "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
 	vc_check "modes-v024 dast: regulated FAIL" "$(enforce_mode regulated "$_d/da/sum.json")" "fail"
 	# repo-health scorecard fixture maps to repository_health_warnings.
