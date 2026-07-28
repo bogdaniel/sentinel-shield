@@ -33,7 +33,7 @@ root. Every shipped ignore template therefore excludes it:
 tools/sentinel-shield/
 ```
 
-Without that rule Semgrep analyses the engine's own scripts, examples and **intentionally
+Without that rule Semgrep analyzes the engine's own scripts, examples and **intentionally
 insecure test fixtures** as if they were your application code. The consequences were real:
 false-positive findings you cannot fix, inflated scan time and report size, findings that
 change when you bump the pinned engine version, and a **required Semgrep gate failing on clean
@@ -44,16 +44,25 @@ shipped profile, installs it, and fails when a profile that selects Semgrep does
 the checkout — or when an ignore file excludes consumer application source. Profiles that do
 not select Semgrep (e.g. `docker`) are exempt, and that exemption comes from the resolver.
 
-**Existing consumers.** `.semgrepignore` is **project-owned**: `sync-baseline.sh` never
-overwrites it, so a project that adopted before this fix keeps its old file. `doctor.sh`
-reports it:
+**Existing consumers.** `.semgrepignore` stays **project-owned** — `sync-baseline.sh` never
+overwrites it, reorders it, or removes an entry — but the rules the template carries are
+**required**, so the file is installed with the `merge-required-lines` mode: any required rule
+the project file does not already contain is appended under a marker comment. The merge is
+idempotent (matching is on exact rule text), so re-running changes nothing once the rules are
+present:
 
+```text
+merged (required rules appended; project entries kept): .semgrepignore
+up-to-date (all required rules present): .semgrepignore
 ```
+
+Until the merge runs, `doctor.sh` reports the gap:
+
+```text
 WARN  .semgrepignore does not exclude the configured Sentinel Shield checkout path(s): tools/sentinel-shield
 ```
 
-Add the rule yourself (one line) or delete the file and re-run `sync-baseline.sh --apply` to
-get the current template.
+Run `sync-baseline.sh --apply` to close it, or add the rule yourself (one line).
 
 **Non-default checkout path.** If you change `SENTINEL_SHIELD_PATH`, add the matching
 exclusion. `doctor.sh` reads the path from your installed workflows and names the exact rule

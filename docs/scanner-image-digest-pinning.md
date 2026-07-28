@@ -112,7 +112,7 @@ Re-resolved with Docker on **2026-06-15**; every digest **matches** the prior re
 
 **Production recommendation (v0.1.28 — SUPERSEDED, retained as the record of what applied then).**
 > **Superseded by the v2.2+ approved-image contract below** (`config/scanner-images.json`): shipped defaults are digest-pinned and no template may execute a mutable tag.
-
+>
 > ~~Templates ship **readable tags** for legibility; consumers SHOULD pin each scanner to its
 > `@sha256:` digest before production via the documented override env vars. Dependency-Check is the
 > one image referenced as `:latest` (it tracks the NVD analyzers)… **Default templates remain

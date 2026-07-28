@@ -71,8 +71,16 @@ if [ -f "$IMAGE_CONTRACT" ]; then
 		log_error "scanner-image contract is present but not valid JSON: $IMAGE_CONTRACT — refusing to audit provenance with enforcement silently disabled"
 		exit 2
 	fi
-	if ! jq -e '(.images | type == "object") and ((.images | length) > 0) and (.mutable_tags | type == "array")' "$IMAGE_CONTRACT" >/dev/null 2>&1; then
-		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object and a .mutable_tags array): $IMAGE_CONTRACT"
+	# The per-image RECORDS matter as much as the containers: `{"images":{"x":{}},
+	# "mutable_tags":[]}` used to pass, then left every lookup empty — an unenforceable
+	# contract that reads as an enforced one. Match scripts/validate-scanner-images.sh:
+	# a non-empty mutable-tag list, and a digest on every image record.
+	if ! jq -e '(.images | type == "object") and ((.images | length) > 0)
+			and (.mutable_tags | type == "array") and ((.mutable_tags | length) > 0)
+			and (all(.images[]; (type == "object") and (.digest | type == "string")
+				and (.digest | startswith("sha256:"))))' \
+		"$IMAGE_CONTRACT" >/dev/null 2>&1; then
+		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object whose every record carries a sha256 .digest, and a non-empty .mutable_tags array): $IMAGE_CONTRACT"
 		exit 2
 	fi
 else
@@ -192,13 +200,21 @@ for tool in $TOOLS; do
 		# legitimately be trying a readable tag locally.
 		if [ -n "$IMAGE_CONTRACT" ] && [ "$REQUIRE_IMAGE_DIGEST" = "true" ]; then
 			_ic_tag=""
+			# A tag can only live in the FINAL path component. Matching `*:*` against the
+			# whole reference read the REGISTRY PORT of `registry.internal:5000/dep-check`
+			# as the tag `5000/dep-check`, so that bare reference dodged the implicit-latest
+			# rule. Strip the registry/namespace first, then look for `:tag`.
+			_ic_last="${IMG##*/}"
 			case "$IMG" in
 				*@sha256:*) ;;
-				*:*) _ic_tag="${IMG##*:}" ;;
-				# A BARE reference carries no tag, and Docker resolves it to `:latest` — the
-				# most mutable tag there is. Leaving _ic_tag empty here skipped the
-				# mutable-tag check entirely for exactly the reference that needs it most.
-				*) _ic_tag="latest" ;;
+				*)
+					case "$_ic_last" in
+						*:*) _ic_tag="${_ic_last##*:}" ;;
+						# A BARE reference carries no tag, and Docker resolves it to
+						# `:latest` — the most mutable tag there is. Leaving _ic_tag empty
+						# skipped the check for exactly the reference that needs it most.
+						*) _ic_tag="latest" ;;
+					esac ;;
 			esac
 			if [ -n "$_ic_tag" ] && jq -e --arg t "$_ic_tag" 'any(.mutable_tags[]; . == $t)' "$IMAGE_CONTRACT" >/dev/null 2>&1; then
 				add_violation "$tool" "image-mutable-tag" \

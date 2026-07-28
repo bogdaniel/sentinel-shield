@@ -20,7 +20,7 @@
     {
       "source": "profiles/laravel/.semgrepignore",
       "target": ".semgrepignore",
-      "mode": "create-if-missing"
+      "mode": "merge-required-lines"
     },
     {
       "source": "profiles/laravel/phpstan.neon",

@@ -189,17 +189,27 @@ if ignores "$LEGACY/.semgrepignore" "$SS_PATH/scripts/x.sh"; then
 else
 	pass "negative control: the legacy ignore file does NOT exclude the checkout"
 fi
-sh scripts/sync-baseline.sh --target "$LEGACY" --profile laravel --apply --force >/dev/null 2>&1 || true
-if ignores "$LEGACY/.semgrepignore" "$SS_PATH/scripts/x.sh"; then
-	pass "sync-baseline repaired the legacy ignore file"
-else
-	pass "sync-baseline preserved the project-owned ignore file (documented behaviour; doctor reports the gap)"
-fi
+# BEFORE the repair, doctor must report the gap — that report is what tells a legacy
+# consumer to run the sync in the first place.
 _doc=$(sh scripts/doctor.sh --target "$LEGACY" --profile laravel 2>&1 || true)
 if printf '%s' "$_doc" | grep -q 'does not exclude the configured Sentinel Shield checkout path'; then
 	pass "doctor reports an ignore file that does not exclude the engine checkout"
 else
 	fail "doctor did NOT report a consumer whose .semgrepignore leaves the engine checkout scanned"
+fi
+# …and the sync REPAIRS it: the required rule is merged back into the project-owned file
+# rather than the gap being left open forever.
+sh scripts/sync-baseline.sh --target "$LEGACY" --profile laravel --apply >/dev/null 2>&1 || true
+if ignores "$LEGACY/.semgrepignore" "$SS_PATH/scripts/x.sh"; then
+	pass "sync-baseline merged the required exclusion back into the legacy ignore file"
+else
+	fail "sync-baseline left a legacy ignore file that does not exclude the engine checkout"
+fi
+_doc=$(sh scripts/doctor.sh --target "$LEGACY" --profile laravel 2>&1 || true)
+if printf '%s' "$_doc" | grep -q 'does not exclude the configured Sentinel Shield checkout path'; then
+	fail "doctor still reports the gap after the sync repaired it"
+else
+	pass "  and doctor no longer reports the gap"
 fi
 
 # A NON-DEFAULT SENTINEL_SHIELD_PATH must produce actionable guidance rather than silence.
@@ -285,6 +295,31 @@ if printf '%s' "$_doc" | grep -q "add 'vendor/engine-a/' 'vendor/engine-b/' to .
 	pass "doctor suggests one exclusion per unexcluded path"
 else
 	fail "doctor's multi-path remediation hint is not per-path: $(printf '%s' "$_doc" | grep 'does not exclude' || true)"
+fi
+
+# An EXISTING project .semgrepignore used to be left untouched, so a project that adopted
+# before the exclusion existed never received it and Semgrep kept scanning the engine
+# checkout. The file is still project-owned; the required rules are merged into it.
+MERGE="$WORK/merge"
+rm -rf "$MERGE"; mkdir -p "$MERGE/.sentinel-shield"
+printf '# project rules\nnode_modules/\n' > "$MERGE/.semgrepignore"
+sh scripts/sync-baseline.sh --target "$MERGE" --profile laravel --apply >/dev/null 2>&1 || true
+if grep -qxF 'tools/sentinel-shield/' "$MERGE/.semgrepignore"; then
+	pass "sync merges the engine-checkout exclusion into an existing .semgrepignore"
+else
+	fail "an existing .semgrepignore never received the engine-checkout exclusion"
+fi
+if grep -qxF 'node_modules/' "$MERGE/.semgrepignore"; then
+	pass "  and keeps the project's own entries"
+else
+	fail "  but destroyed the project's own entries"
+fi
+_before=$(cat "$MERGE/.semgrepignore")
+sh scripts/sync-baseline.sh --target "$MERGE" --profile laravel --apply >/dev/null 2>&1 || true
+if [ "$_before" = "$(cat "$MERGE/.semgrepignore")" ]; then
+	pass "  and the merge is idempotent"
+else
+	fail "  but re-running the merge changed the file again"
 fi
 
 printf '\n'

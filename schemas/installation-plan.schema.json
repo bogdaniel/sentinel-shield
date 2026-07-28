@@ -59,6 +59,7 @@
             "type": "string",
             "enum": [
               "create-if-missing",
+              "merge-required-lines",
               "overwrite-if-force",
               "sync-managed-block",
               "manual"
@@ -69,6 +70,7 @@
             "type": "string",
             "enum": [
               "create",
+              "merge",
               "overwrite-managed",
               "skip-existing",
               "skip-managed-no-force",

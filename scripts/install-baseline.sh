@@ -79,7 +79,7 @@ Usage: install-baseline.sh --target <dir> [--profile <name>] [--mode <mode>] [--
   --non-interactive  Never prompt (accepted for CI parity; this installer does not prompt).
   --recover          Roll back an interrupted prior run (restore snapshots, clear the lock) and exit.
   -h, --help         Show help.
-Manifest file modes: create-if-missing | overwrite-if-force | sync-managed-block | manual.
+Manifest file modes: create-if-missing | merge-required-lines | overwrite-if-force | sync-managed-block | manual.
 EOF
 }
 
@@ -306,6 +306,10 @@ emit_install_plan() {
 			case "$_m" in
 				manual) _act="manual" ;;
 				create-if-missing) if [ -e "$TARGET/$_t" ]; then _act="skip-existing"; else _act="create"; fi ;;
+				# The installer only ever CREATES: merging required rules into an existing
+				# project file is sync-baseline.sh's job, so an existing file is left alone
+				# here exactly as a project-owned file is.
+				merge-required-lines) if [ -e "$TARGET/$_t" ]; then _act="skip-existing"; else _act="create"; fi ;;
 				overwrite-if-force|sync-managed-block)
 					if [ -e "$TARGET/$_t" ]; then
 						if [ "$FORCE" -eq 1 ]; then _act="overwrite-managed"; else _act="skip-managed-no-force"; fi
@@ -342,8 +346,12 @@ do_entry() { # do_entry <source> <target> <mode>
 	if [ ! -e "$_src" ]; then echo "skip (missing in Sentinel Shield): $1"; echo skip >> "$SUM"; return; fi
 	case "$_mode" in
 		manual) echo "MANUAL (copy yourself if wanted): $1 -> $2"; echo manual >> "$SUM"; return ;;
-		create-if-missing)
-			if [ -e "$_tgt" ]; then echo "skip (exists, project-owned): $2"; echo skip >> "$SUM"; return; fi ;;
+		create-if-missing | merge-required-lines)
+			if [ -e "$_tgt" ]; then
+				echo "skip (exists, project-owned): $2"
+				[ "$_mode" = "merge-required-lines" ] && echo "  run sync-baseline.sh --apply to merge the required rules into it: $2"
+				echo skip >> "$SUM"; return
+			fi ;;
 		overwrite-if-force|sync-managed-block)
 			if [ -e "$_tgt" ] && [ "$FORCE" -eq 0 ]; then
 				echo "skip (managed, exists; use --force to update): $2"; echo managed >> "$SUM"; return
@@ -468,7 +476,7 @@ ss_write_installation() {
 # write is part of the transaction so a failure here also rolls back.
 if [ "$APPLY" -eq 1 ]; then
 	MANAGED_NL=$(jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | select(.mode=="overwrite-if-force" or .mode=="sync-managed-block") | .target' "$MANIFEST" | sort -u | sed '/^$/d')
-	PROJECT_NL=$(jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | select(.mode=="create-if-missing") | .target' "$MANIFEST" | sort -u | sed '/^$/d')
+	PROJECT_NL=$(jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | select(.mode=="create-if-missing" or .mode=="merge-required-lines") | .target' "$MANIFEST" | sort -u | sed '/^$/d')
 	for _pl in .sentinel-shield/accepted-risks.json phpstan-baseline.neon .sentinel-shield/profile.yaml; do
 		[ -e "$TARGET/$_pl" ] && PROJECT_NL=$(printf '%s\n%s' "$PROJECT_NL" "$_pl")
 	done

@@ -19,7 +19,7 @@
     {
       "source": "profiles/hardened-enterprise/.semgrepignore",
       "target": ".semgrepignore",
-      "mode": "create-if-missing"
+      "mode": "merge-required-lines"
     },
     {
       "source": "templates/accepted-risks.example.json",
