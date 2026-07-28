@@ -55,8 +55,8 @@ risk() {
 	printf '%s' "$1" | jq --arg today "$AR_TODAY" --arg soon "$AR_SOON" '
 		(.risks // []) |= map(
 			# Only stamp an authorisation date on a record whose expiry is still ahead:
-			# giving an ALREADY-EXPIRED fixture today's approval date would make the expiry
-			# precede the approval, which is a contradiction the enforcer rightly refuses —
+			# stamping an ALREADY-EXPIRED fixture with the current date would make the
+			# expiry precede the approval, a contradiction the enforcer rightly refuses —
 			# and these cases are about expiry and dates, not about the window.
 			if (.status // "") == "approved" and ((.expires_at // "") >= $today) then
 				(if has("approved_at") or has("created_at") then . else . + {approved_at: $today} end)
