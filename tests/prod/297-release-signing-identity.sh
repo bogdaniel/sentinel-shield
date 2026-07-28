@@ -41,7 +41,7 @@ awk '
 	inrun && /^      - name: / { exit }
 	inrun { sub(/^          /, ""); print }
 ' "$WF" > "$WORK/verify.sh"
-_lines=$(grep -c '' "$WORK/verify.sh" 2>/dev/null || printf '0')
+_lines=$(wc -l < "$WORK/verify.sh" 2>/dev/null || printf '0'); _lines=${_lines##* }
 if [ "$_lines" -lt 20 ]; then
 	fail "could not extract the verification step from the workflow ($_lines lines) — the suite would silently test nothing"
 	exit 1
@@ -52,6 +52,13 @@ sh -n "$WORK/verify.sh" || fail "the extracted step is not valid POSIX sh"
 # --- gh stub -----------------------------------------------------------------
 # Modes are driven by GH_MODE. Each returns what the real API would for that state.
 mkdir -p "$WORK/bin"
+# The step retries three times with a backoff. The stub fails instantly, so the sleeps are
+# pure dead time: shadow `sleep` on PATH to keep the retry COUNT while dropping the wait.
+cat > "$WORK/bin/sleep" <<'SLEEP'
+#!/bin/sh
+exit 0
+SLEEP
+chmod +x "$WORK/bin/sleep"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/bin/sh
 # $1=api  $2=<path>  [--jq <filter>]
@@ -124,9 +131,10 @@ for _case in \
 	_mode=${_case%%|*}; _why=${_case#*|}
 	check "publication is BLOCKED when $_why ($_mode)" "$(run "$_mode")" 1
 	case "$_mode" in
-		# The two failures before the verification read have their own diagnostics; every
-		# state that reaches the verdict must carry the documented failure code.
-		ref-fail | api-fail) : ;;
+		# Only resolving the tag object fails BEFORE the verification read and has its own
+		# diagnostic; every state that reaches the verdict — api-fail included — must carry
+		# the documented failure code.
+		ref-fail) : ;;
 		*) contains "  emitting TAG_SIGNING_IDENTITY_UNVERIFIED ($_mode)" "$(cat "$WORK/log")" "TAG_SIGNING_IDENTITY_UNVERIFIED" ;;
 	esac
 done
