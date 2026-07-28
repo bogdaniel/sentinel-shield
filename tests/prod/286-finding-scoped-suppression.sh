@@ -274,6 +274,61 @@ for _gate in unsafe_docker medium_vulnerabilities; do
 	fi
 done
 
+# ---------------------------------------------------------------------------
+# A finding with NO path must not destroy the accounting.
+# ---------------------------------------------------------------------------
+# Package-level advisories legitimately carry no file. The record's paths were normalized but
+# the FINDING's was not, so `null | endswith(...)` aborted the whole jq program: the gate then
+# reported "could not compute finding-scope accounting" and DISCARDED the matches that had
+# already resolved. A finding with no path simply cannot satisfy a path-scoped record.
+D=$(mkfix nopath)
+jq 'del(.matches[0].artifact.locations)' "$D/reports/raw/grype.json" > "$D/g.tmp" \
+	&& mv "$D/g.tmp" "$D/reports/raw/grype.json"
+check "  the fixture really does produce a finding with no path" \
+	"$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$D/reports/raw" | jq '[.[] | select(.file == "")] | length')" 1
+risk "$D/ar.json" '{"files":["composer.lock"], "components":["symfony/http-kernel"]}'
+check "a path-less finding does not abort the accounting" "$(enforce "$D" "$D/ar.json")" 1
+check "  the path-scoped record still matched the finding that HAS that path" "$(acct "$D" accepted)" 1
+check "  and the path-less finding is reported as unaccepted" "$(acct "$D" unaccepted)" 1
+if grep -q 'could not compute finding-scope accounting' "$D/enforce.log"; then
+	fail "  the accounting was thrown away for a perfectly normal finding shape"
+else
+	pass "  the accounting was computed, not discarded"
+fi
+
+# ---------------------------------------------------------------------------
+# With NO finding-scope record the gate is an ordinary count gate — and the published
+# accounting has to say so. It used to publish accepted:0/unaccepted:0 for a non-zero
+# total, which reads as "nothing unaccepted" on a FAILED gate.
+# ---------------------------------------------------------------------------
+D=$(mkfix nofs)
+# A record for a DIFFERENT gate: medium_vulnerabilities has no finding-scope record at all.
+jq -n '{version:"1", risks:[
+	{ id:"AR-OTHER", gate:"unsafe_docker", scope:"finding", rule_ids:["DL3018"],
+	  owner:"o", reason:"r", expires_at:"2099-01-01", status:"approved" }]}' > "$D/ar.json"
+check "with no finding-scope record the gate still fails" "$(enforce "$D" "$D/ar.json")" 1
+check "  and the whole count is published as unaccepted" "$(acct "$D" unaccepted)" 2
+check "  with nothing claimed as accepted" "$(acct "$D" accepted)" 0
+
+# ---------------------------------------------------------------------------
+# Multiple values within a dimension are ANY-match, and dimensions cross-gate (ALL must
+# match). Asserted with every dimension carrying more than one value.
+# ---------------------------------------------------------------------------
+D=$(mkfix anymatch)
+risk "$D/ar.json" '{"components":["lodash","not-installed"],
+	"rule_ids":["GHSA-lodash","GHSA-absent"],
+	"files":["package-lock.json","never.lock"]}'
+check "any-match within each dimension accepts the finding that satisfies all three" "$(enforce "$D" "$D/ar.json")" 1
+check "  exactly the matching finding is accepted" "$(acct "$D" accepted)" 1
+check "  the other finding is untouched" "$(acct "$D" unaccepted)" 1
+# One dimension that matches NOTHING must veto the record: dimensions are cross-gating.
+D=$(mkfix crossgate)
+risk "$D/ar.json" '{"components":["lodash","not-installed"],
+	"rule_ids":["GHSA-lodash","GHSA-absent"],
+	"files":["never.lock","also-never.lock"]}'
+check "a dimension that matches nothing vetoes the record" "$(enforce "$D" "$D/ar.json")" 1
+check "  nothing is accepted" "$(acct "$D" accepted)" 0
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '286-finding-scoped-suppression: ALL CHECKS PASSED\n'

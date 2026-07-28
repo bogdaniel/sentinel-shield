@@ -185,6 +185,35 @@ accepts, and it is built only from stable identity fields — never array order,
 descriptions or line numbers. The algorithm is versioned (`ss-fp/1`) and reported in the
 enforcement JSON, so records stay auditable across upgrades.
 
+Every component is normalised the same way before it is joined: a missing value becomes the
+empty string, a non-string is stringified, and a leading `./` is stripped. Nothing else is
+rewritten — no case folding, no whitespace collapsing, no sorting of the value itself.
+
+#### What `<version>` holds per source
+
+Two sources report a **range**, not an installed version, and the range is what the fingerprint
+carries — verbatim, exactly as the scanner printed it:
+
+| Source | `<version>` | `<rule_id>` | `<file>` |
+| --- | --- | --- | --- |
+| Grype | installed `artifact.version` | advisory id | first reported location |
+| OSV-Scanner | installed package version | advisory id | manifest path |
+| Trivy (fs) | `InstalledVersion` | `VulnerabilityID` | `Target` |
+| Composer audit | `affectedVersions` **range string** (e.g. `>=5.4.0,<5.4.15`) | first of `cve`, `advisoryId`, `title` | constant `composer.lock` |
+| npm audit | `range` **range string** (e.g. `<4.17.21`) | every `via[]` source/url/title, **sorted** and comma-joined (duplicates kept) | constant `package-lock.json` |
+| OWASP Dependency-Check | CVE-bearing dependency version | CVE | dependency file name |
+
+Only npm applies an ordering, and it applies it to the advisory-id list so that a reordered
+`via[]` array does not change the identity. No list is deduplicated and no range is parsed,
+canonicalised or re-serialised: the engine records what the scanner said rather than inventing
+a normal form it would then have to keep matching across scanner versions.
+
+**A `fingerprints` record for Composer or npm therefore stops matching when the advertised
+RANGE changes** — which a scanner database update can do on its own, without the installed
+package changing at all. That is a re-review point, not a bug, but it makes fingerprints the
+brittle choice for those two sources: prefer `components` (plus `rule_ids` when you mean one
+advisory) so the record survives a database refresh and still fails on a genuinely new finding.
+
 ### Matching rules
 
 A record matches a finding when **every dimension it declares** matches — declaring more can
@@ -196,6 +225,19 @@ only *narrow* an exception, never widen it:
 | `components` | the package/component name (survives a version bump) |
 | `rule_id` / `rule_ids` | the advisory or rule identifier |
 | `files` | the path (exact, path suffix, or basename) |
+
+**Within** a dimension the values are **any-match**: `components: ["a", "b"]` matches a finding
+whose component is `a` *or* `b`. **Across** dimensions they **cross-gate**: every declared
+dimension must be satisfied by the *same* finding, so a record declaring
+`components: ["a","b"]` and `files: ["never.lock"]` accepts nothing at all if no finding sits at
+`never.lock` — a dimension that matches nothing vetoes the record rather than being ignored.
+Listing a value that matches no current finding is therefore harmless but never widening; it is
+still a value a reviewer approved. `tests/prod/286-finding-scoped-suppression.sh` asserts both
+halves with every dimension carrying more than one value.
+
+A finding with **no path at all** — package-level advisories from OSV, Trivy and Grype carry
+none — cannot satisfy a record that declares `files`. It is reported as unaccepted; it does not
+silently match, and it does not disturb the accounting for the findings around it.
 
 ```json
 {

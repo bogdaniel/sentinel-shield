@@ -29,10 +29,30 @@ run_syntax() {
 	log_info "syntax: sh -n over scripts (incl. runners/ audits/ adapters/ — required by v2 validation)"
 	# scripts/adapters/*.sh may not match (adapters are .mjs/.php); the [ -e ] guard skips the
 	# literal-pattern case POSIX sh leaves behind when a glob has no match.
+	# tests/ is checked too. It used to be scripts/ only, and a test that did not parse was
+	# found by CI rather than here — an apostrophe inside a single-quoted jq program (an
+	# English possessive in a comment) ends the quote, and everything after it is read as
+	# shell. The defect is invisible at its own line; the parse error lands somewhere else.
 	for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh \
-		scripts/runners/*.sh scripts/audits/*.sh scripts/adapters/*.sh; do
+		scripts/runners/*.sh scripts/audits/*.sh scripts/adapters/*.sh \
+		tests/*.sh tests/prod/*.sh tests/adopter/*.sh tests/e2e/*.sh; do
 		[ -e "$f" ] || continue
 		sh -n "$f" || { log_error "sh -n failed: $f"; return 1; }
+	done
+	# `sh` is bash on a developer host and dash in CI, and they do NOT reject the same things.
+	# When a strict POSIX shell is available, every file is checked against it as well, so a
+	# CI-only parse error is found here instead of three pushes later.
+	for _psh in dash busybox; do
+		command_exists "$_psh" || continue
+		log_info "syntax: $_psh -n (strict POSIX parse, the shell CI actually uses)"
+		for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh \
+			scripts/runners/*.sh scripts/audits/*.sh scripts/adapters/*.sh \
+			tests/*.sh tests/prod/*.sh tests/adopter/*.sh tests/e2e/*.sh; do
+			[ -e "$f" ] || continue
+			if [ "$_psh" = busybox ]; then busybox sh -n "$f"; else "$_psh" -n "$f"; fi \
+				|| { log_error "$_psh -n failed: $f"; return 1; }
+		done
+		break
 	done
 	log_info "syntax: jq-validate templates/ schemas/ profiles/ config/ JSON"
 	for f in $(find templates schemas profiles config -name '*.json' 2>/dev/null); do

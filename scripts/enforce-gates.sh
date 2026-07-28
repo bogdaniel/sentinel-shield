@@ -667,7 +667,10 @@ eval_medium_vulnerabilities() {
 	# No finding-scope record for this gate at all -> ordinary count gate, unchanged.
 	case "$AR_FINDING_DETAIL" in
 		*"$_key|"*) ;;
-		*) add_eval "$_key" true "$_val" fail; return ;;
+		# Every other failing path records the count as UNACCEPTED. Leaving it at 0 here
+		# published `accepted: 0, unaccepted: 0` for a non-zero total, which a consumer of
+		# accepted_risks.medium_vulnerabilities reads as "nothing unaccepted" on a FAILED gate.
+		*) MV_ACCEPTED=0; MV_UNACCEPTED=$_val; add_eval "$_key" true "$_val" fail; return ;;
 	esac
 	MV_SCOPE="finding"
 	_norm="$SCRIPT_DIR/normalize-findings.sh"
@@ -709,10 +712,19 @@ eval_medium_vulnerabilities() {
 						and ( ((.rule_id // "") == "" and ((.rule_ids // []) | length) == 0)
 							or (.rule_id == $f.rule_id)
 							or (((.rule_ids // []) | index($f.rule_id)) != null) )
+						# Paths on the RECORD were normalized; the path on the FINDING
+						# was not. A finding with no `file` — package-level advisories
+						# carry none — made `null | endswith(...)` abort the WHOLE jq
+						# program, so the accounting was thrown away and reported as
+						# "could not compute" even for findings that had already
+						# resolved. A finding with no path cannot satisfy a path-scoped
+						# record.
 						and ( (((.files // []) | length) == 0)
-							or any((.files // [])[]; (. | norm) as $rf
-								| ($f.file == $rf) or ($f.file | endswith("/" + $rf))
-								or (($f.file | split("/") | last) == $rf)) )
+							or ( ($f.file | norm) as $ff
+								| ($ff != "")
+								and any((.files // [])[]; (. | norm) as $rf
+									| ($ff == $rf) or ($ff | endswith("/" + $rf))
+									or (($ff | split("/") | last) == $rf)) ) )
 					)
 					| .id ) ) // null ) as $rid
 			| { source: $f.source, rule_id: $f.rule_id, component: $f.component,
