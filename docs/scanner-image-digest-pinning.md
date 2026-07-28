@@ -184,13 +184,18 @@ validated image is always retrievable.
 Digests re-verified again 2026-06-15 — DC/Semgrep/Grype/Dockle all **MATCH**. The pinning policy is
 now an explicit, documented decision:
 
-| Context | Form | Why |
-|---|---|---|
-| **development / onboarding** | **readable tags** (`anchore/grype:v0.114.0`, …) — a moving tag was permitted here at the time, and is not any more | legible, easy to bump, low-friction adoption |
-| **production / hardened** | **digest-pinned overrides** (`@sha256:…` via the documented env vars) | reproducible, tamper-evident, deterministic rollback |
+> **Historical record — do not copy.** The table and the first bullet below describe what
+> applied at the time. Under the v2.2+ approved-image contract no shipped template may execute
+> a mutable tag, in any context, and the current rules are the ones stated above.
 
-- **Default templates stay tag-based by design** (legibility) — superseded: Dependency-Check now
-  ships digest-pinned, and every default is checked against the approved-image contract.
+| Context (as it stood then) | Form | Why it was argued |
+|---|---|---|
+| ~~development / onboarding~~ | ~~readable tags (`anchore/grype:v0.114.0`, …)~~ — **no longer permitted**: a readable tag is a moving target and the contract now refuses one | legibility, easy bumps, low-friction adoption |
+| production / hardened | digest-pinned overrides (`@sha256:…` via the documented env vars) | reproducible, tamper-evident, deterministic rollback — **still the rule** |
+
+- ~~**Default templates stay tag-based by design** (legibility).~~ **Superseded:** every shipped
+  default is digest-pinned, Dependency-Check included, and validated against
+  `config/scanner-images.json`.
 - **Hardened reference:** [`examples/hardened/sentinel-shield-hardened.snippet.yml`](../examples/hardened/sentinel-shield-hardened.snippet.yml)
   pins every scanner image + Action by digest/SHA. **Do not use `:latest` in production** — pin
   Dependency-Check too (to `owasp/dependency-check@sha256:ad169904…cc77b9`).
