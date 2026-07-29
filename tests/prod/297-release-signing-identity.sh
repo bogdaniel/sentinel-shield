@@ -93,6 +93,11 @@ case "$_path" in
 			expired)         printf 'false|expired_key\n' ;;
 			revoked)         printf 'false|revoked_key\n' ;;
 			unsigned)        printf 'false|unsigned\n' ;;
+			bad-email) printf 'false|bad_email\n' ;;
+			unverified-email) printf 'false|unverified_email\n' ;;
+			not-signing-key) printf 'false|not_signing_key\n' ;;
+			malformed-sig) printf 'false|malformed_signature\n' ;;
+			invalid) printf 'false|invalid\n' ;;
 			missing-fields)  printf 'null|null\n' ;;
 			malformed)       printf 'not-json-at-all\n' ;;
 			empty)           printf '\n' ;;
@@ -132,6 +137,11 @@ for _case in \
 	'expired|the signing key has expired' \
 	'revoked|the signing key was revoked' \
 	'unsigned|the tag carries no signature' \
+	'bad-email|the signature email does not match the account' \
+	'unverified-email|the signing email is unverified' \
+	'not-signing-key|the key is not a signing key' \
+	'malformed-sig|the signature is malformed' \
+	'invalid|the verification result is the literal invalid state' \
 	'missing-fields|the verification result is absent' \
 	'malformed|the verification response is malformed' \
 	'empty|the verification response is empty' \
@@ -276,6 +286,10 @@ case "$2" in
 		# ref that now points somewhere else.
 		[ "${GH_NOW:-}" = none ] && exit 1
 		printf '%s\n' "${GH_NOW:-$GH_OBJ}"; exit 0 ;;
+	*/git/tags/*)
+		# The publish-time re-read of the verification verdict.
+		[ "${GH_VNOW:-}" = none ] && exit 1
+		printf '%s\n' "${GH_VNOW:-true}"; exit 0 ;;
 esac
 exit 1
 STUB2
@@ -300,6 +314,25 @@ if grep -q 'release create' "$WORK/calls" 2>/dev/null; then
 else
 	pass "  and NO release-creation call was made"
 fi
+# The verification STATE can change between the check and the write — a key revoked or
+# removed in between. The publisher re-reads the verdict for the same object.
+runcreate2() { # runcreate2 <verified-now> -> exit code
+	: > "$WORK/calls"
+	_c=0
+	env PATH="$WORK/bin:$PATH" GH_TOKEN=x GH_OBJ="$OBJ" GH_NOW="$OBJ" GH_VNOW="$1" \
+		GH_CALLS="$WORK/calls" TAG="$TAG" REPO="acme/shield" NOTES="/dev/null" KIND="" \
+		VERIFIED_OBJ="$OBJ" sh "$WORK/create.sh" >"$WORK/clog" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+check "a signing identity that stops verifying before the write refuses to publish" "$(runcreate2 false)" 1
+contains "  named as an unverified identity" "$(cat "$WORK/clog")" "TAG_SIGNING_IDENTITY_UNVERIFIED"
+if grep -q 'release create' "$WORK/calls" 2>/dev/null; then
+	fail "a release was created after the signing identity stopped verifying"
+else
+	pass "  and NO release-creation call was made"
+fi
+check "an unreadable verification state refuses to publish" "$(runcreate2 none)" 1
+
 check "an unreadable ref refuses to publish" "$(runcreate none)" 1
 contains "  named as an unresolved ref" "$(cat "$WORK/clog")" "TAG_REF_UNRESOLVED"
 if grep -q 'release create' "$WORK/calls" 2>/dev/null; then

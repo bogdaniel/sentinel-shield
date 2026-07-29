@@ -287,6 +287,23 @@ jobs:
             echo "::error::the tag ref for $TAG could not be re-read before publication — an unknown ref state is not an unchanged one; refusing to publish."
             exit 1
           fi
+          # The verification STATE can change too, not only the ref: a signing key can be
+          # removed or revoked between the check and the write. Re-read the verdict for the
+          # same object and require it to still be `true`.
+          NOWV=""
+          for _try in 1 2 3; do
+            NOWV=$(gh api "repos/$REPO/git/tags/$VERIFIED_OBJ" --jq '.verification.verified' 2>/dev/null) || NOWV=""
+            if [ -n "$NOWV" ]; then break; fi
+            sleep $((_try * 5))
+          done
+          if [ "$NOWV" != "true" ]; then
+            echo "::error::TAG_SIGNING_IDENTITY_UNVERIFIED"
+            echo "::error::the signing identity for $TAG no longer verifies at publication time (verified='${NOWV:-unreadable}'). It verified during the earlier check, so the key was revoked, removed or became unreadable in between — refusing to publish."
+            echo "::error::  tag:             $TAG"
+            echo "::error::  verified object: $VERIFIED_OBJ"
+            echo "::error::  remediation:     re-register the signing key and re-run, or cut a NEW reviewed release tag. Do NOT move or re-push this one."
+            exit 1
+          fi
           if [ "$NOWOBJ" != "$VERIFIED_OBJ" ]; then
             echo "::error::TAG_REF_MOVED"
             echo "::error::the tag ref changed between verification and publication. Nothing about the new object has been verified, so publishing it would attach an unverified target to a release."
