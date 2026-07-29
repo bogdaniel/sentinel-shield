@@ -84,8 +84,20 @@ jq -n \
 	def norm: (. // "") | tostring | sub("^\\./"; "");
 	def sev: (. // "") | ascii_downcase
 		| if . == "moderate" then "medium" elif . == "" then "medium" else . end;
+	# CANONICAL FIELD ENCODING. `ss-fp/1` joined raw scanner-controlled values with `|` and
+	# defined no escaping, so two different field tuples could serialise identically — e.g.
+	# component `a|b` + version `c` and component `a` + version `b|c`. A fingerprint that can
+	# collide is an accepted-risk record that can match a finding its author never reviewed.
+	# `ss-fp/2` percent-encodes the delimiter, the escape character itself and every control
+	# character, so the field boundaries are unambiguous while the value stays readable.
+	def fpenc:
+		(. // "") | tostring
+		| gsub("%"; "%25") | gsub("\\|"; "%7C")
+		| gsub("\n"; "%0A") | gsub("\r"; "%0D") | gsub("\t"; "%09")
+		| gsub("[\u0000-\u001f\u007f]"; "%3F");
 	def fp($s; $r; $c; $v; $f):
-		"ss-fp/1|" + $s + "|" + ($r|norm) + "|" + ($c|norm) + "|" + ($v|norm) + "|" + ($f|norm);
+		"ss-fp/2|" + ($s|fpenc) + "|" + ($r|norm|fpenc) + "|" + ($c|norm|fpenc)
+		+ "|" + ($v|norm|fpenc) + "|" + ($f|norm|fpenc);
 	def mk($s; $r; $c; $v; $f; $sv):
 		{ source: $s, rule_id: ($r|norm), component: ($c|norm), version: ($v|norm),
 		  file: ($f|norm), severity: $sv, fingerprint: fp($s; $r; $c; $v; $f) };

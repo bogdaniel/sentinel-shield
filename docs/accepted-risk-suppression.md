@@ -177,17 +177,32 @@ raw scanner reports:
 | OWASP Dependency-Check | `reports/raw/dependency-check.json` | CVE, dependency file |
 
 ```
-fingerprint = ss-fp/1|<source>|<rule_id>|<component>|<version>|<file>
+fingerprint = ss-fp/2|<source>|<rule_id>|<component>|<version>|<file>
 ```
 
 The fingerprint is **readable, not a hash**, so a reviewer can see exactly what a record
 accepts, and it is built only from stable identity fields — never array order, titles,
-descriptions or line numbers. The algorithm is versioned (`ss-fp/1`) and reported in the
+descriptions or line numbers. The algorithm is versioned (`ss-fp/2`) and reported in the
 enforcement JSON, so records stay auditable across upgrades.
 
 Every component is normalised the same way before it is joined: a missing value becomes the
 empty string, a non-string is stringified, and a leading `./` is stripped. Nothing else is
 rewritten — no case folding, no whitespace collapsing, no sorting of the value itself.
+
+**Field boundaries are unambiguous (`ss-fp/2`).** Version 1 joined raw scanner-controlled
+values with `|` and defined no escaping, so two different tuples could serialise to the same
+string — component `a|b` with version `c`, and component `a` with version `b|c`, were both
+`…|a|b|c|…`. A fingerprint that can collide is a record that can match a finding its author
+never reviewed. Each field is now percent-encoded before joining: `%` becomes `%25` first,
+then `|` becomes `%7C`, and tab/CR/LF and every other control character become `%09`/`%0D`/
+`%0A`/`%3F`. The encoding is readable, reversible and injective, so distinct tuples always
+produce distinct fingerprints.
+
+**Records written against `ss-fp/1` no longer match.** The version is part of the string, so
+an old fingerprint simply stops matching rather than matching something unintended — the same
+re-review point a version bump creates. Re-derive the identity with
+`scripts/normalize-findings.sh --gate medium_vulnerabilities` and update the record, or switch
+it to `components` + `rule_ids`, which are unaffected.
 
 #### What `<version>` holds per source
 
@@ -201,7 +216,7 @@ carries — verbatim, exactly as the scanner printed it:
 | Trivy (fs) | `InstalledVersion` | `VulnerabilityID` | `Target` |
 | Composer audit | `affectedVersions` **range string** (e.g. `>=5.4.0,<5.4.15`) | first of `cve`, `advisoryId`, `title` | constant `composer.lock` |
 | npm audit | `range` **range string** (e.g. `<4.17.21`) | every `via[]` source/url/title, **sorted** and comma-joined (duplicates kept) | constant `package-lock.json` |
-| OWASP Dependency-Check | CVE-bearing dependency version | CVE | dependency file name |
+| OWASP Dependency-Check | **empty** — the collector reads the dependency, not a resolved version | CVE | dependency file path (falling back to its name) |
 
 Only npm applies an ordering, and it applies it to the advisory-id list so that a reordered
 `via[]` array does not change the identity. No list is deduplicated and no range is parsed,
@@ -224,7 +239,18 @@ only *narrow* an exception, never widen it:
 | `fingerprints` | the finding's exact canonical fingerprint |
 | `components` | the package/component name (survives a version bump) |
 | `rule_id` / `rule_ids` | the advisory or rule identifier |
-| `files` | the path (exact, path suffix, or basename) |
+| `source` / `sources` | the producer that reported it (`grype`, `trivy-fs`, `composer-audit`, …) |
+| `files` | the **exact** repository-relative path |
+
+**`source` matters more than it looks.** The same advisory for the same package at the same
+version is routinely reported by several scanners. A record of `components` + `rule_ids` with
+no source accepts *every* producer reporting it — including an ecosystem the reviewer never
+examined. Declaring the source can only narrow the record.
+
+**`files` is an EXACT match — not a suffix, not a basename.** An exception for
+`service-a/package-lock.json` does not cover `service-b/package-lock.json`, and does not cover
+a file added tomorrow with that name. A leading `./` is normalised on both sides; nothing else
+is. A finding that carries no path at all cannot satisfy a record that declares `files`.
 
 **Within** a dimension the values are **any-match**: `components: ["a", "b"]` matches a finding
 whose component is `a` *or* `b`. **Across** dimensions they **cross-gate**: every declared
@@ -270,8 +296,19 @@ carries aggregate counts), the shortfall is **unaccepted** and the gate fails. A
 source never becomes a clean pass. Make the raw reports available to the enforcing job
 (`--raw-dir`, default `<summary dir>/raw`).
 
-**Ambiguous records never suppress.** A finding-scoped record that declares none of the four
-matching fields is reported as `legacy_unscoped_ignored` and suppresses nothing.
+**Ambiguous records never suppress — and the two reasons are kept apart.** A finding-scoped
+record that declares none of the matching fields suppresses nothing, and is counted as
+`legacy_unscoped_ignored`: it is *tolerated legacy input*, not *valid* input. That distinction
+matters, so this document does not call it "invalid":
+
+- **Legacy** — a pre-v2.3 record that predates finding scope. It is ignored, counted, and
+  named in the report so it can be migrated. Tolerated in `report-only`/`baseline`.
+- **Invalid** — a record that violates the contract (unknown field, wrong type, malformed
+  date, missing required field). It is refused, not ignored.
+
+In `strict` and `regulated` an ambiguous record is a governance defect rather than migration
+debt: it is reported and does not suppress, and the run does not treat the ignored record as
+though the reviewer had accepted nothing.
 
 **Broad `scope: gate` is still available, still discouraged, and now louder:** it is reported in
 both the JSON (`accepted_risks.medium_vulnerabilities.scope = "gate"`) and the Markdown, with an

@@ -432,6 +432,8 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 		or (((.rule_ids // []) | length) > 0)
 		or (((.files // []) | length) > 0)
 		or (((.components // []) | length) > 0)
+		or (((.sources // []) | length) > 0)
+		or (((.source // "") | tostring | length) > 0)
 		or (((.fingerprints // []) | length) > 0);
 		($ok | split(" ")) as $S
 		| (.risks // [])[]
@@ -692,6 +694,8 @@ eval_medium_vulnerabilities() {
 			or (((.rule_ids // []) | length) > 0)
 			or (((.files // []) | length) > 0)
 			or (((.components // []) | length) > 0)
+			or (((.sources // []) | length) > 0)
+			or (((.source // "") | tostring | length) > 0)
 			or (((.fingerprints // []) | length) > 0);
 		def norm: (. // "") | tostring | sub("^\\./"; "");
 		. as $finds
@@ -712,6 +716,13 @@ eval_medium_vulnerabilities() {
 						and ( ((.rule_id // "") == "" and ((.rule_ids // []) | length) == 0)
 							or (.rule_id == $f.rule_id)
 							or (((.rule_ids // []) | index($f.rule_id)) != null) )
+						# SOURCE is a first-class dimension. Without it, `components +
+						# rule_id` accepted the same advisory reported by EVERY scanner and
+						# ecosystem, even when the reviewer had examined the finding from
+						# exactly one producer. Declaring it can only narrow the record.
+						and ( ((.source // "") == "" and ((.sources // []) | length) == 0)
+							or (.source == $f.source)
+							or (((.sources // []) | index($f.source)) != null) )
 						# Paths on the RECORD were normalized; the path on the FINDING
 						# was not. A finding with no `file` — package-level advisories
 						# carry none — made `null | endswith(...)` abort the WHOLE jq
@@ -719,12 +730,17 @@ eval_medium_vulnerabilities() {
 						# "could not compute" even for findings that had already
 						# resolved. A finding with no path cannot satisfy a path-scoped
 						# record.
+						# EXACT, repository-rooted path match — the same rule the
+						# unsafe_docker gate uses. Suffix and basename matching meant an
+						# exception for `service-a/package-lock.json` also covered
+						# `service-b/package-lock.json`, and any file added later with that
+						# basename: an exception silently wider than the one its author
+						# reviewed. A finding with no path cannot satisfy a path-scoped
+						# record at all.
 						and ( (((.files // []) | length) == 0)
 							or ( ($f.file | norm) as $ff
 								| ($ff != "")
-								and any((.files // [])[]; (. | norm) as $rf
-									| ($ff == $rf) or ($ff | endswith("/" + $rf))
-									or (($ff | split("/") | last) == $rf)) ) )
+								and any((.files // [])[]; (. | norm) == $ff) ) )
 					)
 					| .id ) ) // null ) as $rid
 			| { source: $f.source, rule_id: $f.rule_id, component: $f.component,
@@ -1101,7 +1117,7 @@ write_json() {
 		printf '    "legacy_unscoped_ignored": %s,\n' "$AR_LEGACY_WARN"
 		printf '    "unsafe_docker": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "findings": %s },\n' \
 			"$UD_SCOPE" "$UD_TOTAL" "$UD_ACCEPTED" "$UD_UNACCEPTED" "$UD_DETAIL"
-		printf '    "medium_vulnerabilities": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "fingerprint_algorithm": "ss-fp/1", "findings": %s }\n' \
+		printf '    "medium_vulnerabilities": { "scope": "%s", "total": %s, "accepted": %s, "unaccepted": %s, "fingerprint_algorithm": "ss-fp/2", "findings": %s }\n' \
 			"$MV_SCOPE" "$MV_TOTAL" "$MV_ACCEPTED" "$MV_UNACCEPTED" "$MV_DETAIL"
 		printf '  },\n'
 		printf '  "tool_policy": {\n'
@@ -1305,7 +1321,7 @@ write_markdown() {
 		printf -- '> a fix or a finding-scoped accepted-risk (rule_id + files).\n\n'
 
 		printf '### Medium vulnerabilities (finding-scoped accounting)\n\n'
-		printf -- '- Scope: **%s** | total: %s | accepted: %s | unaccepted: %s | fingerprint algorithm: `ss-fp/1`\n\n' \
+		printf -- '- Scope: **%s** | total: %s | accepted: %s | unaccepted: %s | fingerprint algorithm: `ss-fp/2`\n\n' \
 			"$MV_SCOPE" "$MV_TOTAL" "$MV_ACCEPTED" "$MV_UNACCEPTED"
 		if [ "$MV_SCOPE" = "gate" ]; then
 			printf -- '> **BROAD suppression in effect.** A `scope: gate` record accepts every medium\n'

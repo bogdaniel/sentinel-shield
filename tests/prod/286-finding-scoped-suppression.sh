@@ -73,7 +73,7 @@ D=$(mkfix norm)
 _f=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$D/reports/raw")
 check "normalizer emits exactly the MEDIUM findings" "$(printf '%s' "$_f" | jq 'length')" 2
 check "high-severity findings are not in the medium identity set" "$(printf '%s' "$_f" | jq '[.[] | select(.severity != "medium")] | length')" 0
-check "fingerprints carry the algorithm version" "$(printf '%s' "$_f" | jq '[.[] | select(.fingerprint | startswith("ss-fp/1|"))] | length')" 2
+check "fingerprints carry the algorithm version" "$(printf '%s' "$_f" | jq '[.[] | select(.fingerprint | startswith("ss-fp/2|"))] | length')" 2
 check "identities are unique" "$(printf '%s' "$_f" | jq '[.[].fingerprint] | unique | length')" 2
 _f2=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$D/reports/raw")
 check "the normalizer is deterministic across runs" "$(printf '%s' "$_f2" | jq -c .)" "$(printf '%s' "$_f" | jq -c .)"
@@ -90,7 +90,7 @@ check "  accepted count" "$(acct "$D" accepted)" 1
 check "  unaccepted count" "$(acct "$D" unaccepted)" 1
 check "  raw count is preserved (never zeroed)" "$(acct "$D" total)" 2
 check "  scope is reported as finding" "$(acct "$D" scope)" "finding"
-check "  the fingerprint algorithm is reported" "$(acct "$D" fingerprint_algorithm)" "ss-fp/1"
+check "  the fingerprint algorithm is reported" "$(acct "$D" fingerprint_algorithm)" "ss-fp/2"
 
 D=$(mkfix both)
 risk "$D/ar.json" '{"components":["lodash","symfony/http-kernel"]}'
@@ -101,11 +101,11 @@ check "  both are accounted as accepted" "$(acct "$D" accepted)" 2
 # 3. Matching dimensions: fingerprint, advisory id, file — and their negatives.
 # ---------------------------------------------------------------------------
 D=$(mkfix fp)
-risk "$D/ar.json" '{"fingerprints":["ss-fp/1|grype|GHSA-lodash|lodash|4.17.20|package-lock.json","ss-fp/1|trivy-fs|CVE-2024-SYMFONY|symfony/http-kernel|5.4.1|composer.lock"]}'
+risk "$D/ar.json" '{"fingerprints":["ss-fp/2|grype|GHSA-lodash|lodash|4.17.20|package-lock.json","ss-fp/2|trivy-fs|CVE-2024-SYMFONY|symfony/http-kernel|5.4.1|composer.lock"]}'
 check "exact fingerprints accept exactly those findings" "$(enforce "$D" "$D/ar.json")" 0
 
 D=$(mkfix fp-stale)
-risk "$D/ar.json" '{"fingerprints":["ss-fp/1|grype|GHSA-lodash|lodash|4.17.19|package-lock.json"]}'
+risk "$D/ar.json" '{"fingerprints":["ss-fp/2|grype|GHSA-lodash|lodash|4.17.19|package-lock.json"]}'
 check "a STALE fingerprint (package version bumped) no longer matches" "$(enforce "$D" "$D/ar.json")" 1
 check "  nothing was accepted by the stale record" "$(acct "$D" accepted)" 0
 
@@ -328,6 +328,110 @@ risk "$D/ar.json" '{"components":["lodash","not-installed"],
 	"files":["never.lock","also-never.lock"]}'
 check "a dimension that matches nothing vetoes the record" "$(enforce "$D" "$D/ar.json")" 1
 check "  nothing is accepted" "$(acct "$D" accepted)" 0
+
+# ---------------------------------------------------------------------------
+# SOURCE is an explicit, conjunctive match dimension.
+# ---------------------------------------------------------------------------
+# The same advisory for the same package at the same version is routinely reported by several
+# scanners. Without a source dimension, a components+rule_id record accepted EVERY producer
+# reporting it, including ecosystems the reviewer never looked at.
+mkdual() { # two sources reporting the SAME component + advisory + version
+	_d="$WORK/$1"; mkdir -p "$_d/reports/raw"
+	cat > "$_d/reports/raw/grype.json" <<'JSON'
+{"matches":[{"vulnerability":{"id":"CVE-DUP","severity":"Medium"},
+  "artifact":{"name":"shared/pkg","version":"1.2.3","locations":[{"path":"package-lock.json"}]}}]}
+JSON
+	cat > "$_d/reports/raw/trivy-fs.json" <<'JSON'
+{"Results":[{"Target":"composer.lock","Vulnerabilities":[
+ {"VulnerabilityID":"CVE-DUP","PkgName":"shared/pkg","InstalledVersion":"1.2.3","Severity":"MEDIUM"}]}]}
+JSON
+	jq '.summary.medium_vulnerabilities = 2' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
+	printf '%s' "$_d"
+}
+D=$(mkdual srcscope)
+check "the fixture really does report one advisory from two sources" \
+	"$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$D/reports/raw" | jq '[.[] | select(.rule_id == "CVE-DUP")] | length')" 2
+risk "$D/ar.json" '{"components":["shared/pkg"], "rule_ids":["CVE-DUP"], "source":"grype"}'
+check "a source-scoped record accepts ONLY that producer finding" "$(enforce "$D" "$D/ar.json")" 1
+check "  exactly one accepted" "$(acct "$D" accepted)" 1
+check "  the other producer finding stays unaccepted" "$(acct "$D" unaccepted)" 1
+D=$(mkdual srcscope2)
+risk "$D/ar.json" '{"components":["shared/pkg"], "rule_ids":["CVE-DUP"], "sources":["grype","trivy-fs"]}'
+check "listing both sources accepts both" "$(enforce "$D" "$D/ar.json")" 0
+check "  both accounted as accepted" "$(acct "$D" accepted)" 2
+D=$(mkdual srcscope3)
+risk "$D/ar.json" '{"components":["shared/pkg"], "source":"osv-scanner"}'
+check "a source that reported nothing vetoes the record" "$(enforce "$D" "$D/ar.json")" 1
+check "  nothing accepted" "$(acct "$D" accepted)" 0
+D=$(mkdual srcscope4)
+risk "$D/ar.json" '{"source":"grype"}'
+enforce "$D" "$D/ar.json" >/dev/null
+check "a record constrained by source ALONE is finding-scoped, not ambiguous" \
+	"$(acct "$D" scope)" "finding"
+
+# ---------------------------------------------------------------------------
+# The fingerprint encoding must not collide.
+# ---------------------------------------------------------------------------
+# ss-fp/1 joined raw fields with `|` and defined no escaping, so component "a|b" + version "c"
+# and component "a" + version "b|c" serialised identically — one accepted-risk record would
+# then match a finding its author never reviewed.
+CL="$WORK/collide"; mkdir -p "$CL"
+cat > "$CL/grype.json" <<'JSON'
+{"matches":[
+ {"vulnerability":{"id":"R","severity":"Medium"},"artifact":{"name":"a|b","version":"c","locations":[{"path":"p"}]}},
+ {"vulnerability":{"id":"R","severity":"Medium"},"artifact":{"name":"a","version":"b|c","locations":[{"path":"p"}]}}]}
+JSON
+_fps=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$CL" | jq -r '[.[].fingerprint] | unique | length')
+check "two field tuples differing only in delimiter placement stay distinct" "$_fps" 2
+_enc=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$CL" | jq -r '[.[] | select(.fingerprint | contains("%7C"))] | length')
+check "  the delimiter is encoded, not emitted raw" "$_enc" 2
+cat > "$CL/grype.json" <<'JSON'
+{"matches":[{"vulnerability":{"id":"R\tX","severity":"Medium"},
+  "artifact":{"name":"pkg%25","version":"1","locations":[{"path":"p"}]}}]}
+JSON
+_ctl=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$CL" | jq -r '.[0].fingerprint')
+case "$_ctl" in
+	*"%09"*) pass "a control character in a scanner value is encoded ($_ctl)" ;;
+	*) fail "a raw control character survived into the fingerprint: $_ctl" ;;
+esac
+case "$_ctl" in
+	*"%2525"*) pass "  and the escape character itself is escaped first" ;;
+	*) fail "  but a literal % was not escaped, so encodings are ambiguous: $_ctl" ;;
+esac
+
+# ---------------------------------------------------------------------------
+# Path matching is EXACT — no suffix, no basename.
+# ---------------------------------------------------------------------------
+# An exception for one lockfile must not cover the same basename elsewhere in the repository,
+# nor a file added later with that name.
+mkpaths() {
+	_d="$WORK/$1"; mkdir -p "$_d/reports/raw"
+	cat > "$_d/reports/raw/grype.json" <<'JSON'
+{"matches":[
+ {"vulnerability":{"id":"CVE-A","severity":"Medium"},"artifact":{"name":"p1","version":"1","locations":[{"path":"service-a/package-lock.json"}]}},
+ {"vulnerability":{"id":"CVE-B","severity":"Medium"},"artifact":{"name":"p2","version":"1","locations":[{"path":"service-b/package-lock.json"}]}}]}
+JSON
+	jq '.summary.medium_vulnerabilities = 2' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
+	printf '%s' "$_d"
+}
+D=$(mkpaths basename)
+risk "$D/ar.json" '{"files":["package-lock.json"]}'
+check "a BASENAME does not match a nested path" "$(enforce "$D" "$D/ar.json")" 1
+check "  nothing accepted by basename" "$(acct "$D" accepted)" 0
+D=$(mkpaths suffix)
+risk "$D/ar.json" '{"files":["a/package-lock.json"]}'
+check "a path SUFFIX does not match a different directory" "$(enforce "$D" "$D/ar.json")" 1
+check "  nothing accepted by suffix" "$(acct "$D" accepted)" 0
+D=$(mkpaths exact)
+risk "$D/ar.json" '{"files":["service-a/package-lock.json"]}'
+check "the EXACT repository-relative path matches" "$(enforce "$D" "$D/ar.json")" 1
+check "  and matches exactly one finding" "$(acct "$D" accepted)" 1
+D=$(mkpaths dotslash)
+risk "$D/ar.json" '{"files":["./service-a/package-lock.json"]}'
+enforce "$D" "$D/ar.json" >/dev/null
+check "a leading ./ is normalised on the record side" "$(acct "$D" accepted)" "1"
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
