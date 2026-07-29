@@ -125,8 +125,10 @@ them non-blocking except strict (install-script + network) and regulated (all).
 > of these gates in `strict` and `regulated`, and `changed_lines_coverage_violations` and
 > `focused_test_violations` enforce from `baseline` and report-only respectively once their evidence
 > exists. A consumer already running `strict`/`regulated` can therefore see NEW blocking outcomes on
-> the first run after upgrading. Preflight with `--mode report-only` (or
-> `SENTINEL_SHIELD_FAIL_ON_*=false`) on one branch before promoting the engine.
+> the first run after upgrading. Preflight with `--mode report-only` on one branch before
+> promoting the engine, or disable individual gates explicitly with
+> `SENTINEL_SHIELD_FAIL_ON_<GATE>=false` (one variable per gate — there is no wildcard form, and
+> a glob is read as a literal gate name that matches nothing).
 > Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family is a **separate counter channel** from security (the two are never

@@ -331,6 +331,11 @@ else
 		# not "the release is published". A missing or transiently failing `gh` must not be
 		# waivable past a publication claim nobody proved.
 		failx "release-status publication check needs a tool that is unavailable (exit 3) — publication was NOT proven; fail closed"
+	elif [ "$_rsrc" -eq 2 ]; then
+		# Exit 2 is "the contract could not be READ" (invalid invocation, missing or malformed
+		# status file), not "the release is unpublished". Sending the operator to backfill a
+		# GitHub Release is the wrong remediation and would hide a broken contract.
+		failx "release-status contract is missing or malformed (exit 2) — publication could not be evaluated at all; repair config/release-status.json and re-run (this is NOT evidence that the release is unpublished)"
 	else
 		failx "a release is declared PUBLISHED but no valid GitHub Release was proven (run: sh scripts/validate-release-status.sh published --verify-github; backfill via the release-publish workflow_dispatch recovery path)"
 	fi

@@ -150,10 +150,13 @@ registered.
 
 ## Recovery: a tag exists but no GitHub Release was created
 
-A tag-push event publishes the release. If that event never produced one — the publisher
-workflow was added or fixed **after** the tag was pushed, the run failed, or the release
-notes were not yet merged to the default branch — the repository ends up with an immutable
-tag and no GitHub Release, while the documentation claims a published release.
+A tag-push event **triggers** the publisher; it does not prove a release was published. The
+release exists only once the publisher has created it and the verification step has confirmed
+it. If the event never produced one — the publisher workflow was added or fixed **after** the
+tag was pushed, the run failed, the signing identity was not verified, or the release notes
+were not yet merged to the default branch — the repository ends up with an immutable tag and
+no GitHub Release, while the documentation claims a published release. The tag is the input to
+publication, never the evidence of it.
 
 Recover with the publisher's **backfill** path. It publishes an **existing** tag and can
 never create, move, or force-update one:

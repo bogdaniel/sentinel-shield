@@ -292,6 +292,28 @@ else
 	fail "missing .github/workflows/release-publish.yml"
 fi
 
+# ---------------------------------------------------------------------------
+# The readiness gate must not read "the contract could not be READ" as "the release is
+# unpublished". Exit 2 (invalid invocation, missing or malformed status file) used to land in
+# the generic branch and send the operator to backfill a GitHub Release — the wrong
+# remediation, and one that hides a broken contract.
+# ---------------------------------------------------------------------------
+_bad="$TMPROOT/malformed.json"
+printf '{ not json' > "$_bad"
+check "the validator exits 2 on a malformed status file" \
+	"$(_c=0; sh "$VALIDATOR" published --status "$_bad" >/dev/null 2>&1 || _c=$?; printf '%s' "$_c")" 2
+_rd="$ROOT/scripts/check-release-readiness.sh"
+if grep -q '_rsrc" -eq 2' "$_rd"; then
+	pass "the readiness gate handles validator exit 2 separately"
+else
+	fail "the readiness gate folds validator exit 2 into the generic unpublished-release branch"
+fi
+if sed -n '/_rsrc" -eq 2/,/^	else/p' "$_rd" | grep -q 'could not be evaluated'; then
+	pass "  and says the contract could not be evaluated rather than that publication is unproven"
+else
+	fail "  but its message still reads as an unproven publication"
+fi
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '281-release-status-contract: ALL CHECKS PASSED\n'
