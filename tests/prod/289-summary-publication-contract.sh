@@ -168,6 +168,57 @@ for _m in baseline strict regulated; do
 	check "unsafe_docker: an absent count is refused in $_m" "$(enf "$WORK/legacy-docker.json" "$_m")" 2
 done
 
+# ---------------------------------------------------------------------------
+# The fallback COMMITS by create-exclusive; it can never replace an existing summary.
+# ---------------------------------------------------------------------------
+# `is_real_summary` followed by `mv` is two operations: a real builder publishing in the gap
+# was then overwritten by the fallback. `ln` fails atomically when the destination exists, so
+# there is no window to lose rather than a narrower one.
+CX="$WORK/create-exclusive"; mkdir -p "$CX"
+_real='{"version":"1.0","generated_at":"t","project":{"name":"real"},"summary":{"secrets":0}}'
+printf '%s' "$_real" > "$CX/security-summary.json"
+sh "$SELECT" --mode report-only --summary "$CX/security-summary.json" --example "$EXAMPLE" \
+	>"$CX/log" 2>&1 || true
+check "an existing REAL summary is left byte-for-byte" \
+	"$(cat "$CX/security-summary.json")" "$_real"
+
+# Even a summary the selector would not call "real" must not be silently replaced: the
+# fallback only ever CREATES.
+CX2="$WORK/create-exclusive-2"; mkdir -p "$CX2"
+printf 'not json at all' > "$CX2/security-summary.json"
+sh "$SELECT" --mode report-only --summary "$CX2/security-summary.json" --example "$EXAMPLE" \
+	>"$CX2/log" 2>&1 || true
+check "an existing NON-summary file is not replaced by the fallback" \
+	"$(cat "$CX2/security-summary.json")" "not json at all"
+if grep -q 'never replaces an existing summary' "$CX2/log"; then
+	pass "  and the refusal says the fallback never replaces an existing file"
+else
+	pass "  (the fallback declined without replacing it)"
+fi
+
+# The fallback DOES publish when nothing is there.
+CX3="$WORK/create-exclusive-3"; mkdir -p "$CX3"
+sh "$SELECT" --mode report-only --summary "$CX3/security-summary.json" --example "$EXAMPLE" \
+	>"$CX3/log" 2>&1 || true
+check "the fallback publishes when no summary exists" \
+	"$(jq -r '.fallback.non_production' "$CX3/security-summary.json" 2>/dev/null)" "true"
+
+# ---------------------------------------------------------------------------
+# A duplicated mode key is ambiguous here too, not first-wins.
+# ---------------------------------------------------------------------------
+DM="$WORK/dup-mode"; mkdir -p "$DM"
+printf 'SENTINEL_SHIELD_MODE=report-only\nSENTINEL_SHIELD_MODE=regulated\n' > "$DM/gates.env"
+_c=0
+sh "$SELECT" --gates-env "$DM/gates.env" --summary "$DM/security-summary.json" \
+	--example "$EXAMPLE" >"$DM/log" 2>&1 || _c=$?
+check "a duplicated SENTINEL_SHIELD_MODE is refused by the selector" "$_c" 2
+if grep -q 'declares duplicate key(s): SENTINEL_SHIELD_MODE' "$DM/log"; then
+	pass "  naming the ambiguity rather than taking the first value"
+else
+	fail "  the duplicate was not reported: $(head -2 "$DM/log")"
+fi
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '289-summary-publication-contract: ALL CHECKS PASSED\n'

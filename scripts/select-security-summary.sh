@@ -148,14 +148,22 @@ stage_fallback() {
 	jq -e '(.version != null) and (.summary | type == "object") and (.fallback.non_production == true)' \
 		"$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; die_cfg "staged fallback failed validation; leaving $_dest untouched"; }
 
-	# (5) a real summary may have been completed by a concurrent builder while we staged.
-	#     The fallback must never replace real evidence.
-	if is_real_summary "$_dest"; then
+	# (5) COMMIT BY CREATE-EXCLUSIVE, not check-then-rename. `is_real_summary` followed by
+	#     `mv` is two operations: a real builder can publish in the gap and the fallback then
+	#     overwrites real evidence. `ln` fails atomically when the destination already exists,
+	#     so the fallback can only ever CREATE the file, never replace one. There is no window
+	#     to lose, and no second stat to race.
+	if ln -- "$_tmp" "$_dest" 2>/dev/null; then
 		rm -f -- "$_tmp"
-		log_warn "a REAL security-summary appeared while the fallback was staging; keeping it and discarding the fallback"
-		return 0
+	else
+		if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+			rm -f -- "$_tmp"
+			log_warn "a summary appeared at $_dest while the fallback was staging; keeping it and discarding the fallback (the fallback never replaces an existing summary)"
+			return 0
+		fi
+		rm -f -- "$_tmp"
+		die_cfg "could not publish the fallback summary at $_dest"
 	fi
-	mv -- "$_tmp" "$_dest" || { rm -f -- "$_tmp"; die_cfg "could not publish the fallback summary at $_dest"; }
 	trap - EXIT INT TERM HUP
 	log_warn "staged a NON-PRODUCTION fallback summary at $_dest (marked .fallback.non_production=true)"
 	return 0
