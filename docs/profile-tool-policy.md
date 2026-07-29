@@ -438,19 +438,33 @@ Rules (fail closed on any violation):
   never split into multiple waived controls; whitespace/tabs/slashes/`..`/metachars
   are rejected. No field may contain control characters.
 - `owner` ≠ `approved_by` (no self-approval — enforced in the validator, not just schema).
+  **`approved_by` is an UNVERIFIED CLAIM.** It is an editable string in a file the same person
+  can commit; nothing yet authenticates that the named identity approved anything. The
+  distinct-identity rule prevents the most obvious self-approval, and record identity and
+  supersession are enforced — but until platform-attested approval lands (#227) no output here
+  should be read as proof of authorization. Every report labels it accordingly.
+- Both objects are **closed** (`additionalProperties: false`) and the RUNTIME enforces that,
+  not only the schema: an unknown or mistyped field is refused rather than ignored, because a
+  typo in a narrowing or audit field leaves the record meaning something its author did not
+  write.
 - `created_at`/`expires_at` are real calendar dates (`YYYY-MM-DD`), validated with
   POSIX `/bin/sh` arithmetic (portable to `dash`; leading-zero months like `08`/`09`
   are handled). `created_at <= expires_at`.
 - **Time-boxed, and enforced as such.** `created_at` may not be more than
   `CW_MAX_CLOCK_SKEW_DAYS` (default 1) ahead of the trusted UTC date — a record dated
-  next month is a pre-positioned approval, not clock skew — and
+  next month is a pre-positioned approval, not clock skew. That variable obeys the SAME
+  fail-closed contract as the window below: unset uses the documented default, while
+  set-but-empty, non-numeric, negative or out-of-range values are configuration errors
+  (exit 2) rather than being silently read as a tolerance of zero. And
   `expires_at - created_at` may not exceed `CW_MAX_WAIVER_DAYS` (default **90**;
   **30** in `regulated`; absolute ceiling **365**). Configuration may only TIGHTEN this.
   An **invalid** setting — non-numeric, fractional, zero, negative, empty, above the policy
   maximum, or absurdly long — is a **configuration error that fails closed** (exit 2). It is
   never clamped, normalised or replaced by a fallback, because substituting a number would
   enforce a policy nobody chose while the operator believed another was in force. Only an
-  **unset** variable uses the documented 90-day default. Renew by adding a **new** record that
+  **unset** variable uses the documented 90-day default — and "unset" means genuinely unset:
+  `CW_MAX_WAIVER_DAYS=` is a set-but-empty value and fails closed like any other unusable
+  setting. Renew by adding a **new** record that
   supersedes the old one, never by extending a date.
 - **One authoritative approval per tool.** Two records that nothing supersedes may not
   cover the same tool over overlapping validity windows; that is a configuration

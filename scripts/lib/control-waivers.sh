@@ -85,11 +85,18 @@ CW_ID_RE='^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
 CW_MAX_WAIVER_DAYS_DEFAULT=90
 CW_MAX_WAIVER_DAYS_CEILING=365   # absolute upper bound, retained for reporting
 CW_MAX_WAIVER_DAYS_REGULATED=30
-: "${CW_MAX_WAIVER_DAYS:=$CW_MAX_WAIVER_DAYS_DEFAULT}"
+# NO `: "${CW_MAX_WAIVER_DAYS:=…}"` HERE. `:=` substitutes for an UNSET *and* a SET-BUT-EMPTY
+# value alike, so it destroyed the very distinction cw__max_days exists to police: an operator
+# who wrote `CW_MAX_WAIVER_DAYS=` had it silently rewritten to the default before validation
+# could refuse it, and the function comments and tests asserted a contract the library could
+# not honour. cw__max_days is the ONLY resolver: unset gets the documented default, set-empty
+# fails closed.
 # CW_MAX_CLOCK_SKEW_DAYS — how far ahead of the trusted UTC date created_at may sit.
 # Runners disagree about the date across a UTC midnight; a record dated next month is
 # not skew, it is a pre-positioned approval.
-: "${CW_MAX_CLOCK_SKEW_DAYS:=1}"
+# Same reasoning: cw__skew_days is the only resolver, so unset and set-empty stay
+# distinguishable all the way to validation.
+CW_MAX_CLOCK_SKEW_DAYS_DEFAULT=1
 
 # cw_decimal <numeric-string> — strip leading zeros WITHOUT Bash base syntax
 # ($((10#08)) is not POSIX and dash errors on 08/09). Returns the base-10 value as a
@@ -220,12 +227,35 @@ cw__max_days() {
 	printf '%s' "$CW_MAX_WAIVER_DAYS"
 }
 
-# cw__skew_days — the effective future-clock tolerance (non-numeric/negative => 0).
+# cw__skew_days — the effective future-clock tolerance, resolved with the SAME fail-closed
+# contract as cw__max_days. Mapping an invalid value to 0 recreated exactly the ambiguity that
+# was fixed for the waiver window: the operator configured one tolerance and the engine
+# enforced another, silently. Absent uses the documented default; anything else that is not a
+# usable whole number of days is a configuration error (return 2).
+CW_MAX_CLOCK_SKEW_DAYS_CEILING=365
 cw__skew_days() {
-	case "${CW_MAX_CLOCK_SKEW_DAYS:-}" in
-		'' | *[!0-9]*) printf '0' ;;
-		*) printf '%s' "$CW_MAX_CLOCK_SKEW_DAYS" ;;
+	if [ "${CW_MAX_CLOCK_SKEW_DAYS+set}" != "set" ]; then
+		printf '%s' "$CW_MAX_CLOCK_SKEW_DAYS_DEFAULT"; return 0
+	fi
+	if [ -z "$CW_MAX_CLOCK_SKEW_DAYS" ]; then
+		log_error "control-waivers: CW_MAX_CLOCK_SKEW_DAYS is set but empty. Unset it to use the documented default of $CW_MAX_CLOCK_SKEW_DAYS_DEFAULT day(s); an empty policy value is not a policy."
+		return 2
+	fi
+	if [ "${#CW_MAX_CLOCK_SKEW_DAYS}" -gt 9 ]; then
+		log_error "control-waivers: CW_MAX_CLOCK_SKEW_DAYS='$CW_MAX_CLOCK_SKEW_DAYS' is out of range."
+		return 2
+	fi
+	case "$CW_MAX_CLOCK_SKEW_DAYS" in
+		*[!0-9]*)
+			log_error "control-waivers: CW_MAX_CLOCK_SKEW_DAYS='$CW_MAX_CLOCK_SKEW_DAYS' is not a whole number of days. Refusing to guess a tolerance."
+			return 2 ;;
 	esac
+	_cw_skew=$(cw_decimal "$CW_MAX_CLOCK_SKEW_DAYS")
+	if [ "$_cw_skew" -gt "$CW_MAX_CLOCK_SKEW_DAYS_CEILING" ] 2>/dev/null; then
+		log_error "control-waivers: CW_MAX_CLOCK_SKEW_DAYS=$_cw_skew exceeds the $CW_MAX_CLOCK_SKEW_DAYS_CEILING-day ceiling. A tolerance that large is not clock skew."
+		return 2
+	fi
+	printf '%s' "$_cw_skew"
 }
 
 # cw__records <file> — tab-delimited record projection, one line per waiver:
@@ -263,6 +293,29 @@ cw_validate_file() {
 		if [ "$_gotv" = '"1"' ]; then
 			log_error "control-waivers: migrate a v1 file by giving every record a unique 'id' (${CW_ID_RE}) and setting version to \"$CW_SCHEMA_VERSION\"; a waiver without an identity cannot be reported, superseded or revoked."
 		fi
+		return 2
+	fi
+	# CLOSED OBJECTS, enforced at RUNTIME. The schema declares additionalProperties:false at
+	# both levels, but a schema nobody applies is documentation: an unknown key was silently
+	# ignored, so a typo in a narrowing or audit field (`aproved_by`, `expires`, `tracking`)
+	# left the record meaning something other than what its author wrote — and the missing
+	# real field was then reported as missing, or defaulted. Reject unknown keys here so the
+	# runtime and the schema agree.
+	_unknown=$(jq -r '
+		def topok: ["version","waivers"];
+		def recok: ["id","tool","justification","owner","approved_by","created_at",
+			"expires_at","tracking_issue","supersedes"];
+		( [ keys[] | select(. as $k | topok | index($k) | not)
+			| "top-level: unknown field \"\(.)\"" ] )
+		+ ( [ .waivers[]? | select(type == "object") | . as $w | ($w.id? // "?") as $rid
+			| ($w | keys[]) | select(. as $k | recok | index($k) | not)
+			| "waiver \($rid): unknown field \"\(.)\" — v2 records are closed; a mistyped field is not an ignorable one" ] )
+		| .[]' "$_f" 2>/dev/null || true)
+	if [ -n "$_unknown" ]; then
+		printf '%s\n' "$_unknown" | while IFS= read -r _u; do
+			[ -n "$_u" ] && log_error "control-waivers: $_u"
+		done
+		log_error "control-waivers: refusing $_f — the schema closes both objects and the runtime now enforces that."
 		return 2
 	fi
 	# every record: required non-empty string fields, control-character-free values,
@@ -308,7 +361,11 @@ cw_validate_file() {
 	# exit status, so it is captured explicitly and the failure is propagated.
 	_maxd=$(cw__max_days) || return 2
 	[ -n "$_maxd" ] || return 2
-	_skew=$(cw__skew_days)
+	# Same contract as cw__max_days: the substitution swallows the exit status, so an
+	# unusable skew setting is captured and propagated instead of silently becoming a
+	# tolerance nobody configured.
+	_skew=$(cw__skew_days) || return 2
+	[ -n "$_skew" ] || return 2
 	_todayn=$(cw__days "$_vt")
 	# ACTIVE = every record nothing else supersedes; only those can conflict (below).
 	_active=""

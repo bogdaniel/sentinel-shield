@@ -269,6 +269,50 @@ sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D2/sentinel-shield-gates.env" 
 check "regulated refuses an 80-day waiver window" "$_c" 2
 contains "  naming the regulated maximum" "$(cat "$D2/enf.log")" "30-day maximum"
 
+# ---------------------------------------------------------------------------
+# Policy inputs are fail-closed: unset is a default, set-empty is a configuration error.
+# ---------------------------------------------------------------------------
+# `: "${VAR:=default}"` at load time substitutes for an UNSET *and* a SET-BUT-EMPTY value, so
+# it destroyed the distinction the validators exist to police — the operator configured one
+# thing and the engine enforced another. These run in FRESH processes because the defect was
+# in library load order, which an in-process test cannot observe.
+LIB="$ROOT/scripts/lib/control-waivers.sh"
+COMMON="$ROOT/scripts/lib/sentinel-shield-common.sh"
+freshmax() { # freshmax <env-assignment-or-empty> -> "<output>|<rc>"
+	env $1 sh -c '. "$0" 2>/dev/null; . "$1"; o=$(cw__max_days 2>/dev/null); printf "%s|%s" "$o" "$?"' \
+		"$COMMON" "$LIB" 2>/dev/null
+}
+freshskew() {
+	env $1 sh -c '. "$0" 2>/dev/null; . "$1"; o=$(cw__skew_days 2>/dev/null); printf "%s|%s" "$o" "$?"' \
+		"$COMMON" "$LIB" 2>/dev/null
+}
+check "CW_MAX_WAIVER_DAYS unset uses the documented default" "$(freshmax '')" "90|0"
+check "CW_MAX_WAIVER_DAYS set-empty FAILS CLOSED" "$(freshmax 'CW_MAX_WAIVER_DAYS=')" "|2"
+check "CW_MAX_WAIVER_DAYS valid is honoured" "$(freshmax 'CW_MAX_WAIVER_DAYS=30')" "30|0"
+check "CW_MAX_WAIVER_DAYS non-numeric FAILS CLOSED" "$(freshmax 'CW_MAX_WAIVER_DAYS=abc')" "|2"
+check "CW_MAX_CLOCK_SKEW_DAYS unset uses the documented default" "$(freshskew '')" "1|0"
+check "CW_MAX_CLOCK_SKEW_DAYS set-empty FAILS CLOSED" "$(freshskew 'CW_MAX_CLOCK_SKEW_DAYS=')" "|2"
+check "CW_MAX_CLOCK_SKEW_DAYS valid is honoured" "$(freshskew 'CW_MAX_CLOCK_SKEW_DAYS=3')" "3|0"
+check "CW_MAX_CLOCK_SKEW_DAYS non-numeric FAILS CLOSED (was silently 0)" "$(freshskew 'CW_MAX_CLOCK_SKEW_DAYS=abc')" "|2"
+check "CW_MAX_CLOCK_SKEW_DAYS negative FAILS CLOSED (was silently 0)" "$(freshskew 'CW_MAX_CLOCK_SKEW_DAYS=-5')" "|2"
+
+# ---------------------------------------------------------------------------
+# The closed-object contract is enforced by the RUNTIME, not only declared by the schema.
+# ---------------------------------------------------------------------------
+CO="$WORK/closed"; mkdir -p "$CO"
+_val() { sh -c '. "$0" 2>/dev/null; . "$1"; cw_validate_file "$2" >/dev/null 2>&1; printf "%s" "$?"' \
+	"$COMMON" "$LIB" "$1"; }
+jq -n '{version:"2", waivers:[{id:"W-1",tool:"grype",justification:"j",owner:"a",
+	approved_by:"b",created_at:"2026-01-01",expires_at:"2026-02-01",tracking_issue:"#1"}]}' > "$CO/ok.json"
+check "a well-formed waiver file validates" "$(_val "$CO/ok.json")" 0
+jq '.waivers[0].aproved_by = "typo"' "$CO/ok.json" > "$CO/typo.json"
+check "a MISTYPED record field is refused, not ignored" "$(_val "$CO/typo.json")" 2
+jq '.extra = "surprise"' "$CO/ok.json" > "$CO/toplevel.json"
+check "an unknown TOP-LEVEL field is refused" "$(_val "$CO/toplevel.json")" 2
+jq '.waivers[0].supersedes = ""' "$CO/ok.json" > "$CO/known.json"
+check "a KNOWN optional field is still accepted" "$(_val "$CO/known.json")" 0
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '293-control-waiver-authority: ALL CHECKS PASSED\n'
