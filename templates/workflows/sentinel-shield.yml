@@ -105,10 +105,29 @@ jobs:
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/resolve-gates.sh \
             --profile .sentinel-shield/profile.yaml --format env --output-dir reports
           ENVF=reports/sentinel-shield-gates.env
-          get() { grep -E "^$1=" "$ENVF" 2>/dev/null | head -n1 | sed "s/^$1=//" || true; }
-          PN=$(get SENTINEL_SHIELD_PROJECT_NAME); [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"
-          # The profile name drives the whole plan; project_type IS the profile.
-          PROFILE=$(get SENTINEL_SHIELD_PROJECT_TYPE); [ -n "$PROFILE" ] || PROFILE="laravel-react-docker"
+          # `head -n1` on a DUPLICATED key silently picks the first value, so a resolution
+          # artifact declaring a key twice would resolve to whichever line came first. A policy
+          # value that appears more than once is ambiguous, not first-wins.
+          get() {
+            _n=$(grep -cE "^$1=" "$ENVF" 2>/dev/null || printf '0')
+            case "$_n" in '' | *[!0-9]*) _n=0 ;; esac
+            if [ "$_n" -gt 1 ]; then
+              echo "::error::gate resolution declares $1 $_n times in $ENVF — an ambiguous policy value is a configuration error, not a first-wins default." >&2
+              return 2
+            fi
+            grep -E "^$1=" "$ENVF" 2>/dev/null | sed "s/^$1=//"
+          }
+          PN=$(get SENTINEL_SHIELD_PROJECT_NAME) || exit 2
+          [ -n "$PN" ] || PN="${GITHUB_REPOSITORY##*/}"
+          # The profile name drives the WHOLE plan; project_type IS the profile. There is no
+          # fallback: silently running `laravel-react-docker` when the resolution is missing or
+          # truncated means proving every required producer for one profile while enforcing a
+          # different stack. An unresolved profile is a configuration failure.
+          PROFILE=$(get SENTINEL_SHIELD_PROJECT_TYPE) || exit 2
+          if [ -z "$PROFILE" ]; then
+            echo "::error::gate resolution did not yield SENTINEL_SHIELD_PROJECT_TYPE from $ENVF. The effective profile decides which producers are required and which gates enforce, so it is never guessed — fix .sentinel-shield/profile.yaml (or the resolver invocation) and re-run."
+            exit 2
+          fi
           CR=$(get SENTINEL_SHIELD_PROJECT_CRITICALITY)
           case "$CR" in low|medium|high|critical) ;; *) CR="high" ;; esac
           {

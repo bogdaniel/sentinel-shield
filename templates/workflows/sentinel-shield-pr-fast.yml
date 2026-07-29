@@ -104,8 +104,22 @@ jobs:
           # enforcement would vanish. Re-deriving it without the fallback is how that
           # happened; without `set -eu` a failed extraction or a failed build then let
           # enforce-gates run against a stale or missing summary.
-          PROFILE=$(grep -E '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env 2>/dev/null | head -n1 | sed 's/^SENTINEL_SHIELD_PROJECT_TYPE=//')
-          [ -n "$PROFILE" ] || PROFILE=laravel-react-docker
+          # The effective profile decides which producers are required and which gates
+          # enforce, so it is NEVER guessed. A duplicated key is ambiguous rather than
+          # first-wins, and a missing one is a configuration failure — silently running
+          # `laravel-react-docker` would prove coverage for one profile while enforcing a
+          # different stack.
+          _pt_n=$(grep -cE '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env 2>/dev/null || printf '0')
+          case "$_pt_n" in '' | *[!0-9]*) _pt_n=0 ;; esac
+          if [ "$_pt_n" -ne 1 ]; then
+            echo "::error::gate resolution declares SENTINEL_SHIELD_PROJECT_TYPE $_pt_n times in reports/sentinel-shield-gates.env; exactly one is required. Zero means the profile is unresolved; more than one is ambiguous policy."
+            exit 2
+          fi
+          PROFILE=$(grep -E '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env | sed 's/^SENTINEL_SHIELD_PROJECT_TYPE=//')
+          if [ -z "$PROFILE" ]; then
+            echo "::error::SENTINEL_SHIELD_PROJECT_TYPE is empty in reports/sentinel-shield-gates.env — the effective profile cannot be guessed."
+            exit 2
+          fi
           # --stage is INERT without --profile: the stage-applicability column is computed
           # only inside the effective-profile overlay, so without it there is no policy
           # overlay, no required_tool_failures, and --stage pr changes nothing.

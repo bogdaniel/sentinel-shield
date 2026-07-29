@@ -269,6 +269,34 @@ else
 fi
 rm -rf "$(dirname "$_tmpwf")"
 
+# ---------------------------------------------------------------------------
+# An unresolved profile is a configuration failure, never a guessed default.
+# ---------------------------------------------------------------------------
+# Silently running `laravel-react-docker` meant the producer-coverage checker could prove every
+# required producer for the intended profile while the installed workflow enforced a different
+# stack, because its policy artifact was missing or ambiguous.
+for _wf in "$ROOT"/templates/workflows/sentinel-shield.yml \
+	"$ROOT"/templates/workflows/sentinel-shield-main.yml \
+	"$ROOT"/templates/workflows/sentinel-shield-pr-fast.yml; do
+	_b=$(basename "$_wf")
+	if grep -vE '^[[:space:]]*#' "$_wf" | grep -q 'PROFILE=laravel-react-docker\|PROFILE="laravel-react-docker"'; then
+		fail "$_b still falls back to a hardcoded profile when resolution yields nothing"
+	else
+		pass "$_b has no hardcoded profile fallback"
+	fi
+	if grep -vE '^[[:space:]]*#' "$_wf" | grep -q "SENTINEL_SHIELD_PROJECT_TYPE=' .*head -n1"; then
+		fail "$_b still takes the FIRST value of a possibly duplicated policy key"
+	else
+		pass "  and does not first-wins a duplicated policy key"
+	fi
+	if grep -q 'declares SENTINEL_SHIELD_PROJECT_TYPE' "$_wf" || grep -q 'declares $1' "$_wf"; then
+		pass "  rejecting an ambiguous count explicitly"
+	else
+		fail "$_b does not reject a duplicated SENTINEL_SHIELD_PROJECT_TYPE"
+	fi
+done
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '285-installed-product-compatibility: ALL CHECKS PASSED\n'
