@@ -284,16 +284,17 @@ for m in report-only baseline strict regulated; do
 	sh "$RESOLVE" --mode "$m" --output-dir "$WORK/enf-$m" --format env >/dev/null 2>&1
 done
 mkav() { # mkav <file> <violations> <missing_architecture_evidence>
-	jq -n --argjson v "$2" --argjson mae "$3" '
-		{ version:"1.0", project:{name:"t",type:"php",criticality:"medium"},
-		  generated_at:"2026-07-18T00:00:00Z",
-		  summary:{ secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
-		            medium_vulnerabilities:0, architecture_violations:$v, type_errors:0,
-		            test_failures:0, unsafe_docker:0, unsafe_github_actions:0,
-		            missing_sbom:false, missing_release_evidence:false, expired_exceptions:0,
-		            missing_architecture_evidence:$mae },
-		  tools:{}, exceptions:{active:0,expired:0},
-		  evidence:{ sbom:{present:true,path:"x"}, release_evidence:{present:true,path:"y"} } }' > "$1"
+	# Derived from the SHIPPED EXAMPLE rather than hand-written. Every enforcing mode — baseline
+	# included — now validates the COMPLETE structure, so a partial summary with no `source`
+	# object is REFUSED as malformed input (exit 2) before any gate is judged, and a test
+	# asserting "the gate blocks" would read that refusal as "the gate did not block". This
+	# fixture is about the architecture gates, so it inherits a current-contract summary and
+	# overrides only the two fields under test.
+	jq --argjson v "$2" --argjson mae "$3" '
+		.tools = {tests:{status:"pass"}}
+		| .summary.architecture_violations = $v
+		| .summary.missing_architecture_evidence = $mae' \
+		"$ROOT/templates/security-summary.example.json" > "$1"
 }
 mkav "$WORK/av.json" 2 false
 mkav "$WORK/mae.json" 0 true
