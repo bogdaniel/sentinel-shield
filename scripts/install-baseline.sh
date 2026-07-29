@@ -349,7 +349,10 @@ do_entry() { # do_entry <source> <target> <mode>
 		create-if-missing | merge-required-lines)
 			if [ -e "$_tgt" ]; then
 				echo "skip (exists, project-owned): $2"
-				[ "$_mode" = "merge-required-lines" ] && echo "  run sync-baseline.sh --apply to merge the required rules into it: $2"
+				# A remediation hint has to be RUNNABLE: sync-baseline.sh exits 2 without
+				# --target, and the profile decides which template is merged, so both are
+				# printed rather than left for the reader to reconstruct.
+				[ "$_mode" = "merge-required-lines" ] && echo "  $2 exists and keeps its own entries; merge the required rules with: sh scripts/sync-baseline.sh --target $TARGET --profile $PROFILE --apply"
 				echo skip >> "$SUM"; return
 			fi ;;
 		overwrite-if-force|sync-managed-block)
