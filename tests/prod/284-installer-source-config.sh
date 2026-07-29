@@ -407,6 +407,58 @@ for _u in 'acme/shield' 'https://github.com/acme/shield.git' 'git@github.com:acm
 		"$( . "$ROOT/scripts/lib/source-config.sh"; sc_normalize_repository "$_u" )" "acme/shield"
 done
 
+# ---------------------------------------------------------------------------
+# The render must not destroy the caller signal handlers.
+# ---------------------------------------------------------------------------
+# install-baseline.sh arms a transaction rollback on INT/TERM. sc_render_workflow used to
+# install its own INT/TERM/HUP trap and then clear it with `trap -`, so every mutation AFTER
+# the first rendered workflow ran with no rollback on interrupt.
+TW="$WORK/traps"; mkdir -p "$TW"
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/repo\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$TW/w.yml"
+_traps=$(sh -c '
+	. "'"$ROOT"'/scripts/lib/source-config.sh"
+	trap "echo CALLER_INT" INT
+	trap "echo CALLER_TERM" TERM
+	_before=$(trap)
+	sc_render_workflow "'"$TW"'/w.yml" acme/shield v2.2.0 >/dev/null 2>&1 || exit 9
+	[ "$_before" = "$(trap)" ] && echo same || echo lost
+')
+check "the render leaves the caller INT/TERM handlers exactly as they were" "$_traps" "same"
+
+# ---------------------------------------------------------------------------
+# A workflow the installer SKIPPED must not be rendered anyway.
+# ---------------------------------------------------------------------------
+SK="$WORK/skipped"; mkdir -p "$SK"
+sh "$ROOT/scripts/install-baseline.sh" --target "$SK" --profile laravel --apply \
+	--source-repository acme/shield >/dev/null 2>&1
+printf 'name: MINE\non: push\njobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/keep-me\n' \
+	> "$SK/.github/workflows/sentinel-shield.yml"
+sh "$ROOT/scripts/install-baseline.sh" --target "$SK" --profile laravel --apply \
+	--source-repository acme/shield >/dev/null 2>&1
+check "a managed workflow skipped for want of --force is left byte-for-byte" \
+	"$(sh -c '. "'"$ROOT"'/scripts/lib/source-config.sh"; sc_workflow_value "'"$SK"'/.github/workflows/sentinel-shield.yml" SENTINEL_SHIELD_REPOSITORY')" \
+	"YOUR_ORG/keep-me"
+
+# ---------------------------------------------------------------------------
+# doctor must catch a QUOTED placeholder.
+# ---------------------------------------------------------------------------
+# The preflight kept its own copy of the placeholder regex, and that copy did not allow for a
+# quoted value — so `SENTINEL_SHIELD_REPOSITORY: "YOUR_ORG/repo"` reported the source
+# configuration as SET, which is a guaranteed first-run CI failure passing its own preflight.
+DQ="$WORK/quoted"; mkdir -p "$DQ"
+sh "$ROOT/scripts/install-baseline.sh" --target "$DQ" --profile laravel --apply \
+	--no-source-render >/dev/null 2>&1
+for _w in "$DQ"/.github/workflows/*.y*ml; do
+	[ -e "$_w" ] || continue
+	sed -e 's#SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield#SENTINEL_SHIELD_REPOSITORY: "YOUR_ORG/sentinel-shield"#' \
+		"$_w" > "$_w.q" && mv "$_w.q" "$_w"
+done
+if sh "$ROOT/scripts/doctor.sh" --target "$DQ" --profile laravel 2>&1 | grep -q 'still carry the SENTINEL_SHIELD_REPOSITORY placeholder'; then
+	pass "doctor catches a QUOTED placeholder"
+else
+	fail "a quoted placeholder passed the doctor preflight — the workflow cannot check the engine out"
+fi
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '284-installer-source-config: ALL CHECKS PASSED\n'

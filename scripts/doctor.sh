@@ -52,6 +52,10 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# shellcheck source=scripts/lib/source-config.sh
+# The source-configuration preflight below uses the CANONICAL placeholder detector and value
+# parser rather than keeping a second copy of the regexes here.
+. "$SCRIPT_DIR/lib/source-config.sh"
 # Opt-in operational-event emission (off by default). Sourced defensively; every oe_emit is a
 # no-op unless SENTINEL_SHIELD_EVENTS=1 + a sink are configured.
 if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
@@ -331,12 +335,16 @@ if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
   for _wf in "$TARGET"/.github/workflows/*.y*ml; do
     [ -e "$_wf" ] || continue
     grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wf" 2>/dev/null || continue
-    if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*(YOUR_ORG/|<)' "$_wf" 2>/dev/null; then
+    # Use the CANONICAL detector and value parser from source-config.sh rather than a second
+    # copy of the regexes. The local copy did not allow for a QUOTED value, so
+    # `SENTINEL_SHIELD_REPOSITORY: "YOUR_ORG/repo"` walked straight past this preflight — the
+    # exact thing it exists to catch — and the same omission dropped the quotes from a
+    # single-quoted SENTINEL_SHIELD_REF, which then failed the immutability pattern.
+    if sc_has_placeholder "$_wf"; then
       _ph="$_ph $(basename "$_wf")"
       continue
     fi
-    _r=$(grep -E '^[[:space:]]*SENTINEL_SHIELD_REF:' "$_wf" 2>/dev/null | head -n1 |
-      sed -E 's/^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//; s/^"(.*)"$/\1/')
+    _r=$(sc_workflow_value "$_wf" SENTINEL_SHIELD_REF)
     case "$_r" in
       '') _mutable_ref="$_mutable_ref $(basename "$_wf"):<unset>" ;;
       *) printf '%s' "$_r" | grep -Eq '^([0-9a-fA-F]{40}|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$' \

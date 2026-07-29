@@ -153,6 +153,7 @@ ss_cleanup() {
 		[ "$_rc" -eq 0 ] && _rc=4
 	fi
 	[ -n "${SUM:-}" ] && rm -f "$SUM" 2>/dev/null || true
+	[ -n "${WRITTEN_LIST:-}" ] && rm -f "$WRITTEN_LIST" 2>/dev/null || true
 	[ -n "${EFFECTIVE:-}" ] && rm -f "$EFFECTIVE" 2>/dev/null || true
 	exit "$_rc"
 }
@@ -356,6 +357,8 @@ emit_install_plan() {
 
 # Results accumulate in a temp file (the entry loop runs in a subshell via the pipe).
 SUM=$(mktemp); : > "$SUM"
+# Targets this run actually wrote, one per line (see render_source_config).
+WRITTEN_LIST=$(mktemp); : > "$WRITTEN_LIST"
 
 do_entry() { # do_entry <source> <target> <mode>
 	_src="$ROOT/$1"; _tgt="$TARGET/$2"; _mode="$3"
@@ -388,6 +391,11 @@ do_entry() { # do_entry <source> <target> <mode>
 		awk -v m="$MODE" 'BEGIN{d=0} /^  mode: / && !d {sub(/^  mode: .*/, "  mode: " m); d=1} {print}' "$_tgt" > "$_tgt.tmp" && mv "$_tgt.tmp" "$_tgt"
 	fi
 	echo "wrote [$_mode]: $2"; echo created >> "$SUM"
+	# Remember what this run actually wrote. render_source_config must only touch those:
+	# a managed workflow that already existed and was SKIPPED for want of --force is a file
+	# the installer explicitly declined to modify. The manifest loop runs in a PIPELINE, so
+	# this has to be a file — a shell variable set in that subshell is discarded.
+	printf '%s\n' "$2" >> "$WRITTEN_LIST"
 	# Test-only fault seam: simulate a mid-operation crash after a chosen file is written so
 	# transactional rollback can be exercised deterministically. Inert unless the env is set.
 	if [ -n "${SENTINEL_SHIELD_FAULT_AFTER:-}" ] && [ "$2" = "$SENTINEL_SHIELD_FAULT_AFTER" ]; then
@@ -475,6 +483,13 @@ render_source_config() {
 		# Dry-run inspects the TEMPLATE (the target does not exist yet) so the plan can show
 		# the exact substitutions without writing anything.
 		if [ "$APPLY" -eq 1 ]; then _wff="$TARGET/$_wf"; else _wff="$ROOT/$_wfsrc"; fi
+		# Only render what this run WROTE. An existing managed workflow skipped for want of
+		# --force was deliberately left alone; rewriting its source configuration anyway
+		# edited a file the installer had just declined to touch.
+		if [ "$APPLY" -eq 1 ] && ! grep -qxF -- "$_wf" "$WRITTEN_LIST" 2>/dev/null; then
+			echo "source-config: $_wf was not written by this run (skipped) — left exactly as it is"
+			continue
+		fi
 		grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wff" 2>/dev/null || continue
 		if [ -z "$SOURCE_REPOSITORY" ]; then
 			echo "source-config: WARNING — no repository resolved (this checkout has no unambiguous 'origin' remote). $_wf keeps the placeholder and is NOT runnable; re-run with --source-repository <owner/name>."
@@ -485,6 +500,10 @@ render_source_config() {
 			_rendered=$((_rendered + 1))
 			continue
 		fi
+		# The render MUTATES a managed file, so it belongs to the transaction: without a
+		# snapshot a rollback would restore the file to its pre-install state for every other
+		# mutation but leave this one unrecoverable.
+		tx_snapshot "$_wf"
 		if sc_render_workflow "$_wff" "$SOURCE_REPOSITORY" "$SOURCE_REF"; then
 			echo "source-config: $_wf -> repository=$SOURCE_REPOSITORY ref=$SOURCE_REF ($SRC_REF_KIND)"
 			_rendered=$((_rendered + 1))

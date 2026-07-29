@@ -145,6 +145,14 @@ sc_workflow_value() {
 		sed -E "s/^[[:space:]]*${2}:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
 }
 
+# sc__restore_traps — put the caller INT/TERM/HUP handlers back exactly as they were.
+# Ours are cleared first: `trap` only PRINTS the signals that are actually set, so a caller
+# with no INT handler produces no INT line and a bare re-input would leave ours installed.
+sc__restore_traps() {
+	trap - INT TERM HUP
+	[ -z "${_sc_prev_traps:-}" ] || eval "$_sc_prev_traps"
+}
+
 # sc_render_workflow <file> <repository> <ref> — rewrite the two source-configuration lines
 # in place, atomically (temp + mv, so an interrupted render never leaves a half-written
 # workflow). Both values MUST already be validated by the caller; this function re-validates
@@ -171,19 +179,25 @@ sc_render_workflow() {
 	_sc_tmp=$(mktemp "$_sc_f.sc.tmp.XXXXXX") || return 1
 	if [ -L "$_sc_tmp" ] || [ ! -f "$_sc_tmp" ]; then rm -f -- "$_sc_tmp"; return 1; fi
 	chmod 600 "$_sc_tmp" 2>/dev/null || { rm -f -- "$_sc_tmp"; return 1; }
-	# Clean up on every exit path, including a signal between create and rename.
+	# Clean up on every exit path, including a signal between create and rename — WITHOUT
+	# destroying the handlers the caller installed. install-baseline.sh arms a transaction
+	# rollback on INT/TERM; replacing it here and then clearing it with `trap -` left the rest
+	# of the installation running with NO rollback on interrupt. POSIX `trap` with no operands
+	# prints the current handlers in a form that can be re-input, so they are saved and
+	# restored around the window.
+	_sc_prev_traps=$(trap)
 	trap 'rm -f -- "$_sc_tmp" 2>/dev/null || true' INT TERM HUP
 	awk -v repo="$_sc_repo" -v ref="$_sc_ref" '
 		function indent(s,   m) { m = s; sub(/[^ \t].*$/, "", m); return m }
 		/^[ \t]*SENTINEL_SHIELD_REPOSITORY:/ { print indent($0) "SENTINEL_SHIELD_REPOSITORY: " repo; next }
 		/^[ \t]*SENTINEL_SHIELD_REF:/        { print indent($0) "SENTINEL_SHIELD_REF: " ref;         next }
 		{ print }
-	' "$_sc_f" > "$_sc_tmp" || { rm -f -- "$_sc_tmp"; return 1; }
+	' "$_sc_f" > "$_sc_tmp" || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
 	# A render that produced nothing, or that failed to place the values, must not replace the
 	# original file: fail closed and leave the workflow as it was.
-	[ -s "$_sc_tmp" ] || { rm -f -- "$_sc_tmp"; return 1; }
+	[ -s "$_sc_tmp" ] || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
 	if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_sc_f"; then
-		grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY: ${_sc_repo}\$" "$_sc_tmp" || { rm -f -- "$_sc_tmp"; return 1; }
+		grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY: ${_sc_repo}\$" "$_sc_tmp" || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
 	fi
 	# Preserve the destination's mode deliberately: mktemp made the staging file private, and
 	# a workflow file the runner cannot read is useless. Copy the original mode when it can be
@@ -199,8 +213,8 @@ sc_render_workflow() {
 	else
 		chmod 644 "$_sc_tmp" 2>/dev/null || true
 	fi
-	mv -- "$_sc_tmp" "$_sc_f" || { rm -f -- "$_sc_tmp"; return 1; }
-	trap - INT TERM HUP
+	mv -- "$_sc_tmp" "$_sc_f" || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
+	sc__restore_traps
 	return 0
 }
 
