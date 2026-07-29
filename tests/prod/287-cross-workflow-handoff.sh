@@ -169,7 +169,7 @@ grep -q 'MANIFEST_WRONG_RUN' "$D/verify.log" && pass "  the artifact/run cross-b
 D=$(mkcase no-manifest); rm -f "$D/artifact/sentinel-shield-artifact-manifest.json"
 check "an artifact with NO checksum manifest is rejected" "$(vrc "$D")" 1
 grep -q 'MANIFEST_MISSING' "$D/verify.log" && pass "  the missing manifest is named" || fail "  missing manifest not reported"
-grep -q 'ARTIFACT_IDENTITY_UNPROVEN' "$D/verify.log" && pass "  the artifact identity is also unproven without a manifest" || fail "  artifact identity not reported"
+grep -q 'ARTIFACT_IDENTITY_UNDECLARED' "$D/verify.log" && pass "  the artifact identity is also undeclared without a manifest" || fail "  artifact identity not reported"
 
 D=$(mkcase substituted)
 printf '{"substituted":true}' > "$D/artifact/reports/security-summary.json"
@@ -311,6 +311,55 @@ rm -f "$D/artifact/sentinel-shield-artifact-manifest.json"
 sh "$MANIFEST_TOOL" --dir "$D/artifact" --repository acme/app --run-id 42 \
 	--commit "$COMMIT" --workflow sentinel-shield >/dev/null 2>&1
 check "the FLAT artifact layout verifies" "$(vrc "$D" --expected-run-id 42)" 0
+
+# ---------------------------------------------------------------------------
+# Binding fields are MANDATORY, and identity is never inferred.
+# ---------------------------------------------------------------------------
+# These were compared only when non-empty, so a manifest that simply OMITTED them passed the
+# binding stage — the very fields that tie the bytes to the authenticated producer run.
+for _f in repository commit run_id; do
+	D=$(mkcase "no-$_f")
+	jq "del(.$_f)" "$D/artifact/sentinel-shield-artifact-manifest.json" > "$D/m.tmp" \
+		&& mv "$D/m.tmp" "$D/artifact/sentinel-shield-artifact-manifest.json"
+	check "a manifest with no $_f is rejected" "$(vrc "$D" --expected-run-id 42)" 1
+	if grep -qE 'MANIFEST_UNBOUND_(REPOSITORY|COMMIT|RUN)' "$D/verify.log"; then
+		pass "  named as an unbound $_f"
+	else
+		fail "  the missing $_f was not reported: $(grep -iE 'reject' "$D/verify.log" | head -1)"
+	fi
+done
+
+D=$(mkcase short-commit)
+jq '.commit = "abc123"' "$D/artifact/sentinel-shield-artifact-manifest.json" > "$D/m.tmp" \
+	&& mv "$D/m.tmp" "$D/artifact/sentinel-shield-artifact-manifest.json"
+check "an abbreviated manifest commit is rejected" "$(vrc "$D" --expected-run-id 42)" 1
+
+D=$(mkcase no-artifact-name)
+jq 'del(.artifact)' "$D/artifact/sentinel-shield-artifact-manifest.json" > "$D/m.tmp" \
+	&& mv "$D/m.tmp" "$D/artifact/sentinel-shield-artifact-manifest.json"
+check "a manifest declaring no artifact name is rejected" "$(vrc "$D" --expected-run-id 42)" 1
+grep -q 'ARTIFACT_IDENTITY_UNDECLARED' "$D/verify.log" \
+	&& pass "  identity is not inferred from the directory layout" \
+	|| fail "  the undeclared identity was not reported"
+
+# Two manifest-covered files sharing the summary basename must be an AMBIGUITY, not a race
+# between whichever the filesystem returns first.
+# The declared path must be ABSENT for the resolution to have a choice to make, and TWO
+# manifest entries must be valid candidates for it. `find -print -quit` picked whichever the
+# filesystem returned first; the verifier must refuse to choose.
+D=$(mkcase ambiguous-summary)
+mkdir -p "$D/artifact/a/reports" "$D/artifact/b/reports"
+cp "$D/artifact/reports/security-summary.json" "$D/artifact/a/reports/security-summary.json"
+mv "$D/artifact/reports/security-summary.json" "$D/artifact/b/reports/security-summary.json"
+rmdir "$D/artifact/reports" 2>/dev/null || true
+rm -f "$D/artifact/sentinel-shield-artifact-manifest.json"
+sh "$MANIFEST_TOOL" --dir "$D/artifact" --repository acme/app --run-id 42 \
+	--commit "$COMMIT" --workflow sentinel-shield >/dev/null 2>&1
+check "two files sharing the summary basename are rejected as ambiguous" "$(vrc "$D" --expected-run-id 42)" 1
+grep -q 'SUMMARY_AMBIGUOUS' "$D/verify.log" \
+	&& pass "  named as an ambiguous summary rather than picked" \
+	|| fail "  the ambiguity was not reported: $(grep -iE 'reject' "$D/verify.log" | head -1)"
+
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

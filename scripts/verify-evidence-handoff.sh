@@ -288,20 +288,11 @@ if [ -n "$_declared" ]; then
 		reject "ARTIFACT_NOT_ALLOWLISTED — the manifest declares artifact '$_declared', which is not on the expected list"
 	fi
 else
-	: > "$TMPDIR_VH/missing"
-	printf '%s\n' "$EXP_ARTIFACTS" | while IFS= read -r _a; do
-		[ -n "$_a" ] || continue
-		[ -e "$ARTIFACT_DIR/$_a" ] && continue
-		printf '%s\n' "$_a" >> "$TMPDIR_VH/missing"
-	done
-	if [ -s "$TMPDIR_VH/missing" ]; then
-		while IFS= read -r _m; do
-			[ -n "$_m" ] || continue
-			reject "ARTIFACT_IDENTITY_UNPROVEN — the manifest declares no artifact name and no directory named '$_m' was downloaded; the artifact cannot be identified"
-		done < "$TMPDIR_VH/missing"
-	else
-		ok "every expected artifact directory is present"
-	fi
+	# NO DIRECTORY-NAME HEURISTIC. Inferring identity from the extraction layout means a
+	# directory named like an expected artifact is treated AS that artifact; the layout is
+	# chosen by whoever produced the download, not by the platform. A manifest that declares
+	# no artifact name is rejected outright.
+	reject "ARTIFACT_IDENTITY_UNDECLARED — the checksum manifest declares no artifact name. Artifact identity is never inferred from the extracted directory layout, because that layout is not evidence of which artifact was downloaded."
 fi
 
 # --- (13) checksum manifest covers the artifact exactly -----------------------------------
@@ -314,8 +305,20 @@ else
 	_mrepo=$(jq -r '.repository // ""' "$MANIFEST")
 	_mrun=$(jq -r '(.run_id // "") | tostring' "$MANIFEST")
 	_mcommit=$(jq -r '(.commit // "") | ascii_downcase' "$MANIFEST")
+	# THESE BINDINGS ARE MANDATORY. They were compared only when non-empty, so a manifest that
+	# simply OMITTED repository, commit and run_id passed the binding stage entirely — the very
+	# fields that tie the downloaded bytes to the platform-verified producer. Absence is
+	# rejection, not a skipped check.
+	[ -n "$_mrepo" ] || reject "MANIFEST_UNBOUND_REPOSITORY — the manifest declares no repository; an artifact that does not say where it came from is not attributable evidence"
+	[ -n "$_mcommit" ] || reject "MANIFEST_UNBOUND_COMMIT — the manifest declares no commit; evidence that does not name its target cannot be checked against one"
+	[ -n "$_mrun" ] || reject "MANIFEST_UNBOUND_RUN — the manifest declares no run_id; without it the artifact cannot be tied to the producer run that was authenticated"
 	[ -z "$_mrepo" ] || [ "$_mrepo" = "$EXP_REPO" ] || reject "MANIFEST_WRONG_REPOSITORY — manifest repository '$_mrepo' != '$EXP_REPO'"
 	[ -z "$_mcommit" ] || [ "$_mcommit" = "$EXP_COMMIT" ] || reject "MANIFEST_WRONG_COMMIT — manifest commit '$_mcommit' != '$EXP_COMMIT'"
+	# Types matter as much as presence: a numeric or object commit is not a commit.
+	jq -e '((.repository | type) == "string") and ((.commit | type) == "string")' "$MANIFEST" >/dev/null 2>&1 \
+		|| reject "MANIFEST_MALFORMED_BINDING — repository and commit must be strings"
+	printf '%s' "$_mcommit" | grep -Eq '^[0-9a-f]{40}$' \
+		|| reject "MANIFEST_MALFORMED_COMMIT — manifest commit '$_mcommit' is not a full 40-hex SHA"
 	if [ -n "$ACCEPTED_ID" ] && [ -n "$_mrun" ] && [ "$_mrun" != "$ACCEPTED_ID" ]; then
 		reject "MANIFEST_WRONG_RUN — manifest run_id '$_mrun' != the trusted producer run '$ACCEPTED_ID' (artifact substitution)"
 	fi
@@ -364,18 +367,37 @@ else
 fi
 
 # --- (14) the summary's OWN metadata binds it to this commit ------------------------------
+# EXACTLY ONE candidate, and it must be one the manifest covers. The old resolution tried the
+# declared path, then the basename at the artifact root, then `find -print -quit` — which
+# selects whichever match the filesystem returns FIRST when two manifest-covered files share
+# the basename. Choosing between candidates is exactly the ambiguity this verifier exists to
+# refuse, so both fallbacks are gone: the flattened layout is resolved from the MANIFEST, not
+# by searching.
 _sum="$ARTIFACT_DIR/$SUMMARY_REL"
-# Flattened layout (see the manifest resolution above): try the basename at the artifact
-# root before falling back to a search.
-if [ ! -f "$_sum" ] && [ -f "$ARTIFACT_DIR/$(basename "$SUMMARY_REL")" ]; then
-	_sum="$ARTIFACT_DIR/$(basename "$SUMMARY_REL")"
-fi
-if [ ! -f "$_sum" ]; then
-	_found=$(find "$ARTIFACT_DIR" -type f -name "$(basename "$SUMMARY_REL")" -print -quit 2>/dev/null || true)
-	[ -n "$_found" ] && _sum="$_found"
+if [ ! -f "$_sum" ] && [ -f "$MANIFEST" ] && jq -e . "$MANIFEST" >/dev/null 2>&1; then
+	# The manifest lists repository-relative paths; accept the one whose path ENDS with the
+	# declared summary path, and only when there is exactly one such entry.
+	# `upload-artifact` roots the archive at the least common ancestor, so a real handoff
+	# arrives FLAT and the manifest path is the declared path with leading components
+	# dropped. Both directions are therefore accepted — but only ever ONE entry.
+	# The path is BOUND first: inside `$s | endswith("/" + .)` the pipe rebinds `.` to $s,
+	# so the suffix test would compare $s against itself and never match.
+	_cand=$(jq -r --arg s "$SUMMARY_REL" '[ (.files // [])[] | .path as $p
+		| select($p == $s or ($p | endswith("/" + $s)) or ($s | endswith("/" + $p)))
+		| $p ] | unique | .[]' "$MANIFEST" 2>/dev/null || true)
+	_ncand=$(printf '%s\n' "$_cand" | sed '/^$/d' | wc -l | tr -d ' ')
+	case "$_ncand" in '' | *[!0-9]*) _ncand=0 ;; esac
+	if [ "$_ncand" -gt 1 ]; then
+		reject "SUMMARY_AMBIGUOUS — the manifest covers $_ncand files matching '$SUMMARY_REL'; the verifier never picks between candidates: $(printf '%s' "$_cand" | tr '\n' ' ')"
+	elif [ "$_ncand" -eq 1 ]; then
+		_rel=$(printf '%s\n' "$_cand" | sed '/^$/d' | head -1)
+		[ -f "$ARTIFACT_DIR/$_rel" ] && _sum="$ARTIFACT_DIR/$_rel"
+		# The flattened layout drops the leading directory component.
+		[ -f "$_sum" ] || { [ -f "$ARTIFACT_DIR/$(basename "$_rel")" ] && _sum="$ARTIFACT_DIR/$(basename "$_rel")"; }
+	fi
 fi
 if [ ! -f "$_sum" ] || ! jq -e . "$_sum" >/dev/null 2>&1; then
-	reject "SUMMARY_MISSING — no readable security summary at '$SUMMARY_REL' inside the artifact"
+	reject "SUMMARY_MISSING — no readable security summary at '$SUMMARY_REL' inside the artifact (the path must be declared in the checksum manifest; it is never searched for)"
 else
 	_scommit=$(jq -r '(.source.commit // "") | ascii_downcase' "$_sum")
 	_sbranch=$(jq -r '(.source.branch // "")' "$_sum")
