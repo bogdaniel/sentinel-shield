@@ -353,6 +353,12 @@ per-tool collectors over `reports/raw/*.json` and merges them:
   `active`/`expired` aggregate is allowed only as a check: if it disagrees with the
   records, the build fails. The summary carries `exceptions.records` and
   `exceptions.by_source` so one exception cannot be counted twice through two channels.
+  An exception is **active only inside its own window** (`created_at <= today <= expires_at`).
+  Classifying on expiry alone counted a record dated next month as active today — a
+  pre-positioned exception suppressing findings before anyone authored it. Future-dated records
+  are reported as `not-yet-effective` and counted separately in
+  `exceptions.not_yet_effective`.
+
 - **`project` / `source` / `generated_at` / `version`** = from CLI flags and the
   clock.
 

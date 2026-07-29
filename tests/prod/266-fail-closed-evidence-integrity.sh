@@ -58,6 +58,15 @@ jq -n '{spdxVersion:"SPDX-2.3", SPDXID:"SPDXRef-DOCUMENT", name:"prod-test",
 	packages:[{name:"pkg", SPDXID:"SPDXRef-pkg"}]}' > "$E/rep/sbom.spdx.json"
 printf '# Release evidence\n\nProduced by the 266 fixture.\nScope: engine self-test.\n' \
 	> "$E/rep/release-evidence.md"
+# Valid CONTENT is no longer sufficient in an enforcing mode: an artifact nothing binds to
+# this run is unattributed, and unattributed content is not evidence. Write the producer
+# manifest a real handoff would produce, so the artifacts are attributed as well as valid.
+_msha() { ss_sha256_file "$1" 2>/dev/null || printf ''; }
+. "$ROOT/scripts/lib/sentinel-shield-common.sh" 2>/dev/null || true
+jq -n --arg s "$(_msha "$E/rep/sbom.spdx.json")" --arg r "$(_msha "$E/rep/release-evidence.md")" \
+	'{version:"1", files:[{path:"sbom.spdx.json", sha256:$s},
+	                      {path:"release-evidence.md", sha256:$r}]}' \
+	> "$E/rep/sentinel-shield-artifact-manifest.json"
 sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
 check_ne "zero scanners: regulated does NOT pass"        "$(gate "$E/rep/s.json" regulated)" "0"
 check_ne "zero scanners: strict does NOT pass"           "$(gate "$E/rep/s.json" strict)" "0"

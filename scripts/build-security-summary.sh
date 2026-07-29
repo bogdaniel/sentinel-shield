@@ -1163,6 +1163,7 @@ if [ "$RP" != "true" ]; then log_warn "release evidence not accepted ($RELEASE_P
 EXC="$REPORTS_DIR/exceptions.json"
 EA=0
 EE=0
+EP=0
 EXC_RECORDS='[]'
 if [ -f "$EXC" ] && [ -s "$EXC" ]; then
 	if [ -L "$EXC" ]; then die_cfg "exceptions file is a symlink: $EXC"; fi
@@ -1215,18 +1216,31 @@ EOF
 	[ "$_erc" -eq 0 ] || die_cfg "invalid exception dates in $EXC"
 	# Counts are DERIVED, never read: an aggregate that disagrees with the records is a
 	# forged aggregate.
-	EA=$(jq --arg today "$_today" '[ .exceptions[] | select(.expires_at >= $today) ] | length' "$EXC")
+	# An exception is ACTIVE only inside its own window: created_at <= today <= expires_at.
+	# Classifying on expiry alone counted a record dated NEXT MONTH as active today — a
+	# pre-positioned exception suppressing findings before anyone authored it.
+	EA=$(jq --arg today "$_today" '[ .exceptions[] | select(.created_at <= $today and .expires_at >= $today) ] | length' "$EXC")
 	EE=$(jq --arg today "$_today" '[ .exceptions[] | select(.expires_at <  $today) ] | length' "$EXC")
+	EP=$(jq --arg today "$_today" '[ .exceptions[] | select(.created_at >  $today) ] | length' "$EXC")
 	# A declared aggregate is allowed, but only as a CHECK on the records.
-	for _k in active expired; do
+	for _k in active expired not_yet_effective; do
 		_decl=$(jq -r --arg k "$_k" '(.[$k] // "") | tostring' "$EXC")
 		[ -n "$_decl" ] || continue
-		if [ "$_k" = "active" ]; then _der="$EA"; else _der="$EE"; fi
+		case "$_k" in
+			active) _der="$EA" ;;
+			expired) _der="$EE" ;;
+			*) _der="$EP" ;;
+		esac
 		[ "$_decl" = "$_der" ] || die_cfg "exceptions.$_k declares $_decl but the records classify $_der — the aggregate does not match the evidence: $EXC"
 	done
 	EXC_RECORDS=$(jq --arg today "$_today" '[ .exceptions[]
 		| { id, type, scope, source, owner, approved_by, created_at, expires_at,
-		    status: (if .expires_at < $today then "expired" else "active" end) } ]' "$EXC")
+		    status: (if .expires_at < $today then "expired"
+		              elif .created_at > $today then "not-yet-effective"
+		              else "active" end) } ]' "$EXC")
+	if [ "${EP:-0}" -gt 0 ]; then
+		log_warn "exceptions: $EP record(s) are dated in the FUTURE and are reported as not-yet-effective, not active — an exception cannot suppress a finding before the date it was authored."
+	fi
 fi
 
 # --- assemble ----------------------------------------------------------------
@@ -1256,6 +1270,7 @@ jq -n \
 	--arg sbom_reason "$SBOM_REASON" --arg sbom_prov "$SBOM_PROV" --arg sbom_sha "$SBOM_SHA" \
 	--arg rel_reason "$REL_REASON" --arg rel_prov "$REL_PROV" --arg rel_sha "$REL_SHA" \
 	--argjson exc_records "$EXC_RECORDS" \
+	--argjson ep "${EP:-0}" \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
 	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
@@ -1288,7 +1303,10 @@ jq -n \
 			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch, missing_test_change_evidence: $misstce, missing_behavior_specification: $missbdd, missing_acceptance_evidence: $missatdd } else {} end)),
 		tools: $tools,
 		exceptions: {
-			active: $ea, expired: $ee,
+			# `active` counts only records inside their own window. A record dated in the
+			# future is NOT-YET-EFFECTIVE and is reported separately, so a pre-positioned
+			# exception cannot suppress anything before the date it was authored.
+			active: $ea, expired: $ee, not_yet_effective: $ep,
 			# The RECORDS the counts were derived from, and the per-source split so one
 			# exception cannot be counted twice through two channels (#242).
 			records: $exc_records,
@@ -1298,12 +1316,20 @@ jq -n \
 			# `present` is a VERIFIED state, not `test -f` (#237). `verification` says how it
 			# was decided, so a consumer can tell "no SBOM" from "an SBOM we refused".
 			sbom: { present: $sp, path: $sbom_path,
-				verification: { status: (if $sp then "verified" else "rejected" end),
+				# CONTENT and PROVENANCE are separate facts. Calling an artifact
+				# "verified" when nothing binds it to this run overstated what was
+				# checked: the bytes parsed, that is all. `content-verified-unattributed`
+				# says exactly that, and the enforcing modes treat it as not-evidence.
+				verification: { status: (if ($sp | not) then "rejected"
+					elif $sbom_prov == "verified" then "verified"
+					else "content-verified-unattributed" end),
 					reason: $sbom_reason, provenance: $sbom_prov,
 					sha256: (if $sbom_sha == "" then null else $sbom_sha end),
 					validator: "build-security-summary/2.2" } },
 			release_evidence: { present: $rp, path: $rel_path,
-				verification: { status: (if $rp then "verified" else "rejected" end),
+				verification: { status: (if ($rp | not) then "rejected"
+					elif $rel_prov == "verified" then "verified"
+					else "content-verified-unattributed" end),
 					reason: $rel_reason, provenance: $rel_prov,
 					sha256: (if $rel_sha == "" then null else $rel_sha end),
 					validator: "build-security-summary/2.2" } }

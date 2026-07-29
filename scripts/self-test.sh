@@ -22,6 +22,22 @@ cd "$ROOT"
 
 command_exists jq || { log_error "jq is required for the self-test"; exit 2; }
 
+# st_bind_evidence <dir>
+# Writes the producer manifest a real evidence handoff produces, attributing the SBOM and
+# release-evidence files in <dir> to this run. Valid CONTENT alone is deliberately not evidence
+# in an enforcing mode: an artifact nothing binds to the run is unattributed. Fixtures whose
+# subject is WHICH GATE FIRES therefore attribute their isolating evidence, rather than being
+# refused for provenance before the gate under test is reached.
+st_bind_evidence() {
+	_sb=''; _rb=''
+	[ -f "$1/sbom.spdx.json" ] && _sb=$(ss_sha256_file "$1/sbom.spdx.json" 2>/dev/null || printf '')
+	[ -f "$1/release-evidence.md" ] && _rb=$(ss_sha256_file "$1/release-evidence.md" 2>/dev/null || printf '')
+	jq -n --arg s "$_sb" --arg r "$_rb" '{version:"1", files:
+		([ if $s != "" then {path:"sbom.spdx.json", sha256:$s} else empty end,
+		   if $r != "" then {path:"release-evidence.md", sha256:$r} else empty end ])}' \
+		> "$1/sentinel-shield-artifact-manifest.json"
+}
+
 # st_evidence_overlay <summary.json>
 # The assurance modes refuse to certify a summary that carries no tool-policy overlay: an
 # evidence gate cannot judge applicability without it. Fixtures built WITHOUT `--profile`
@@ -1530,6 +1546,7 @@ run_v023_coverage() {
 		packages:[{name:"pkg", SPDXID:"SPDXRef-pkg"}]}' > "$_d/r2/sbom.spdx.json"
 	printf '# Release evidence\n\nProduced by the engine self-test.\nScope: dast isolation fixture.\n' \
 		> "$_d/r2/release-evidence.md"
+	st_bind_evidence "$_d/r2"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
@@ -1695,6 +1712,7 @@ run_v024_coverage() {
 	# clean: all evidence present -> every mode passes.
 	rm -rf "$_d/cl"; mkdir -p "$_d/cl/raw"; cp "$F/modes-v024/clean/gitleaks.json" "$_d/cl/raw/gitleaks.json"
 	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/cl/sbom.spdx.json"; cp "$F/modes-v024/clean/release-evidence.md" "$_d/cl/release-evidence.md"
+	st_bind_evidence "$_d/cl"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/cl/sum.json"
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
@@ -1706,6 +1724,7 @@ run_v024_coverage() {
 	rm -rf "$_d/da"; mkdir -p "$_d/da/raw"; cp "$F/modes-v024/dast-finding/zap.json" "$_d/da/raw/zap.json"
 	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/da/sbom.spdx.json"
 	cp "$F/modes-v024/clean/release-evidence.md" "$_d/da/release-evidence.md"
+	st_bind_evidence "$_d/da"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"

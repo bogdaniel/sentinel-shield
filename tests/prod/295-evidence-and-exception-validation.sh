@@ -202,6 +202,73 @@ check "the exceptions schema is shipped" "$([ -f "$ROOT/schemas/exceptions.schem
 check "  and requires records, not counts" \
 	"$(jq -r '[.required[]] | index("exceptions") != null' "$ROOT/schemas/exceptions.schema.json")" "true"
 
+# ---------------------------------------------------------------------------
+# Unattributed content is not evidence in an enforcing mode.
+# ---------------------------------------------------------------------------
+# The builder can only decide that bytes parse. Whether anything BINDS them to this run is a
+# policy question, and it used to depend on the caller remembering an optional flag: a summary
+# built without --require-evidence-provenance presented unbound content as `present: true` and
+# `status: "verified"`. Assurance must not rest on a producer-side argument.
+UN="$WORK/unbound"; mkdir -p "$UN/reports/raw"
+# A real (clean) scanner report, so the enforcing modes reach the EVIDENCE gates instead of
+# refusing the summary earlier for containing no scanner evidence at all.
+printf '[]' > "$UN/reports/raw/gitleaks.json"
+jq -n '{spdxVersion:"SPDX-2.3", SPDXID:"SPDXRef-DOCUMENT", name:"x",
+	creationInfo:{created:"2026-01-01T00:00:00Z", creators:["Tool: t-1.0"]},
+	packages:[{name:"p", SPDXID:"SPDXRef-p"}]}' > "$UN/reports/sbom.spdx.json"
+printf '# Release evidence\n\nline two\nline three\n' > "$UN/reports/release-evidence.md"
+sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$UN/reports/raw" \
+	--output "$UN/reports/security-summary.json" --project-name t >/dev/null 2>&1
+# The summary is built without --profile, so it carries no tool-policy overlay and the
+# assurance modes refuse it before any gate is judged. This case is about the EVIDENCE
+# decision, so stamp a clean, neutral overlay and a source binding.
+jq '.summary += {required_tool_failures:0, tool_configuration_failures:0,
+		tool_execution_failures:0, missing_coverage_evidence:false,
+		missing_test_evidence:false, empty_test_suite:false,
+		missing_architecture_evidence:false, missing_test_change_evidence:false,
+		missing_behavior_specification:false, missing_acceptance_evidence:false}
+	| .source.repository = "example-org/example-repo"
+	| .source.commit = "0123456789abcdef0123456789abcdef01234567"' \
+	"$UN/reports/security-summary.json" > "$UN/reports/s.tmp" \
+	&& mv "$UN/reports/s.tmp" "$UN/reports/security-summary.json"
+check "valid content with no producer manifest is reported as unbound" \
+	"$(jq -r '.evidence.sbom.verification.provenance' "$UN/reports/security-summary.json")" "unbound"
+check "  and is NOT called verified" \
+	"$(jq -r '.evidence.sbom.verification.status' "$UN/reports/security-summary.json")" "content-verified-unattributed"
+_enf() { # _enf <mode> -> exit code
+	_o="$UN/$1"; mkdir -p "$_o"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode "$1" --output-dir "$_o" --format env >/dev/null 2>&1
+	_c=0
+	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_o/sentinel-shield-gates.env" \
+		--summary "$UN/reports/security-summary.json" --output-dir "$_o" --format json \
+		>"$_o/log" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+check "report-only tolerates unattributed content" "$(_enf report-only)" 0
+# baseline does not ENABLE the evidence gates (documented mode matrix), so it cannot block on
+# them — but it must still classify the artifact as not-evidence rather than silently counting
+# it. strict/regulated are where the gate is on and the refusal has to bite.
+_bc=$(_enf baseline)
+if grep -q 'nothing binds it to this run' "$UN/baseline/log" 2>/dev/null; then
+	pass "baseline classifies unattributed content as not-evidence (gate itself is off there)"
+else
+	fail "baseline treated unattributed content as evidence without comment"
+fi
+_sc=$(_enf strict)
+if [ "$_sc" = "0" ]; then
+	fail "strict accepted unattributed content as evidence"
+else
+	pass "strict refuses unattributed content as evidence (exit $_sc)"
+fi
+if grep -q 'nothing binds it to this run' "$UN/strict/log" 2>/dev/null; then
+	pass "  and says why"
+else
+	fail "  but does not explain the refusal"
+fi
+_gate=$(jq -r '[.evaluated_gates[]|select(.key=="missing_sbom")][0].result' "$UN/strict/sentinel-shield-enforcement.json" 2>/dev/null)
+check "  the SBOM evidence gate is the one that fails" "$_gate" "fail"
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '295-evidence-and-exception-validation: ALL CHECKS PASSED\n'

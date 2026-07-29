@@ -1393,6 +1393,19 @@ eval_missing_gate() {
 	_trig=false
 	if [ "$_missing" = "true" ]; then _trig=true; fi
 	if [ "$_present" = "false" ]; then _trig=true; fi
+	# UNATTRIBUTED CONTENT IS NOT EVIDENCE in an enforcing mode. The builder can only decide
+	# that bytes parse; whether anything BINDS them to this run is a policy question, and it
+	# used to depend on the caller remembering `--require-evidence-provenance`. A summary that
+	# forgot the flag presented unbound content as present, so assurance rested on an optional
+	# producer-side argument. baseline/strict/regulated decide it here instead.
+	_prov=$(jqr ".$(printf '%s' "$_evpath" | sed 's/\.present$/.verification.provenance/')")
+	case "$MODE" in
+		baseline | strict | regulated)
+			if [ "$_present" = "true" ] && [ "$_prov" != "verified" ] && [ "$_prov" != "null" ]; then
+				_trig=true
+				log_warn "$_key: the artifact content is valid but its provenance is '$_prov' — nothing binds it to this run, so in '$MODE' it does not count as evidence. Produce it through the evidence handoff, or run an assurance mode that permits unattributed content."
+			fi ;;
+	esac
 	if [ "$_flag" = "true" ]; then
 		if [ "$_trig" = "true" ]; then add_eval "$_key" true "$_trig" fail; else add_eval "$_key" true "$_trig" pass; fi
 	else
