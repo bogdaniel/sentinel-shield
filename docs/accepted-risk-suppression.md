@@ -159,9 +159,18 @@ The tool preserves ids, dates, owner, reason, mitigation, scope, matching dimens
 status; records the source version, source SHA-256 and migration timestamp in
 `migrated_from`; and produces deterministic output.
 
-It **never invents an approval**. An approved record with no `approved_at` migrates as
-`status: pending` — it suppresses nothing until a human records when it was authorised — and
-the run exits **1** so the migration cannot be mistaken for finished. A record carrying a
+It **never invents an approval, and never invents an authored date**. An approved record with
+no `approved_at` migrates as `status: pending` — it suppresses nothing until a human records
+when it was authorised — and the run exits **1** so the migration cannot be mistaken for
+finished. A record with no `created_at` is **not migrated at all**: the validity window is
+measured from the date the exception was authored, and deriving that from an approval or an
+expiry would publish a governance fact nobody recorded and silently change how long the
+exception is valid. Add the real date to the source record and re-run.
+
+The source file is **pinned by digest and re-hashed immediately before publication**. If the
+input changed while the migration ran, the output would record a `migrated_from.source_digest`
+that no longer describes the file it came from, so the run refuses to publish rather than
+publish a document whose provenance claim is already false. A record carrying a
 field v2 does not define is **refused**, named, and left for a person to decide whether it was
 meant to narrow the record (rename it) or is metadata (move it under `extensions`).
 

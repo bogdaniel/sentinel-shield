@@ -585,6 +585,7 @@ if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 			def known_risk: ["id","gate","scope","status","owner","reason","mitigation",
 				"created_at","approved_at","expires_at","review_at","approval","severity",
 				"category","scanner","rule_id","rule_ids","files","components","fingerprints",
+				"source","sources",
 				"finding_id","issue","incident","emergency","supersedes","extensions"];
 			def known_approval: ["approved_by","authority","reference"];
 			[

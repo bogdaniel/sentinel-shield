@@ -180,7 +180,7 @@ jq -n --arg t "$PAST" --arg e "$SOON" '{version:"1.1", risks:[
 	{id:"AR-OK", gate:"unsafe_docker", scope:"gate", owner:"o", reason:"r", approved_by:"sec",
 	 created_at:$t, approved_at:$t, expires_at:$e, status:"approved"},
 	{id:"AR-NOAPP", gate:"medium_vulnerabilities", scope:"finding", components:["lodash"],
-	 owner:"o", reason:"r", expires_at:$e, status:"approved"}]}' > "$M/legacy.json"
+	 owner:"o", reason:"r", created_at:$t, expires_at:$e, status:"approved"}]}' > "$M/legacy.json"
 _before=$(jq -S -c . "$M/legacy.json")
 _c=0; sh "$MIGRATE" --input "$M/legacy.json" --output "$M/v2.json" >"$M/log" 2>&1 || _c=$?
 check "migration exits 1 when a record needs human completion" "$_c" 1
@@ -240,6 +240,60 @@ check "a missing input is refused" "$_c" 2
 cp "$M/v2.json" "$WORK/ar.json"
 jq '.risks |= map(select(.status == "approved"))' "$M/v2.json" > "$WORK/ar.json"
 check "the migrated document is accepted by the v2 runtime" "$(enf)" 0
+
+# ---------------------------------------------------------------------------
+# The migration never invents an authored date.
+# ---------------------------------------------------------------------------
+# created_at is what the window policy measures from. Substituting approved_at — let alone
+# expires_at — publishes a governance fact nobody recorded, and silently changes how long the
+# exception is considered valid.
+MD="$WORK/migrate-dates"; mkdir -p "$MD"
+jq -n '{version:"1.1", risks:[{id:"no-created", gate:"unsafe_docker", status:"approved",
+	owner:"o", reason:"r", approved_at:"2026-01-02", expires_at:"2026-03-01",
+	rule_ids:["DL3018"]}]}' > "$MD/in.json"
+_c=0
+sh "$ROOT/scripts/migrate-accepted-risks.sh" --input "$MD/in.json" --output "$MD/out.json" \
+	>"$MD/log" 2>&1 || _c=$?
+check "a record with no created_at requires a human (exit 1)" "$_c" 1
+check "  and nothing is published" "$([ -f "$MD/out.json" ] && echo published || echo absent)" "absent"
+if grep -q 'no created_at' "$MD/log"; then
+	pass "  naming the missing authored date"
+else
+	fail "  but the diagnostic does not name created_at: $(head -3 "$MD/log")"
+fi
+if grep -qE 'approved_at|expires_at' "$MD/out.json" 2>/dev/null; then
+	fail "  a date was fabricated into the output"
+else
+	pass "  and no date was fabricated from approval or expiry"
+fi
+jq -n '{version:"1.1", risks:[{id:"has-created", gate:"unsafe_docker", status:"approved",
+	owner:"o", reason:"r", created_at:"2026-01-01", approved_at:"2026-01-02",
+	expires_at:"2026-03-01", rule_ids:["DL3018"]}]}' > "$MD/ok.json"
+sh "$ROOT/scripts/migrate-accepted-risks.sh" --input "$MD/ok.json" --output "$MD/ok-out.json" >/dev/null 2>&1
+check "a real created_at is carried through unchanged" \
+	"$(jq -r '.risks[0].created_at' "$MD/ok-out.json" 2>/dev/null)" "2026-01-01"
+
+# ---------------------------------------------------------------------------
+# The SOURCE is re-hashed before publication, not the copy.
+# ---------------------------------------------------------------------------
+# The original check compared the copy against the digest of that same copy operation, which
+# cannot detect an edit to the original afterwards — while the output records that digest as
+# describing the file it came from.
+jq -n '{version:"1.1", risks:[{id:"stable", gate:"unsafe_docker", status:"approved",
+	owner:"o", reason:"r", created_at:"2026-01-01", approved_at:"2026-01-02",
+	expires_at:"2026-03-01", rule_ids:["DL3018"]}]}' > "$MD/race.json"
+_c=0
+env SENTINEL_SHIELD_MIGRATE_SIMULATE_SOURCE_CHANGE="$MD/race.json" \
+	sh "$ROOT/scripts/migrate-accepted-risks.sh" --input "$MD/race.json" \
+	--output "$MD/race-out.json" >"$MD/racelog" 2>&1 || _c=$?
+check "a source edited during the migration refuses to publish (exit 2)" "$_c" 2
+check "  and no output exists" "$([ -f "$MD/race-out.json" ] && echo published || echo absent)" "absent"
+if grep -q 'changed while the migration ran' "$MD/racelog"; then
+	pass "  reporting both digests"
+else
+	fail "  but the diagnostic does not name the change: $(head -3 "$MD/racelog")"
+fi
+
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

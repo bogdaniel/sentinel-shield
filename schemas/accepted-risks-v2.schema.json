@@ -270,6 +270,20 @@
               "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
             },
             "additionalProperties": true
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OPTIONAL narrowing dimension: accept only findings reported by this producer. The same advisory for the same package is commonly reported by several scanners; without this, a components+rule_id record accepts every one of them. Conjunctive with every other declared dimension."
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "As `source`, for several producers. Any-match WITHIN the list; satisfied alongside every other declared dimension."
           }
         },
         "allOf": [

@@ -101,6 +101,8 @@ CLASSIFY=$(jq -r '
 	  elif (([ "pending","approved","rejected","expired","superseded" ] | index($r.status)) | not) then
 		"\($rid)|manual|unknown status \"\($r.status)\""
 	  elif (($r.expires_at // "") | length) == 0 then "\($rid)|manual|no expires_at"
+	  elif (($r.created_at // "") | length) == 0 then
+		"\($rid)|manual|no created_at — the window policy measures from the date this exception was AUTHORED, and that date cannot be derived from an approval or an expiry without inventing a governance fact. Add the real created_at to the source record and re-run."
 	  elif ($r.status == "approved") and ((($r.approved_at // "") | length) == 0) then
 		"\($rid)|pending|approved with no approved_at — migrated as pending; a human must record when it was authorised"
 	  else "\($rid)|ok|" end' "$TMPSRC" 2>/dev/null) || {
@@ -170,7 +172,12 @@ jq --arg today "$TODAY" --arg srcv "$SRC_VERSION" --arg dig "$SRC_DIGEST" \
 				owner: $r.owner,
 				reason: $r.reason,
 				mitigation: $r.mitigation,
-				created_at: ($r.created_at // $r.approved_at // $r.expires_at),
+				# NEVER invented. Substituting approved_at — let alone expires_at — would
+				# publish a governance FACT (when this exception was authored) that nobody
+				# recorded, and the window policy measures from it. A record with no
+				# created_at is classified `manual` above and the run exits 1: a human
+				# supplies the date the exception was actually raised.
+				created_at: $r.created_at,
 				approved_at: $r.approved_at,
 				expires_at: $r.expires_at,
 				review_at: $r.review_at,
@@ -216,6 +223,23 @@ _odir=$(dirname -- "$OUTPUT")
 _stage=$(mktemp "$_odir/.accepted-risks.migrate.XXXXXX") || { log_error "could not stage the output"; exit 2; }
 cat "$TMPOUT" > "$_stage" || { rm -f -- "$_stage"; log_error "could not write the staged output"; exit 2; }
 jq -e . "$_stage" >/dev/null 2>&1 || { rm -f -- "$_stage"; log_error "the staged output is not valid JSON"; exit 2; }
+# RE-HASH THE SOURCE, not the copy. The earlier check compared the copy against the digest of
+# the same copy operation, which cannot detect an edit to the ORIGINAL after it was read. The
+# migrated document and the digest recorded in `migrated_from` both claim to describe this
+# exact input; if the input changed underneath, neither claim is true.
+# FAULT SEAM (test-only, inert unless the env names this exact input): rewrite the source
+# between the read and the final re-hash so the detection below can be exercised
+# deterministically rather than by racing a real editor.
+if [ -n "${SENTINEL_SHIELD_MIGRATE_SIMULATE_SOURCE_CHANGE:-}" ] \
+	&& [ "$SENTINEL_SHIELD_MIGRATE_SIMULATE_SOURCE_CHANGE" = "$INPUT" ]; then
+	printf '{"version":"1.1","risks":[]}' > "$INPUT" 2>/dev/null || true
+fi
+_final=$(ss_sha256_file "$INPUT") || { rm -f -- "$_stage"; log_error "could not re-hash the input before publishing"; exit 2; }
+if [ "$_final" != "$SRC_DIGEST" ]; then
+	rm -f -- "$_stage"
+	log_error "the input changed while the migration ran ($SRC_DIGEST -> $_final). The migrated output would record a source digest that no longer describes the file it came from — refusing to publish. Re-run once the input is stable."
+	exit 2
+fi
 chmod 644 "$_stage" 2>/dev/null || true
 mv -- "$_stage" "$OUTPUT" || { rm -f -- "$_stage"; log_error "could not publish the migrated file"; exit 2; }
 
