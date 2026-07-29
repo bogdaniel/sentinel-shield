@@ -1521,9 +1521,15 @@ run_v023_coverage() {
 	# --- Regulated gates fire where strict does not (dast) ---
 	rm -rf "$_d/r2"; mkdir -p "$_d/r2/raw"; cp "$F/modes/dast-finding/zap.json" "$_d/r2/raw/zap.json"
 	# Isolate dast_findings: provide a real SBOM + release evidence next to the output so the
-	# strict-gated missing_sbom/missing_release_evidence are clean — the ONLY non-clean gate is dast.
-	printf '{"SPDXID":"SPDXRef-DOCUMENT"}' > "$_d/r2/sbom.spdx.json"
-	printf 'release evidence\n' > "$_d/r2/release-evidence.md"
+	# strict-gated missing_sbom/missing_release_evidence are clean — the ONLY non-clean gate is
+	# dast. Evidence is VALIDATED now, so "real" means a real SPDX document and a real
+	# attestation: a stub would be rejected and missing_sbom/missing_release_evidence would
+	# become the failing gates instead of the one under test.
+	jq -n '{spdxVersion:"SPDX-2.3", SPDXID:"SPDXRef-DOCUMENT", name:"self-test",
+		creationInfo:{created:"2026-01-01T00:00:00Z", creators:["Tool: self-test-1.0"]},
+		packages:[{name:"pkg", SPDXID:"SPDXRef-pkg"}]}' > "$_d/r2/sbom.spdx.json"
+	printf '# Release evidence\n\nProduced by the engine self-test.\nScope: dast isolation fixture.\n' \
+		> "$_d/r2/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
@@ -1694,9 +1700,12 @@ run_v024_coverage() {
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: regulated PASS" "$(enforce_mode regulated "$_d/cl/sum.json")" "pass"
-	# dast-only: isolate evidence -> strict passes, regulated fails.
+	# dast-only: isolate evidence -> strict passes, regulated fails. Evidence is VALIDATED now,
+	# so the isolating files have to be real ones — a stub is rejected and the failing gates
+	# become missing_sbom/missing_release_evidence instead of dast.
 	rm -rf "$_d/da"; mkdir -p "$_d/da/raw"; cp "$F/modes-v024/dast-finding/zap.json" "$_d/da/raw/zap.json"
-	printf '{"SPDXID":"x"}' > "$_d/da/sbom.spdx.json"; printf 'rel\n' > "$_d/da/release-evidence.md"
+	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/da/sbom.spdx.json"
+	cp "$F/modes-v024/clean/release-evidence.md" "$_d/da/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
