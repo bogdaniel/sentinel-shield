@@ -129,7 +129,7 @@ else fail "injection e-manifest did not apply"; fi
 
 # (d) failure immediately BEFORE the pointer switch — the generation directory may exist, but
 #     it must not become current, because only the pointer makes a generation authoritative.
-if inject e-before-ptr 's|^\t_ptmp="\$ENFORCEMENT_ROOT/.current.\$\$.tmp"|\tdie_cfg "INJECTED: failed immediately before the pointer switch"|'; then
+if inject e-before-ptr 's|^\t_ptmp=$(mktemp "\$ENFORCEMENT_ROOT/.current.XXXXXX").*|\tdie_cfg "INJECTED: failed immediately before the pointer switch"|'; then
 	B=$(base inj-ptr); BG=$(gen_of "$B")
 	check "failure before the pointer switch fails the run" "$(run "$B" "$SBIN/e-before-ptr")" 2
 	check "  the pointer still names the previous generation" "$(gen_of "$B")" "$BG"
@@ -247,6 +247,47 @@ run "$B" >/dev/null
 _after=$( (sha256sum "$B/enforcement/$RG/sentinel-shield-enforcement.json" 2>/dev/null || shasum -a 256 "$B/enforcement/$RG/sentinel-shield-enforcement.json") | cut -d' ' -f1)
 check "a resolved generation is immutable while a new one is published" "$_after" "$_before"
 if [ "$(gen_of "$B")" != "$RG" ]; then pass "  and the pointer has moved on to the new generation"; else fail "  the pointer did not advance"; fi
+
+# ---------------------------------------------------------------------------
+# Staging paths are not predictable, and the pointer destination is validated.
+# ---------------------------------------------------------------------------
+# `$dest.tmp.$$` and `.current.$$.tmp` are derivable from the PID, so anyone able to write in
+# the report root can pre-create them as symlinks that `cp`/redirection then writes through —
+# outside the root, before any rename happens.
+B=$(base symlink-tmp)
+_out="$B/outside.txt"; : > "$_out"
+# Pre-create every plausible PID-derived staging name as a symlink pointing outside.
+_pid=$$
+for _p in "$B/enforcement/.current.$_pid.tmp" "$B/sentinel-shield-enforcement.json.tmp.$_pid"; do
+	mkdir -p "$(dirname "$_p")" 2>/dev/null || true
+	ln -s "$_out" "$_p" 2>/dev/null || true
+done
+_rc=$(run "$B" "$ENFORCE")
+check "publication succeeds despite pre-created PID-named symlinks" "$_rc" 0
+if [ -s "$_out" ]; then
+	fail "a staging write followed a pre-created symlink and landed outside the report root"
+else
+	pass "  and nothing was written through them"
+fi
+
+# A pointer destination that is a DIRECTORY is not something `mv` replaces.
+B=$(base ptr-dir)
+rm -f "$B/enforcement/current.json"
+mkdir -p "$B/enforcement/current.json"
+check "a directory in place of the pointer is refused" "$(run "$B" "$ENFORCE")" 2
+
+# ...nor a FIFO, where `mv` does not do what "switch the pointer" promises.
+if command -v mkfifo >/dev/null 2>&1; then
+	B=$(base ptr-fifo)
+	rm -f "$B/enforcement/current.json"
+	mkfifo "$B/enforcement/current.json" 2>/dev/null || true
+	if [ -p "$B/enforcement/current.json" ]; then
+		check "a FIFO in place of the pointer is refused" "$(run "$B" "$ENFORCE")" 2
+	else
+		pass "mkfifo unavailable on this filesystem; FIFO pointer case skipped"
+	fi
+fi
+
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

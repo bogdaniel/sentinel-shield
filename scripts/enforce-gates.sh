@@ -1927,8 +1927,21 @@ report_stage() {
 report_publish() {
 	report_dest_ok "$2"
 	chmod 0644 "$1" 2>/dev/null || true
-	cp -- "$1" "$2.tmp.$$" 2>/dev/null || die_cfg "could not stage the mirrored report at $2"
-	mv -- "$2.tmp.$$" "$2" || { rm -f -- "$2.tmp.$$"; die_cfg "could not publish the enforcement report at $2"; }
+	# `$2.tmp.$$` is PREDICTABLE: anyone able to write in that directory can pre-create it as
+	# a symlink, and `cp` follows the link — writing the report outside the report root before
+	# the rename ever happens. mktemp creates the file itself, exclusively, and the result is
+	# re-checked as a regular non-symlink file before anything is written into it.
+	_rp_tmp=$(mktemp "$2.tmp.XXXXXX") || die_cfg "could not stage the mirrored report at $2"
+	if [ -L "$_rp_tmp" ] || [ ! -f "$_rp_tmp" ]; then
+		rm -f -- "$_rp_tmp"
+		die_cfg "the staging path for $2 is not a regular file; refusing to publish through it"
+	fi
+	# The exact path is tracked so a signal between create and rename cannot leave it behind.
+	REPORT_TMP="$_rp_tmp"
+	cat -- "$1" > "$_rp_tmp" 2>/dev/null || { rm -f -- "$_rp_tmp"; REPORT_TMP=""; die_cfg "could not stage the mirrored report at $2"; }
+	chmod 0644 "$_rp_tmp" 2>/dev/null || true
+	mv -- "$_rp_tmp" "$2" || { rm -f -- "$_rp_tmp"; REPORT_TMP=""; die_cfg "could not publish the enforcement report at $2"; }
+	REPORT_TMP=""
 	log_info "wrote $2"
 	return 0
 }
@@ -1952,12 +1965,20 @@ report_publish() {
 ENFORCEMENT_ROOT=""
 GENERATION_ID=""
 GEN_STAGE=""
+# Exact staging paths for the mirror and the pointer (see _gen_cleanup).
+REPORT_TMP=""
+POINTER_TMP=""
 GEN_KEEP="${SENTINEL_SHIELD_REPORT_GENERATIONS:-5}"
 case "$GEN_KEEP" in '' | *[!0-9]*) GEN_KEEP=5 ;; esac
 [ "$GEN_KEEP" -ge 1 ] || GEN_KEEP=1
 
 _gen_cleanup() {
 	if [ -n "$GEN_STAGE" ] && [ -d "$GEN_STAGE" ]; then rm -rf -- "$GEN_STAGE" 2>/dev/null || true; fi
+	# The EXACT staging paths, tracked so a signal between create and rename cannot leave a
+	# mktemp file behind. A glob would be wrong here: it could delete another publisher's
+	# in-flight staging file.
+	if [ -n "${REPORT_TMP:-}" ] && [ -f "$REPORT_TMP" ]; then rm -f -- "$REPORT_TMP" 2>/dev/null || true; fi
+	if [ -n "${POINTER_TMP:-}" ] && [ -f "$POINTER_TMP" ]; then rm -f -- "$POINTER_TMP" 2>/dev/null || true; fi
 	if [ -n "$ENFORCEMENT_ROOT" ] && [ -d "$ENFORCEMENT_ROOT/.publish.lock" ]; then
 		# Only ever remove OUR lock: another publisher's lock is theirs to clear.
 		if [ -f "$ENFORCEMENT_ROOT/.publish.lock/owner" ] &&
@@ -2081,19 +2102,43 @@ gen_commit() {
 	GEN_STAGE=""
 	# THE pointer switch: written to a temp file in the same directory and renamed, so a
 	# reader sees either the old pointer or the new one, never a half-written name.
-	_ptmp="$ENFORCEMENT_ROOT/.current.$$.tmp"
+	# The pointer destination must be a regular file or absent — not a symlink, and not a
+	# directory or FIFO either. `mv` onto a directory does not replace it, and onto a FIFO it
+	# does not do what "switch the pointer" promises.
+	if [ -e "$ENFORCEMENT_ROOT/current.json" ] || [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+		if [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+			die_cfg "'$ENFORCEMENT_ROOT/current.json' is a symlink; refusing to publish through it"
+		fi
+		[ -f "$ENFORCEMENT_ROOT/current.json" ] \
+			|| die_cfg "'$ENFORCEMENT_ROOT/current.json' exists and is not a regular file; refusing to replace it"
+	fi
+	# Same reasoning as report_publish: a PID-derived name is predictable and can be
+	# pre-created as a symlink that the redirection below would write through.
+	_ptmp=$(mktemp "$ENFORCEMENT_ROOT/.current.XXXXXX") || die_cfg "could not stage the current-generation pointer"
+	if [ -L "$_ptmp" ] || [ ! -f "$_ptmp" ]; then
+		rm -f -- "$_ptmp"
+		die_cfg "the pointer staging path is not a regular file; refusing to publish through it"
+	fi
+	POINTER_TMP="$_ptmp"
 	printf '{ "schema_version": "1", "generation_id": "%s", "updated_at": "%s", "path": "enforcement/%s", "manifest": "enforcement/%s/manifest.json" }\n' \
 		"$(json_escape "$GENERATION_ID")" "$(json_escape "$TS")" \
 		"$(json_escape "$GENERATION_ID")" "$(json_escape "$GENERATION_ID")" > "$_ptmp" \
 		|| die_cfg "could not stage the current-generation pointer"
 	jq -e . "$_ptmp" >/dev/null 2>&1 || { rm -f -- "$_ptmp"; die_cfg "the staged pointer is not valid JSON"; }
 	command_exists sync && sync 2>/dev/null || true
+	# Re-check immediately before the switch: the destination may have been replaced since the
+	# check above.
 	if [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
-		rm -f -- "$_ptmp"
+		rm -f -- "$_ptmp"; POINTER_TMP=""
 		die_cfg "'$ENFORCEMENT_ROOT/current.json' is a symlink; refusing to publish through it"
 	fi
+	if [ -e "$ENFORCEMENT_ROOT/current.json" ] && [ ! -f "$ENFORCEMENT_ROOT/current.json" ]; then
+		rm -f -- "$_ptmp"; POINTER_TMP=""
+		die_cfg "'$ENFORCEMENT_ROOT/current.json' is not a regular file; refusing to replace it"
+	fi
 	mv -- "$_ptmp" "$ENFORCEMENT_ROOT/current.json" \
-		|| { rm -f -- "$_ptmp"; die_cfg "could not switch the current-generation pointer"; }
+		|| { rm -f -- "$_ptmp"; POINTER_TMP=""; die_cfg "could not switch the current-generation pointer"; }
+	POINTER_TMP=""
 	log_info "published enforcement generation $GENERATION_ID (pointer: $ENFORCEMENT_ROOT/current.json)"
 	return 0
 }
