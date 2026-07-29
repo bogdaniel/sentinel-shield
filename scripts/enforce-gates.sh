@@ -746,13 +746,25 @@ eval_medium_vulnerabilities() {
 			| { source: $f.source, rule_id: $f.rule_id, component: $f.component,
 				version: $f.version, file: $f.file, fingerprint: $f.fingerprint,
 				accepted: ($rid != null), risk_id: ($rid // "") } ]
-		| ( length ) as $accounted
-		| ( [ .[] | select(.accepted) ] | length ) as $acc
-		| ( [ .[] | select(.accepted | not) ] | length ) as $unacc_visible
+		# DEDUPLICATE on the canonical identity first. A source reporting the same finding
+		# twice would otherwise inflate `accounted` and `accepted`, and could push `accepted`
+		# past `total` on its own.
+		| ( . as $all | reduce $all[] as $d ({seen:{}, out:[]};
+				($d.fingerprint) as $k
+				| if .seen[$k] then . else .seen[$k] = true | .out += [$d] end) | .out ) as $uniq
+		| ( $uniq | length ) as $accounted
+		| ( [ $uniq[] | select(.accepted) ] | length ) as $acc
+		| ( [ $uniq[] | select(.accepted | not) ] | length ) as $unacc_visible
 		| ( (if $total > $accounted then ($total - $accounted) else 0 end) ) as $unaccounted_sources
+		# The aggregate and the raw evidence must AGREE IN BOTH DIRECTIONS. Only the
+		# undercount was handled: when the raw sources hold MORE distinct findings than the
+		# summary counts, the aggregate is wrong — and if every extra finding matched a
+		# record, `accepted` could exceed `total` while `unaccepted` stayed 0, an acceptance
+		# resting on a contradiction. `overcount` is reported and the caller fails closed.
 		| { total: $total, accounted: $accounted, accepted: $acc,
 			unaccepted: ($unacc_visible + $unaccounted_sources),
-			unaccounted_sources: $unaccounted_sources, detail: . }' 2>/dev/null || printf '')
+			unaccounted_sources: $unaccounted_sources,
+			overcount: ($accounted > $total), detail: $uniq }' 2>/dev/null || printf '')
 	if [ -z "$_acct" ]; then
 		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
 		add_eval "$_key" true "$_val" fail
@@ -763,6 +775,31 @@ eval_medium_vulnerabilities() {
 	MV_UNACCEPTED=$(printf '%s' "$_acct" | jq '.unaccepted')
 	_unacc_src=$(printf '%s' "$_acct" | jq '.unaccounted_sources')
 	MV_DETAIL=$(printf '%s' "$_acct" | jq -c '.detail')
+	_overcount=$(printf '%s' "$_acct" | jq -r '.overcount')
+	# The aggregate contradicts its own raw evidence: the reports hold MORE distinct findings
+	# than summary.medium_vulnerabilities claims. Accepting on that basis would rest the
+	# decision on counts that cannot both be true, so it fails closed regardless of matching.
+	if [ "$_overcount" = "true" ]; then
+		_accounted=$(printf '%s' "$_acct" | jq -r '.accounted')
+		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_error "medium_vulnerabilities: the raw reports contain $_accounted distinct findings but the summary counts $_val. An aggregate that disagrees with its own evidence cannot authorise an acceptance — gate FAILS."
+		return
+	fi
+	# Arithmetic invariants. These cannot hold if the accounting is sound, so a violation is a
+	# defect rather than a policy outcome, and it is never resolved in favour of acceptance.
+	if [ "$MV_ACCEPTED" -gt "$_val" ] 2>/dev/null; then
+		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_error "medium_vulnerabilities: accounting reports more accepted findings than the total ($MV_ACCEPTED > $_val) — refusing to treat an impossible count as an acceptance."
+		return
+	fi
+	if [ "$((MV_ACCEPTED + MV_UNACCEPTED))" -ne "$_val" ] 2>/dev/null; then
+		MV_ACCEPTED=0; MV_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_error "medium_vulnerabilities: accepted + unaccepted does not equal the total ($MV_ACCEPTED + $MV_UNACCEPTED != $_val) — the accounting does not describe this evidence; gate FAILS."
+		return
+	fi
 	if [ "$MV_UNACCEPTED" -eq 0 ] && [ "$MV_ACCEPTED" -gt 0 ]; then
 		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
 		log_info "medium_vulnerabilities: finding-scoped accepted-risk — total $_val, accepted $MV_ACCEPTED, unaccepted 0."

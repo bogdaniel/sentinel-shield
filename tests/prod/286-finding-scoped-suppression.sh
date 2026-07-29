@@ -433,6 +433,51 @@ risk "$D/ar.json" '{"files":["./service-a/package-lock.json"]}'
 enforce "$D" "$D/ar.json" >/dev/null
 check "a leading ./ is normalised on the record side" "$(acct "$D" accepted)" "1"
 
+# ---------------------------------------------------------------------------
+# The aggregate and the raw evidence must agree IN BOTH DIRECTIONS.
+# ---------------------------------------------------------------------------
+# Only the undercount was handled. When the raw reports hold MORE distinct findings than
+# summary.medium_vulnerabilities claims, and every one of them matches a record, `accepted`
+# could exceed `total` while `unaccepted` stayed 0 — an acceptance resting on counts that
+# cannot both be true.
+mkover() { # summary says 1; the raw reports hold 3
+	_d="$WORK/$1"; mkdir -p "$_d/reports/raw"
+	cat > "$_d/reports/raw/grype.json" <<'JSON'
+{"matches":[
+ {"vulnerability":{"id":"CVE-1","severity":"Medium"},"artifact":{"name":"p1","version":"1","locations":[{"path":"a.lock"}]}},
+ {"vulnerability":{"id":"CVE-2","severity":"Medium"},"artifact":{"name":"p2","version":"1","locations":[{"path":"a.lock"}]}},
+ {"vulnerability":{"id":"CVE-3","severity":"Medium"},"artifact":{"name":"p3","version":"1","locations":[{"path":"a.lock"}]}}]}
+JSON
+	jq '.summary.medium_vulnerabilities = 1' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
+	printf '%s' "$_d"
+}
+D=$(mkover overcount)
+risk "$D/ar.json" '{"components":["p1","p2","p3"]}'
+check "an aggregate SMALLER than its raw evidence cannot authorise acceptance" "$(enforce "$D" "$D/ar.json")" 1
+check "  nothing is reported as accepted" "$(acct "$D" accepted)" 0
+check "  the whole declared total is unaccepted" "$(acct "$D" unaccepted)" 1
+if grep -q 'disagrees with its own evidence' "$D/enforce.log"; then
+	pass "  and the contradiction is named"
+else
+	fail "  but the contradiction is not reported: $(grep -i medium "$D/enforce.log" | head -1)"
+fi
+
+# A source reporting the SAME finding twice must not inflate the accounting.
+DUP="$WORK/dup"; mkdir -p "$DUP/reports/raw"
+cat > "$DUP/reports/raw/grype.json" <<'JSON'
+{"matches":[
+ {"vulnerability":{"id":"CVE-D","severity":"Medium"},"artifact":{"name":"dup","version":"1","locations":[{"path":"a.lock"}]}},
+ {"vulnerability":{"id":"CVE-D","severity":"Medium"},"artifact":{"name":"dup","version":"1","locations":[{"path":"a.lock"}]}}]}
+JSON
+jq '.summary.medium_vulnerabilities = 1' "$ROOT/templates/security-summary.example.json" > "$DUP/reports/security-summary.json"
+sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$DUP/reports" --format env >/dev/null 2>&1
+risk "$DUP/ar.json" '{"components":["dup"]}'
+check "an identical finding reported twice is counted once" "$(enforce "$DUP" "$DUP/ar.json")" 0
+check "  accepted equals the declared total" "$(acct "$DUP" accepted)" 1
+check "  and nothing is left unaccepted" "$(acct "$DUP" unaccepted)" 0
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '286-finding-scoped-suppression: ALL CHECKS PASSED\n'
