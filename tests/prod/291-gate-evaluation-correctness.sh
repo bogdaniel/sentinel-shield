@@ -46,10 +46,20 @@ enf() {
 	_c=0
 	sh "$ENFORCE" --gates-env "$_d/sentinel-shield-gates.env" --summary "$1" \
 		${3:+--accepted-risks "$3"} --raw-dir "$WORK/raw" \
+		${PLAN:+--tool-plan "$PLAN"} \
 		--hadolint-raw "$WORK/raw/hadolint.json" --docker-base-digest-raw "$WORK/raw/docker-base-digest.json" \
 		--output-dir "$_d" --format all >"$_d/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }
+# Trusted execution plan, opt-in per case. `mkplan <stage> <profile> <tools-json>`
+PLAN=""
+mkplan() {
+	_pf="$WORK/plan-$$.json"
+	jq -n --arg s "$1" --arg p "$2" --argjson tools "$3" \
+		'{stage:$s, profile:$p, tools:$tools}' > "$_pf"
+	printf '%s' "$_pf"
+}
+enflog() { cat "$WORK/e/log" 2>/dev/null || true; }
 
 # ---------------------------------------------------------------------------
 # 0. Control.
@@ -198,6 +208,78 @@ JSON
 _s=$(base '.summary.unsafe_docker = 3')
 check "a summary counting MORE than the raw sources still fails closed" \
 	"$(enf "$_s" baseline "$(risk '["a/Dockerfile"]')")" 1
+
+# ---------------------------------------------------------------------------
+# Scope exemptions come from the TRUSTED PLAN, not from the summary being judged.
+# ---------------------------------------------------------------------------
+# `not-applicable` and `stage_selected: false` were read from the same document under
+# judgement, so a hand-built or modified summary could declare an applicable required control
+# out of scope. run-tool-plan.sh writes a separate artifact; that is what decides scope.
+
+# (a) the plan AGREES the tool is not applicable -> the exemption stands.
+PLAN=$(mkplan pr laravel '{"tests":{"policy":"required","status":"not-applicable"}}')
+check "not-applicable is honoured when the plan agrees" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel" | .tools.tests.gate_enforced = false | .tools.tests.status = "not-applicable"')" baseline)" 0
+
+# (b) the plan CONTRADICTS the claim -> the plan wins and the control fails.
+PLAN=$(mkplan pr laravel '{"tests":{"policy":"required","status":"pass"}}')
+check "a not-applicable claim the plan contradicts is a required-tool failure" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel" | .tools.tests.gate_enforced = false | .tools.tests.status = "not-applicable"')" baseline)" 1
+case "$(enflog)" in
+	*"the plan decides applicability"*) pass "  and the plan is named as the authority" ;;
+	*) fail "  without saying the plan decides applicability" ;;
+esac
+
+# (c) a stage exemption is proven by ABSENCE from the plan for that stage.
+PLAN=$(mkplan pr laravel '{"other":{"policy":"required","status":"pass"}}')
+check "stage_selected:false is honoured when the plan does not select the tool" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel" | .tools.tests.gate_enforced = false | .tools.tests.stage_selected = false')" baseline)" 0
+
+# (d) ...and contradicted when the plan DOES select it.
+PLAN=$(mkplan pr laravel '{"tests":{"policy":"required","status":"pass"}}')
+check "stage_selected:false is refused when the plan selects the tool" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel" | .tools.tests.gate_enforced = false | .tools.tests.stage_selected = false')" baseline)" 1
+case "$(enflog)" in
+	*"the plan decides stage scope"*) pass "  and the plan is named as the authority" ;;
+	*) fail "  without saying the plan decides stage scope" ;;
+esac
+
+# (e) the summary may not DOWNGRADE a policy the plan requires.
+PLAN=$(mkplan pr laravel '{"tests":{"policy":"required","status":"unavailable"}}')
+check "a summary claiming 'recommended' for a plan-required tool is enforced as required" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel" | .tools.tests.policy = "recommended" | .tools.tests.status = "unavailable"')" baseline)" 1
+
+# (f) a plan for another stage or profile cannot authorise this summary.
+PLAN=$(mkplan main laravel '{"tests":{"policy":"required","status":"not-applicable"}}')
+check "a plan for a DIFFERENT stage is refused as a configuration error" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel"')" baseline)" 2
+PLAN=$(mkplan pr node '{"tests":{"policy":"required","status":"not-applicable"}}')
+check "a plan for a DIFFERENT profile is refused as a configuration error" \
+	"$(enf "$(base '.stage = "pr" | .project.type = "laravel"')" baseline)" 2
+
+# (g) with NO plan, an enforcing mode must not honour a summary-authored exemption.
+# strict may also refuse the fixture EARLIER (bound source, tool-policy overlay), so the
+# assertion is "does not pass" rather than a specific code — the point is that an exemption
+# nobody can check never yields a clean run.
+PLAN=""
+_c=$(enf "$(base '.tools.tests.gate_enforced = false | .tools.tests.status = "not-applicable"')" strict)
+if [ "$_c" = "0" ]; then
+	fail "strict honoured an unsubstantiated not-applicable claim"
+else
+	pass "strict does not honour an unsubstantiated not-applicable claim (exit $_c)"
+fi
+_c=$(enf "$(base '.stage = "pr" | .tools.tests.gate_enforced = false | .tools.tests.stage_selected = false')" strict)
+if [ "$_c" = "0" ]; then
+	fail "strict honoured an unsubstantiated stage-scope claim"
+else
+	pass "strict does not honour an unsubstantiated stage-scope claim (exit $_c)"
+fi
+# baseline keeps the documented migration tolerance, so the claim is still honoured there —
+# stated explicitly so the difference is a decision rather than an accident.
+check "baseline still honours the claim (documented migration tolerance)" \
+	"$(enf "$(base '.tools.tests.gate_enforced = false | .tools.tests.status = "not-applicable"')" baseline)" 0
+PLAN=""
+
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

@@ -125,6 +125,8 @@ CONTROL_WAIVERS_FILE=".sentinel-shield/control-waivers.json"  # required-tool wa
 RAW_HADOLINT=""        # default derived from --summary dir (reports/raw/hadolint.json)
 RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-base-digest.json)
 RAW_DIR=""             # default derived from --summary dir (reports/raw); finding-scope sources
+# Execution plan (run-tool-plan.sh) used to RECONCILE required-tool scope claims.
+TOOL_PLAN=""
 
 # Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
 # narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
@@ -154,6 +156,12 @@ Options:
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
   --raw-dir <path>       Raw scanner reports used for finding-scoped acceptance on
                        vulnerability gates (default: <summary dir>/raw).
+  --tool-plan <path>     Execution plan written by run-tool-plan.sh
+                       (reports/<stage>-execution.json). A SEPARATE artifact used to
+                       RECONCILE required-tool scope: applicability, stage selection and
+                       policy are taken from it, and a summary field that disagrees is a
+                       failure. Without it, strict/regulated do not honour a scope
+                       exemption the summary claims about itself.
   --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
                        (default: <summary-dir>/raw/hadolint.json).
   --control-waivers <path>  Required-tool control waivers (default: .sentinel-shield/control-waivers.json,
@@ -188,6 +196,7 @@ while [ $# -gt 0 ]; do
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
 		--control-waivers) CONTROL_WAIVERS_FILE="${2:?--control-waivers requires a value}"; shift 2 ;;
 		--raw-dir) RAW_DIR="${2:?--raw-dir requires a value}"; shift 2 ;;
+		--tool-plan) TOOL_PLAN="${2:?--tool-plan requires a value}"; shift 2 ;;
 		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
 		--docker-base-digest-raw) RAW_DOCKER_BASE="${2:?--docker-base-digest-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
@@ -1202,6 +1211,57 @@ if [ "$HAS_POLICY" = "1" ]; then
 	done
 	is_waived() { case "$WAIVED_TOOLS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
+	# --- THE TRUSTED EXECUTION PLAN ------------------------------------------------------
+	# Every exemption below used to be read from the SAME summary being judged: the summary
+	# said a required tool was `not-applicable`, or carried `stage_selected: false`, and the
+	# enforcer believed it. A hand-built or modified summary could therefore declare an
+	# applicable required control out of scope. The plan written by run-tool-plan.sh is a
+	# SEPARATE artifact produced by a different process, and it is what decides scope now.
+	# Summary policy fields are informational echoes: disagreement with the plan is a failure.
+	PLAN_OK=0
+	if [ -n "${TOOL_PLAN:-}" ]; then
+		[ -f "$TOOL_PLAN" ] || die_cfg "--tool-plan '$TOOL_PLAN' does not exist. An exemption cannot be reconciled against a plan that is not there."
+		jq -e '(type == "object") and ((.stage // "") | type == "string") and ((.stage // "") != "")
+			and ((.profile // "") | type == "string") and ((.profile // "") != "")
+			and ((.tools // null) | type == "object")' "$TOOL_PLAN" >/dev/null 2>&1 \
+			|| die_cfg "--tool-plan '$TOOL_PLAN' is not a usable execution plan (needs a non-empty stage, profile and a tools object)"
+		PLAN_STAGE=$(jq -r '.stage' "$TOOL_PLAN")
+		PLAN_PROFILE=$(jq -r '.profile' "$TOOL_PLAN")
+		# The plan must describe THIS run. A plan for another stage or profile proves nothing
+		# about the summary in front of us, and reconciling against it would be theatre.
+		_sum_stage=$(jq -r '(.stage // "")' "$SUMMARY" 2>/dev/null || printf '')
+		[ "$_sum_stage" = "null" ] && _sum_stage=""
+		if [ -n "$_sum_stage" ] && [ "$_sum_stage" != "$PLAN_STAGE" ]; then
+			die_cfg "the execution plan is for stage '$PLAN_STAGE' but the summary declares stage '$_sum_stage' — a plan for another stage cannot authorise this summary."
+		fi
+		_sum_profile=$(jq -r '(.project.type // "")' "$SUMMARY" 2>/dev/null || printf '')
+		[ "$_sum_profile" = "null" ] && _sum_profile=""
+		if [ -n "$_sum_profile" ] && [ "$_sum_profile" != "unknown" ] && [ "$_sum_profile" != "$PLAN_PROFILE" ]; then
+			die_cfg "the execution plan is for profile '$PLAN_PROFILE' but the summary declares '$_sum_profile' — a plan for another profile cannot authorise this summary."
+		fi
+		PLAN_OK=1
+		log_info "reconciling required-tool scope against the execution plan ($TOOL_PLAN: profile=$PLAN_PROFILE stage=$PLAN_STAGE)"
+	fi
+	# plan_says <emit> <field> — the plan value, or "" when the plan does not cover the tool.
+	plan_says() {
+		[ "$PLAN_OK" -eq 1 ] || { printf ''; return 0; }
+		jq -r --arg k "$1" --arg f "$2" '((.tools[$k] // {})[$f] // "") | tostring' "$TOOL_PLAN" 2>/dev/null || printf ''
+	}
+	# plan_covers <emit> — true when the plan lists the tool for this stage at all.
+	plan_covers() {
+		[ "$PLAN_OK" -eq 1 ] || return 1
+		jq -e --arg k "$1" '(.tools // {}) | has($k)' "$TOOL_PLAN" >/dev/null 2>&1
+	}
+	# An enforcing mode must not accept a summary-authored exemption with NO plan to check it
+	# against. Without the plan the only safe reading of `gate_enforced:false` on a required
+	# tool is a required-tool failure, which is what happens below.
+	case "$MODE" in
+		strict | regulated)
+			if [ "$PLAN_OK" -ne 1 ]; then
+				log_warn "no --tool-plan supplied: in '$MODE' a required-tool exemption claimed by the summary cannot be substantiated, so scope claims will NOT be honoured."
+			fi ;;
+	esac
+
 	# A stage-scoped summary (build-security-summary.sh --stage) legitimately marks required
 	# tools that do not run at that stage as not gate-enforced. Without that marker, an
 	# unexplained gate_enforced:false is a configuration error rather than a scope statement.
@@ -1217,6 +1277,20 @@ if [ "$HAS_POLICY" = "1" ]; then
 
 	while IFS='|' read -r _emit _tkey _pol _st _ge; do
 		[ -n "$_emit" ] || continue
+		# POLICY IS THE PLAN'"'"'S TO STATE. A summary declaring `recommended` for a tool the plan
+		# requires would otherwise downgrade its own required control by editing one field.
+		if [ "$PLAN_OK" -eq 1 ] && plan_covers "$_emit"; then
+			_ppol=$(plan_says "$_emit" policy)
+			if [ -n "$_ppol" ] && [ "$_ppol" != "$_pol" ]; then
+				if [ "$_ppol" = "required" ]; then
+					log_warn "$_emit: the summary declares policy '"'"'$_pol'"'"' but the execution plan requires it — enforcing the plan."
+					_pol="required"
+				else
+					log_warn "$_emit: the summary declares policy '"'"'$_pol'"'"' but the execution plan says '"'"'$_ppol'"'"'; the plan is authoritative."
+					_pol="$_ppol"
+				fi
+			fi
+		fi
 		case "$_pol" in
 			required)
 				# `gate_enforced:false` on a REQUIRED tool used to skip the tool entirely, so the
@@ -1226,9 +1300,33 @@ if [ "$HAS_POLICY" = "1" ]; then
 				# say WHICH: an unexplained opt-out is a configuration error, not a pass.
 				if [ "$_ge" != "true" ]; then
 					case "$_st" in
-						# `not-applicable` is an applicability statement, and the only status
-						# that legitimately needs no further proof.
-						not-applicable) continue ;;
+						# `not-applicable` is an APPLICABILITY CLAIM, and the summary is not
+						# an authority on it: the same document being judged asserted the
+						# control was out of scope. It is honoured only when the trusted
+						# execution plan agrees.
+						not-applicable)
+							if [ "$PLAN_OK" -eq 1 ]; then
+								_pst=$(plan_says "$_emit" status)
+								if ! plan_covers "$_emit"; then
+									log_warn "$_emit: the summary claims not-applicable but the execution plan for stage '$PLAN_STAGE' does not list the tool at all — treating the claim as unsubstantiated."
+									REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(not in plan)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(not in plan)
+"; continue
+								fi
+								if [ "$_pst" = "not-applicable" ]; then continue; fi
+								log_warn "$_emit: the summary claims not-applicable but the execution plan records status '$_pst' — the plan decides applicability."
+								REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(plan says ${_pst:-unknown})
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(plan says ${_pst:-unknown})
+"; continue
+							fi
+							case "$MODE" in
+								strict | regulated)
+									log_warn "$_emit: a not-applicable claim cannot be substantiated without --tool-plan; in '$MODE' it is a required-tool failure."
+									REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(unsubstantiated)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(unsubstantiated)
+"; continue ;;
+							esac
+							continue ;;
 						# `disabled` is a required-control FAILURE state, not an exemption. It
 						# used to skip the tool outright, so a summary producer could switch
 						# off its own required control by emitting status=disabled with
@@ -1258,6 +1356,27 @@ if [ "$HAS_POLICY" = "1" ]; then
 							# for into the default. has() is the only correct probe.
 							_ssel=$(jqr "(.tools[\"$_emit\"] | if (type == \"object\") and has(\"stage_selected\") then (.stage_selected | tostring) else \"absent\" end)")
 							if [ -n "$STAGE_SCOPED" ] && [ "$_ssel" = "false" ]; then
+								# The summary saying "not selected at this stage" is a CLAIM
+								# about policy, made by the document under judgement. The
+								# trusted plan lists exactly the tools selected for the stage
+								# it was resolved for, so absence from the plan is the proof
+								# and presence contradicts the claim.
+								if [ "$PLAN_OK" -eq 1 ]; then
+									if plan_covers "$_emit"; then
+										log_warn "$_emit: the summary claims it is not selected at stage '$STAGE_SCOPED', but the execution plan for '$PLAN_STAGE' does select it — the plan decides stage scope."
+										REQF_REC="${REQF_REC}${_emit}|${_tkey}|stage-scope-contradicted
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|stage-scope-contradicted
+"; continue
+									fi
+									continue
+								fi
+								case "$MODE" in
+									strict | regulated)
+										log_warn "$_emit: a stage-scope exemption cannot be substantiated without --tool-plan; in '$MODE' it is a required-tool failure."
+										REQF_REC="${REQF_REC}${_emit}|${_tkey}|stage-scope(unsubstantiated)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|stage-scope(unsubstantiated)
+"; continue ;;
+								esac
 								continue
 							fi
 							REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-gate-enforced(${_st:-unknown})
