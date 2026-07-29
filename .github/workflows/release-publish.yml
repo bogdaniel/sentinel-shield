@@ -81,7 +81,13 @@ jobs:
           fi
           # BACKFILL SAFETY: the tag must already exist. This workflow publishes tags; it
           # never creates them.
-          git fetch --quiet --tags --force origin || true
+          # NOT `|| true`. Everything below resolves the tag from the LOCAL ref store, so a
+          # failed fetch means the run reads whatever stale ref the checkout happened to have
+          # and calls it the release tag. An unknown ref state is not an unchanged one.
+          if ! git fetch --quiet --tags --force origin; then
+            echo "::error::could not fetch tags from origin — the local tag state may be stale, and a stale ref is not evidence of the tag being published; refusing to continue."
+            exit 1
+          fi
           if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "::error::tag '$TAG' does not exist — push the signed tag first; this workflow never creates tags"
             exit 1
@@ -107,6 +113,10 @@ jobs:
             # Fetch into an EXPLICIT ref. `FETCH_HEAD` is whatever the last fetch in this job
             # left behind — including the earlier tag fetch — so reading notes from it could
             # take them from an unintended ref. The refspec below names exactly one source.
+            # `|| true` is deliberate and SAFE here, unlike on the tag fetch above: nothing
+            # below reads a stale ref on failure — the `git show` immediately after is the
+            # real gate and a missing notes file exits 1. The fetch is allowed to fail so the
+            # error the operator sees names the missing notes rather than the fetch.
             git fetch --quiet --depth=1 origin "+refs/heads/${BR}:refs/remotes/origin/${BR}" 2>/dev/null || true
             if git show "refs/remotes/origin/${BR}:$NOTES" > "${RUNNER_TEMP}/${TAG}-notes.md" 2>/dev/null; then
               NOTES="${RUNNER_TEMP}/${TAG}-notes.md"
@@ -128,6 +138,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Require a GitHub-verified tag signing identity
+        id: verify
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
@@ -143,7 +154,7 @@ jobs:
           OBJ=""
           for _try in 1 2 3; do
             OBJ=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null) || OBJ=""
-            [ -n "$OBJ" ] && break
+            if [ -n "${OBJ}" ]; then break; fi
             sleep $((_try * 5))
           done
           if [ -z "$OBJ" ]; then
@@ -155,7 +166,7 @@ jobs:
           VR=""
           for _try in 1 2 3; do
             VR=$(gh api "repos/$REPO/git/tags/$OBJ" --jq '"\(.verification.verified)|\(.verification.reason)"' 2>/dev/null) || VR=""
-            [ -n "$VR" ] && break
+            if [ -n "${VR}" ]; then break; fi
             sleep $((_try * 5))
           done
           if [ -z "$VR" ]; then
@@ -166,16 +177,58 @@ jobs:
           fi
           V=${VR%%|*}
           R=${VR#*|}
-          # The signer, when GitHub can name one. Reported in the failure so an operator can
-          # see WHICH identity was rejected, not merely that one was.
-          SIGNER=$(gh api "repos/$REPO/git/tags/$OBJ" \
-            --jq '"\(.verification.signature // "" | if . == "" then "none" else "present" end)/\(.tagger.name // "unknown") <\(.tagger.email // "unknown")>"' 2>/dev/null) || SIGNER="unavailable"
+          # The TAGGER, when GitHub can name one, plus whether signature material is present.
+          # This is deliberately NOT called the signer: `.tagger` is who authored the tag
+          # object, which the API does not prove is the identity that signed it. Reporting it
+          # as "signer" presented unauthenticated metadata as signing authorization.
+          TAGGER=$(gh api "repos/$REPO/git/tags/$OBJ" \
+            --jq '"\(.verification.signature // "" | if . == "" then "none" else "present" end)/\(.tagger.name // "unknown") <\(.tagger.email // "unknown")>"' 2>/dev/null) || TAGGER="unavailable"
           # A malformed API response is not a verified tag. `verified` is a JSON boolean; jq
           # renders anything else (null, absent, a string) as something other than `true`
           # or `false`, and only the literal `true` publishes.
           case "$V" in
             true)
-              echo "tag $TAG: signing identity GitHub-verified (target $OBJ, signer $SIGNER)"
+              # A verified SIGNATURE on object B says nothing about commit A. The verified
+              # object must peel to exactly the commit this run publishes, or a tag moved
+              # between the local checkout and this API read would be published with someone
+              # else's verification standing behind it.
+              PEEL="$OBJ"; PTYPE="tag"; PSHA=""
+              _hop=0
+              while [ "$PTYPE" = "tag" ] && [ "$_hop" -lt 5 ]; do
+                PR_=""
+                for _try in 1 2 3; do
+                  PR_=$(gh api "repos/$REPO/git/tags/$PEEL" --jq '"\(.object.type)|\(.object.sha)"' 2>/dev/null) || PR_=""
+                  if [ -n "${PR_}" ]; then break; fi
+                  sleep $((_try * 5))
+                done
+                if [ -z "$PR_" ]; then
+                  echo "::error::TAG_TARGET_UNRESOLVED"
+                  echo "::error::the verified tag object $PEEL could not be peeled to a commit after 3 attempts — an unresolved target is not a matching one; refusing to publish."
+                  exit 1
+                fi
+                PTYPE=${PR_%%|*}; PSHA=${PR_#*|}; PEEL="$PSHA"
+                _hop=$((_hop + 1))
+              done
+              if [ "$PTYPE" != "commit" ] || [ -z "$PSHA" ]; then
+                echo "::error::TAG_TARGET_UNRESOLVED"
+                echo "::error::tag $TAG does not peel to a commit (last object type: ${PTYPE:-unknown}) — refusing to publish."
+                exit 1
+              fi
+              if [ "$PSHA" != "$COMMIT" ]; then
+                echo "::error::TAG_TARGET_COMMIT_MISMATCH"
+                echo "::error::the VERIFIED tag object does not point at the commit this run publishes. The tag ref moved between the checkout and this verification, so the signature that was verified belongs to a different commit."
+                echo "::error::  tag:                 $TAG"
+                echo "::error::  verified tag object: $OBJ"
+                echo "::error::  object peels to:     $PSHA"
+                echo "::error::  publishing commit:   $COMMIT"
+                echo "::error::  remediation:         release tags are immutable — do NOT move or re-push this tag. Investigate who changed it, then cut a NEW reviewed tag."
+                echo "::error::  reference:           docs/production-release-runbook.md#tag_signing_identity_unverified--publication-refused"
+                exit 1
+              fi
+              echo "tag $TAG: signing identity GitHub-verified (target $OBJ -> commit $PSHA, tagger $TAGGER)"
+              if [ -n "${GITHUB_OUTPUT:-}" ]; then
+                printf 'obj=%s\n' "$OBJ" >> "$GITHUB_OUTPUT"
+              fi
               exit 0 ;;
             false) : ;;
             *)
@@ -196,7 +249,7 @@ jobs:
           echo "::error::  published commit:    ${COMMIT:-unknown}"
           echo "::error::  verification.verified: $V"
           echo "::error::  verification.reason:   $R"
-          echo "::error::  signer:              $SIGNER"
+          echo "::error::  tagger:              $TAGGER"  # tag author, NOT proof of the signer
           echo "::error::  remediation:         register the public signing key on the account that signed this tag (GitHub -> Settings -> SSH and GPG keys), then re-run this workflow via workflow_dispatch with tag=$TAG. If the key cannot be registered or recovered, cut a NEW reviewed release tag — do NOT move, re-sign or replace '$TAG'."
           echo "::error::  reference:           docs/production-release-runbook.md#tag_signing_identity_unverified--publication-refused"
           exit 1
@@ -210,8 +263,39 @@ jobs:
           NOTES: ${{ steps.meta.outputs.notes }}
           KIND: ${{ steps.meta.outputs.kind }}
           REPO: ${{ github.repository }}
+          VERIFIED_OBJ: ${{ steps.verify.outputs.obj }}
         run: |
           set -eu
+          # LAST-MOMENT REF CHECK. Verification happened in an earlier step; `gh release
+          # create --verify-tag` acts on the tag as it exists NOW. Between the two, a tag ref
+          # can be moved or replaced, and the post-publication commit check would then detect
+          # the mismatch only AFTER a wrong release exists. Publication must not begin unless
+          # the ref still resolves to the exact object that was verified.
+          if [ -z "${VERIFIED_OBJ:-}" ]; then
+            echo "::error::TAG_VERIFICATION_MISSING"
+            echo "::error::the verification step published no tag object, so there is nothing to re-check against — refusing to publish."
+            exit 1
+          fi
+          NOWOBJ=""
+          for _try in 1 2 3; do
+            NOWOBJ=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null) || NOWOBJ=""
+            if [ -n "${NOWOBJ}" ]; then break; fi
+            sleep $((_try * 5))
+          done
+          if [ -z "$NOWOBJ" ]; then
+            echo "::error::TAG_REF_UNRESOLVED"
+            echo "::error::the tag ref for $TAG could not be re-read before publication — an unknown ref state is not an unchanged one; refusing to publish."
+            exit 1
+          fi
+          if [ "$NOWOBJ" != "$VERIFIED_OBJ" ]; then
+            echo "::error::TAG_REF_MOVED"
+            echo "::error::the tag ref changed between verification and publication. Nothing about the new object has been verified, so publishing it would attach an unverified target to a release."
+            echo "::error::  tag:             $TAG"
+            echo "::error::  verified object: $VERIFIED_OBJ"
+            echo "::error::  ref now points:  $NOWOBJ"
+            echo "::error::  remediation:     release tags are immutable — do NOT move or re-push a published tag. Investigate the change, then cut a NEW reviewed tag."
+            exit 1
+          fi
           # Idempotent: if a human already published this tag manually, do not fail. This is
           # what makes the backfill path safe to re-run.
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then

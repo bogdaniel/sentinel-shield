@@ -70,11 +70,20 @@ case "$_path" in
 			*) printf '%s\n' "$GH_OBJ"; exit 0 ;;
 		esac ;;
 	*/git/tags/*)
-		# The second call in the step asks for verified|reason; the third asks for signer.
+		# The step makes three different reads against this path; dispatch on the jq filter.
 		case "$3$4" in
 			*signature*|*tagger*)
-				if [ -n "${GH_SIGNER_FAIL:-}" ]; then exit 1; fi
+				if [ -n "${GH_TAGGER_FAIL:-}" ]; then exit 1; fi
 				printf 'present/Release Bot <bot@example.com>\n'; exit 0 ;;
+			*object.type*)
+				# Peeling the verified tag object to the commit being published.
+				case "${GH_PEEL:-}" in
+					fail)      exit 1 ;;
+					mismatch)  printf 'commit|9999999999999999999999999999999999999999\n'; exit 0 ;;
+					nested)    printf 'tag|%s\n' "$GH_OBJ"; exit 0 ;;
+					not-commit) printf 'tree|1234567890123456789012345678901234567890\n'; exit 0 ;;
+					*)         printf 'commit|%s\n' "$GH_COMMIT"; exit 0 ;;
+				esac ;;
 		esac
 		case "${GH_MODE:-}" in
 			verified)        printf 'true|valid\n' ;;
@@ -100,6 +109,7 @@ chmod +x "$WORK/bin/gh"
 run() {
 	_c=0
 	env PATH="$WORK/bin:$PATH" GH_MODE="$1" GH_OBJ="$OBJ" GH_TOKEN=x \
+		GH_COMMIT="$COMMIT" GH_PEEL="${2:-}" \
 		TAG="$TAG" REPO="acme/shield" COMMIT="$COMMIT" \
 		sh "$WORK/verify.sh" >"$WORK/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
@@ -148,7 +158,7 @@ contains "the diagnostic names the tag"            "$_log" "$TAG"
 contains "the diagnostic names the tag target"     "$_log" "$OBJ"
 contains "the diagnostic names the published commit" "$_log" "$COMMIT"
 contains "the diagnostic names the verification reason" "$_log" "unknown_key"
-contains "the diagnostic names the signer when GitHub can" "$_log" "Release Bot"
+contains "the diagnostic names the tagger when GitHub can" "$_log" "Release Bot"
 contains "the diagnostic states the remediation"   "$_log" "Register the signing key"
 contains "  including where to register it"        "$_log" "SSH and GPG keys"
 contains "  and that an existing tag is never rewritten" "$_log" "do NOT move, re-sign or replace"
@@ -169,9 +179,10 @@ done
 
 # A signer the API cannot name must not stop the failure being reported.
 _c=0
-env PATH="$WORK/bin:$PATH" GH_MODE=unknown-key GH_SIGNER_FAIL=1 GH_OBJ="$OBJ" GH_TOKEN=x \
-	TAG="$TAG" REPO="acme/shield" COMMIT="$COMMIT" sh "$WORK/verify.sh" >"$WORK/log" 2>&1 || _c=$?
-check "an unnameable signer still blocks" "$_c" 1
+env PATH="$WORK/bin:$PATH" GH_MODE=unknown-key GH_TAGGER_FAIL=1 GH_OBJ="$OBJ" GH_TOKEN=x \
+	GH_COMMIT="$COMMIT" TAG="$TAG" REPO="acme/shield" COMMIT="$COMMIT" \
+	sh "$WORK/verify.sh" >"$WORK/log" 2>&1 || _c=$?
+check "an unnameable tagger still blocks" "$_c" 1
 contains "  and the diagnostic still carries the reason" "$(cat "$WORK/log")" "unknown_key"
 
 # ---------------------------------------------------------------------------
@@ -210,6 +221,91 @@ if grep -q 'workflow_dispatch' "$WF"; then
 	check "manual backfill shares the single publishing job (no second, laxer path)" "$_jobs" 1
 else
 	fail "the workflow declares no workflow_dispatch backfill path"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. A VERIFIED signature on one object proves nothing about another commit.
+# ---------------------------------------------------------------------------
+# The signature was verified against the tag OBJECT. Publication is of a COMMIT. If the tag ref
+# moved between the checkout and the API read, the verified object belongs to a different
+# commit, and the old flow only noticed after `gh release create` had already published.
+check "a verified tag whose object peels to ANOTHER commit is refused" "$(run verified mismatch)" 1
+contains "  named as a target mismatch" "$(cat "$WORK/log")" "TAG_TARGET_COMMIT_MISMATCH"
+contains "  reporting the commit actually pointed at" "$(cat "$WORK/log")" "9999999999999999999999999999999999999999"
+contains "  and the commit being published" "$(cat "$WORK/log")" "$COMMIT"
+contains "  with the tag-immutability remediation" "$(cat "$WORK/log")" "do NOT move or re-push"
+check "a tag object that cannot be peeled is refused" "$(run verified fail)" 1
+contains "  named as an unresolved target" "$(cat "$WORK/log")" "TAG_TARGET_UNRESOLVED"
+check "a tag object that does not peel to a commit is refused" "$(run verified not-commit)" 1
+contains "  also named as an unresolved target" "$(cat "$WORK/log")" "TAG_TARGET_UNRESOLVED"
+check "a tag pointing at a tag is peeled, not refused outright" "$(run verified nested)" 1
+
+# ---------------------------------------------------------------------------
+# 6. The ref must still be the verified object at the moment of publication.
+# ---------------------------------------------------------------------------
+# Verification happens in an earlier step; `gh release create --verify-tag` acts on the tag as
+# it exists NOW. A ref moved in between must stop publication BEFORE the release is created —
+# detecting it afterwards means a wrong release already exists.
+awk '
+	/^      - name: Create GitHub Release/ { instep = 1; next }
+	instep && /^[[:space:]]*run: \|/ { inrun = 1; next }
+	inrun && /^      - name: / { exit }
+	inrun { sub(/^          /, ""); print }
+' "$WF" > "$WORK/create.sh"
+_clines=$(wc -l < "$WORK/create.sh" 2>/dev/null || printf '0'); _clines=${_clines##* }
+if [ "$_clines" -lt 15 ]; then
+	fail "could not extract the release-creation step ($_clines lines) — the moved-ref checks would test nothing"
+else
+	pass "extracted the release-creation step ($_clines lines)"
+fi
+sh -n "$WORK/create.sh" || fail "the extracted creation step is not valid POSIX sh"
+
+# A `gh` stub that RECORDS whether a release was ever created.
+cat > "$WORK/bin/gh" <<'STUB2'
+#!/bin/sh
+# Records every release call so the test can prove none was made.
+case "$1 $2" in
+	"release create" | "release view")
+		printf '%s %s\n' "$1" "$2" >> "$GH_CALLS"
+		[ "$1 $2" = "release view" ] && exit 1
+		exit 0 ;;
+esac
+case "$2" in
+	*/git/ref/tags/*)
+		# `none` = the ref could not be read at all, which is not the same as reading a
+		# ref that now points somewhere else.
+		[ "${GH_NOW:-}" = none ] && exit 1
+		printf '%s\n' "${GH_NOW:-$GH_OBJ}"; exit 0 ;;
+esac
+exit 1
+STUB2
+chmod +x "$WORK/bin/gh"
+
+runcreate() { # runcreate <ref-now> -> exit code; calls recorded in $WORK/calls
+	: > "$WORK/calls"
+	_c=0
+	env PATH="$WORK/bin:$PATH" GH_TOKEN=x GH_OBJ="$OBJ" GH_NOW="$1" GH_CALLS="$WORK/calls" \
+		TAG="$TAG" REPO="acme/shield" NOTES="/dev/null" KIND="" VERIFIED_OBJ="$OBJ" \
+		sh "$WORK/create.sh" >"$WORK/clog" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+
+check "publication proceeds while the ref still holds the verified object" "$(runcreate "$OBJ")" 0
+_moved=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+check "a ref MOVED after verification refuses to publish" "$(runcreate "$_moved")" 1
+contains "  named as a moved ref" "$(cat "$WORK/clog")" "TAG_REF_MOVED"
+contains "  reporting both objects" "$(cat "$WORK/clog")" "$_moved"
+if grep -q 'release create' "$WORK/calls" 2>/dev/null; then
+	fail "a release was CREATED for a tag whose ref had moved — the check ran too late"
+else
+	pass "  and NO release-creation call was made"
+fi
+check "an unreadable ref refuses to publish" "$(runcreate none)" 1
+contains "  named as an unresolved ref" "$(cat "$WORK/clog")" "TAG_REF_UNRESOLVED"
+if grep -q 'release create' "$WORK/calls" 2>/dev/null; then
+	fail "a release was created despite an unreadable tag ref"
+else
+	pass "  and NO release-creation call was made"
 fi
 
 printf '\n'

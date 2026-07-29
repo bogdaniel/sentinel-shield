@@ -143,6 +143,28 @@ An existing tag in this state is **immutable**:
 - do **not** add an exception file, environment variable, or workflow input to get past the
   check — none exists, and adding one would defeat the control.
 
+## `TAG_TARGET_COMMIT_MISMATCH` / `TAG_REF_MOVED` — publication refused
+
+Both mean the tag ref **changed** between the moment this run resolved it and the moment it
+was about to publish.
+
+- **`TAG_TARGET_COMMIT_MISMATCH`** — the tag object whose signature GitHub verified does not
+  peel to the commit this run is publishing. A verified signature on object B is not evidence
+  about commit A, so the run refuses before any release is created.
+- **`TAG_REF_MOVED`** — the ref no longer resolves to the object that was verified moments
+  earlier. Nothing about the new object has been verified.
+
+Neither is recoverable by re-running. **A release tag is immutable**: the publisher never
+creates, moves or rewrites one, and nothing in the workflow will publish a tag whose target
+changed under it. If you see either code:
+
+1. Do **not** move the tag back — the fact that it moved is itself the incident.
+2. Establish who changed the ref and why. Repository settings should prevent this: protect
+   the `refs/tags/v*` namespace against force-push and deletion, and restrict who may push
+   tags. Workflow concurrency does **not** protect against an external ref mutation.
+3. Cut a **new** reviewed release tag at the intended commit and publish that.
+4. Leave the disturbed tag in place, recorded as tagged-but-unpublished.
+
 Such a tag stays in the repository as **tagged but unpublished / unverified**. Record it that
 way in `config/release-status.json` and in the release notes; it is an honest historical fact,
 not a defect to be edited away. Publication may be retried at any later time once the key is
