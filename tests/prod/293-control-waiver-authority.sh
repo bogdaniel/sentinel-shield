@@ -313,6 +313,29 @@ jq '.waivers[0].supersedes = ""' "$CO/ok.json" > "$CO/known.json"
 check "a KNOWN optional field is still accepted" "$(_val "$CO/known.json")" 0
 
 
+# The refusal must state the effective policy consistently, so an operator reading it knows
+# which number is in force rather than inferring one.
+# cw__max_days exits 2 here by design, and this suite runs under `set -e`, so the capture is
+# wrapped rather than letting the expected failure abort the file.
+_msg=""
+if _msg=$(env CW_MAX_WAIVER_DAYS=99999 sh -c '. "$0" 2>/dev/null; . "$1"; cw__max_days 2>&1 >/dev/null' \
+	"$COMMON" "$LIB" 2>&1); then :; fi
+case "$_msg" in
+	*90*) pass "the refusal names the documented default (90)" ;;
+	*) fail "the refusal does not state the effective maximum: $_msg" ;;
+esac
+# It may SAY the value is not clamped; it must not promise that it will be.
+case "$_msg" in
+	*"is clamped"*|*"will be clamped"*|*"falls back"*|*"fall back"*)
+		fail "the refusal still promises clamping/fallback that the code does not do: $_msg" ;;
+	*) pass "  and does not promise clamping or a fallback" ;;
+esac
+case "$_msg" in
+	*"NOT clamped"*) pass "  stating explicitly that the value is not clamped" ;;
+	*) fail "  without saying what happens instead: $_msg" ;;
+esac
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '293-control-waiver-authority: ALL CHECKS PASSED\n'

@@ -80,8 +80,9 @@ CW_ID_RE='^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$'
 #   environment can exceed, so a loosened environment cannot manufacture a permanent
 #   waiver.
 # The POLICY maximum. The environment may lower it (enforce-gates.sh applies the regulated
-# value); it can never raise it, and an unusable value falls back here rather than to the
-# most permissive number in the file.
+# value); it can never raise it. An unusable value does NOT fall back to this number, or to
+# any other: it is a configuration error and cw__max_days returns 2. Only a genuinely UNSET
+# variable uses this default.
 CW_MAX_WAIVER_DAYS_DEFAULT=90
 CW_MAX_WAIVER_DAYS_CEILING=365   # absolute upper bound, retained for reporting
 CW_MAX_WAIVER_DAYS_REGULATED=30
@@ -179,8 +180,10 @@ cw__resolve_today() {
 	printf '%s' "$_td"
 }
 
-# cw__max_days — the effective maximum waiver duration, clamped to the hard ceiling so a
-# loosened environment cannot manufacture a permanent waiver. Non-numeric => ceiling.
+# cw__max_days — the effective maximum waiver duration. NOTHING IS CLAMPED: a value above the
+# policy maximum, below 1, non-numeric, empty or out of range is a configuration error and
+# returns 2, because substituting a number would enforce a policy nobody chose while the
+# operator believed another was in force. Unset uses the documented default.
 cw__max_days() {
 	# An INVALID setting FAILS CLOSED. It is not clamped, normalised, or replaced by a
 	# fallback: a governance duration nobody can read is a configuration error, and quietly
@@ -217,11 +220,11 @@ cw__max_days() {
 		return 2
 	fi
 	if [ "$CW_MAX_WAIVER_DAYS" -gt "$CW_MAX_WAIVER_DAYS_CEILING" ] 2>/dev/null; then
-		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the absolute ${CW_MAX_WAIVER_DAYS_CEILING}-day ceiling. Configuration may TIGHTEN the policy, never loosen it — refusing to run under an out-of-policy duration."
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the absolute ${CW_MAX_WAIVER_DAYS_CEILING}-day ceiling. The effective policy maximum is ${CW_MAX_WAIVER_DAYS_DEFAULT} days (${CW_MAX_WAIVER_DAYS_REGULATED} in regulated). Configuration may TIGHTEN the policy, never loosen it — refusing to run under an out-of-policy duration; the value is NOT clamped."
 		return 2
 	fi
 	if [ "$CW_MAX_WAIVER_DAYS" -gt "$CW_MAX_WAIVER_DAYS_DEFAULT" ]; then
-		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day policy maximum. Configuration may TIGHTEN the policy, never loosen it."
+		log_error "control-waivers: CW_MAX_WAIVER_DAYS=$CW_MAX_WAIVER_DAYS exceeds the ${CW_MAX_WAIVER_DAYS_DEFAULT}-day policy maximum (${CW_MAX_WAIVER_DAYS_REGULATED} in regulated). Configuration may TIGHTEN the policy, never loosen it; the value is NOT clamped to the maximum."
 		return 2
 	fi
 	printf '%s' "$CW_MAX_WAIVER_DAYS"
