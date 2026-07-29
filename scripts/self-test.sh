@@ -1565,6 +1565,10 @@ run_v023_coverage() {
 	# The refusal used to be indistinguishable from a gate failure, so "strict FAILS
 	# style+iac+medium" was green for the wrong reason: the gate was never evaluated.
 	st_evidence_overlay "$_d/sum.json"
+	# strict additionally requires the evidence to be BOUND to a repository and a full commit.
+	# This case is about WHICH GATES fire per mode, so it carries that binding rather than
+	# being refused for provenance before any gate is judged.
+	st_attest "$_d/sum.json"
 	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
 	# `pass|fail` collapsed EVERY non-zero exit to "fail", so a configuration REFUSAL (exit 2 —
 	# the summary was never judged) read identically to a gate failure. A provenance contract
@@ -1768,6 +1772,7 @@ run_v024_coverage() {
 	# Same as the v023 multi-violation fixture: no --profile means no overlay, and strict
 	# REFUSES rather than evaluating. The refusal used to read as a gate failure.
 	st_evidence_overlay "$_d/mv/sum.json"
+	st_attest "$_d/mv/sum.json"
 	vc_check "modes-v024 multi: baseline PASS" "$(enforce_mode baseline "$_d/mv/sum.json")" "pass"
 	vc_check "modes-v024 multi: strict FAIL" "$(enforce_mode strict "$_d/mv/sum.json")" "fail"
 	# clean: all evidence present -> every mode passes.

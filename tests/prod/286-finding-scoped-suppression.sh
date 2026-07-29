@@ -26,6 +26,19 @@ command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf -- "$WORK"' EXIT INT TERM HUP
 
+# The shipped example is generated locally, so it carries `trust: "unverified"` with no
+# attestation and `regulated` refuses it — correctly. These cases are about WHICH FINDINGS a
+# record accepts, so the example is raised once to what a real attested CI build produces and
+# every fixture below derives from that.
+EXAMPLE="$WORK/example.json"
+jq '.source += {trust:"github-actions-attested"}
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:(.source.repository), commit:(.source.commit),
+		workflow:"prod-test", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1",
+		artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
+	"$ROOT/templates/security-summary.example.json" > "$EXAMPLE"
+
 # ---------------------------------------------------------------------------
 # Fixture: two medium findings in different packages, from two scanners.
 # ---------------------------------------------------------------------------
@@ -42,7 +55,7 @@ JSON
  {"VulnerabilityID":"CVE-2024-SYMFONY","PkgName":"symfony/http-kernel","InstalledVersion":"5.4.1","Severity":"MEDIUM"}
 ]}]}
 JSON
-	jq '.summary.medium_vulnerabilities = 2' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	jq '.summary.medium_vulnerabilities = 2' "$EXAMPLE" > "$_d/reports/security-summary.json"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
 	printf '%s' "$_d"
 }
@@ -272,7 +285,7 @@ for _gate in unsafe_docker medium_vulnerabilities; do
 		rule_ids:[], files:[], components:[], fingerprints:[],
 		owner:"o", reason:"r", created_at:"'"$AR_TODAY"'", approved_at:"'"$AR_TODAY"'", expires_at:"'"$AR_SOON"'", status:"approved"}]}' > "$D/ar.json"
 	jq --arg g "$_gate" '.tools = {"tests":{"status":"pass"}} | .summary[$g] = 2' \
-		"$ROOT/templates/security-summary.example.json" > "$D/s.json"
+		"$EXAMPLE" > "$D/s.json"
 	# medium_vulnerabilities is not enabled in baseline; strict enables both gates so the
 	# suppression path is actually reached.
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$D" --format env >/dev/null 2>&1
@@ -376,7 +389,7 @@ JSON
 {"Results":[{"Target":"composer.lock","Vulnerabilities":[
  {"VulnerabilityID":"CVE-DUP","PkgName":"shared/pkg","InstalledVersion":"1.2.3","Severity":"MEDIUM"}]}]}
 JSON
-	jq '.summary.medium_vulnerabilities = 2' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	jq '.summary.medium_vulnerabilities = 2' "$EXAMPLE" > "$_d/reports/security-summary.json"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
 	printf '%s' "$_d"
 }
@@ -443,7 +456,7 @@ mkpaths() {
  {"vulnerability":{"id":"CVE-A","severity":"Medium"},"artifact":{"name":"p1","version":"1","locations":[{"path":"service-a/package-lock.json"}]}},
  {"vulnerability":{"id":"CVE-B","severity":"Medium"},"artifact":{"name":"p2","version":"1","locations":[{"path":"service-b/package-lock.json"}]}}]}
 JSON
-	jq '.summary.medium_vulnerabilities = 2' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	jq '.summary.medium_vulnerabilities = 2' "$EXAMPLE" > "$_d/reports/security-summary.json"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
 	printf '%s' "$_d"
 }
@@ -479,7 +492,7 @@ mkover() { # summary says 1; the raw reports hold 3
  {"vulnerability":{"id":"CVE-2","severity":"Medium"},"artifact":{"name":"p2","version":"1","locations":[{"path":"a.lock"}]}},
  {"vulnerability":{"id":"CVE-3","severity":"Medium"},"artifact":{"name":"p3","version":"1","locations":[{"path":"a.lock"}]}}]}
 JSON
-	jq '.summary.medium_vulnerabilities = 1' "$ROOT/templates/security-summary.example.json" > "$_d/reports/security-summary.json"
+	jq '.summary.medium_vulnerabilities = 1' "$EXAMPLE" > "$_d/reports/security-summary.json"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$_d/reports" --format env >/dev/null 2>&1
 	printf '%s' "$_d"
 }
@@ -501,7 +514,7 @@ cat > "$DUP/reports/raw/grype.json" <<'JSON'
  {"vulnerability":{"id":"CVE-D","severity":"Medium"},"artifact":{"name":"dup","version":"1","locations":[{"path":"a.lock"}]}},
  {"vulnerability":{"id":"CVE-D","severity":"Medium"},"artifact":{"name":"dup","version":"1","locations":[{"path":"a.lock"}]}}]}
 JSON
-jq '.summary.medium_vulnerabilities = 1' "$ROOT/templates/security-summary.example.json" > "$DUP/reports/security-summary.json"
+jq '.summary.medium_vulnerabilities = 1' "$EXAMPLE" > "$DUP/reports/security-summary.json"
 sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$DUP/reports" --format env >/dev/null 2>&1
 risk "$DUP/ar.json" '{"components":["dup"]}'
 check "an identical finding reported twice is counted once" "$(enforce "$DUP" "$DUP/ar.json")" 0
