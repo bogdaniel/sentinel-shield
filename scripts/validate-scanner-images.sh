@@ -151,10 +151,14 @@ check_contract() {
 		esac
 	done
 
+	# `pass` used to run unconditionally right after this loop, so a report could carry both
+	# DECLARED_TEMPLATE_MISSING and "declared templates exist". Only report the pass when
+	# nothing failed, matching check_templates().
+	_decl_ok=1
 	for _t in $(jq -r '.templates[]' "$CONTRACT"); do
-		[ -f "$REPO_ROOT/$_t" ] || fail "DECLARED_TEMPLATE_MISSING — $_t is declared in the contract but does not exist"
+		[ -f "$REPO_ROOT/$_t" ] || { fail "DECLARED_TEMPLATE_MISSING — $_t is declared in the contract but does not exist"; _decl_ok=0; }
 	done
-	pass "declared templates exist"
+	[ "$_decl_ok" -eq 1 ] && pass "declared templates exist"
 }
 
 check_templates() {

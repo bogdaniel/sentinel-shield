@@ -78,9 +78,9 @@ if [ -f "$IMAGE_CONTRACT" ]; then
 	if ! jq -e '(.images | type == "object") and ((.images | length) > 0)
 			and (.mutable_tags | type == "array") and ((.mutable_tags | length) > 0)
 			and (all(.images[]; (type == "object") and (.digest | type == "string")
-				and (.digest | startswith("sha256:"))))' \
+				and (.digest | test("^sha256:[0-9a-f]{64}$"))))' \
 		"$IMAGE_CONTRACT" >/dev/null 2>&1; then
-		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object whose every record carries a sha256 .digest, and a non-empty .mutable_tags array): $IMAGE_CONTRACT"
+		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object whose every record carries a full sha256:<64 hex> .digest, and a non-empty .mutable_tags array): $IMAGE_CONTRACT"
 		exit 2
 	fi
 else

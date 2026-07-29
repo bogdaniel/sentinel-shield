@@ -27,7 +27,7 @@
       "digest": "sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b",
       "default_pin": "digest",
       "default_reference": "semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b",
-      "rationale": "An immutable, explicitly versioned upstream tag. Templates keep the readable form for legibility; production pins the digest recorded here. Shipped default is the DIGEST: a version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default lets shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
+      "rationale": "Shipped default is the DIGEST. A version tag is a mutable registry pointer \u2014 a publisher can retarget it, so a tag default would let shipped workflows execute changed scanner bytes with no repository change. The readable tag survives as `resolved_from` and in the trailing comment."
     },
     "SENTINEL_SHIELD_GITLEAKS_IMAGE": {
       "repository": "zricethezav/gitleaks",

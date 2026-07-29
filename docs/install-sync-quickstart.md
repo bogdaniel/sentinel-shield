@@ -124,7 +124,8 @@ The full rollback procedure (revert-by-commit, re-sync-from-previous-ref, restor
 | Managed drift reported but file unchanged | sync is **dry-run by default** | After reviewing: `sync --target <project> --apply --force`. |
 | `--apply` alone didn't update the workflow | managed updates need **both** flags | Use `--apply --force`; without `--force` you get `manual-review-needed` by design. |
 | A protected file "won't sync" | **By design** | `accepted-risks.json`, `phpstan-baseline.neon`, `never_touch` paths are never written, even with `--force`. Edit by hand. |
-| Edited `profile.yaml` / `.semgrepignore` shows `project-local-preserved` | **By design** — `create-if-missing` project-owned | This is correct; sync will not overwrite your edits. |
+| Edited `profile.yaml` shows `project-local-preserved` | **By design** — `create-if-missing`, project-owned | This is correct; sync will not overwrite your edits. |
+| Edited `.semgrepignore` shows `merged` or `up-to-date` | **By design** — `merge-required-lines` | Your entries are untouched; only REQUIRED rules the file was missing are appended. `up-to-date` means it already had them all. |
 | `manual-review-needed` for a `manual`-mode file | that file is `manual` mode (never auto-written) | Update it by hand if wanted; sync intentionally won't. |
 
 Drift categories sync prints: `created` · `updated` · `up-to-date` · `manual-review-needed` ·
