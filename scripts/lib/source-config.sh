@@ -170,6 +170,20 @@ sc_render_workflow() {
 	# consume. Capturing it here makes this the single safety net for every caller.
 	_sc_repo=$(sc_normalize_repository "$_sc_repo") || return 1
 	sc_ref_kind "$_sc_ref" >/dev/null 2>&1 || return 1
+	# EXACTLY ONE of each key, before anything is written. A template missing a key was copied,
+	# stayed non-empty and returned SUCCESS while the installed workflow could not check the
+	# engine out; duplicates were all rewritten, leaving a duplicate YAML mapping whose meaning
+	# depends on the parser. Both are render failures, not something to repair silently.
+	# Only assignments at the two-space `env:` indentation count — a key of the same name
+	# nested in an unrelated mapping is not the source configuration.
+	_sc_nrepo=$(grep -cE '^[ \t]*SENTINEL_SHIELD_REPOSITORY:' "$_sc_f" 2>/dev/null || printf '0')
+	_sc_nref=$(grep -cE '^[ \t]*SENTINEL_SHIELD_REF:' "$_sc_f" 2>/dev/null || printf '0')
+	case "$_sc_nrepo" in '' | *[!0-9]*) _sc_nrepo=0 ;; esac
+	case "$_sc_nref" in '' | *[!0-9]*) _sc_nref=0 ;; esac
+	if [ "$_sc_nrepo" -ne 1 ] || [ "$_sc_nref" -ne 1 ]; then
+		log_error "source-config: $_sc_f declares SENTINEL_SHIELD_REPOSITORY x$_sc_nrepo and SENTINEL_SHIELD_REF x$_sc_nref; exactly one of each is required. Zero means the rendered workflow cannot check the engine out; more than one is an ambiguous mapping whose value depends on the YAML parser."
+		return 1
+	fi
 	# SECURELY-CREATED temp file. `$_sc_f.sc.tmp.$$` is predictable, so anyone able to write
 	# in that directory could pre-create it as a SYMLINK and the render would be written
 	# through the link before the final `mv` — defeating the atomic-render guarantee this
@@ -196,8 +210,16 @@ sc_render_workflow() {
 	# A render that produced nothing, or that failed to place the values, must not replace the
 	# original file: fail closed and leave the workflow as it was.
 	[ -s "$_sc_tmp" ] || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
-	if grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_sc_f"; then
-		grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY: ${_sc_repo}\$" "$_sc_tmp" || { sc__restore_traps; rm -f -- "$_sc_tmp"; return 1; }
+	# POST-RENDER PROOF, for BOTH keys. The repository check used to be conditional on the
+	# original already containing the key, and the ref was never checked at all — so a render
+	# that silently failed to place a value still returned success.
+	_sc_okrepo=$(grep -cE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY: ${_sc_repo}\$" "$_sc_tmp" 2>/dev/null || printf '0')
+	_sc_okref=$(grep -cE "^[[:space:]]*SENTINEL_SHIELD_REF: ${_sc_ref}\$" "$_sc_tmp" 2>/dev/null || printf '0')
+	case "$_sc_okrepo" in '' | *[!0-9]*) _sc_okrepo=0 ;; esac
+	case "$_sc_okref" in '' | *[!0-9]*) _sc_okref=0 ;; esac
+	if [ "$_sc_okrepo" -ne 1 ] || [ "$_sc_okref" -ne 1 ]; then
+		log_error "source-config: the render did not place exactly one canonical value in $_sc_f (repository x$_sc_okrepo, ref x$_sc_okref) — refusing to publish a workflow whose source configuration is incomplete."
+		sc__restore_traps; rm -f -- "$_sc_tmp"; return 1
 	fi
 	# Preserve the destination's mode deliberately: mktemp made the staging file private, and
 	# a workflow file the runner cannot read is useless. Copy the original mode when it can be

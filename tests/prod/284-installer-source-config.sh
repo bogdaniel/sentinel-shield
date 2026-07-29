@@ -459,6 +459,49 @@ else
 	fail "a quoted placeholder passed the doctor preflight — the workflow cannot check the engine out"
 fi
 
+# ---------------------------------------------------------------------------
+# A render must PROVE it wrote the complete source contract.
+# ---------------------------------------------------------------------------
+# A template missing a key was copied, stayed non-empty and returned SUCCESS while the
+# installed workflow could not check the engine out. Duplicates were all rewritten, leaving a
+# duplicate YAML mapping whose value depends on the parser.
+RC="$WORK/render-contract"; mkdir -p "$RC"
+_render() { # _render <file> -> exit code
+	sh -c '. "$0" 2>/dev/null; . "$1"; sc_render_workflow "$2" acme/shield v2.2.0 >/dev/null 2>&1; printf "%s" "$?"' \
+		"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$1"
+}
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/ok.yml"
+check "a complete template renders" "$(_render "$RC/ok.yml")" 0
+check "  the repository is the canonical value" \
+	"$(sh -c '. "$0" 2>/dev/null; . "$1"; sc_workflow_value "$2" SENTINEL_SHIELD_REPOSITORY' \
+		"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$RC/ok.yml")" "acme/shield"
+check "  the ref is the canonical value" \
+	"$(sh -c '. "$0" 2>/dev/null; . "$1"; sc_workflow_value "$2" SENTINEL_SHIELD_REF' \
+		"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$RC/ok.yml")" "v2.2.0"
+
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/no-repo.yml"
+check "a template with NO repository key is refused" "$(_render "$RC/no-repo.yml")" 1
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n' > "$RC/no-ref.yml"
+check "a template with NO ref key is refused" "$(_render "$RC/no-ref.yml")" 1
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: a/b\n      SENTINEL_SHIELD_REPOSITORY: c/d\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/dup-repo.yml"
+check "a DUPLICATE repository key is refused, not rewritten twice" "$(_render "$RC/dup-repo.yml")" 1
+printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: a/b\n      SENTINEL_SHIELD_REF: v1\n      SENTINEL_SHIELD_REF: v2\n' > "$RC/dup-ref.yml"
+check "a DUPLICATE ref key is refused" "$(_render "$RC/dup-ref.yml")" 1
+# A refused render must leave the file exactly as it was.
+cp "$RC/dup-repo.yml" "$RC/dup-repo.before"
+_render "$RC/dup-repo.yml" >/dev/null
+if cmp -s "$RC/dup-repo.before" "$RC/dup-repo.yml"; then
+	pass "a refused render leaves the template byte-for-byte unchanged"
+else
+	fail "a refused render modified the template"
+fi
+if ls "$RC"/*.sc.tmp.* >/dev/null 2>&1; then
+	fail "a refused render left a staging file behind"
+else
+	pass "  and leaves no staging file behind"
+fi
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '284-installer-source-config: ALL CHECKS PASSED\n'
