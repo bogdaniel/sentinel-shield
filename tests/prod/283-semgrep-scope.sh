@@ -183,7 +183,20 @@ mkdir -p "$LEGACY"
 sh scripts/install-baseline.sh --target "$LEGACY" --profile laravel --apply >/dev/null 2>&1 || fail "legacy fixture install failed"
 # Simulate a consumer that adopted before the fix: their project-owned ignore file has no
 # exclusion for the engine checkout.
-grep -v '^tools/sentinel-shield/$' "$LEGACY/.semgrepignore" > "$LEGACY/.semgrepignore.tmp" && mv "$LEGACY/.semgrepignore.tmp" "$LEGACY/.semgrepignore"
+# Strip the engine-checkout exclusion using the path read from the TEMPLATE (§29), not a
+# hardcoded literal: with the literal, changing SENTINEL_SHIELD_PATH in the template turned
+# this negative control into a silent no-op — it would strip nothing, the fixture would still
+# exclude the checkout, and the "legacy consumer" case would never be exercised.
+#
+# `grep -v` also exits 1 when it selects NO lines, and under `set -e` the `grep … && mv` list
+# would then abort the entire suite instead of failing one check. Guarded so an empty result
+# is a reported failure, not a dead run.
+if grep -v "^${SS_PATH}/\{0,1\}$" "$LEGACY/.semgrepignore" > "$LEGACY/.semgrepignore.tmp"; then
+	mv "$LEGACY/.semgrepignore.tmp" "$LEGACY/.semgrepignore"
+else
+	rm -f "$LEGACY/.semgrepignore.tmp"
+	fail "legacy fixture: stripping '$SS_PATH' left nothing behind — the installed .semgrepignore is not what this control assumes"
+fi
 if ignores "$LEGACY/.semgrepignore" "$SS_PATH/scripts/x.sh"; then
 	fail "the legacy fixture still excludes the checkout — the negative control is not exercising anything"
 else

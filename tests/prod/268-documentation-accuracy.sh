@@ -350,7 +350,11 @@ fi
 _offclaim=$(find "$ROOT/docs" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort |
 	{ xargs grep -lE 'off by default[^.]{0,40}existing modes' 2>/dev/null || true; } |
 	grep -v -- '-release-notes\.md$' || true)
-if grep -q 'off by default in existing modes' "$ROOT/README.md" 2>/dev/null; then
+# Same TOLERANT pattern as the docs sweep above, not the exact string. Matching only the exact
+# phrase here reintroduced, for README alone, the hole the sweep was widened to close:
+# `(engine-only; off by default in existing modes)` and "additive, off by default in existing
+# modes" are precisely the phrasings that shipped straight past the strict version.
+if grep -qE 'off by default[^.]{0,40}existing modes' "$ROOT/README.md" 2>/dev/null; then
 	_offclaim="$_offclaim
 $ROOT/README.md"
 fi
