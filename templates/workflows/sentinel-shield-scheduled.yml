@@ -29,6 +29,7 @@ env:
   # comment records the readable tag each digest was resolved from.
   SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28     # v0.114.0
   SENTINEL_SHIELD_DOCKLE_IMAGE: goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
+  SENTINEL_SHIELD_GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba   # v8.18.4
 jobs:
   nightly:
     runs-on: ubuntu-latest
@@ -67,7 +68,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports/raw
-          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.18.4}" \
+          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE}" \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
       # "report-only" describes the GATE MODE: no nightly finding blocks a merge. It does NOT

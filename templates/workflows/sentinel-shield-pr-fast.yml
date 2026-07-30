@@ -3,8 +3,10 @@
 # Tools ACTUALLY run by this workflow: php -l, PHPStan, npm audit, Semgrep (curated),
 # Hadolint, GH Actions pin audit, Docker base digest, dependency policy. Psalm/Pint/ESLint/
 # tsc run ONLY if the steps below are wired for a configured project.
-# NOTE: Gitleaks (secrets), actionlint and zizmor are NOT run here — they run in the separate
-# security workflow (ci-security.yml). This PR-fast gate is NOT the secrets gate.
+# Gitleaks (secrets) IS run here: `secrets` is a non-suppressible control that every profile
+# marks required at `pr`, and a CONSUMER does not have the engine's own ci-security.yml, so
+# leaving it out left a consumer's PR plan with no secrets producer at all.
+# NOTE: actionlint and zizmor are NOT run here — they run in the main and scheduled gates.
 # Enforces the project's profile mode.
 name: sentinel-shield-pr-fast
 on:
@@ -20,13 +22,17 @@ env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v2.2.0                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
-  # NOTE: this template runs Semgrep only. gitleaks / actionlint / zizmor run in the main and
-  # scheduled gates, so their image variables are deliberately NOT declared here — overriding
-  # SENTINEL_SHIELD_GITLEAKS_IMAGE in this file would have no effect because nothing reads it.
-  # Semgrep scanner image — DIGEST-pinned by default (config/scanner-images.json). The trailing
+  # NOTE: actionlint / zizmor run in the main and scheduled gates, so their image variables
+  # are deliberately NOT declared here — overriding them in this file would have no effect
+  # because nothing reads them. Semgrep and gitleaks ARE run here, so both are declared: a
+  # step that reads an undeclared variable executes whatever its inline fallback says, not
+  # the approved reference. Enforced by `validate-scanner-images.sh templates`.
+  #
+  # Scanner images — DIGEST-pinned by default (config/scanner-images.json). The trailing
   # comment records the readable tag the digest was resolved from; see
   # docs/scanner-image-digest-pinning.md. Override the variable to run a different build.
   SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba   # v8.18.4
 jobs:
   pr-fast:
     runs-on: ubuntu-latest
@@ -74,7 +80,7 @@ jobs:
         # is honored via `-w /src`. Do NOT switch to --config=auto in production — it is noisy.
         continue-on-error: true
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
       - name: Gitleaks secrets (pinned image → reports/raw/gitleaks.json)
@@ -84,7 +90,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports/raw
-          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.18.4}" \
+          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE}" \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
       - name: OSV-Scanner (SHA-pinned action → reports/raw/osv-scanner.json)

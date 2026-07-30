@@ -34,6 +34,12 @@ permissions:
 # THIS value, so the recorded version is always the one that scanned.
 env:
   TRIVY_VERSION: "v0.72.0"
+  # Scanner images the engine's OWN CI executes. Declared here, not left to an inline
+  # `${VAR:-default}` fallback: a step that reads an undeclared variable runs whatever the
+  # fallback says, and nothing then checks that value against the approved contract. These
+  # are validated by `validate-scanner-images.sh templates`, which now covers this file.
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28     # v0.114.0
 
 concurrency:
   group: ci-security-${{ github.ref }}
@@ -201,7 +207,7 @@ jobs:
         # is honored (excludes vendored/generated assets — SAST only; dependency
         # scanners below are unaffected). See docs/semgrep-scoping.md.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep/app || true
         continue-on-error: true
@@ -228,7 +234,7 @@ jobs:
             exit 0
           fi
           # shellcheck disable=SC2086 # $MOUNTS/$SCANT intentionally word-split into multiple -v/path args
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" -c \
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE}" -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true
@@ -360,7 +366,7 @@ jobs:
       # run succeeded — never as an unconditional fallback that masks a failure.
       - name: Semgrep (JSON → reports/raw/semgrep.json)
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE}" \
             semgrep --json --output /src/reports/raw/semgrep.json --config /src/semgrep/app || true
           jq -e '.results | type == "array"' reports/raw/semgrep.json >/dev/null 2>&1 \
             || { echo "semgrep produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
@@ -411,7 +417,7 @@ jobs:
       - name: Grype (JSON → reports/raw/grype.json)
         run: |
           set +e
-          docker run --rm -v "$PWD:/src" anchore/grype:v0.115.0 dir:/src -o json \
+          docker run --rm -v "$PWD:/src" "${SENTINEL_SHIELD_GRYPE_IMAGE}" dir:/src -o json \
             > reports/raw/grype.json 2> reports/raw/grype.err
           rc=$?
           set -e

@@ -213,9 +213,16 @@ check "  and every default_reference is a digest reference" \
 # mutable tag"; that promise had nothing enforcing it, and a moving tag shipped in exactly
 # that position. These fixtures prove the validator now sees the executed reference.
 EX="$TMPROOT/exec"
+# Seed the fixture FROM the contract, never from a hardcoded directory list: the contract
+# also covers the engine's own .github/workflows, and a fixture that silently omits a
+# declared template turns every check below into TEMPLATE_MISSING noise.
 seed_ex() {
-	rm -rf "$EX"; mkdir -p "$EX"
-	cp -R "$ROOT/config" "$ROOT/templates" "$ROOT/examples" "$EX/" 2>/dev/null || true
+	rm -rf "$EX"; mkdir -p "$EX/config"
+	cp "$CONTRACT" "$EX/config/scanner-images.json"
+	for _p in $(jq -r '.templates[]' "$CONTRACT"); do
+		mkdir -p "$EX/$(dirname "$_p")"
+		cp "$ROOT/$_p" "$EX/$_p"
+	done
 }
 seed_ex
 _victim="$EX/templates/workflows/sentinel-shield.yml"
