@@ -33,7 +33,7 @@ milestones. Docs must not imply a stable, framework-validated v2.
 
 **Acceptance criteria:**
 - [x] All docs distinguish "pre-release" from published for v2 artifacts.
-- [x] Version references agree with the actual tag state (`v2.2.0` latest, tag `99fcd27`; `v2.0.1` and `v2.0.0` superseded engine-only releases; `v1.9.2` supported prior stable line).
+- [x] Version references agree with the actual tag state (`v2.2.0` latest, tag `99fcd276`; `v2.0.1` and `v2.0.0` superseded engine-only releases; `v1.9.2` supported prior stable line).
 - [x] Release-scope wording (engine-only vs framework-validated vs full-platform) is consistent across docs.
 
 **Current status:** Addressed for the published `v2.2.0` release — canonical status is

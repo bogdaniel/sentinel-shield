@@ -1,7 +1,7 @@
 # Sentinel Shield Release Process (v0.1.16)
 
 > **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
-> on 2026-07-24 at tag target `99fcd27`, superseding **`v2.0.1`** (engine-only maintenance,
+> on 2026-07-24 at tag target `99fcd276`, superseding **`v2.0.1`** (engine-only maintenance,
 > 2026-07-09, tag target `32812ed`). The machine-readable source of truth for this status is
 > [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a
 > supported prior stable line but is **no longer the latest** overall release. **Framework-validated
