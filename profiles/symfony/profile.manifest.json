@@ -94,7 +94,6 @@
     "syft",
     "grype",
     "deptrac",
-    "dependency-check",
     "behat-acceptance"
   ],
   "recommended_scheduled_tools": [

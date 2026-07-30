@@ -54,18 +54,17 @@
     "github-actions-pins"
   ],
   "recommended_main_gate_tools": [
-    "trivy-fs",
-    "syft",
-    "grype",
-    "dockle",
     "checkov",
+    "conftest",
+    "dockle",
+    "grype",
+    "syft",
     "terrascan",
-    "conftest"
+    "trivy-fs"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
     "scorecard",
-    "dockle",
     "grype"
   ],
   "recommended_raw_reports": [

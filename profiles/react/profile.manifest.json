@@ -56,7 +56,6 @@
     "trivy-fs",
     "syft",
     "grype",
-    "dependency-check",
     "playwright-acceptance"
   ],
   "recommended_scheduled_tools": [

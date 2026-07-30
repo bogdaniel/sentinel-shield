@@ -62,8 +62,7 @@
     "osv-scanner",
     "trivy-fs",
     "syft",
-    "grype",
-    "dependency-check"
+    "grype"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",

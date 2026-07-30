@@ -112,6 +112,45 @@ for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json;
 		fail "$prof: recommends '$key', which resolves to no TOOL_TABLE row, no declared tool, and no workflow step"
 	done
 
+	# 2b. A recommendation is stage-scoped, so it must agree with the stage it names.
+	#     `dependency-check` declared `execution.main: false` — with a note saying it is a
+	#     SCHEDULED-stage tool because requiring it at main made a fresh install exit 3 for a
+	#     missing producer — while every profile still listed it under
+	#     recommended_main_gate_tools. A consumer following that advice wires a main-gate
+	#     producer the plan never invokes there, and reads the result as main-gate coverage.
+	#
+	#     The tool must therefore either be SELECTED at that stage, or actually be RUN by a
+	#     workflow for that stage. ponytail: the stage's workflow is identified by the stage
+	#     token in its filename, plus the combined template that serves every stage. If the
+	#     shipped template names ever stop carrying the stage token, tighten this to the
+	#     canonical map in verify-producer-coverage.sh rather than loosening the rule.
+	for _stage in pr main scheduled; do
+		case "$_stage" in
+			pr) _rkey=recommended_pr_fast_tools; _tok=pr-fast ;;
+			main) _rkey=recommended_main_gate_tools; _tok=main ;;
+			scheduled) _rkey=recommended_scheduled_tools; _tok=scheduled ;;
+		esac
+		for _rt in $(jq -r --arg k "$_rkey" '(.[$k] // [])[]' "$f" 2>/dev/null); do
+			[ -n "$_rt" ] || continue
+			# Selected at this stage by the profile itself: nothing to reconcile.
+			_sel=$(jq -r --arg t "$_rt" --arg s "$_stage" '
+				if ((.tools // {}) | has($t) | not) then "undeclared"
+				elif ((.tools[$t].execution // {}) | has($s) | not) then "unset"
+				else (.tools[$t].execution[$s] | tostring) end' "$f" 2>/dev/null)
+			[ "$_sel" = "false" ] || continue
+			# Not selected — then some workflow for THIS stage must run it.
+			_ran=0
+			for _wsrc in $(jq -r '[(.workflows // [])[] | .source] | .[]?' "$f" 2>/dev/null); do
+				case "$_wsrc" in *"$_tok"* | */sentinel-shield.yml) ;; *) continue ;; esac
+				_wf="templates/$_wsrc"; [ -f "$_wf" ] || _wf="$_wsrc"; [ -f "$_wf" ] || continue
+				if grep -qE "(runners/${_rt}\.sh|collectors/${_rt}\.sh|audits/${_rt}\.sh|[/\"' ]${_rt}\.json)" "$_wf" 2>/dev/null; then
+					_ran=1; break
+				fi
+			done
+			[ "$_ran" -eq 1 ] || fail "$prof: $_rkey recommends '$_rt', but the profile sets execution.$_stage=false for it and no $_stage workflow runs it — following that advice wires a producer the plan never invokes at $_stage"
+		done
+	done
+
 	# 3. Every DECLARED key must resolve too — including entries with no `report`.
 	#    Check 1 only inspects report-bearing tools, so a declared key with no report was
 	#    validated by nothing at all: a bogus `.tools` entry passed the whole audit. A

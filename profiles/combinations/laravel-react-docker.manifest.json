@@ -129,7 +129,6 @@
     "grype",
     "deptrac",
     "checkov",
-    "dependency-check",
     "php-arkitect",
     "dependency-cruiser",
     "eslint-boundaries",
