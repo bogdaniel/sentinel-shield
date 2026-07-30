@@ -71,8 +71,9 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 
 > **Engineering quality gates (released in `v2.2.0`) — additive engine capability.** A separate
 > engineering-quality counter channel (coverage, coverage regression, mutation, complexity,
-> duplication, dead code) follows the **same promotion path** as the modes above: non-blocking in
-> report-only/baseline, `strict` adds coverage threshold/regression + complexity + duplication, and
+> duplication, dead code) follows the **same promotion path** as the modes above: **most** of the
+> family is non-blocking in report-only/baseline — with the two exceptions named below, which
+> block earlier — `strict` adds coverage threshold/regression + complexity + duplication, and
 > `regulated` adds mutation + dead-code. Not every gate in the family waits for an opt-in —
 > `changed_lines_coverage_violations` enforces from `baseline` and `focused_test_violations` in
 > every mode ([`gate-resolution.md`](gate-resolution.md)); adopt it report-only-first via

@@ -290,7 +290,8 @@ jobs:
         # -w /src runs Semgrep from the repo root so the project-local .semgrepignore
         # (vendored/generated assets, e.g. public/js/filament) is honored. SAST only —
         # composer/npm audit, Trivy, Syft, Gitleaks, Hadolint are unaffected.
-        # Pin the image to a digest before production.
+        # The image below IS digest-pinned, against config/scanner-images.json — the same
+        # correction the templates already carry (docs/scanner-image-digest-pinning.md).
         run: |
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b \
             semgrep --json --output /src/reports/raw/semgrep.json \
