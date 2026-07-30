@@ -254,6 +254,104 @@ jobs:
           echo "::error::  reference:           docs/production-release-runbook.md#tag_signing_identity_unverified--publication-refused"
           exit 1
 
+      - name: Require an enforced, non-bypassable tag ruleset
+        # The final ref check and `gh release create --verify-tag` are SEPARATE API operations:
+        # `create` resolves the tag NAME again, and nothing binds that resolution to the object
+        # this run verified. A writer able to move `refs/tags/<tag>` in the interval between
+        # them could therefore have a release published for a target nobody verified. Narrowing
+        # that window is not closing it.
+        #
+        # What closes it is the repository refusing the move at all. This step proves, BEFORE
+        # publication, that an ACTIVE tag ruleset covers this exact tag, restricts both updates
+        # and deletions, and has no bypass that could be used to retarget it during the run.
+        # Everything here fails closed: an API error, a missing permission, a rule whose detail
+        # cannot be read, or bypass actors that cannot be inspected are all "protection NOT
+        # proven", never "protection present".
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          fail() {
+            echo "::error::TAG_PROTECTION_UNPROVEN"
+            echo "::error::$1"
+            echo "::error::  tag:        $TAG"
+            echo "::error::  repository: $REPO"
+            echo "::error::  required:   an ACTIVE tag ruleset covering refs/tags/$TAG with BOTH"
+            echo "::error::              'update' and 'deletion' restrictions and no bypass actor"
+            echo "::error::              able to retarget the tag during publication."
+            echo "::error::  reference:  docs/production-release-runbook.md#tag_protection_unproven--publication-refused"
+            exit 1
+          }
+
+          # ---- list the rulesets (with parents: an org-level ruleset protects too) ----------
+          RS=""
+          for _try in 1 2 3; do
+            RS=$(gh api "repos/$REPO/rulesets?includes_parents=true" 2>/dev/null) || RS=""
+            if [ -n "$RS" ]; then break; fi
+            sleep $((_try * 5))
+          done
+          [ -n "$RS" ] || fail "the repository rulesets could not be read after 3 attempts. Protection that cannot be inspected is not protection that exists."
+          printf '%s' "$RS" | jq -e 'type == "array"' >/dev/null 2>&1 \
+            || fail "the rulesets response was not a list; the protection state is unknown."
+
+          REF="refs/tags/$TAG"
+          # ---- find every ACTIVE ruleset that targets tags and covers THIS tag --------------
+          # `~ALL` covers everything; otherwise fnmatch against the include patterns, minus any
+          # exclude that also matches.
+          MATCHED=""
+          for _id in $(printf '%s' "$RS" | jq -r '.[] | select((.target // "") == "tag") | .id'); do
+            DET=""
+            for _try in 1 2 3; do
+              DET=$(gh api "repos/$REPO/rulesets/$_id?includes_parents=true" 2>/dev/null) || DET=""
+              if [ -n "$DET" ]; then break; fi
+              sleep $((_try * 5))
+            done
+            [ -n "$DET" ] || fail "tag ruleset $_id could not be read after 3 attempts; its rules and bypass actors are unknown."
+
+            _enf=$(printf '%s' "$DET" | jq -r '(.enforcement // "")')
+            # A ruleset in `disabled` or `evaluate` mode reports violations; it does not prevent
+            # them. Only `active` actually refuses the move.
+            [ "$_enf" = "active" ] || continue
+
+            _covers=$(printf '%s' "$DET" | jq -r --arg ref "$REF" '
+              (.conditions.ref_name.include // []) as $inc
+              | (.conditions.ref_name.exclude // []) as $exc
+              # The pattern is BOUND first: inside `$ref | test(… . …)` the pipe rebinds `.`
+              # to $ref, so the pattern would be compared against itself and every ruleset
+              # would appear to cover every tag.
+              | def m($pats): any($pats[]; . as $p
+                  | $p == "~ALL" or $p == $ref
+                  or ($ref | test("^" + ($p | gsub("\\."; "\\.") | gsub("\\*"; "[^/]*")) + "$")));
+                if (m($inc)) and ((($exc | length) == 0) or (m($exc) | not)) then "yes" else "no" end' 2>/dev/null || printf 'error')
+            [ "$_covers" = "yes" ] || { [ "$_covers" = "error" ] && fail "the ref conditions of tag ruleset $_id could not be evaluated."; continue; }
+
+            # ---- BOTH restrictions, not one ------------------------------------------------
+            _rules=$(printf '%s' "$DET" | jq -r '[ (.rules // [])[] | .type ] | join(" ")' 2>/dev/null || printf '')
+            [ -n "$_rules" ] || fail "tag ruleset $_id lists no rule details; a ruleset whose rules cannot be read proves nothing."
+            case " $_rules " in *" update "*) : ;; *) continue ;; esac
+            case " $_rules " in *" deletion "*) : ;; *) continue ;; esac
+
+            # ---- bypass actors: ABSENCE IS NOT EMPTINESS -----------------------------------
+            # GitHub omits `bypass_actors` unless the caller has write access to the ruleset.
+            # An absent field therefore means the bypasses could not be inspected — which is
+            # exactly the state this check exists to rule out.
+            _has_bypass_field=$(printf '%s' "$DET" | jq -r 'has("bypass_actors")' 2>/dev/null || printf 'false')
+            [ "$_has_bypass_field" = "true" ] \
+              || fail "tag ruleset $_id does not expose 'bypass_actors' to this token. GitHub omits that field without write access to the ruleset, so the bypasses CANNOT be inspected — this is unproven protection, not an absence of bypasses. Grant the publisher permission to read the ruleset, or publish from a context that can."
+            _always=$(printf '%s' "$DET" | jq -r '
+              [ (.bypass_actors // [])[] | select((.bypass_mode // "") == "always")
+                | "\(.actor_type // "?"):\(.actor_id // "?")" ] | join(" ")' 2>/dev/null || printf 'error')
+            [ "$_always" = "error" ] && fail "the bypass actors of tag ruleset $_id could not be evaluated."
+            if [ -n "$_always" ]; then
+              fail "tag ruleset $_id grants an ALWAYS bypass to: $_always. Any of those actors — the publishing workflow, a GitHub App, a repository role, a team or an administrator — could retarget the tag between the final verification and the release-creation call, which is the interval this ruleset is required to close."
+            fi
+            MATCHED="$MATCHED $_id"
+          done
+
+          [ -n "$MATCHED" ] || fail "no ACTIVE tag ruleset covers $REF with both 'update' and 'deletion' restrictions. Without it the tag can be moved between the final verification and the release-creation call."
+          echo "tag protection proven: active, non-bypassable ruleset(s)$MATCHED restrict updates and deletions for $REF"
       - name: Create GitHub Release (verifies the pushed tag)
         # Pass step outputs via env (NOT inline ${{ }} in run) so they cannot expand
         # into the shell as code — a tag name is attacker-influenceable. (zizmor: template-injection)

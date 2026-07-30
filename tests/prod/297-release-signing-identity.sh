@@ -200,7 +200,13 @@ contains "  and the diagnostic still carries the reason" "$(cat "$WORK/log")" "u
 # ---------------------------------------------------------------------------
 _wf=$(cat "$WF")
 missing "the workflow has no bootstrap-exception input"   "$_wf" "bootstrap"
-missing "the workflow has no bypass input"                "$_wf" "bypass"
+# Scoped to a workflow INPUT named bypass. A substring check would now match the
+# `bypass_actors` inspection in the tag-protection gate, which is the opposite of a bypass.
+if grep -nE '^[[:space:]]+bypass[a-z_]*:' "$WF" | grep -vq 'bypass_actors'; then
+	fail "the workflow declares a bypass input"
+else
+	pass "the workflow has no bypass input"
+fi
 missing "the workflow has no allow-unverified switch"     "$_wf" "allow_unverified"
 missing "the workflow has no allow-unsigned switch"       "$_wf" "allow-unsigned"
 missing "the workflow does not accept an exception file"  "$_wf" "exception"
@@ -340,6 +346,118 @@ if grep -q 'release create' "$WORK/calls" 2>/dev/null; then
 else
 	pass "  and NO release-creation call was made"
 fi
+
+# ---------------------------------------------------------------------------
+# 7. The tag must be UNMOVABLE, not merely re-checked.
+# ---------------------------------------------------------------------------
+# The final ref check and `gh release create --verify-tag` are separate API operations, so a
+# writer able to move the ref in between could still have a release published for an unverified
+# target. Narrowing that interval does not close it; an ACTIVE, non-bypassable tag ruleset does.
+# Everything below fails closed: what cannot be inspected is never assumed benign.
+awk '
+	/^      - name: Require an enforced, non-bypassable tag ruleset/ { instep = 1; next }
+	instep && /^[[:space:]]*run: \|/ { inrun = 1; next }
+	inrun && /^      - name: / { exit }
+	inrun { sub(/^          /, ""); print }
+' "$WF" > "$WORK/ruleset.sh"
+_rlines=$(wc -l < "$WORK/ruleset.sh" 2>/dev/null); _rlines=${_rlines##* }
+if [ "${_rlines:-0}" -lt 20 ]; then
+	fail "could not extract the tag-ruleset step ($_rlines lines) — these checks would test nothing"
+else
+	pass "extracted the tag-ruleset step ($_rlines lines)"
+fi
+sh -n "$WORK/ruleset.sh" || fail "the extracted tag-ruleset step is not valid POSIX sh"
+
+# A `gh` stub whose ruleset answers are driven by two files.
+cat > "$WORK/bin/gh" <<'RSTUB'
+#!/bin/sh
+case "$2" in
+	*/rulesets\?includes_parents=true) [ -f "$GH_RS_LIST" ] || exit 1; cat "$GH_RS_LIST"; exit 0 ;;
+	*/rulesets/*) [ -f "$GH_RS_DETAIL" ] || exit 1; cat "$GH_RS_DETAIL"; exit 0 ;;
+esac
+exit 1
+RSTUB
+chmod +x "$WORK/bin/gh"
+
+rs() { # rs <list-json> <detail-json> -> exit code; log in $WORK/rslog
+	printf '%s' "$1" > "$WORK/rs-list.json"
+	printf '%s' "$2" > "$WORK/rs-detail.json"
+	_c=0
+	env PATH="$WORK/bin:$PATH" GH_TOKEN=x TAG="$TAG" REPO="acme/shield" \
+		GH_RS_LIST="$WORK/rs-list.json" GH_RS_DETAIL="$WORK/rs-detail.json" \
+		sh "$WORK/ruleset.sh" >"$WORK/rslog" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+_LIST='[{"id":1,"target":"tag"}]'
+_ok='{"id":1,"target":"tag","enforcement":"active","conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},"rules":[{"type":"update"},{"type":"deletion"}],"bypass_actors":[]}'
+
+check "an active ruleset restricting update+deletion permits publication" "$(rs "$_LIST" "$_ok")" 0
+contains "  and says protection was proven" "$(cat "$WORK/rslog")" "tag protection proven"
+
+# enforcement must be ACTIVE: evaluate/disabled report violations, they do not prevent them.
+for _mode in evaluate disabled; do
+	_d=$(printf '%s' "$_ok" | sed "s/\"enforcement\":\"active\"/\"enforcement\":\"$_mode\"/")
+	check "enforcement '$_mode' is refused" "$(rs "$_LIST" "$_d")" 1
+	contains "  named as unproven protection ($_mode)" "$(cat "$WORK/rslog")" "TAG_PROTECTION_UNPROVEN"
+done
+
+# BOTH restrictions are required.
+_d=$(printf '%s' "$_ok" | sed 's/{"type":"deletion"}//; s/,]/]/')
+check "a ruleset without a deletion restriction is refused" "$(rs "$_LIST" "$_d")" 1
+_d=$(printf '%s' "$_ok" | sed 's/{"type":"update"},//')
+check "a ruleset without an update restriction is refused" "$(rs "$_LIST" "$_d")" 1
+
+# THE OMISSION TRAP: GitHub omits bypass_actors unless the caller can read the ruleset. Absent
+# must mean "could not be proven", never "there are no bypasses".
+_d=$(printf '%s' "$_ok" | sed 's/,"bypass_actors":\[\]//')
+check "an ABSENT bypass_actors field is refused, not read as empty" "$(rs "$_LIST" "$_d")" 1
+contains "  explaining that the bypasses could not be inspected" "$(cat "$WORK/rslog")" "CANNOT be inspected"
+
+# An always-bypass defeats the protection during the publication interval.
+for _actor in '{"actor_type":"OrganizationAdmin","actor_id":1,"bypass_mode":"always"}' \
+	'{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"}' \
+	'{"actor_type":"Integration","actor_id":99,"bypass_mode":"always"}' \
+	'{"actor_type":"Team","actor_id":7,"bypass_mode":"always"}'; do
+	_d=$(printf '%s' "$_ok" | sed "s/\"bypass_actors\":\[\]/\"bypass_actors\":[$_actor]/")
+	check "an ALWAYS bypass is refused ($(printf '%s' "$_actor" | sed 's/.*actor_type":"\([A-Za-z]*\)".*/\1/'))" "$(rs "$_LIST" "$_d")" 1
+	contains "  naming the bypass" "$(cat "$WORK/rslog")" "ALWAYS bypass"
+done
+
+# The ruleset must cover THIS tag.
+_d=$(printf '%s' "$_ok" | sed 's#refs/tags/v\*#refs/tags/release-*#')
+check "a ruleset whose pattern does not cover the tag is refused" "$(rs "$_LIST" "$_d")" 1
+_d=$(printf '%s' "$_ok" | sed 's#"include":\["refs/tags/v\*"\]#"include":["~ALL"]#')
+check "a ~ALL ruleset covers the tag" "$(rs "$_LIST" "$_d")" 0
+_d=$(printf '%s' "$_ok" | sed 's#"exclude":\[\]#"exclude":["refs/tags/v*"]#')
+check "an EXCLUDED tag is not covered" "$(rs "$_LIST" "$_d")" 1
+
+# A branch ruleset is not tag protection.
+check "a ruleset targeting branches does not protect the tag" "$(rs '[{"id":1,"target":"branch"}]' "$_ok")" 1
+check "no rulesets at all is refused" "$(rs '[]' "$_ok")" 1
+
+# Unreadable API state fails closed.
+_c=0
+env PATH="$WORK/bin:$PATH" GH_TOKEN=x TAG="$TAG" REPO="acme/shield" \
+	GH_RS_LIST="$WORK/does-not-exist" GH_RS_DETAIL="$WORK/rs-detail.json" \
+	sh "$WORK/ruleset.sh" >"$WORK/rslog" 2>&1 || _c=$?
+check "an unreadable rulesets list fails closed" "$_c" 1
+contains "  saying protection could not be inspected" "$(cat "$WORK/rslog")" "not protection that exists"
+_c=0
+env PATH="$WORK/bin:$PATH" GH_TOKEN=x TAG="$TAG" REPO="acme/shield" \
+	GH_RS_LIST="$WORK/rs-list.json" GH_RS_DETAIL="$WORK/does-not-exist" \
+	sh "$WORK/ruleset.sh" >"$WORK/rslog" 2>&1 || _c=$?
+check "an unreadable ruleset detail fails closed" "$_c" 1
+
+# The gate must run BEFORE the release is created.
+_rline=$(grep -n 'Require an enforced, non-bypassable tag ruleset' "$WF" | cut -d: -f1)
+_cline2=$(grep -n 'Create GitHub Release' "$WF" | head -1 | cut -d: -f1)
+if [ -n "$_rline" ] && [ -n "$_cline2" ] && [ "$_rline" -lt "$_cline2" ]; then
+	pass "tag protection is proven BEFORE the release is created"
+else
+	fail "the tag-protection gate does not precede release creation"
+fi
+missing "the ruleset gate has no bypass input" "$(cat "$WF")" "allow_unprotected"
+
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

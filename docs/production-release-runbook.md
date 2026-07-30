@@ -143,6 +143,40 @@ An existing tag in this state is **immutable**:
 - do **not** add an exception file, environment variable, or workflow input to get past the
   check — none exists, and adding one would defeat the control.
 
+## `TAG_PROTECTION_UNPROVEN` — publication refused
+
+The publisher re-reads the tag ref and the verification verdict immediately before
+`gh release create`. Those are still SEPARATE API operations: `create` resolves the tag NAME
+again, and nothing binds that resolution to the object this run verified. A writer able to move
+`refs/tags/<tag>` in the interval between the two calls could therefore have a release published
+for a target nobody verified. Re-checking narrows that interval; it does not close it.
+
+**What closes it is the repository refusing the move.** Before publication the workflow proves
+that an ACTIVE tag ruleset covers this exact tag, restricts **both** updates and deletions, and
+grants no bypass that could be used to retarget it mid-run. This code means that proof failed.
+
+Requirements, all of which must hold:
+
+- a ruleset whose `target` is `tag` and whose `enforcement` is **`active`** — `evaluate` and
+  `disabled` report violations, they do not prevent them;
+- its ref conditions cover `refs/tags/<tag>` (an explicit pattern or `~ALL`, and not excluded);
+- its rules include **both** `update` and `deletion`;
+- **no** bypass actor with `bypass_mode: always` — not the publishing workflow, a GitHub App,
+  a repository role, a team, or an administrator.
+
+Everything fails closed. An API error, an unreadable ruleset, rules whose detail cannot be read,
+and bypass actors that cannot be inspected are all *protection not proven*, never *protection
+present*.
+
+**The `bypass_actors` trap.** GitHub omits `bypass_actors` entirely unless the caller has write
+access to the ruleset. An absent field therefore means the bypasses **could not be inspected**,
+which is exactly the state this check exists to rule out — it is never read as "there are no
+bypasses". If you see that error, give the publisher permission to read the ruleset rather than
+assuming the ruleset is clean.
+
+There is no override. A release published onto a movable tag is a release whose target nobody
+can vouch for.
+
 ## `TAG_TARGET_COMMIT_MISMATCH` / `TAG_REF_MOVED` — publication refused
 
 Both mean the tag ref **changed** between the moment this run resolved it and the moment it
