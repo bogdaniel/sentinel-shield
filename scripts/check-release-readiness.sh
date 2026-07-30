@@ -301,9 +301,15 @@ fi
 # config/release-status.json is the single source of truth for "what is current and is
 # it actually published". A repository whose README/CHANGELOG/status docs or shipped
 # workflow templates disagree with it is not releasable: consumers would be pinned to,
-# or told to install, a different release than the one being promoted. The publication
-# check is NON-WAIVABLE — declaring a release published while no GitHub Release exists
-# is a false claim, not an unmet milestone.
+# or told to install, a different release than the one being promoted.
+#
+# EVERY check in this gate is NON-WAIVABLE, not just the publication one. A waiver is for an
+# unmet milestone — work that is genuinely outstanding and consciously deferred. A disagreement
+# here is not that: it is the repository making two contradictory claims at once, and the one
+# consumers act on is the stale template or changelog, not the contract. Waiving it does not
+# defer anything, it just publishes the contradiction. The `templates` mode is the sharpest
+# case — a shipped workflow pinning a stale SENTINEL_SHIELD_REF makes every consumer install a
+# different engine than the release being promoted.
 printf '\n[%s] release-status contract (config/release-status.json)\n' "$STAGE"
 _rs="$REPO_ROOT/scripts/validate-release-status.sh"
 if [ ! -f "$_rs" ]; then
@@ -313,7 +319,7 @@ else
 		if sh "$_rs" "$_rsmode" --repo-root "$REPO_ROOT" >/dev/null 2>&1; then
 			pass "release-status '$_rsmode' agrees with config/release-status.json"
 		else
-			fail "release-status '$_rsmode' DISAGREES with config/release-status.json (run: sh scripts/validate-release-status.sh $_rsmode)"
+			failx "release-status '$_rsmode' DISAGREES with config/release-status.json (run: sh scripts/validate-release-status.sh $_rsmode)"
 		fi
 	done
 	set -- published --repo-root "$REPO_ROOT"
