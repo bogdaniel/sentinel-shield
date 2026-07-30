@@ -361,6 +361,84 @@ grep -q 'SUMMARY_AMBIGUOUS' "$D/verify.log" \
 	|| fail "  the ambiguity was not reported: $(grep -iE 'reject' "$D/verify.log" | head -1)"
 
 
+# ---------------------------------------------------------------------------
+# The expected commit must come from the CONSUMER, not from the evidence itself.
+# ---------------------------------------------------------------------------
+# `--expected-commit` used to be `jq .head_sha handoff/producer-run.json` — read straight out
+# of the file being verified. The verifier's commit rule therefore compared that value against
+# itself and could never fail, so a re-run of an older commit, or a stale run on the trusted
+# branch, was accepted as evidence for whatever the consumer deployed next.
+#
+# The workflow now derives the commit consumer-side (the workflow_run event payload, or an
+# explicit dispatch input) and cross-checks it. This exercises that step's real shell, lifted
+# out of the shipped workflow, against a stubbed `gh`.
+HW=$(mktemp -d)
+mkdir -p "$HW/bin"
+python3 - "$ROOT" "$HW" <<'PYEOF' 2>/dev/null || { pass "handoff derive-step check skipped (no python3/yaml)"; HW=""; }
+import sys, yaml
+root, work = sys.argv[1], sys.argv[2]
+d = yaml.safe_load(open(root + '/templates/workflows/sentinel-shield-evidence-handoff.yml'))
+for st in d['jobs']['verify-evidence']['steps']:
+    if st.get('id') == 'expected':
+        open(work + '/derive.sh', 'w').write(st['run'])
+        break
+else:
+    raise SystemExit(1)
+PYEOF
+if [ -n "$HW" ] && [ -f "$HW/derive.sh" ]; then
+	cat > "$HW/bin/gh" <<'STUB'
+#!/bin/sh
+case "$2" in
+	*/commits/*) [ -n "${GH_TIP_FAIL:-}" ] && exit 1; printf '%s\n' "$GH_TIP"; exit 0 ;;
+	*/compare/*) [ -n "${GH_CMP_FAIL:-}" ] && exit 1; printf '%s\n' "$GH_STATUS"; exit 0 ;;
+esac
+exit 1
+STUB
+	printf '#!/bin/sh\nexit 0\n' > "$HW/bin/sleep"
+	chmod +x "$HW/bin/gh" "$HW/bin/sleep"
+	_TIP=1111111111111111111111111111111111111111
+	_OLD=2222222222222222222222222222222222222222
+	# hrun <expected-rc> <label> <marker|-> [env...]
+	hrun() {
+		_hw=$1; _hl=$2; _hm=$3; shift 3
+		: > "$HW/out"; _hrc=0
+		env PATH="$HW/bin:$PATH" GITHUB_OUTPUT="$HW/out" \
+			SENTINEL_SHIELD_TRUSTED_REF=refs/heads/main REPO=acme/app \
+			GH_TIP="$_TIP" GH_STATUS=identical \
+			"$@" sh "$HW/derive.sh" >"$HW/log" 2>&1 || _hrc=$?
+		check "$_hl" "$_hrc" "$_hw"
+		[ "$_hm" = "-" ] || { grep -q "$_hm" "$HW/log" \
+			&& pass "  reported as $_hm" || fail "  did not report $_hm"; }
+	}
+	hrun 0 "handoff: the event head_sha on the trusted ref is accepted" - \
+		EVENT_COMMIT="$_TIP" INPUT_COMMIT="" PRODUCER_COMMIT="$_TIP"
+	check "  and the consumer-derived commit is what gets exported" \
+		"$(grep -c "commit=$_TIP" "$HW/out" || true)" "1"
+	hrun 1 "handoff: a producer run for a DIFFERENT commit is refused" PRODUCER_COMMIT_MISMATCH \
+		EVENT_COMMIT="$_TIP" INPUT_COMMIT="" PRODUCER_COMMIT="$_OLD"
+	hrun 1 "handoff: no consumer-side commit at all is refused" EXPECTED_COMMIT_UNDETERMINED \
+		EVENT_COMMIT="" INPUT_COMMIT="" PRODUCER_COMMIT="$_TIP"
+	hrun 1 "handoff: an abbreviated sha is refused" EXPECTED_COMMIT_MALFORMED \
+		EVENT_COMMIT="1111111" INPUT_COMMIT="" PRODUCER_COMMIT="1111111"
+	hrun 1 "handoff: a commit that diverged from the trusted ref is refused" COMMIT_NOT_ON_TRUSTED_REF \
+		GH_STATUS=diverged EVENT_COMMIT="$_OLD" INPUT_COMMIT="" PRODUCER_COMMIT="$_OLD"
+	hrun 0 "handoff: an ancestor of the tip is accepted (the branch may advance)" - \
+		GH_STATUS=behind EVENT_COMMIT="$_OLD" INPUT_COMMIT="" PRODUCER_COMMIT="$_OLD"
+	hrun 1 "handoff: an unreadable trusted-ref tip fails closed" TRUSTED_REF_UNREADABLE \
+		GH_TIP_FAIL=1 EVENT_COMMIT="$_TIP" INPUT_COMMIT="" PRODUCER_COMMIT="$_TIP"
+	hrun 1 "handoff: an unreadable ref comparison fails closed" TRUSTED_REF_COMPARE_FAILED \
+		GH_CMP_FAIL=1 EVENT_COMMIT="$_TIP" INPUT_COMMIT="" PRODUCER_COMMIT="$_TIP"
+	# The shipped workflow must not feed the verifier the producer's own value again.
+	check "the workflow passes the CONSUMER-derived commit to the verifier" \
+		"$(grep -c 'COMMIT: ${{ steps.expected.outputs.commit }}' "$ROOT/templates/workflows/sentinel-shield-evidence-handoff.yml" || true)" "1"
+	# Anchored: PRODUCER_COMMIT is fed to the DERIVE step deliberately, so it can be compared
+	# against the consumer value. What must not exist is the verifier's own COMMIT being the
+	# producer's claim, which is the self-referential binding.
+	check "  and the verifier no longer receives the producer's own head_sha as COMMIT" \
+		"$(grep -cE '^[[:space:]]+COMMIT: \$\{\{ steps\.producer\.outputs\.commit \}\}' "$ROOT/templates/workflows/sentinel-shield-evidence-handoff.yml" || true)" "0"
+fi
+[ -z "$HW" ] || rm -rf -- "$HW"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '287-cross-workflow-handoff: ALL CHECKS PASSED\n'

@@ -61,6 +61,14 @@ on:
         description: "Producer workflow run id whose evidence should be verified"
         required: true
         type: string
+      commit:
+        description: >-
+          The 40-hex commit this evidence must attest. REQUIRED: on the workflow_run path this
+          comes from the event payload, but a manual dispatch has no such payload, so the
+          operator states which commit they intend to gate. It is NOT read from the producer
+          run — that would make the binding self-referential.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -119,6 +127,87 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "commit=$(jq -r '.head_sha' handoff/producer-run.json)" >> "$GITHUB_OUTPUT"
 
+      - name: Derive the expected commit from the CONSUMER side
+        id: expected
+        # The commit the verifier compares against must NOT come out of the artifact or the
+        # producer-run metadata being verified. It used to: `--expected-commit` was
+        # `jq .head_sha handoff/producer-run.json`, so the verifier's commit rule compared that
+        # value against itself and could never fail. A re-run of an older commit, or a stale
+        # run on the trusted branch, was accepted as evidence for whatever was deployed next.
+        #
+        # `github.event.workflow_run.head_sha` is delivered by GitHub to THIS run; it is not
+        # something the producer artifact can influence. A manual dispatch has no such payload,
+        # so it must supply `commit` explicitly.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+          PRODUCER_COMMIT: ${{ steps.producer.outputs.commit }}
+        run: |
+          set -eu
+          EXPECTED="${EVENT_COMMIT:-$INPUT_COMMIT}"
+          case "$EXPECTED" in
+            '') echo "::error::EXPECTED_COMMIT_UNDETERMINED"
+                echo "::error::no consumer-side commit is available: the workflow_run payload carried no head_sha and no 'commit' input was supplied. Refusing to fall back to the producer's own metadata — that is the self-referential binding this step exists to remove."
+                exit 1 ;;
+            *[!0-9a-f]*)
+                echo "::error::EXPECTED_COMMIT_MALFORMED"
+                echo "::error::expected commit is not lowercase hex: '$EXPECTED'"
+                exit 1 ;;
+          esac
+          if [ "${#EXPECTED}" -ne 40 ]; then
+            echo "::error::EXPECTED_COMMIT_MALFORMED"
+            echo "::error::expected commit must be a FULL 40-hex sha, got ${#EXPECTED} characters: '$EXPECTED'"
+            echo "::error::an abbreviated sha is ambiguous and is not an identity."
+            exit 1
+          fi
+
+          # The producer's own claim must AGREE with the consumer-derived commit. This is the
+          # binding that used to be a tautology; both sides are now independent.
+          if [ "$PRODUCER_COMMIT" != "$EXPECTED" ]; then
+            echo "::error::PRODUCER_COMMIT_MISMATCH"
+            echo "::error::the producer run reports head_sha '$PRODUCER_COMMIT' but this run is gating '$EXPECTED'."
+            echo "::error::evidence produced for a different commit is not evidence for this one; refusing."
+            exit 1
+          fi
+
+          # And the commit must actually be ON the trusted ref — otherwise evidence from a
+          # side branch, or from a commit that never landed, would satisfy every other rule.
+          # `identical` or `behind` means EXPECTED is the tip or an ancestor of it; the branch
+          # legitimately advancing after the producer ran is therefore still accepted, while a
+          # commit that is not on the branch at all is not.
+          _branch=${SENTINEL_SHIELD_TRUSTED_REF#refs/heads/}
+          _tip=""
+          for _try in 1 2 3; do
+            _tip=$(gh api "repos/$REPO/commits/$_branch" --jq '.sha' 2>/dev/null) || _tip=""
+            if [ -n "$_tip" ]; then break; fi
+            sleep $((_try * 5))
+          done
+          if [ -z "$_tip" ]; then
+            echo "::error::TRUSTED_REF_UNREADABLE"
+            echo "::error::could not resolve the tip of '$SENTINEL_SHIELD_TRUSTED_REF' after 3 attempts; an unverifiable trust anchor is not a satisfied one."
+            exit 1
+          fi
+          _status=""
+          for _try in 1 2 3; do
+            _status=$(gh api "repos/$REPO/compare/$_tip...$EXPECTED" --jq '.status' 2>/dev/null) || _status=""
+            if [ -n "$_status" ]; then break; fi
+            sleep $((_try * 5))
+          done
+          case "$_status" in
+            identical | behind) : ;;
+            '') echo "::error::TRUSTED_REF_COMPARE_FAILED"
+                echo "::error::could not compare '$EXPECTED' against '$SENTINEL_SHIELD_TRUSTED_REF' ($_tip) after 3 attempts; refusing rather than assuming."
+                exit 1 ;;
+            *)  echo "::error::COMMIT_NOT_ON_TRUSTED_REF"
+                echo "::error::'$EXPECTED' is '$_status' relative to '$SENTINEL_SHIELD_TRUSTED_REF' ($_tip) — it is not that ref or an ancestor of it."
+                echo "::error::evidence for a commit that is not on the trusted branch is not evidence this consumer may act on."
+                exit 1 ;;
+          esac
+          echo "commit=$EXPECTED" >> "$GITHUB_OUTPUT"
+          echo "expected commit $EXPECTED verified as on $SENTINEL_SHIELD_TRUSTED_REF (tip $_tip, status $_status)"
+
       - name: Download the producer run's evidence artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -130,7 +219,8 @@ jobs:
       - name: Verify the handoff (fail closed on ANY mismatch)
         env:
           REPO: ${{ github.repository }}
-          COMMIT: ${{ steps.producer.outputs.commit }}
+          # Consumer-derived, NOT read from the artifact being verified.
+          COMMIT: ${{ steps.expected.outputs.commit }}
           RUN_ID: ${{ steps.producer.outputs.run_id }}
         run: |
           set -eu

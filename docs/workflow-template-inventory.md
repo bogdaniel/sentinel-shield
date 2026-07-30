@@ -9,7 +9,7 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 > placeholder is the engine source: `SENTINEL_SHIELD_REPOSITORY`/`SENTINEL_SHIELD_REF` are
 > `YOUR_ORG`/TODO until the installer renders them, and the consumer decides which engine ref
 > to pin ([`pinned-tool-references.md`](pinned-tool-references.md)).
-> **What IS pinned:** every GitHub **Action reference** — **161 of 161** `uses:` lines across
+> **What IS pinned:** every GitHub **Action reference** — **165 of 165** `uses:` lines across
 > `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced
 > fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). The count is asserted against
 > the repository by `tests/prod/268-documentation-accuracy.sh`, so it cannot go stale — the
