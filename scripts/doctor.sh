@@ -370,8 +370,16 @@ fi
 #      NON-DEFAULT SENTINEL_SHIELD_PATH is checked against what is actually configured rather
 #      than against a hardcoded assumption.
 if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
-  _ss_paths=$(grep -hoE '^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*[^[:space:]#]+' "$TARGET"/.github/workflows/*.y*ml 2>/dev/null \
-    | sed -E 's/^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*//; s/^"(.*)"$/\1/; s#/*$##' | sort -u || true)
+  # Read through the canonical accessor rather than re-implementing the extraction here. The
+  # local copy stripped only DOUBLE quotes, so the equally valid YAML
+  # `SENTINEL_SHIELD_PATH: 'tools/sentinel-shield'` kept its quotes and never matched any
+  # .semgrepignore spelling — a correctly configured project was reported as unexcluded.
+  _ss_paths=$(for _wf in "$TARGET"/.github/workflows/*.y*ml; do
+      [ -f "$_wf" ] || continue
+      _v=$(sc_workflow_value "$_wf" SENTINEL_SHIELD_PATH)
+      [ -n "$_v" ] || continue
+      printf '%s\n' "${_v%"${_v##*[!/]}"}"
+    done | sort -u || true)
   if [ -n "$_ss_paths" ]; then
     if [ ! -f "$TARGET/.semgrepignore" ]; then
       # Only a problem when Semgrep is actually part of the plan; the profile decides.

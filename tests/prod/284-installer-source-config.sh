@@ -297,6 +297,58 @@ else
 	pass "a real quoted repository is not a placeholder"
 fi
 
+# The preflight's question is "can this workflow check the engine out", not "is this one of
+# the two placeholder spellings we happen to ship". It used to be the latter, so every other
+# unusable value passed it.
+for _bad in 'TODO' 'changeme' 'acme shield/x' 'https://ghe.example.com/acme/engine' 'http://github.com/acme/engine'; do
+	printf 'name: x\nenv:\n  SENTINEL_SHIELD_REPOSITORY: %s\n' "$_bad" > "$QP/.github/workflows/w.yml"
+	if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$QP/.github/workflows/w.yml" ); then
+		pass "the preflight rejects the unusable engine source '$_bad'"
+	else
+		fail "the preflight ACCEPTED '$_bad', which sc_normalize_repository refuses — the workflow cannot check the engine out"
+	fi
+done
+# An empty assignment is unusable for the same reason.
+printf 'name: x\nenv:\n  SENTINEL_SHIELD_REPOSITORY:\n' > "$QP/.github/workflows/w.yml"
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$QP/.github/workflows/w.yml" ); then
+	pass "the preflight rejects an EMPTY engine source"
+else
+	fail "the preflight accepted an empty SENTINEL_SHIELD_REPOSITORY"
+fi
+# A file that does not declare the key is a different contract; answering "placeholder" here
+# would misreport it.
+printf 'name: x\nenv:\n  SOMETHING_ELSE: value\n' > "$QP/.github/workflows/w.yml"
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$QP/.github/workflows/w.yml" ); then
+	fail "a workflow with no SENTINEL_SHIELD_REPOSITORY key is reported as carrying a placeholder"
+else
+	pass "a workflow that does not declare the key is not a placeholder finding"
+fi
+
+# ---------------------------------------------------------------------------
+# An ENFORCING mode must refuse to install a gate that cannot run.
+# ---------------------------------------------------------------------------
+# strict/regulated install a blocking gate. A managed workflow left with the engine-source
+# placeholder cannot check the engine out, so the gate never runs — and a gate that never runs
+# blocks nothing while every dashboard shows it installed. Both routes to that state used to
+# be a printed WARNING that the install carried on past.
+for _m in strict regulated; do
+	_nr="$WORK/norender-$_m"; mkdir -p "$_nr"
+	_c=0
+	sh "$INSTALL" --target "$_nr" --profile laravel --mode "$_m" --no-source-render --apply >/dev/null 2>&1 || _c=$?
+	if [ "$_c" -eq 0 ]; then
+		fail "--mode $_m with --no-source-render installed an enforcing gate that cannot run"
+	else
+		pass "--mode $_m refuses --no-source-render (the gate would never run)"
+	fi
+	check "  and no managed workflow survives the refusal" \
+		"$(find "$_nr" -path '*workflows*' -name '*.yml' 2>/dev/null | grep -c . || true)" "0"
+done
+# The advisory modes are unaffected: leaving the source unset is a documented choice there.
+_ro="$WORK/norender-report-only"; mkdir -p "$_ro"
+_c=0
+sh "$INSTALL" --target "$_ro" --profile laravel --mode report-only --no-source-render --apply >/dev/null 2>&1 || _c=$?
+check "--mode report-only still permits --no-source-render" "$_c" 0
+
 # A full commit SHA is immutable on its own: strict/regulated must accept it even when the
 # release contract is unreadable, instead of telling a user who passed a 40-hex SHA to pass
 # a 40-hex SHA.
@@ -445,7 +497,10 @@ check "a managed workflow skipped for want of --force is left byte-for-byte" \
 # The preflight kept its own copy of the placeholder regex, and that copy did not allow for a
 # quoted value — so `SENTINEL_SHIELD_REPOSITORY: "YOUR_ORG/repo"` reported the source
 # configuration as SET, which is a guaranteed first-run CI failure passing its own preflight.
-DQ="$WORK/quoted"; mkdir -p "$DQ"
+DQ="$WORK/doctor-quoted"; mkdir -p "$DQ"   # NOT $WORK/quoted: that tree already holds a
+                                          # hand-written w.yml from the sc_has_placeholder
+                                          # block above, which would be installed over and
+                                          # then swept up by the loop below.
 sh "$ROOT/scripts/install-baseline.sh" --target "$DQ" --profile laravel --apply \
 	--no-source-render >/dev/null 2>&1
 for _w in "$DQ"/.github/workflows/*.y*ml; do

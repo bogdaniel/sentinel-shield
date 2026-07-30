@@ -275,11 +275,24 @@ sc_render_workflow() {
 	return 0
 }
 
-# sc_has_placeholder <file> — true when a workflow still carries the shipped placeholder and
-# is therefore not runnable. YAML lets the value be quoted, so `SENTINEL_SHIELD_REPOSITORY:
-# "YOUR_ORG/sentinel-shield"` is the SAME unrunnable placeholder as the bare form; matching only
-# the bare form let it through the fail-closed preflight.
+# sc_has_placeholder <file> — true when the workflow's declared engine source is NOT a value
+# this installer would write, and the workflow therefore cannot check the engine out.
+#
+# This used to pattern-match the two shipped placeholder spellings (`YOUR_ORG/` and `<…>`), so
+# the fail-closed preflight it feeds only recognised the values we happened to ship. Every
+# OTHER unusable value passed it: `TODO`, an empty assignment, a value with a space in it, a
+# GitHub Enterprise URL that sc_normalize_repository refuses precisely because reducing it to
+# `owner/name` would retarget the checkout to the runner's host. "Not the placeholder we ship"
+# is not the same question as "usable", and the preflight needs the second one.
+#
+# So the question is now asked of the canonical validator rather than a second pattern kept in
+# step with it by hand: whatever sc_normalize_repository refuses, this reports.
 sc_has_placeholder() {
 	[ -f "${1:-}" ] || return 1
-	grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:[[:space:]]*[\"']?(YOUR_ORG/|<)" "$1" 2>/dev/null
+	# A file that does not declare the key at all is not what this check is about — a missing
+	# key is a separate contract, and answering "yes, placeholder" here would misreport it.
+	grep -qE "^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:" "$1" 2>/dev/null || return 1
+	_sc_hp=$(sc_workflow_value "$1" SENTINEL_SHIELD_REPOSITORY)
+	sc_normalize_repository "$_sc_hp" >/dev/null 2>&1 && return 1
+	return 0
 }

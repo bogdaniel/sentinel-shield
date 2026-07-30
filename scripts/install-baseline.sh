@@ -476,7 +476,20 @@ fi
 # manifest installed. Atomic per file (lib/source-config.sh); a failed render is fatal so the
 # transaction rolls back rather than leaving a half-configured workflow.
 render_source_config() {
-	[ "$RENDER_SOURCE" -eq 1 ] || { echo "source-config: --no-source-render — SENTINEL_SHIELD_REPOSITORY/REF left as shipped (workflow NOT runnable until set)"; return 0; }
+	if [ "$RENDER_SOURCE" -ne 1 ]; then
+		# report-only/baseline are advisory adoption modes, so leaving the source unset is a
+		# documented choice there. strict/regulated install an ENFORCING gate: a workflow that
+		# cannot check the engine out cannot run it, and a gate that never runs blocks nothing
+		# while every dashboard shows it installed. That is the failure this project refuses —
+		# an absent check reading as a satisfied one — so it is an error, not a note.
+		case "$MODE" in
+			strict | regulated)
+				echo "error: --mode $MODE with --no-source-render would install an ENFORCING gate that cannot run: SENTINEL_SHIELD_REPOSITORY/REF stay as shipped, so the workflow cannot check the engine out and the gate silently enforces nothing. Drop --no-source-render (optionally with --source-repository <owner/name>), or install with --mode report-only|baseline." >&2
+				return 1 ;;
+		esac
+		echo "source-config: --no-source-render — SENTINEL_SHIELD_REPOSITORY/REF left as shipped (workflow NOT runnable until set)"
+		return 0
+	fi
 	_rendered=0
 	for _wfpair in $(jq -r '(.workflows // [])[] | "\(.target)|\(.source)"' "$MANIFEST"); do
 		_wf="${_wfpair%%|*}"; _wfsrc="${_wfpair#*|}"
@@ -492,6 +505,14 @@ render_source_config() {
 		fi
 		grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wff" 2>/dev/null || continue
 		if [ -z "$SOURCE_REPOSITORY" ]; then
+			# Same reasoning as --no-source-render above: under an enforcing mode an
+			# unrunnable managed workflow is a gate that cannot fail, which is worse than no
+			# gate because it looks like one.
+			case "$MODE" in
+				strict | regulated)
+					echo "error: --mode $MODE cannot leave $_wf carrying the engine-source placeholder. No repository could be resolved (this checkout has no unambiguous 'origin' remote), so the workflow cannot check the engine out and the enforcing gate would never run. Re-run with --source-repository <owner/name>, or install with --mode report-only|baseline." >&2
+					return 1 ;;
+			esac
 			echo "source-config: WARNING — no repository resolved (this checkout has no unambiguous 'origin' remote). $_wf keeps the placeholder and is NOT runnable; re-run with --source-repository <owner/name>."
 			continue
 		fi
