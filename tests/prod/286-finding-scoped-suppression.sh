@@ -75,6 +75,30 @@ check "normalizer emits exactly the MEDIUM findings" "$(printf '%s' "$_f" | jq '
 check "high-severity findings are not in the medium identity set" "$(printf '%s' "$_f" | jq '[.[] | select(.severity != "medium")] | length')" 0
 check "fingerprints carry the algorithm version" "$(printf '%s' "$_f" | jq '[.[] | select(.fingerprint | startswith("ss-fp/2|"))] | length')" 2
 check "identities are unique" "$(printf '%s' "$_f" | jq '[.[].fingerprint] | unique | length')" 2
+
+# --- ss-fp/2 must be REVERSIBLE, not merely delimiter-safe -------------------
+# An earlier revision mapped the whole control range to a single "%3F", so 0x01 and 0x02
+# produced the SAME fingerprint. A fingerprint is what an accepted-risk record matches on, so
+# a lossy encoding lets one approved suppression cover a finding nobody reviewed — the exact
+# collision class ss-fp/2 exists to remove, moved from the delimiter to the control bytes.
+# The encoder is lifted out of the producer so this asserts the shipped definition, not a copy.
+_FPENC=$(sed -n '/^	def hex2:/,/^	def fp(/p' "$ROOT/scripts/normalize-findings.sh" | sed '$d')
+# Build the control bytes with jq (keeping literal control characters out of this file) and
+# require the whole range to encode to distinct, reversible values.
+_ctl=$(jq -rn '[range(0;32), 127] | map("x" + ([.] | implode) + "y")' \
+	| jq -r "$_FPENC"' .[] | fpenc')
+check "every control byte gets a distinct ss-fp/2 encoding" \
+	"$(printf '%s\n' "$_ctl" | sort -u | grep -c .)" "33"
+check "  and none of them collapses to the old lossy %3F" \
+	"$(printf '%s\n' "$_ctl" | grep -c '%3F' || true)" "0"
+check "  0x01 and 0x02 no longer share a fingerprint" \
+	"$(jq -rn '["x" + ([1] | implode) + "y", "x" + ([2] | implode) + "y"]' | jq -r "$_FPENC"' .[] | fpenc' | sort -u | grep -c .)" "2"
+# The escape character must be escaped first, so a literal "%7C" stays distinct from an
+# encoded "|".
+check "a literal %7C does not alias an encoded pipe" \
+	"$(printf '%s' 'a%7Cb' | jq -Rr "$_FPENC"' fpenc')" "a%257Cb"
+check "  and an actual pipe encodes to %7C" \
+	"$(printf '%s' 'a|b' | jq -Rr "$_FPENC"' fpenc')" "a%7Cb"
 _f2=$(sh "$NORM" --gate medium_vulnerabilities --raw-dir "$D/reports/raw")
 check "the normalizer is deterministic across runs" "$(printf '%s' "$_f2" | jq -c .)" "$(printf '%s' "$_f" | jq -c .)"
 check "an unsupported gate is rejected" "$(_c=0; sh "$NORM" --gate secrets >/dev/null 2>&1 || _c=$?; printf '%s' "$_c")" 2

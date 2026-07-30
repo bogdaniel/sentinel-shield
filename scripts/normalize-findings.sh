@@ -90,11 +90,18 @@ jq -n \
 	# collide is an accepted-risk record that can match a finding its author never reviewed.
 	# `ss-fp/2` percent-encodes the delimiter, the escape character itself and every control
 	# character, so the field boundaries are unambiguous while the value stays readable.
+	# The encoding has to be REVERSIBLE, and the first version was not: it mapped the whole
+	# control range to a single "%3F", so 0x01 and 0x02 produced the SAME fingerprint. A
+	# fingerprint is what an accepted-risk record matches on, so a lossy one lets an approved
+	# suppression cover a finding its author never reviewed — the same collision class ss-fp/2
+	# exists to remove, moved from the delimiter to the control bytes. Each control byte now
+	# carries its own value as %XX. `%` is escaped first, or it corrupts every later escape.
+	def hex2: ("0123456789ABCDEF" | explode) as $d
+		| [$d[(. / 16 | floor)], $d[. % 16]] | implode;
 	def fpenc:
 		(. // "") | tostring
 		| gsub("%"; "%25") | gsub("\\|"; "%7C")
-		| gsub("\n"; "%0A") | gsub("\r"; "%0D") | gsub("\t"; "%09")
-		| gsub("[\u0000-\u001f\u007f]"; "%3F");
+		| gsub("(?<c>[\u0000-\u001f\u007f])"; "%" + (.c | explode[0] | hex2));
 	def fp($s; $r; $c; $v; $f):
 		"ss-fp/2|" + ($s|fpenc) + "|" + ($r|norm|fpenc) + "|" + ($c|norm|fpenc)
 		+ "|" + ($v|norm|fpenc) + "|" + ($f|norm|fpenc);

@@ -193,10 +193,17 @@ rewritten — no case folding, no whitespace collapsing, no sorting of the value
 values with `|` and defined no escaping, so two different tuples could serialise to the same
 string — component `a|b` with version `c`, and component `a` with version `b|c`, were both
 `…|a|b|c|…`. A fingerprint that can collide is a record that can match a finding its author
-never reviewed. Each field is now percent-encoded before joining: `%` becomes `%25` first,
-then `|` becomes `%7C`, and tab/CR/LF and every other control character become `%09`/`%0D`/
-`%0A`/`%3F`. The encoding is readable, reversible and injective, so distinct tuples always
-produce distinct fingerprints.
+never reviewed. Each field is now percent-encoded before joining: `%` becomes `%25` first (or
+it would corrupt every escape produced after it), `|` becomes `%7C`, and every control
+character becomes `%XX` carrying **its own byte value** — `%09` for tab, `%0A` for LF, `%0D`
+for CR, `%01` for `0x01`, `%7F` for DEL, and so on across the whole range. The encoding is
+readable, reversible and injective, so distinct tuples always produce distinct fingerprints.
+
+An earlier revision of `ss-fp/2` mapped the entire control range to a single `%3F`, which made
+it neither reversible nor injective: `0x01` and `0x02` produced the same fingerprint. That is
+the very collision class this version exists to remove, merely moved from the delimiter to the
+control bytes, and it mattered for the same reason — a fingerprint is what a record matches
+on, so a lossy one lets an approved suppression cover a finding nobody reviewed.
 
 **Records written against `ss-fp/1` no longer match.** The version is part of the string, so
 an old fingerprint simply stops matching rather than matching something unintended — the same
