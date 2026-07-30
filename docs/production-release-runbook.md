@@ -188,9 +188,12 @@ was about to publish.
 - **`TAG_REF_MOVED`** — the ref no longer resolves to the object that was verified moments
   earlier. Nothing about the new object has been verified.
 
-Neither is recoverable by re-running. **A release tag is immutable**: the publisher never
-creates, moves or rewrites one, and nothing in the workflow will publish a tag whose target
-changed under it. If you see either code:
+Neither is recoverable by re-running. **This project treats a release tag as write-once**:
+the publisher never creates, moves or rewrites one, and nothing in the workflow will publish a
+tag whose target changed under it. Note that git itself does not enforce that — a tag is a ref
+and it can be retargeted, which is exactly what these two codes detect. Enforcement comes from
+the repository: an active, non-bypassable tag ruleset restricting updates and deletions, which
+the publisher now requires before it will publish. If you see either code:
 
 1. Do **not** move the tag back — the fact that it moved is itself the incident.
 2. Establish who changed the ref and why. Repository settings should prevent this: protect
@@ -201,8 +204,14 @@ changed under it. If you see either code:
 
 Such a tag stays in the repository as **tagged but unpublished / unverified**. Record it that
 way in `config/release-status.json` and in the release notes; it is an honest historical fact,
-not a defect to be edited away. Publication may be retried at any later time once the key is
-registered.
+not a defect to be edited away.
+
+There is no "retry later" for these two codes. Re-running publishes nothing, because the
+object this run verified is no longer what the ref names; the route forward is step 3 above, a
+new reviewed tag at the intended commit. (Retry-once-fixed is the remediation for
+[`TAG_SIGNING_IDENTITY_UNVERIFIED`](#tag_signing_identity_unverified--publication-refused),
+where the tag is untouched and only the signing identity has to be registered — a different
+failure with a different fix.)
 
 ## Recovery: a tag exists but no GitHub Release was created
 
