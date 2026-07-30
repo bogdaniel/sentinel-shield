@@ -490,7 +490,7 @@ render_source_config() {
 		echo "source-config: --no-source-render — SENTINEL_SHIELD_REPOSITORY/REF left as shipped (workflow NOT runnable until set)"
 		return 0
 	fi
-	_rendered=0
+	_rendered=0; _skipped=0
 	for _wfpair in $(jq -r '(.workflows // [])[] | "\(.target)|\(.source)"' "$MANIFEST"); do
 		_wf="${_wfpair%%|*}"; _wfsrc="${_wfpair#*|}"
 		# Dry-run inspects the TEMPLATE (the target does not exist yet) so the plan can show
@@ -501,6 +501,18 @@ render_source_config() {
 		# edited a file the installer had just declined to touch.
 		if [ "$APPLY" -eq 1 ] && ! grep -qxF -- "$_wf" "$WRITTEN_LIST" 2>/dev/null; then
 			echo "source-config: $_wf was not written by this run (skipped) — left exactly as it is"
+			_skipped=$((_skipped + 1))
+			continue
+		fi
+		# The DRY RUN has to predict that same skip. There is no WRITTEN_LIST yet, so it applies
+		# the rule directly: a managed workflow that already exists is not rewritten without
+		# --force. Without this the plan contradicted itself — the entry above printed
+		# "skip (managed, exists; use --force to update)" for a file, and the preview here then
+		# printed "would set … in" the very same file, so the two halves of one dry run
+		# disagreed about what --apply was going to do.
+		if [ "$APPLY" -eq 0 ] && [ -e "$TARGET/$_wf" ] && [ "$FORCE" -eq 0 ]; then
+			echo "source-config: would leave $_wf exactly as it is (managed, exists; use --force to update)"
+			_skipped=$((_skipped + 1))
 			continue
 		fi
 		grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wff" 2>/dev/null || continue
@@ -533,7 +545,15 @@ render_source_config() {
 			return 1
 		fi
 	done
-	[ "$_rendered" -gt 0 ] || echo "source-config: no managed workflow declares SENTINEL_SHIELD_REPOSITORY — nothing to render"
+	# "nothing to render" and "everything was left alone" are different outcomes, and reporting
+	# the second as the first reads like the profile ships no configurable workflow at all.
+	if [ "$_rendered" -eq 0 ]; then
+		if [ "$_skipped" -gt 0 ]; then
+			echo "source-config: nothing rendered — all $_skipped managed workflow(s) were left exactly as they are"
+		else
+			echo "source-config: no managed workflow declares SENTINEL_SHIELD_REPOSITORY — nothing to render"
+		fi
+	fi
 	return 0
 }
 
