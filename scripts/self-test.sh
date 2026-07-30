@@ -28,11 +28,19 @@ command_exists jq || { log_error "jq is required for the self-test"; exit 2; }
 # in an enforcing mode: an artifact nothing binds to the run is unattributed. Fixtures whose
 # subject is WHICH GATE FIRES therefore attribute their isolating evidence, rather than being
 # refused for provenance before the gate under test is reached.
+# The manifest MUST name the commit the summary will record. The builder derives the commit
+# from GITHUB_SHA when it runs inside Actions, so a manifest that omits `commit` verified
+# locally (where the commit is `unknown` and the check is skipped) and reported
+# `commit-mismatch` in CI — the evidence then counted as unattributed and the gate under test
+# was not the one that failed. Both sides are pinned to ST_FIXTURE_COMMIT here, and the
+# fixtures pass the same value to the builder, so the binding is real and identical in every
+# environment.
+ST_FIXTURE_COMMIT=0123456789abcdef0123456789abcdef01234567
 st_bind_evidence() {
 	_sb=''; _rb=''
 	[ -f "$1/sbom.spdx.json" ] && _sb=$(ss_sha256_file "$1/sbom.spdx.json" 2>/dev/null || printf '')
 	[ -f "$1/release-evidence.md" ] && _rb=$(ss_sha256_file "$1/release-evidence.md" 2>/dev/null || printf '')
-	jq -n --arg s "$_sb" --arg r "$_rb" '{version:"1", files:
+	jq -n --arg s "$_sb" --arg r "$_rb" --arg c "$ST_FIXTURE_COMMIT" '{version:"1", commit:$c, files:
 		([ if $s != "" then {path:"sbom.spdx.json", sha256:$s} else empty end,
 		   if $r != "" then {path:"release-evidence.md", sha256:$r} else empty end ])}' \
 		> "$1/sentinel-shield-artifact-manifest.json"
@@ -1527,10 +1535,25 @@ run_v023_coverage() {
 	cp "$F/modes/medium-vuln/grype.json" "$_d/raw/grype.json"
 	cp "$F/modes/iac-violation/checkov.json" "$_d/raw/checkov.json"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/raw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	# Built without --profile, so it carries no tool-policy overlay and strict REFUSES it.
+	# The refusal used to be indistinguishable from a gate failure, so "strict FAILS
+	# style+iac+medium" was green for the wrong reason: the gate was never evaluated.
+	st_evidence_overlay "$_d/sum.json"
 	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
-	enforce_mode() { # <mode> -> echo pass|fail
+	# `pass|fail` collapsed EVERY non-zero exit to "fail", so a configuration REFUSAL (exit 2 —
+	# the summary was never judged) read identically to a gate failure. A provenance contract
+	# change once made this case fail in CI and the message said only "expected pass, got
+	# fail". `refused` is now distinct, and the enforcer log is kept for the diagnosis.
+	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
-		if sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1; then echo pass; else echo fail; fi
+		_em=0
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		case "$_em" in
+			0) echo pass ;;
+			1) echo fail ;;
+			*) log_warn "enforce-gates refused the input in '$1' (exit $_em): $(grep -m1 '\[error\]' "$_d/enforce-$1.log" 2>/dev/null || printf 'see %s' "$_d/enforce-$1.log")"
+			   echo refused ;;
+		esac
 	}
 	cv_check "baseline PASSES style+iac+medium" "$(enforce_mode baseline "$_d/sum.json")" "pass"
 	cv_check "strict FAILS style+iac+medium" "$(enforce_mode strict "$_d/sum.json")" "fail"
@@ -1547,7 +1570,7 @@ run_v023_coverage() {
 	printf '# Release evidence\n\nProduced by the engine self-test.\nScope: dast isolation fixture.\n' \
 		> "$_d/r2/release-evidence.md"
 	st_bind_evidence "$_d/r2"
-	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t >/dev/null 2>&1
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
 	cv_check "regulated FAILS dast finding" "$(enforce_mode regulated "$_d/r2/sum2.json")" "fail"
@@ -1698,22 +1721,33 @@ run_v024_coverage() {
 	vc_check "dep-check malformed.json -> exit 2" "$_rc" "2"
 
 	# --- Mode enforcement (Lane E fixtures) ---
-	enforce_mode() { # <mode> <summary> -> pass|fail
+	# Same reasoning as the v023 helper: a configuration refusal is not a gate failure.
+	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
-		if sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1; then echo pass; else echo fail; fi
+		_em=0
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		case "$_em" in
+			0) echo pass ;;
+			1) echo fail ;;
+			*) log_warn "enforce-gates refused the input in '$1' (exit $_em): $(grep -m1 '\[error\]' "$_d/enforce-$1.log" 2>/dev/null || printf 'see %s' "$_d/enforce-$1.log")"
+			   echo refused ;;
+		esac
 	}
 	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
 	# multi-violation: build summary, isolate SBOM/release so only style+iac+medium are non-clean.
 	rm -rf "$_d/mv"; mkdir -p "$_d/mv/raw"; cp "$F/modes-v024/multi-violation/"*.json "$_d/mv/raw/"
 	printf '{"SPDXID":"x"}' > "$_d/mv/sbom.spdx.json"; printf 'rel\n' > "$_d/mv/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/mv/raw" --output "$_d/mv/sum.json" --project-name t >/dev/null 2>&1
+	# Same as the v023 multi-violation fixture: no --profile means no overlay, and strict
+	# REFUSES rather than evaluating. The refusal used to read as a gate failure.
+	st_evidence_overlay "$_d/mv/sum.json"
 	vc_check "modes-v024 multi: baseline PASS" "$(enforce_mode baseline "$_d/mv/sum.json")" "pass"
 	vc_check "modes-v024 multi: strict FAIL" "$(enforce_mode strict "$_d/mv/sum.json")" "fail"
 	# clean: all evidence present -> every mode passes.
 	rm -rf "$_d/cl"; mkdir -p "$_d/cl/raw"; cp "$F/modes-v024/clean/gitleaks.json" "$_d/cl/raw/gitleaks.json"
 	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/cl/sbom.spdx.json"; cp "$F/modes-v024/clean/release-evidence.md" "$_d/cl/release-evidence.md"
 	st_bind_evidence "$_d/cl"
-	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t >/dev/null 2>&1
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/cl/sum.json"
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
@@ -1725,7 +1759,7 @@ run_v024_coverage() {
 	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/da/sbom.spdx.json"
 	cp "$F/modes-v024/clean/release-evidence.md" "$_d/da/release-evidence.md"
 	st_bind_evidence "$_d/da"
-	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t >/dev/null 2>&1
+	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
 	vc_check "modes-v024 dast: regulated FAIL" "$(enforce_mode regulated "$_d/da/sum.json")" "fail"
