@@ -214,37 +214,15 @@ command_exists jq || die_cfg "jq is required for security-summary.json enforceme
 [ -n "$RAW_DIR" ] || RAW_DIR="$(dirname "$SUMMARY")/raw"
 
 # --- load the gates env SAFELY (validate; never blind-source) ----------------
-# Allowed line shape: SENTINEL_SHIELD_<UPPER_KEY>=<safe-value>
-# Safe value characters: A-Z a-z 0-9 . _ -   (no spaces/quotes/`/$/;/&/|/<>/backslash)
-GATES_ENV=""
-_lineno=0
-while IFS= read -r _line || [ -n "$_line" ]; do
-	_lineno=$((_lineno + 1))
-	case "$_line" in
-		'' | '#'*) continue ;;
-	esac
-	if printf '%s' "$_line" | grep -Eq '^SENTINEL_SHIELD_[A-Z0-9_]+=[A-Za-z0-9._-]*$'; then
-		GATES_ENV="${GATES_ENV}${_line}
-"
-	else
-		die_cfg "suspicious or invalid line in gates env ($GATES_ENV_FILE:$_lineno): '$_line'"
-	fi
-done < "$GATES_ENV_FILE"
-
-# A lexically safe assignment can still be semantically AMBIGUOUS. env_get returns the FIRST
-# match, so a file carrying `...FAIL_ON_SECRETS=true` followed by `...FAIL_ON_SECRETS=false`
-# reads as enabled while a human reviewing the tail reads it as disabled — and a typo'd or
-# stale key was accepted silently, hiding resolver/enforcer drift. Validate the COMPLETE key
-# set before any value is read.
-_dupes=$(printf '%s\n' "$GATES_ENV" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' | sort | uniq -d)
-[ -z "$_dupes" ] || die_cfg "gates env declares duplicate key(s): $(printf '%s' "$_dupes" | tr '\n' ' ') — a duplicated gate flag is ambiguous policy, not a value to pick from ($GATES_ENV_FILE)"
-_unknown=$(printf '%s\n' "$GATES_ENV" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' |
-	grep -Ev '^SENTINEL_SHIELD_(MODE|PROJECT_[A-Z0-9_]+|FAIL_ON_[A-Z0-9_]+)$' || true)
-[ -z "$_unknown" ] || die_cfg "gates env declares unknown key(s): $(printf '%s' "$_unknown" | tr '\n' ' ') — regenerate it with scripts/resolve-gates.sh ($GATES_ENV_FILE)"
+# The parser is ss_gates_env_read in the shared library, so the enforcer, the summary selector
+# and the report generator cannot interpret the same policy file differently. It validates the
+# line shape, rejects duplicate keys (ambiguous policy) and rejects unknown keys (resolver /
+# enforcer drift) before any value is read.
+GATES_ENV=$(ss_gates_env_read "$GATES_ENV_FILE") || die_cfg "gates env is not usable: $GATES_ENV_FILE (see errors above)"
 
 # env_get <FULL_KEY> — value from the validated env content, or empty. Uniqueness is proven
-# above, so "first match" can no longer differ from "the value".
-env_get() { printf '%s\n' "$GATES_ENV" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,"");print;exit}'; }
+# by the reader, so "first match" can no longer differ from "the value".
+env_get() { ss_gates_env_value "$GATES_ENV" "$1"; }
 
 # gate_flag <gate_key> — resolved fail_on flag (true/false). Absent -> false+warn.
 # gate_flag <key> — resolved boolean for a gate, parsed CANONICALLY.

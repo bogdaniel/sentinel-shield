@@ -229,6 +229,83 @@ printf 'SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO=true\n' >> "$K/sentinel-shield-gate
 check "an unknown FAIL_ON_* key is refused with NO JSON present" "$(krun)" 2
 grep -q 'gate registry' "$K/log" && pass "  naming the registry it was checked against" || fail "  without naming the registry"
 
+# ---------------------------------------------------------------------------
+# ONE parser: every gates-env consumer must reject the same files.
+# ---------------------------------------------------------------------------
+# The enforcer, the summary selector and the report generator each parsed this artifact their
+# own way — `awk … exit`, `grep | head -n1`, `sed | head -n1` — so a duplicated key was
+# first-wins in two of them while the third refused it. The same policy file could be reported
+# one way and enforced another. The parser is now ss_gates_env_read in the shared library.
+GP="$WORK/gates-parser"; mkdir -p "$GP"
+# The good file is the REAL resolver output: a hand-written subset is legitimately refused for
+# missing flags, which would prove nothing about the parser.
+sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$GP" --format env >/dev/null 2>&1
+cp "$GP/sentinel-shield-gates.env" "$GP/good.env"
+# Each bad file is the good one with exactly ONE defect introduced.
+{ cat "$GP/good.env"; printf 'SENTINEL_SHIELD_MODE=regulated\n'; } > "$GP/dup.env"
+{ cat "$GP/good.env"; printf 'SENTINEL_SHIELD_NOT_A_KEY=x\n'; } > "$GP/unknown.env"
+{ cat "$GP/good.env"; printf 'rm -rf /\n'; } > "$GP/unsafe.env"
+ln -sf "$GP/good.env" "$GP/link.env" 2>/dev/null || true
+
+# enforce-gates
+_enf() { _c=0; sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$1" \
+	--summary "$ROOT/templates/security-summary.example.json" --output-dir "$GP/out" \
+	--format json >/dev/null 2>&1 || _c=$?; printf '%s' "$_c"; }
+# select-security-summary
+_sel() { _c=0; sh "$ROOT/scripts/select-security-summary.sh" --gates-env "$1" \
+	--summary "$GP/sel-summary.json" --example "$ROOT/templates/security-summary.example.json" \
+	>/dev/null 2>&1 || _c=$?; printf '%s' "$_c"; }
+# generate-report (reads the env from its output dir)
+_rep() { _c=0; _rd="$GP/rep"; rm -rf "$_rd"; mkdir -p "$_rd"
+	cp "$1" "$_rd/sentinel-shield-gates.env"
+	cp "$ROOT/templates/security-summary.example.json" "$_rd/security-summary.json"
+	sh "$ROOT/scripts/generate-report.sh" --output-dir "$_rd" >/dev/null 2>&1 || _c=$?
+	printf '%s' "$_c"; }
+
+for _case in dup unknown unsafe; do
+	rm -f "$GP/sel-summary.json"
+	_e=$(_enf "$GP/$_case.env"); _s=$(_sel "$GP/$_case.env"); _r=$(_rep "$GP/$_case.env")
+	if [ "$_e" != "0" ]; then pass "enforce-gates rejects the $_case gates env (exit $_e)"
+	else fail "enforce-gates ACCEPTED the $_case gates env"; fi
+	if [ "$_s" != "0" ]; then pass "  select-security-summary rejects it too (exit $_s)"
+	else fail "  select-security-summary ACCEPTED the $_case gates env"; fi
+	if [ "$_r" != "0" ]; then pass "  generate-report rejects it too (exit $_r)"
+	else fail "  generate-report ACCEPTED the $_case gates env"; fi
+done
+
+# A symlinked policy file is refused everywhere: policy is never read through a link.
+if [ -L "$GP/link.env" ]; then
+	_e=$(_enf "$GP/link.env")
+	if [ "$_e" != "0" ]; then pass "a SYMLINKED gates env is refused (exit $_e)"
+	else fail "a symlinked gates env was accepted"; fi
+fi
+
+# ...and the good file is accepted by all three, so the parser is not merely strict. The
+# assertion is on the PARSER verdict, not the exit code: the selector and the reporter
+# legitimately fail a baseline run for other reasons (no real summary), and conflating that
+# with a parse rejection would make this test prove nothing.
+_parser_rejected() { grep -qE 'gates env (is not usable|declares (duplicate|unknown) key)|suspicious or invalid line in gates env' "$1" 2>/dev/null; }
+check "enforce-gates accepts a well-formed gates env" "$(_enf "$GP/good.env")" 0
+rm -f "$GP/sel-summary.json"
+sh "$ROOT/scripts/select-security-summary.sh" --gates-env "$GP/good.env" \
+	--summary "$GP/sel-summary.json" --example "$ROOT/templates/security-summary.example.json" \
+	>"$GP/sel.log" 2>&1 || true
+if _parser_rejected "$GP/sel.log"; then
+	fail "select-security-summary rejected a well-formed gates env"
+else
+	pass "  select-security-summary parses it without complaint"
+fi
+_rd="$GP/rep"; rm -rf "$_rd"; mkdir -p "$_rd"
+cp "$GP/good.env" "$_rd/sentinel-shield-gates.env"
+cp "$ROOT/templates/security-summary.example.json" "$_rd/security-summary.json"
+sh "$ROOT/scripts/generate-report.sh" --output-dir "$_rd" >"$GP/rep.log" 2>&1 || true
+if _parser_rejected "$GP/rep.log"; then
+	fail "generate-report rejected a well-formed gates env"
+else
+	pass "  generate-report parses it without complaint"
+fi
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '288-enforcement-input-contract: ALL CHECKS PASSED\n'

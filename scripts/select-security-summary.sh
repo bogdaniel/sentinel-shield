@@ -67,8 +67,11 @@ command_exists jq || die_cfg "jq is required but was not found."
 # (validated, not sourced).
 if [ -z "$MODE" ]; then
 	if [ -f "$GATES_ENV" ]; then
-		_line=$(grep -E '^SENTINEL_SHIELD_MODE=[A-Za-z0-9._-]+$' "$GATES_ENV" | head -n1 || true)
-		MODE=${_line#SENTINEL_SHIELD_MODE=}
+		# ONE parser, shared with the enforcer and the report generator. `head -n1` made a
+		# duplicated key first-wins here while the enforcer rejected it — the same policy
+		# file read two different ways by two tools.
+		_genv=$(ss_gates_env_read "$GATES_ENV") || die_cfg "gates env is not usable: $GATES_ENV (see errors above)"
+		MODE=$(ss_gates_env_value "$_genv" SENTINEL_SHIELD_MODE)
 	fi
 fi
 [ -n "$MODE" ] || die_cfg "cannot determine mode (pass --mode or provide $GATES_ENV)"

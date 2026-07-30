@@ -30,7 +30,14 @@ if [ -f "$RESOLVER" ]; then
 	if ( cd "$TARGET" && sh "$RESOLVER" --output-dir reports --format all ) >/dev/null 2>&1; then
 		ENVF="$OUT_DIR/sentinel-shield-gates.env"
 		if [ -f "$ENVF" ]; then
-			M=$(sed -n 's/^SENTINEL_SHIELD_MODE=//p' "$ENVF" | head -n1 || true)
+			# ONE parser. `sed … | head -n1` made a duplicated key first-wins here while
+			# the enforcer rejected it, so the same policy file could be reported one way
+			# and enforced another.
+			_genv=$(ss_gates_env_read "$ENVF") || {
+				log_error "generate-report: gates env is not usable: $ENVF"
+				exit 2
+			}
+			M=$(ss_gates_env_value "$_genv" SENTINEL_SHIELD_MODE)
 			if [ -n "$M" ]; then MODE="$M"; fi
 			GATES_BLOCK=$(cat "$ENVF")
 		fi

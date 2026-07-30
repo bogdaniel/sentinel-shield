@@ -261,3 +261,57 @@ ss_counts_or_fail() {
 		"$_cov"
 	exit 0
 }
+
+# --- the gates artifact: ONE parser for every consumer ------------------------------------
+# The resolver writes `sentinel-shield-gates.env`; the enforcer, the summary selector and the
+# report generator all read it. They each used to parse it their own way — `head -n1`, `sed`,
+# `awk ... exit` — so the SAME policy file could resolve differently depending on which tool
+# read it: a duplicated key was first-wins in two consumers while the enforcer rejected it.
+# That is the ambiguity the input contract exists to remove, so the parser lives here and
+# every consumer uses it.
+#
+# ss_gates_env_read <file> — echo the validated content, or fail (2) having said why.
+# Validates: regular non-symlink file; every non-comment line is a safe
+# SENTINEL_SHIELD_<KEY>=<safe-value> assignment; no duplicate keys; no unknown keys.
+ss_gates_env_read() {
+	_ge_f="${1:-}"
+	[ -n "$_ge_f" ] || { log_error "gates env: no file given"; return 2; }
+	if [ -L "$_ge_f" ]; then
+		log_error "gates env '$_ge_f' is a symlink; policy is never read through a link"
+		return 2
+	fi
+	[ -f "$_ge_f" ] || { log_error "gates env '$_ge_f' is not a regular file"; return 2; }
+	_ge_out=""
+	_ge_n=0
+	while IFS= read -r _ge_line || [ -n "$_ge_line" ]; do
+		_ge_n=$((_ge_n + 1))
+		case "$_ge_line" in
+			'' | '#'*) continue ;;
+		esac
+		if printf '%s' "$_ge_line" | grep -Eq '^SENTINEL_SHIELD_[A-Z0-9_]+=[A-Za-z0-9._-]*$'; then
+			_ge_out="${_ge_out}${_ge_line}
+"
+		else
+			log_error "suspicious or invalid line in gates env ($_ge_f:$_ge_n): '$_ge_line'"
+			return 2
+		fi
+	done < "$_ge_f"
+	_ge_dupes=$(printf '%s\n' "$_ge_out" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' | sort | uniq -d)
+	if [ -n "$_ge_dupes" ]; then
+		log_error "gates env declares duplicate key(s): $(printf '%s' "$_ge_dupes" | tr '\n' ' ') — a duplicated policy value is ambiguous, not a value to pick from ($_ge_f)"
+		return 2
+	fi
+	_ge_unknown=$(printf '%s\n' "$_ge_out" | sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' |
+		grep -Ev '^SENTINEL_SHIELD_(MODE|PROJECT_[A-Z0-9_]+|FAIL_ON_[A-Z0-9_]+)$' || true)
+	if [ -n "$_ge_unknown" ]; then
+		log_error "gates env declares unknown key(s): $(printf '%s' "$_ge_unknown" | tr '\n' ' ') — regenerate it with scripts/resolve-gates.sh ($_ge_f)"
+		return 2
+	fi
+	printf '%s' "$_ge_out"
+}
+
+# ss_gates_env_value <validated-content> <KEY> — the value, or empty. Uniqueness is proven by
+# ss_gates_env_read, so "first match" cannot differ from "the value".
+ss_gates_env_value() {
+	printf '%s\n' "$1" | awk -F= -v k="$2" '$1==k{sub(/^[^=]*=/,"");print;exit}'
+}
