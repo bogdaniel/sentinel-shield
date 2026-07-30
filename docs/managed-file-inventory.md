@@ -17,13 +17,14 @@ two scripts. This is the source-of-truth companion to
 
 ## How modes map to behavior
 
-The four manifest `mode` values and what each script does with them:
+The manifest `mode` values and what each script does with them:
 
 | Manifest `mode` | install-baseline.sh | sync-baseline.sh | Who owns the file afterward |
 |---|---|---|---|
 | `create-if-missing` | Writes only if the target is **absent**. If it exists: `skip (exists, project-owned)`. | Creates if missing. On drift: `project-local-preserved` — **never** overwritten, even with `--force`. | The consuming project |
 | `overwrite-if-force` | Creates if absent. Overwrites an existing target **only with `--force`**; otherwise `skip (managed, exists; use --force to update)`. | Updates on drift **only with `--apply --force`**; otherwise `manual-review-needed`. | Sentinel Shield (managed) |
 | `sync-managed-block` | Reserved. Treated **identically to `overwrite-if-force`** today (no in-file block merge is implemented). | Same as `overwrite-if-force`. | Sentinel Shield (managed) |
+| `merge-required-lines` | Writes only if the target is **absent** (same as `create-if-missing`); if it exists, points at the sync. | The file stays **project-owned** — nothing is overwritten, reordered or removed. Every non-comment line of the shipped template is REQUIRED, so the missing ones are appended under a marker comment. Matching is on exact rule text, so the merge is idempotent. | The consuming project (Sentinel Shield only appends what is missing) |
 | `manual` | Never auto-written. Printed as `MANUAL (copy yourself if wanted)` — **unless** the path is also in `never_touch` (see below), in which case it is reported `PROTECTED` and **no copy hint is printed**. | `manual-review-needed`. | The operator (hand-copy) |
 
 ### The hard-protection list (overrides manifest mode)
@@ -70,7 +71,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
-| `.semgrepignore` | `profiles/laravel/.semgrepignore` | create-if-missing | create |
+| `.semgrepignore` | `profiles/laravel/.semgrepignore` | merge-required-lines | merged (project entries preserved; missing REQUIRED rules appended) |
 | `phpstan.neon` | `profiles/laravel/phpstan.neon` | manual | **PROTECTED** (in `never_touch`; no manual hint shown — copy by hand if wanted) |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create |
@@ -85,7 +86,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
-| `.semgrepignore` | `profiles/react/.semgrepignore` | create-if-missing | create |
+| `.semgrepignore` | `profiles/react/.semgrepignore` | merge-required-lines | merged (project entries preserved; missing REQUIRED rules appended) |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
 
@@ -96,7 +97,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 | Target | Source | Manifest mode | Effective behavior |
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
-| `.semgrepignore` | `profiles/node/.semgrepignore` | create-if-missing | create |
+| `.semgrepignore` | `profiles/node/.semgrepignore` | merge-required-lines | merged (project entries preserved; missing REQUIRED rules appended) |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
@@ -122,7 +123,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
-| `.semgrepignore` | `profiles/laravel/.semgrepignore` | create-if-missing | create |
+| `.semgrepignore` | `profiles/laravel/.semgrepignore` | merge-required-lines | merged (project entries preserved; missing REQUIRED rules appended) |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
@@ -190,7 +191,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 | Target | Source | Manifest mode | Effective behavior |
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
-| `.semgrepignore` | `profiles/hardened-enterprise/.semgrepignore` | create-if-missing | create |
+| `.semgrepignore` | `profiles/hardened-enterprise/.semgrepignore` | merge-required-lines | merged (project entries preserved; missing REQUIRED rules appended) |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
 | `.sentinel-shield/hardened/sentinel-shield-hardened.snippet.yml` | `examples/hardened/sentinel-shield-hardened.snippet.yml` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |

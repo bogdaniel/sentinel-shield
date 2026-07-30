@@ -176,7 +176,7 @@ raw scanner reports:
 | npm audit | `reports/raw/npm-audit.json` | advisory sources, package, range |
 | OWASP Dependency-Check | `reports/raw/dependency-check.json` | CVE, dependency file |
 
-```
+```text
 fingerprint = ss-fp/2|<source>|<rule_id>|<component>|<version>|<file>
 ```
 
@@ -211,7 +211,7 @@ re-review point a version bump creates. Re-derive the identity with
 `scripts/normalize-findings.sh --gate medium_vulnerabilities` and update the record, or switch
 it to `components` + `rule_ids`, which are unaffected.
 
-#### What `<version>` holds per source
+### What `<version>` holds per source
 
 Two sources report a **range**, not an installed version, and the range is what the fingerprint
 carries — verbatim, exactly as the scanner printed it:
