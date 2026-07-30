@@ -1401,9 +1401,20 @@ eval_missing_gate() {
 	_prov=$(jqr ".$(printf '%s' "$_evpath" | sed 's/\.present$/.verification.provenance/')")
 	case "$MODE" in
 		baseline | strict | regulated)
-			if [ "$_present" = "true" ] && [ "$_prov" != "verified" ] && [ "$_prov" != "null" ]; then
+			# `present: true` MEANS `provenance: "verified"` here. The earlier form exempted a
+			# missing/null value, which reintroduced the bypass through OMISSION: a summary
+			# that simply left out the verification object — `{"sbom":{"present":true}}` —
+			# read as attributed evidence, because jq returned null and null was excluded.
+			# Absent, empty and unknown are all "not verified"; only the literal `verified`
+			# satisfies an evidence gate in an enforcing mode.
+			if [ "$_present" = "true" ] && [ "$_prov" != "verified" ]; then
 				_trig=true
-				log_warn "$_key: the artifact content is valid but its provenance is '$_prov' — nothing binds it to this run, so in '$MODE' it does not count as evidence. Produce it through the evidence handoff, or run an assurance mode that permits unattributed content."
+				case "$_prov" in
+					null | '')
+						log_warn "$_key: the summary claims the artifact is present but records NO verification provenance. Absence is not attribution — in '$MODE' unattributed content does not count as evidence." ;;
+					*)
+						log_warn "$_key: the artifact content is valid but its provenance is '$_prov' — nothing binds it to this run, so in '$MODE' it does not count as evidence. Produce it through the evidence handoff, or run an assurance mode that permits unattributed content." ;;
+				esac
 			fi ;;
 	esac
 	if [ "$_flag" = "true" ]; then

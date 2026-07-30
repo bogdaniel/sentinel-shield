@@ -269,6 +269,66 @@ _gate=$(jq -r '[.evaluated_gates[]|select(.key=="missing_sbom")][0].result' "$UN
 check "  the SBOM evidence gate is the one that fails" "$_gate" "fail"
 
 
+# ---------------------------------------------------------------------------
+# `present: true` MEANS `provenance: "verified"` — omission is not an exemption.
+# ---------------------------------------------------------------------------
+# The first form of this rule exempted a missing/null provenance, which reintroduced the
+# bypass through OMISSION rather than through the explicit `unbound` value: a summary that
+# simply left out the verification object read as attributed evidence.
+PV="$WORK/provenance-vocab"; mkdir -p "$PV"
+_pv_enf() { # _pv_enf <summary> <mode> -> exit code
+	_o="$PV/out"; rm -rf "$_o"; mkdir -p "$_o"
+	sh "$ROOT/scripts/resolve-gates.sh" --mode "$2" --output-dir "$_o" --format env >/dev/null 2>&1
+	_c=0
+	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_o/sentinel-shield-gates.env" \
+		--summary "$1" --output-dir "$_o" --format json >"$_o/log" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
+_pv_case() { # _pv_case <label> <jq-evidence-expression> <expect-nonzero:yes|no>
+	jq --argjson ev "$2" '.tools = {tests:{status:"pass"}}
+		| .summary.missing_sbom = false | .summary.missing_release_evidence = false
+		| .evidence = $ev' "$ROOT/templates/security-summary.example.json" > "$PV/s.json"
+	_c=$(_pv_enf "$PV/s.json" strict)
+	if [ "$3" = "yes" ]; then
+		if [ "$_c" = "0" ]; then fail "strict ACCEPTED $1 as attributed evidence"
+		else pass "strict refuses $1 (exit $_c)"; fi
+	else
+		if [ "$_c" = "0" ]; then pass "strict accepts $1"
+		else fail "strict refused $1, which should be the one passing form (exit $_c)"; fi
+	fi
+}
+_ver='{"sbom":{"present":true,"verification":{"status":"verified","provenance":"verified"}},"release_evidence":{"present":true,"verification":{"status":"verified","provenance":"verified"}}}'
+_pv_case "present:true with NO verification object" \
+	'{"sbom":{"present":true},"release_evidence":{"present":true}}' yes
+_pv_case "an EMPTY verification object" \
+	'{"sbom":{"present":true,"verification":{}},"release_evidence":{"present":true,"verification":{}}}' yes
+_pv_case "provenance: null" \
+	'{"sbom":{"present":true,"verification":{"provenance":null}},"release_evidence":{"present":true,"verification":{"provenance":null}}}' yes
+_pv_case "an EMPTY provenance string" \
+	'{"sbom":{"present":true,"verification":{"provenance":""}},"release_evidence":{"present":true,"verification":{"provenance":""}}}' yes
+_pv_case "an UNKNOWN provenance value" \
+	'{"sbom":{"present":true,"verification":{"provenance":"totally-fine"}},"release_evidence":{"present":true,"verification":{"provenance":"totally-fine"}}}' yes
+_pv_case "explicit unbound provenance" \
+	'{"sbom":{"present":true,"verification":{"provenance":"unbound"}},"release_evidence":{"present":true,"verification":{"provenance":"unbound"}}}' yes
+_pv_case "verified provenance (the only passing form)" "$_ver" no
+# The omission case must say WHY, so an operator is not left guessing.
+jq '.tools = {tests:{status:"pass"}} | .summary.missing_sbom = false
+	| .summary.missing_release_evidence = false
+	| .evidence = {sbom:{present:true}, release_evidence:{present:true}}' \
+	"$ROOT/templates/security-summary.example.json" > "$PV/s.json"
+_pv_enf "$PV/s.json" strict >/dev/null
+if grep -q 'NO verification provenance' "$PV/out/log"; then
+	pass "  and the omission is named rather than silently treated as unbound"
+else
+	fail "  but the omission is not explained: $(grep -m1 'missing_sbom' "$PV/out/log" || true)"
+fi
+# The schema now carries the vocabulary, so a consumer can validate it rather than infer it.
+check "the schema declares the provenance vocabulary" \
+	"$(jq -r '[.properties.evidence.properties.sbom.properties.verification.properties.provenance.enum[]] | index("verified") != null' "$ROOT/schemas/security-summary.schema.json")" "true"
+check "  and requires provenance when a verification object is present" \
+	"$(jq -r '[.properties.evidence.properties.sbom.properties.verification.required[]] | index("provenance") != null' "$ROOT/schemas/security-summary.schema.json")" "true"
+
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '295-evidence-and-exception-validation: ALL CHECKS PASSED\n'

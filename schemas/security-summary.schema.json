@@ -592,6 +592,51 @@
             },
             "path": {
               "type": "string"
+            },
+            "verification": {
+              "type": "object",
+              "description": "How `present` was decided. CONTENT validity and PROVENANCE are separate facts: `status` says what was checked, `provenance` says what binds the artifact to this run. An enforcing mode (baseline/strict/regulated) treats `present: true` as evidence ONLY when provenance is exactly \"verified\"; absent, null, empty and unknown values are all unattributed and do not satisfy an evidence gate.",
+              "required": [
+                "status",
+                "provenance"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "verified",
+                    "content-verified-unattributed",
+                    "rejected"
+                  ],
+                  "description": "verified = content valid AND bound to this run. content-verified-unattributed = the bytes parse but nothing attributes them. rejected = the artifact was refused."
+                },
+                "provenance": {
+                  "type": "string",
+                  "enum": [
+                    "verified",
+                    "unbound",
+                    "manifest-malformed",
+                    "commit-mismatch",
+                    "not-in-manifest",
+                    "unhashable",
+                    "digest-mismatch",
+                    "none"
+                  ],
+                  "description": "The producer-manifest verdict. Only \"verified\" is attribution; \"none\" is recorded when there is no artifact to attribute."
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "validator": {
+                  "type": "string"
+                }
+              }
             }
           },
           "required": [
@@ -606,6 +651,51 @@
             },
             "path": {
               "type": "string"
+            },
+            "verification": {
+              "type": "object",
+              "description": "How `present` was decided. CONTENT validity and PROVENANCE are separate facts: `status` says what was checked, `provenance` says what binds the artifact to this run. An enforcing mode (baseline/strict/regulated) treats `present: true` as evidence ONLY when provenance is exactly \"verified\"; absent, null, empty and unknown values are all unattributed and do not satisfy an evidence gate.",
+              "required": [
+                "status",
+                "provenance"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "verified",
+                    "content-verified-unattributed",
+                    "rejected"
+                  ],
+                  "description": "verified = content valid AND bound to this run. content-verified-unattributed = the bytes parse but nothing attributes them. rejected = the artifact was refused."
+                },
+                "provenance": {
+                  "type": "string",
+                  "enum": [
+                    "verified",
+                    "unbound",
+                    "manifest-malformed",
+                    "commit-mismatch",
+                    "not-in-manifest",
+                    "unhashable",
+                    "digest-mismatch",
+                    "none"
+                  ],
+                  "description": "The producer-manifest verdict. Only \"verified\" is attribution; \"none\" is recorded when there is no artifact to attribute."
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "validator": {
+                  "type": "string"
+                }
+              }
             }
           },
           "required": [
