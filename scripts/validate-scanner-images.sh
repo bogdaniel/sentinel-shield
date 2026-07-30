@@ -109,10 +109,16 @@ tag_is_mutable() {
 }
 
 # ref_tag <image-ref> — the tag part of repo:tag, empty for a digest ref or a bare repo.
+#
+# The tag separator is only a `:` that appears AFTER the last `/`. A registry host may carry
+# a port — `registry.example.com:5000/team/img` — and matching the last `:` in the whole
+# reference reads that port as the tag ('5000/team/img'), so a private-registry image was
+# tag-checked against a string that is not a tag at all.
 ref_tag() {
-	case "$1" in
-		*@sha256:*) printf '' ;;
-		*:*) printf '%s' "${1##*:}" ;;
+	case "$1" in *@sha256:*) printf ''; return ;; esac
+	_rt_last=${1##*/}
+	case "$_rt_last" in
+		*:*) printf '%s' "${_rt_last##*:}" ;;
 		*) printf '' ;;
 	esac
 }
@@ -158,7 +164,11 @@ check_contract() {
 	for _t in $(jq -r '.templates[]' "$CONTRACT"); do
 		[ -f "$REPO_ROOT/$_t" ] || { fail "DECLARED_TEMPLATE_MISSING — $_t is declared in the contract but does not exist"; _decl_ok=0; }
 	done
-	[ "$_decl_ok" -eq 1 ] && pass "declared templates exist"
+	# `[ … ] && pass` as the LAST command makes the function's exit status the test's. Under
+	# `set -eu` a missing declared template therefore killed the whole script here: the
+	# summary never printed and, in `all` mode, check_templates never ran — the run reported
+	# less than it had already found. Kept as an `if` so the status is the `pass`, not the test.
+	if [ "$_decl_ok" -eq 1 ]; then pass "declared templates exist"; fi
 }
 
 check_templates() {
@@ -195,6 +205,44 @@ check_templates() {
 		done <<EOF
 $(grep -E '^[[:space:]]*SENTINEL_SHIELD_[A-Z0-9_]*_IMAGE:' "$REPO_ROOT/$_t" 2>/dev/null || true)
 EOF
+
+		# ---- EXECUTION sweep -------------------------------------------------------------
+		# Everything above inspects DECLARATIONS (`VAR: value`). A template does not execute
+		# a declaration, it executes a command — and an image named inline, as a literal or
+		# as a `${VAR:-default}` fallback, was never inspected by any of it. This file's own
+		# header promises "no template executes a mutable tag"; until this sweep existed that
+		# was a documented contract with nothing enforcing it, and a moving tag shipped in
+		# exactly that position.
+		for _v in $VARS; do
+			# A template that READS a contract variable it never DECLARES runs whatever the
+			# inline fallback says, while the declaration sweep sees nothing to check.
+			if grep -q "\${$_v" "$REPO_ROOT/$_t" 2>/dev/null &&
+				! grep -Eq "^[[:space:]]*$_v:" "$REPO_ROOT/$_t" 2>/dev/null; then
+				_seen=$((_seen + 1))
+				fail "IMAGE_VAR_UNDECLARED — $_t reads \$$_v but never declares it, so the inline fallback is what actually executes, not the approved reference"
+			fi
+
+			_erepo=$(jq -r --arg v "$_v" '.images[$v].repository // ""' "$CONTRACT")
+			_eapproved=$(jq -r --arg v "$_v" '.images[$v].default_reference // ""' "$CONTRACT")
+			[ -n "$_erepo" ] || continue
+			_ere=$(printf '%s' "$_erepo" | sed 's/[.[\*^$]/\\&/g')
+			# Every reference to an approved repository ANYWHERE in the file — whole-line
+			# comments excluded, those are documentation — must be the approved reference.
+			while IFS= read -r _occ; do
+				[ -n "$_occ" ] || continue
+				_seen=$((_seen + 1))
+				[ "$_occ" = "$_eapproved" ] && continue
+				_otag=$(ref_tag "$_occ")
+				if [ -n "$_otag" ] && tag_is_mutable "$_otag"; then
+					fail "MUTABLE_TAG_EXECUTED — $_t executes '$_occ'; '$_otag' is a moving tag, so the scanner can change with no repository change and no review"
+				else
+					fail "IMAGE_DRIFT_EXECUTED — $_t executes '$_occ' but the approved reference for $_v is '$_eapproved'"
+				fi
+			done <<EOF
+$(grep -v '^[[:space:]]*#' "$REPO_ROOT/$_t" 2>/dev/null |
+	grep -oE "${_ere}(@sha256:[0-9a-f]+|:[A-Za-z0-9._-]+)?" 2>/dev/null | sort -u || true)
+EOF
+		done
 	done
 	if [ "$_seen" -eq 0 ]; then
 		fail "SWEEP_EMPTY — no scanner-image assignment was inspected in any declared template"
