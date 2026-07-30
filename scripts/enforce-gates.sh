@@ -262,9 +262,21 @@ _gates_json="$(dirname "$GATES_ENV_FILE")/sentinel-shield-gates.json"
 # The reconciliation below is what makes the key check AUTHORITATIVE — the lexical scan
 # accepts any SENTINEL_SHIELD_FAIL_ON_* / _PROJECT_* name, so without the resolver artifact a
 # typo like SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO is simply an unknown key nothing rejects.
-# Treating the artifact as optional therefore meant that DELETING or CORRUPTING it removed the
-# check entirely. For the enforcing modes it is now REQUIRED; report-only keeps the tolerance
-# because it certifies nothing.
+# Treating the artifact as optional therefore meant that CORRUPTING it removed the check
+# entirely, which is why a malformed artifact is refused below.
+#
+# ABSENT is a different case and is deliberately NOT refused, in any mode. `--format env` is a
+# supported resolution flow (asserted by tests/prod/288 and documented in
+# docs/regulated-dry-run.md), so an absent artifact means "the env-only flow", not "the
+# artifact was removed". Its key set is still validated — not by the reconciliation below,
+# which has nothing to compare against, but against the gate registry read out of
+# resolve-gates.sh itself, immediately below.
+#
+# What env-only does NOT get is the mode/value agreement check: nothing can detect an env file
+# whose recorded mode or gate values differ from the resolution it claims to come from,
+# because the other side of that comparison is the file that is missing. Callers who need that
+# assurance resolve with `--format all` — which is what every shipped template does.
+#
 # A MALFORMED artifact is never a reason to fall back to the env file alone: corrupting the
 # file would otherwise remove the reconciliation below.
 if [ -f "$_gates_json" ] && ! jq -e . "$_gates_json" >/dev/null 2>&1; then
