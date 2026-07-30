@@ -414,7 +414,7 @@ done
 # install its own INT/TERM/HUP trap and then clear it with `trap -`, so every mutation AFTER
 # the first rendered workflow ran with no rollback on interrupt.
 TW="$WORK/traps"; mkdir -p "$TW"
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/repo\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$TW/w.yml"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/repo\n  SENTINEL_SHIELD_REF: v1.0.0\n' > "$TW/w.yml"
 _traps=$(sh -c '
 	. "'"$ROOT"'/scripts/lib/source-config.sh"
 	trap "echo CALLER_INT" INT
@@ -431,7 +431,7 @@ check "the render leaves the caller INT/TERM handlers exactly as they were" "$_t
 SK="$WORK/skipped"; mkdir -p "$SK"
 sh "$ROOT/scripts/install-baseline.sh" --target "$SK" --profile laravel --apply \
 	--source-repository acme/shield >/dev/null 2>&1
-printf 'name: MINE\non: push\njobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/keep-me\n' \
+printf 'name: MINE\non: push\nenv:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/keep-me\n' \
 	> "$SK/.github/workflows/sentinel-shield.yml"
 sh "$ROOT/scripts/install-baseline.sh" --target "$SK" --profile laravel --apply \
 	--source-repository acme/shield >/dev/null 2>&1
@@ -470,7 +470,7 @@ _render() { # _render <file> -> exit code
 	sh -c '. "$0" 2>/dev/null; . "$1"; sc_render_workflow "$2" acme/shield v2.2.0 >/dev/null 2>&1; printf "%s" "$?"' \
 		"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$1"
 }
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/ok.yml"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n  SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/ok.yml"
 check "a complete template renders" "$(_render "$RC/ok.yml")" 0
 check "  the repository is the canonical value" \
 	"$(sh -c '. "$0" 2>/dev/null; . "$1"; sc_workflow_value "$2" SENTINEL_SHIELD_REPOSITORY' \
@@ -479,13 +479,13 @@ check "  the ref is the canonical value" \
 	"$(sh -c '. "$0" 2>/dev/null; . "$1"; sc_workflow_value "$2" SENTINEL_SHIELD_REF' \
 		"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$RC/ok.yml")" "v2.2.0"
 
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/no-repo.yml"
+printf 'env:\n  SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/no-repo.yml"
 check "a template with NO repository key is refused" "$(_render "$RC/no-repo.yml")" 1
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n' > "$RC/no-ref.yml"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n' > "$RC/no-ref.yml"
 check "a template with NO ref key is refused" "$(_render "$RC/no-ref.yml")" 1
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: a/b\n      SENTINEL_SHIELD_REPOSITORY: c/d\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/dup-repo.yml"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: a/b\n  SENTINEL_SHIELD_REPOSITORY: c/d\n  SENTINEL_SHIELD_REF: v1.0.0\n' > "$RC/dup-repo.yml"
 check "a DUPLICATE repository key is refused, not rewritten twice" "$(_render "$RC/dup-repo.yml")" 1
-printf 'jobs:\n  x:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: a/b\n      SENTINEL_SHIELD_REF: v1\n      SENTINEL_SHIELD_REF: v2\n' > "$RC/dup-ref.yml"
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: a/b\n  SENTINEL_SHIELD_REF: v1\n  SENTINEL_SHIELD_REF: v2\n' > "$RC/dup-ref.yml"
 check "a DUPLICATE ref key is refused" "$(_render "$RC/dup-ref.yml")" 1
 # A refused render must leave the file exactly as it was.
 cp "$RC/dup-repo.yml" "$RC/dup-repo.before"
@@ -500,6 +500,44 @@ if ls "$RC"/*.sc.tmp.* >/dev/null 2>&1; then
 else
 	pass "  and leaves no staging file behind"
 fi
+
+
+# ---------------------------------------------------------------------------
+# Cardinality is SEMANTIC, not textual: only the workflow-level env: mapping counts.
+# ---------------------------------------------------------------------------
+# Counting every indentation meant a key nested under a job/step env: satisfied the
+# "exactly one" precondition while the top-level configuration was absent, an unrelated
+# nested key could be rewritten as though it were the canonical setting, and one canonical
+# key plus one nested key was rejected as a duplicate.
+SC="$WORK/scope"; mkdir -p "$SC"
+_val_at() { sh -c '. "$0" 2>/dev/null; . "$1"; sc_workflow_value "$2" "$3"' \
+	"$ROOT/scripts/lib/sentinel-shield-common.sh" "$ROOT/scripts/lib/source-config.sh" "$2" "$3"; }
+
+# 1. canonical top-level keys only -> success
+printf 'name: w\nenv:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n  SENTINEL_SHIELD_REF: v1.0.0\njobs:\n  b:\n    runs-on: ubuntu-latest\n' > "$SC/canonical.yml"
+check "canonical top-level keys render" "$(_render "$SC/canonical.yml")" 0
+
+# 2. keys ONLY inside a job/step env -> fail (the top-level configuration is absent)
+printf 'name: w\njobs:\n  b:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n      SENTINEL_SHIELD_REF: v1.0.0\n' > "$SC/nested-only.yml"
+check "keys only inside a job env: are NOT the source configuration" "$(_render "$SC/nested-only.yml")" 1
+
+# 3. canonical key plus a same-named nested key -> canonical updated, nested untouched
+printf 'name: w\nenv:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n  SENTINEL_SHIELD_REF: v1.0.0\njobs:\n  b:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: do/not-touch\n' > "$SC/both.yml"
+check "a canonical key alongside a nested one still renders" "$(_render "$SC/both.yml")" 0
+check "  the canonical value is updated" \
+	"$(grep -cE '^  SENTINEL_SHIELD_REPOSITORY: acme/shield$' "$SC/both.yml")" "1"
+check "  and the nested value is left exactly as it was" \
+	"$(grep -cE '^      SENTINEL_SHIELD_REPOSITORY: do/not-touch$' "$SC/both.yml")" "1"
+
+# 4. a same-named key under an unrelated mapping, and inside a comment, is ignored
+printf 'name: w\nenv:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/r\n  SENTINEL_SHIELD_REF: v1.0.0\n# SENTINEL_SHIELD_REPOSITORY: commented/out\nother:\n  SENTINEL_SHIELD_REPOSITORY: unrelated/mapping\n' > "$SC/unrelated.yml"
+check "an unrelated mapping and a comment do not affect cardinality" "$(_render "$SC/unrelated.yml")" 0
+check "  the unrelated mapping is untouched" \
+	"$(grep -cE '^  SENTINEL_SHIELD_REPOSITORY: unrelated/mapping$' "$SC/unrelated.yml")" "1"
+
+# 5. duplicate DIRECT children of the canonical mapping -> fail
+printf 'name: w\nenv:\n  SENTINEL_SHIELD_REPOSITORY: a/b\n  SENTINEL_SHIELD_REPOSITORY: c/d\n  SENTINEL_SHIELD_REF: v1.0.0\n' > "$SC/dup-direct.yml"
+check "duplicate direct children of the canonical mapping are refused" "$(_render "$SC/dup-direct.yml")" 1
 
 
 printf '\n'
