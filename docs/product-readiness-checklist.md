@@ -22,8 +22,11 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 - [x] `done` — Gate enforcer (findings → pass/fail/error), self-tested (`negative`, `fallback`).
 - [x] `done` — Summary builder (raw → contract) with self-check.
 - [x] `done` — Fallback policy (fail-closed outside report-only), self-tested.
-- [ ] `partial` — Finding-scoped suppression: implemented for `unsafe_docker` only; other count
-  gates support broad `scope:gate` only.
+- [x] `done` — Finding-scoped suppression: `unsafe_docker` and `medium_vulnerabilities`, matched
+  on `rule_ids`, `files`, `components`, `fingerprints` and `source`/`sources`. Values WITHIN a
+  dimension are any-match; dimensions CROSS-GATE, and a dimension that matches nothing vetoes the
+  record rather than being ignored. Remaining count gates still support broad `scope:gate` only.
+  See [`accepted-risk-suppression.md`](accepted-risk-suppression.md).
 
 ## Profile install/sync
 - [x] `done` — Manifest-driven installer, dry-run default, hard protections.
@@ -57,8 +60,13 @@ evidence (a self-test suite, a cited consumer run, or a shipped artifact). No it
 
 ## Accepted-risk governance
 - [x] `done` — Schema, approval/expiry/owner enforcement, never-suppressible gates.
-- [x] `done` — Finding-scoped suppression for `unsafe_docker` (self-test `finding-scope`).
-- [ ] `partial` — Components/fingerprints reserved in schema, not enforced.
+- [x] `done` — Finding-scoped suppression for `unsafe_docker` and `medium_vulnerabilities`
+  (self-test `finding-scope`; `tests/prod/286-finding-scoped-suppression.sh`).
+- [x] `done` — Components and fingerprints are ENFORCED matching dimensions, not reserved
+  schema fields. `fingerprints` uses the collision-safe `ss-fp/2` encoding; note that for
+  Composer and npm the version component is a RANGE string recorded verbatim, so a fingerprint
+  stops matching when a scanner-database refresh changes the advertised range — prefer
+  `components` plus `rule_ids` for those two sources.
 
 ## Release process
 - [x] `done` — Documented release gate ([`sentinel-shield-release-process.md`](sentinel-shield-release-process.md)).
