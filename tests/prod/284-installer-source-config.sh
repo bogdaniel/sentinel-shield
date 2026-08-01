@@ -595,6 +595,44 @@ printf 'name: w\nenv:\n  SENTINEL_SHIELD_REPOSITORY: a/b\n  SENTINEL_SHIELD_REPO
 check "duplicate direct children of the canonical mapping are refused" "$(_render "$SC/dup-direct.yml")" 1
 
 
+# --- the accessor must read the CANONICAL assignment, not the first one ------
+# `grep -E "^[[:space:]]*KEY:" | head -n1` matched at ANY indentation, so a KEY inside a job or
+# step env block won over the real top-level value. Everything built on the accessor inherited
+# that: the placeholder preflight would clear a workflow whose canonical value is a placeholder
+# on the strength of a nested one, or condemn a correctly configured file. The renderer has
+# always been scoped to direct children of the top-level `env:` mapping; the reader now is too,
+# so the two cannot disagree about which assignment they mean.
+AC="$WORK/accessor"; mkdir -p "$AC"
+_val() { sh -c '. "'"$ROOT"'/scripts/lib/source-config.sh"; sc_workflow_value "'"$1"'" '"$2"''; }
+
+printf 'name: x\njobs:\n  build:\n    steps:\n      - env:\n          SENTINEL_SHIELD_REPOSITORY: attacker/evil\nenv:\n  SENTINEL_SHIELD_REPOSITORY: acme/real\n' > "$AC/nested-first.yml"
+check "a nested env value does not win over the canonical one" \
+	"$(_val "$AC/nested-first.yml" SENTINEL_SHIELD_REPOSITORY)" "acme/real"
+
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: acme/real\njobs:\n  b:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: attacker/evil\n' > "$AC/canonical-first.yml"
+check "  nor when it appears after the canonical one" \
+	"$(_val "$AC/canonical-first.yml" SENTINEL_SHIELD_REPOSITORY)" "acme/real"
+
+printf 'jobs:\n  b:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: attacker/evil\n' > "$AC/only-nested.yml"
+check "  and a file with ONLY a nested value has no canonical value" \
+	"$(_val "$AC/only-nested.yml" SENTINEL_SHIELD_REPOSITORY)" ""
+
+printf 'env:\n  SENTINEL_SHIELD_REPOSITORY: "acme/real"\n' > "$AC/quoted.yml"
+check "  a quoted canonical value is unquoted" \
+	"$(_val "$AC/quoted.yml" SENTINEL_SHIELD_REPOSITORY)" "acme/real"
+
+printf 'env:\n  SENTINEL_SHIELD_REF: v2.2.0   # pin before production\n' > "$AC/comment.yml"
+check "  a trailing comment is stripped" \
+	"$(_val "$AC/comment.yml" SENTINEL_SHIELD_REF)" "v2.2.0"
+
+# The consequence that matters: the placeholder preflight must judge the CANONICAL value.
+printf 'jobs:\n  b:\n    env:\n      SENTINEL_SHIELD_REPOSITORY: acme/real\nenv:\n  SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield\n' > "$AC/masked.yml"
+if ( . "$ROOT/scripts/lib/source-config.sh"; sc_has_placeholder "$AC/masked.yml" ); then
+	pass "a canonical placeholder is still caught when a nested value looks valid"
+else
+	fail "a nested valid value masked a canonical PLACEHOLDER — the workflow cannot check the engine out"
+fi
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '284-installer-source-config: ALL CHECKS PASSED\n'

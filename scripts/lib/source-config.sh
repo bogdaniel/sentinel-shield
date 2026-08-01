@@ -138,11 +138,37 @@ sc_derive_repository() {
 	sc_normalize_repository "$_sc_url" || return 0
 }
 
-# sc_workflow_value <file> <KEY> — echo the value currently assigned to a workflow env key.
+# sc_workflow_value <file> <KEY> — the value assigned to KEY in the workflow's CANONICAL
+# top-level `env:` mapping.
+#
+# It used to be `grep -E "^[[:space:]]*KEY:" | head -n1` — the first match at ANY indentation.
+# A `KEY:` inside a job or step env block therefore won, even with the real top-level value
+# present further down the file, and every caller inherited that: the placeholder preflight
+# would clear a workflow whose canonical value is still a placeholder (or condemn one whose
+# canonical value is fine) on the strength of a nested one.
+#
+# Scoped exactly like sc_render_workflow's cardinality count and rewrite: the top-level `env:`
+# mapping starts at column 0, and only its DIRECT CHILDREN — indented exactly two spaces —
+# are the canonical configuration. Reader and writer therefore cannot disagree about which
+# assignment they mean.
 sc_workflow_value() {
 	[ -f "${1:-}" ] || return 0
-	grep -E "^[[:space:]]*${2}:" "$1" 2>/dev/null | head -n1 |
-		sed -E "s/^[[:space:]]*${2}:[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
+	awk -v k="$2" '
+		BEGIN { inenv = 0 }
+		/^[ \t]*#/ { next }
+		/^env:[ \t]*$/ { inenv = 1; next }
+		{
+			if (inenv) {
+				if ($0 ~ /^  [^ \t]/) {
+					if (index($0, "  " k ":") == 1) { print substr($0, length(k) + 4); exit }
+					next
+				}
+				if ($0 ~ /^   / || $0 ~ /^[ \t]*$/) next
+				inenv = 0
+			}
+		}
+	' "$1" 2>/dev/null |
+		sed -E "s/^[[:space:]]*//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//; s/^\"(.*)\"$/\1/; s/^'(.*)'$/\1/"
 }
 
 # sc__restore_traps — put the caller INT/TERM/HUP handlers back exactly as they were.
