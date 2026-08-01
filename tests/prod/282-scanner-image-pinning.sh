@@ -212,8 +212,12 @@ check "  and every default_reference is a digest reference" \
 # declaration sweep. The validator's header has always promised "no template executes a
 # mutable tag"; that promise had nothing enforcing it, and a moving tag shipped in exactly
 # that position. These fixtures prove the validator now sees the executed reference.
-EX="$TMPROOT/exec"; mkdir -p "$EX"
-cp -R "$ROOT/config" "$ROOT/templates" "$ROOT/examples" "$EX/" 2>/dev/null || true
+EX="$TMPROOT/exec"
+seed_ex() {
+	rm -rf "$EX"; mkdir -p "$EX"
+	cp -R "$ROOT/config" "$ROOT/templates" "$ROOT/examples" "$EX/" 2>/dev/null || true
+}
+seed_ex
 _victim="$EX/templates/workflows/sentinel-shield.yml"
 
 check "the real tree executes no unapproved image reference" "$(rc templates --repo-root "$EX")" "0"
@@ -229,11 +233,18 @@ check "  and the run fails closed" "$(rc templates --repo-root "$EX")" "1"
 # (b) a pinned-but-unapproved reference executed inline
 sed 's|zricethezav/gitleaks:latest|zricethezav/gitleaks:v8.18.4|' "$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
 _out=$(sh "$VALIDATOR" templates --repo-root "$EX" 2>&1 || true)
-check "an inline reference that is not the approved digest is detected" \
-	"$(printf '%s' "$_out" | grep -c 'IMAGE_DRIFT_EXECUTED' || true)" "1"
+# Both sweeps legitimately report this one: the reference sweep sees the occurrence of an
+# approved repository at the wrong version, and the operand sweep sees the executed operand.
+# Two reports of one defect is noise, not a wrong answer — assert detection, not a count.
+_ndrift=$(printf '%s' "$_out" | grep -c 'IMAGE_DRIFT_EXECUTED' || true)
+if [ "${_ndrift:-0}" -ge 1 ]; then
+	pass "an inline reference that is not the approved digest is detected"
+else
+	fail "an inline reference that is not the approved digest was NOT detected"
+fi
 
 # (c) reading a contract variable the template never declares: the fallback is what runs
-rm -rf "$EX/templates" && cp -R "$ROOT/templates" "$EX/templates"
+seed_ex
 grep -v '^  SENTINEL_SHIELD_GITLEAKS_IMAGE:' "$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
 _out=$(sh "$VALIDATOR" templates --repo-root "$EX" 2>&1 || true)
 check "reading an undeclared image variable is refused" \
@@ -243,7 +254,7 @@ check "reading an undeclared image variable is refused" \
 # `[ … ] && pass` as a function's last command makes its exit status the test's, so under
 # `set -eu` a missing template killed the script mid-run: the summary never printed and, in
 # `all` mode, the template sweep never ran at all. The run reported less than it had found.
-rm -rf "$EX/templates" && cp -R "$ROOT/templates" "$EX/templates"
+seed_ex
 rm -f "$EX/templates/workflows/sentinel-shield-main.yml"
 _out=$(sh "$VALIDATOR" all --repo-root "$EX" 2>&1 || true)
 check "a missing declared template still reaches the template sweep" \
@@ -261,6 +272,56 @@ check "ref_tag still reads the tag on a ported registry" \
 	"$(printf '%s\nref_tag "registry.example.com:5000/team/img:v1.2.3"\n' "$_rt" | sh)" "v1.2.3"
 check "ref_tag reports no tag for a digest reference" \
 	"$(printf '%s\nref_tag "repo/img@sha256:abc"\n' "$_rt" | sh)" ""
+
+# --- the OPERAND sweep: an allowlist has to reject the unknown ---------------
+# Both sweeps above start FROM the approved contract and look for those repositories in the
+# file. That can only find drift in an image already approved — an entirely unknown image has
+# no repository pattern to search for, so `docker run … evilcorp/backdoor:latest` in a shipped
+# template passed cleanly. The operand sweep runs the other way: every image the template
+# executes must BE an approved reference, so unknown is a violation.
+seed_ex
+_victim="$EX/templates/workflows/sentinel-shield.yml"
+
+sed 's|docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE}"|docker run --rm -v "$PWD:/repo" evilcorp/backdoor:latest|' \
+	"$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
+_out=$(sh "$VALIDATOR" templates --repo-root "$EX" 2>&1 || true)
+check "an image that is in no contract entry at all is refused" \
+	"$(printf '%s' "$_out" | grep -c 'IMAGE_NOT_APPROVED' || true)" "1"
+check "  and the run fails closed" "$(rc templates --repo-root "$EX")" "1"
+
+seed_ex
+sed 's|"${SENTINEL_SHIELD_GITLEAKS_IMAGE}"|"${MY_OWN_IMAGE}"|' "$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
+_out=$(sh "$VALIDATOR" templates --repo-root "$EX" 2>&1 || true)
+check "an image chosen by a variable outside the contract is refused" \
+	"$(printf '%s' "$_out" | grep -c 'IMAGE_VAR_UNKNOWN' || true)" "1"
+
+# A job/service `container: image:` executes just as surely as `docker run`.
+seed_ex
+awk '/^jobs:/ { print; print "  rogue:"; print "    container:"; print "      image: evilcorp/rogue:latest"; next } { print }' \
+	"$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
+_out=$(sh "$VALIDATOR" templates --repo-root "$EX" 2>&1 || true)
+check "an unapproved job container image is refused" \
+	"$(printf '%s' "$_out" | grep -c 'IMAGE_NOT_APPROVED' || true)" "1"
+
+# `repo:tag@sha256:X` is exactly as immutable as `repo@sha256:X` — the digest is what the
+# daemon resolves — so it must be ACCEPTED, not reported as an unapproved spelling.
+# `repo:tag@sha256:X` must be ACCEPTED: the digest is what the daemon resolves, so the
+# reference is immutable and the tag is a readability annotation. Both sweeps have to
+# understand it — the reference sweep's alternation used to stop at the tag and never consume
+# the digest, reporting a correctly pinned combined reference as drift. Asserted by rewriting
+# a shipped digest pin into the combined form, not just by the real tree happening to pass.
+seed_ex
+check "the real tree still passes" "$(rc templates --repo-root "$EX")" "0"
+_gl=$(jq -r '.images.SENTINEL_SHIELD_GITLEAKS_IMAGE.default_reference' "$CONTRACT")
+_glrepo=${_gl%%@*}; _gldig=${_gl#*@}
+sed "s|${_gl}|${_glrepo}:v8.18.4@${_gldig}|g" "$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
+check "  and repo:tag@digest is accepted as the same immutable reference" \
+	"$(rc templates --repo-root "$EX")" "0"
+# …while tag-only, with the digest removed, is still refused.
+seed_ex
+sed "s|${_gl}|${_glrepo}:v8.18.4|g" "$_victim" > "$_victim.new" && mv "$_victim.new" "$_victim"
+check "  but the same reference WITHOUT the digest is refused" \
+	"$(rc templates --repo-root "$EX")" "1"
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then

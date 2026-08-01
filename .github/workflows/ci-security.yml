@@ -424,7 +424,7 @@ jobs:
       - name: actionlint (JSON → reports/raw/actionlint.json)
         run: |
           set +e
-          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -format '{{json .}}' \
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -format '{{json .}}' \
             > reports/raw/actionlint.json 2> reports/raw/actionlint.err
           rc=$?
           set -e

@@ -108,6 +108,65 @@ tag_is_mutable() {
 	return 1
 }
 
+APPROVED_REFS=$(jq -r '.images[].default_reference' "$CONTRACT" 2>/dev/null || printf '')
+
+# image_operands <file> — every image a workflow actually executes.
+#
+# Two shapes carry one: the operand of `docker run` (after its flags), and a job/service
+# `image:` key. Comment lines are documentation and are skipped. Quotes are stripped so
+# `"${VAR}"` and `${VAR}` are the same operand.
+image_operands() {
+	grep -v '^[[:space:]]*#' "$1" 2>/dev/null | awk '
+		BEGIN { q = sprintf("%c", 39) }          # a literal single quote, unquotable inline
+		function emit(tok) {
+			gsub("^[\"" q "]+", "", tok)
+			gsub("[\"" q "]+$", "", tok)
+			sub(/\\$/, "", tok)
+			if (tok != "" && tok !~ /^\$\{\{/) print tok
+		}
+		# a job or service `image:` key
+		/^[[:space:]]*image:[[:space:]]*[^[:space:]]/ {
+			line = $0
+			sub(/^[[:space:]]*image:[[:space:]]*/, "", line)
+			sub(/[[:space:]]*#.*$/, "", line)
+			emit(line); next
+		}
+		# the operand of `docker run`, skipping flags and the values they take
+		/docker[[:space:]]+run/ {
+			n = split($0, t, /[[:space:]]+/)
+			start = 0
+			for (i = 1; i < n; i++) if (t[i] == "docker" && t[i+1] == "run") { start = i + 2; break }
+			if (!start) next
+			for (i = start; i <= n; i++) {
+				tok = t[i]
+				if (tok == "" || tok == "\\") continue
+				# A BARE `$VAR` (no braces) is a shell expansion of flags in these templates
+				# (e.g. `$MOUNTS` holding several -v pairs), not an image. Skip it and keep
+				# looking. If one ever did hold the image, the token after it would be read
+				# instead and reported as unapproved — noisy, but the fail-closed direction.
+				if (substr(tok, 1, 1) == "$" && substr(tok, 2, 1) != "{") continue
+				if (substr(tok, 1, 1) == "-") {
+					if (tok ~ /^(-v|-w|-e|-u|-p|--volume|--workdir|--env|--user|--publish|--entrypoint|--name|--network|--mount)$/) i++
+					continue
+				}
+				emit(tok); break
+			}
+		}' | sort -u
+}
+
+# ref_canonical <image-ref> — the comparable form of a reference.
+#
+# `repo:tag@sha256:X` and `repo@sha256:X` are the SAME immutable reference: when both a tag and
+# a digest are present the daemon resolves the digest, and the tag is a readability annotation.
+# Comparing the spellings literally reported a correctly pinned combined reference as drift, so
+# every comparison in this file goes through here rather than keeping three copies of the rule.
+ref_canonical() {
+	case "$1" in
+		*:*@sha256:*) printf '%s@%s' "${1%%:*}" "${1#*@}" ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+
 # ref_tag <image-ref> — the tag part of repo:tag, empty for a digest ref or a bare repo.
 #
 # The tag separator is only a `:` that appears AFTER the last `/`. A registry host may carry
@@ -197,7 +256,7 @@ check_templates() {
 				fail "MUTABLE_TAG_SHIPPED — $_t executes '$_val' by default; '$_tag' is a moving tag (the scanner can change with no repository change)"
 				continue
 			fi
-			if [ "$_val" = "$_approved" ]; then
+			if [ "$(ref_canonical "$_val")" = "$_approved" ]; then
 				pass "$_t: $_var pins the approved reference"
 			else
 				fail "IMAGE_DRIFT — $_t sets $_var='$_val' but the approved reference is '$_approved'"
@@ -231,7 +290,7 @@ EOF
 			while IFS= read -r _occ; do
 				[ -n "$_occ" ] || continue
 				_seen=$((_seen + 1))
-				[ "$_occ" = "$_eapproved" ] && continue
+				[ "$(ref_canonical "$_occ")" = "$_eapproved" ] && continue
 				_otag=$(ref_tag "$_occ")
 				if [ -n "$_otag" ] && tag_is_mutable "$_otag"; then
 					fail "MUTABLE_TAG_EXECUTED — $_t executes '$_occ'; '$_otag' is a moving tag, so the scanner can change with no repository change and no review"
@@ -240,9 +299,60 @@ EOF
 				fi
 			done <<EOF
 $(grep -v '^[[:space:]]*#' "$REPO_ROOT/$_t" 2>/dev/null |
-	grep -oE "${_ere}(@sha256:[0-9a-f]+|:[A-Za-z0-9._-]+)?" 2>/dev/null | sort -u || true)
+	grep -oE "${_ere}(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]+)?" 2>/dev/null | sort -u || true)
 EOF
 		done
+
+		# ---- OPERAND sweep: what is actually being RUN, whatever it is ------------------
+		# Everything above starts from the approved contract and looks for those repositories
+		# in the file. That can only ever find drift in an image we ALREADY approved — an
+		# entirely unknown image has no repository pattern to search for, so
+		# `docker run … evilcorp/backdoor:latest` in a shipped template passed cleanly.
+		#
+		# This sweep runs the other way round: take every image OPERAND the template executes
+		# and require it to be an approved reference. Unknown is a violation, which is the
+		# only way an allowlist can actually mean something.
+		while IFS= read -r _op; do
+			[ -n "$_op" ] || continue
+			# `${VAR}` / `${VAR:-default}`: the variable itself is checked by the declaration
+			# and reference sweeps above; here we check the DEFAULT, and that the variable is
+			# a contract variable at all rather than an arbitrary name.
+			case "$_op" in
+				'${'*)
+					_opv=${_op#'${'}; _opv=${_opv%\}}
+					case "$_opv" in
+						*:-*) _opd=${_opv#*:-}; _opv=${_opv%%:-*} ;;
+						*) _opd="" ;;
+					esac
+					if ! printf '%s\n' "$VARS" | grep -qxF "$_opv"; then
+						_seen=$((_seen + 1))
+						fail "IMAGE_VAR_UNKNOWN — $_t executes an image from \$$_opv, which is not a variable in the approved scanner-image contract; an image chosen by an unrecognised variable is outside the allowlist entirely"
+						continue
+					fi
+					[ -n "$_opd" ] || continue
+					_opa=$(jq -r --arg v "$_opv" '.images[$v].default_reference // ""' "$CONTRACT")
+					_seen=$((_seen + 1))
+					[ "$_opd" = "$_opa" ] && continue
+					fail "IMAGE_DRIFT_EXECUTED — $_t runs \${$_opv:-$_opd}, but the approved reference for $_opv is '$_opa'"
+					continue ;;
+			esac
+			# A literal operand. It must be one of the approved references.
+			#
+			# `repo:tag@sha256:X` is accepted as equivalent to `repo@sha256:X`: when both are
+			# present the DIGEST is what the daemon resolves, so the reference is immutable
+			# and the tag is a readability annotation. Normalise before comparing rather than
+			# rejecting a spelling that is exactly as strong.
+			_seen=$((_seen + 1))
+			if printf '%s\n' "$APPROVED_REFS" | grep -qxF "$(ref_canonical "$_op")"; then continue; fi
+			_optag=$(ref_tag "$_op")
+			if [ -n "$_optag" ] && tag_is_mutable "$_optag"; then
+				fail "IMAGE_NOT_APPROVED — $_t executes '$_op', which is not in the approved scanner-image contract at all (and '$_optag' is a moving tag)"
+			else
+				fail "IMAGE_NOT_APPROVED — $_t executes '$_op', which is not in the approved scanner-image contract at all"
+			fi
+		done <<EOF
+$(image_operands "$REPO_ROOT/$_t")
+EOF
 	done
 	if [ "$_seen" -eq 0 ]; then
 		fail "SWEEP_EMPTY — no scanner-image assignment was inspected in any declared template"
