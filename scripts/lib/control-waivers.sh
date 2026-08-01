@@ -447,16 +447,47 @@ EOF
 cw_applied_records() {
 	_af="${1:-}"; _at="${2:-}"
 	_at=$(cw__resolve_today "$_at") || return 2
-	cw_validate_file "$_af" "" "$_at" || return 2
-	[ -n "$_af" ] && [ -f "$_af" ] && [ -s "$_af" ] || return 0
-	jq -r --arg today "$_at" '
+	[ -n "$_af" ] && [ -f "$_af" ] && [ -s "$_af" ] || { cw_validate_file "$_af" "" "$_at" || return 2; return 0; }
+
+	# Validate and USE the same bytes.
+	#
+	# This used to validate the PATH and then re-open that same path to extract the records,
+	# so the file could be replaced in between: the waivers actually applied were never the
+	# waivers that passed validation. Every governance property this file enforces — approval,
+	# bounded validity, supersession, closed objects — is decided on the first read and then
+	# discarded. Swapping in a file with extra waivers between the two opens suppressed
+	# controls that nothing had approved.
+	#
+	# The content is snapshotted ONCE into a private temp file, and both the validation and
+	# the extraction run against that snapshot. `[ -f ]` above already refused a FIFO or a
+	# directory, so the copy cannot block on something that is not a regular file.
+	_asnap=$(mktemp) || { log_error "control-waivers: could not create a temporary file"; return 2; }
+	if ! cat -- "$_af" > "$_asnap" 2>/dev/null; then
+		rm -f -- "$_asnap"
+		log_error "control-waivers: could not read $_af"
+		return 2
+	fi
+	if ! cw_validate_file "$_asnap" "" "$_at"; then
+		rm -f -- "$_asnap"
+		return 2
+	fi
+	# No `|| true`: a jq failure here means the records could not be extracted from a file that
+	# just validated, which is a broken read, not an empty waiver set. Returning "no waivers
+	# apply" for it would be the fail-open answer dressed as the safe one.
+	if ! _aout=$(jq -r --arg today "$_at" '
 		[ .waivers[] | .supersedes? // empty ] as $superseded
 		| .waivers[]
 		| . as $w
 		| select([ $superseded[] | select(. == $w.id) ] | length == 0)
 		| select($w.created_at <= $today and $w.expires_at >= $today)
 		| [ .id, .tool, .owner, .approved_by, .created_at, .expires_at, .tracking_issue ] | @tsv' \
-		"$_af" 2>/dev/null || true
+		"$_asnap" 2>/dev/null); then
+		rm -f -- "$_asnap"
+		log_error "control-waivers: could not extract records from $_af after it validated"
+		return 2
+	fi
+	rm -f -- "$_asnap"
+	[ -z "$_aout" ] || printf '%s\n' "$_aout"
 }
 
 # cw_valid_keys <file> [today] — print newline-delimited tool keys whose waiver APPLIES.

@@ -336,6 +336,41 @@ case "$_msg" in
 esac
 
 
+# --- validation and use must see the SAME bytes ------------------------------
+# cw_applied_records validated the PATH and then re-opened that same path to extract the
+# records, so a file replaced in between was never the file that passed validation. Every
+# governance property here — approval, bounded validity, supersession, closed objects — is
+# decided on the first read and then discarded, and waivers nobody approved could suppress
+# controls. The window is closed by snapshotting the content once and validating and querying
+# that snapshot.
+#
+# The swap is simulated by shadowing cw_validate_file, which puts the replacement in exactly
+# the window the old code left open.
+RW=$(mktemp -d)
+_rec() {
+	printf '{"id":"%s","tool":"%s","justification":"j","owner":"sec@example.com","approved_by":"lead@example.com","created_at":"%s","expires_at":"%s","tracking_issue":"https://example.com/1"}' \
+		"$1" "$2" "$3" "$4"
+}
+_c0=2026-07-01; _e0=2026-09-01; _tday=2026-07-15
+printf '{"version":"2","waivers":[%s]}\n' "$(_rec CW-0001 gitleaks "$_c0" "$_e0")" > "$RW/wv.json"
+printf '{"version":"2","waivers":[%s,%s]}\n' "$(_rec CW-0001 gitleaks "$_c0" "$_e0")" "$(_rec CW-9999 secrets "$_c0" "$_e0")" > "$RW/evil.json"
+
+_race=$(sh -c '
+	. "'"$ROOT"'/scripts/lib/control-waivers.sh"
+	cw_validate_file() { cp -- "'"$RW"'/evil.json" "'"$RW"'/wv.json"; return 0; }
+	cw_applied_records "'"$RW"'/wv.json" '"$_tday"' | cut -f2 | sort | tr "\n" " "
+' 2>/dev/null || true)
+case "$_race" in
+	*secrets*) fail "a waiver swapped in after validation was APPLIED ([$_race]) — validated one file, used another" ;;
+	*) pass "a waiver swapped in after validation is not applied ([$_race])" ;;
+esac
+# And the ordinary path still returns the approved waiver. Re-seed first: the race probe above
+# deliberately overwrote wv.json with the swapped file, which is the point of it.
+printf '{"version":"2","waivers":[%s]}\n' "$(_rec CW-0001 gitleaks "$_c0" "$_e0")" > "$RW/wv.json"
+_ok=$(sh -c '. "'"$ROOT"'/scripts/lib/control-waivers.sh"; cw_applied_records "'"$RW"'/wv.json" '"$_tday"' | cut -f2 | tr "\n" " "' 2>/dev/null || true)
+check "the approved waiver still applies normally" "$_ok" "gitleaks "
+rm -rf -- "$RW"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '293-control-waiver-authority: ALL CHECKS PASSED\n'
