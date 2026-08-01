@@ -365,8 +365,20 @@ jobs:
             # An absent field therefore means the bypasses could not be inspected — which is
             # exactly the state this check exists to rule out.
             _has_bypass_field=$(printf '%s' "$DET" | jq -r 'has("bypass_actors")' 2>/dev/null || printf 'false')
-            [ "$_has_bypass_field" = "true" ] \
-              || fail "tag ruleset $_id does not expose 'bypass_actors' to this token. GitHub omits that field without write access to the ruleset, so the bypasses CANNOT be inspected — this is unproven protection, not an absence of bypasses. Grant the publisher permission to read the ruleset, or publish from a context that can."
+            if [ "$_has_bypass_field" != "true" ]; then
+              # A CREDENTIAL problem, not a policy violation — and saying so matters. An
+              # operator who reads "tag protection unproven" as "this repository is
+              # misconfigured" will go and change ruleset settings that were already correct.
+              # Name the cause first, then fail.
+              echo "::error::TAG_RULESET_TOKEN_UNDERPRIVILEGED"
+              echo "::error::  The SENTINEL_SHIELD_RULESET_TOKEN in use cannot see 'bypass_actors' on"
+              echo "::error::  ruleset $_id. GitHub omits that field unless the caller has ruleset write"
+              echo "::error::  access, so this says NOTHING about how the repository is configured: the"
+              echo "::error::  rules may be correct and simply invisible to this credential."
+              echo "::error::  Grant the token Administration: read (a GitHub App installation token, or"
+              echo "::error::  a PAT with that scope) and re-run. Do NOT change the ruleset in response."
+              fail "the bypass actors of tag ruleset $_id could not be inspected with the supplied credential; unproven protection is not proven protection"
+            fi
             _always=$(printf '%s' "$DET" | jq -r '
               [ (.bypass_actors // [])[] | select((.bypass_mode // "") == "always")
                 | "\(.actor_type // "?"):\(.actor_id // "?")" ] | join(" ")' 2>/dev/null || printf 'error')

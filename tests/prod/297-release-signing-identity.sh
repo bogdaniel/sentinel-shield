@@ -411,7 +411,13 @@ check "a ruleset without an update restriction is refused" "$(rs "$_LIST" "$_d")
 # must mean "could not be proven", never "there are no bypasses".
 _d=$(printf '%s' "$_ok" | sed 's/,"bypass_actors":\[\]//')
 check "an ABSENT bypass_actors field is refused, not read as empty" "$(rs "$_LIST" "$_d")" 1
-contains "  explaining that the bypasses could not be inspected" "$(cat "$WORK/rslog")" "CANNOT be inspected"
+contains "  explaining that the bypasses could not be inspected" "$(cat "$WORK/rslog")" "could not be inspected"
+# A missing/underprivileged CREDENTIAL and a genuinely bypassable ruleset both stop publication,
+# but they need different actions. An operator who reads "tag protection unproven" as "this
+# repository is misconfigured" will change ruleset settings that were already correct, so the
+# credential case names itself and says explicitly not to.
+contains "  named as a credential problem, not a policy violation" "$(cat "$WORK/rslog")" "TAG_RULESET_TOKEN_UNDERPRIVILEGED"
+contains "  and tells the operator NOT to change the ruleset" "$(cat "$WORK/rslog")" "Do NOT change the ruleset"
 
 # An always-bypass defeats the protection during the publication interval.
 for _actor in '{"actor_type":"OrganizationAdmin","actor_id":1,"bypass_mode":"always"}' \
