@@ -214,7 +214,29 @@ for _p in $PROFILES; do
 				if [ -n "$_runner" ] && [ -f "$REPO_ROOT/$_runner" ]; then
 					pass "$_p/$_s/$_v/$_k: runner-only tool ($_runner), no report contract"
 				elif [ -z "$_runner" ]; then
-					pass "$_p/$_s/$_v/$_k: declares neither runner nor report (nothing to enforce)"
+					# No report and no runner. This branch is only reached for a tool the
+					# profile marks REQUIRED and SELECTS at this stage, so "nothing to enforce"
+					# was the wrong conclusion: it certified a required control that nothing can
+					# produce, run or verify — a declaration with no implementation, reported as
+					# satisfied. An absent check must never read as a passing one.
+					#
+					# There IS one legitimate shape: a PRECONDITION tool, `category: setup` with
+					# an `executable` list, whose contract is "this executable exists" and is
+					# verified by run-tool-plan.sh. An `alternatives` group is enforceable for
+					# the same reason — the group, not this key, carries the evidence. Both are
+					# named explicitly rather than covered by silence.
+					_exec_n=$(printf '%s' "$_eff" | jq -r --arg k "$_k" '(.tools[$k].executable // []) | length')
+					_alt_n=$(printf '%s' "$_eff" | jq -r --arg k "$_k" '(.tools[$k].alternatives // []) | length')
+					_cat=$(printf '%s' "$_eff" | jq -r --arg k "$_k" '.tools[$k].category // ""')
+					case "$_exec_n" in '' | *[!0-9]*) _exec_n=0 ;; esac
+					case "$_alt_n" in '' | *[!0-9]*) _alt_n=0 ;; esac
+					if [ "$_exec_n" -gt 0 ]; then
+						pass "$_p/$_s/$_v/$_k: precondition tool (category=${_cat:-unset}), enforced as an executable contract ($_exec_n candidate(s))"
+					elif [ "$_alt_n" -gt 0 ]; then
+						pass "$_p/$_s/$_v/$_k: satisfied through its alternatives group ($_alt_n member(s))"
+					else
+						fail "$_p/$_s/$_v/$_k: REQUIRED and selected at $_s, but declares no report, no runner, no executable and no alternatives — nothing can produce, run or verify it, so the requirement can neither be met nor violated"
+					fi
 				else
 					fail "$_p/$_s/$_v/$_k: declares runner '$_runner' which does not exist"
 				fi

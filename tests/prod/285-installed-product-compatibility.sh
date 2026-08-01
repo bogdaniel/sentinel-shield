@@ -297,6 +297,38 @@ for _wf in "$ROOT"/templates/workflows/sentinel-shield.yml \
 done
 
 
+# --- a REQUIRED tool with nothing behind it must not be certified ------------
+# The no-report/no-runner branch is only reached for a tool the profile marks REQUIRED and
+# SELECTS at this stage, and it used to `pass` with "nothing to enforce" — certifying a
+# required control that nothing can produce, run or verify. A declaration with no
+# implementation reported as satisfied is the failure this engine exists to refuse. The
+# legitimate shape (a `category: setup` precondition with an `executable` contract) is now
+# named explicitly instead of being covered by that same silence.
+_gp="$WORK/ghost-probe"
+rm -rf "$_gp"; mkdir -p "$_gp"
+(cd "$ROOT" && tar cf - scripts config profiles templates schemas 2>/dev/null) | (cd "$_gp" && tar xf -)
+if [ -f "$_gp/profiles/node/profile.manifest.json" ]; then
+	jq '.tools["ghost-control"] = {policy:"required", category:"sast",
+		execution:{pr:true, main:true, scheduled:false}}' \
+		"$_gp/profiles/node/profile.manifest.json" > "$_gp/n.json" \
+		&& mv "$_gp/n.json" "$_gp/profiles/node/profile.manifest.json"
+	_c=0; _out=$(sh "$_gp/scripts/verify-producer-coverage.sh" --profile node --stage pr 2>&1) || _c=$?
+	check "a REQUIRED tool with no report, runner, executable or alternatives fails coverage" "$_c" "1"
+	check "  and is named as unenforceable rather than passed over" \
+		"$(printf '%s' "$_out" | grep -c 'ghost-control: REQUIRED and selected' || true)" "2"
+	check "  while 'nothing to enforce' is no longer reported for anything" \
+		"$(printf '%s' "$_out" | grep -c 'nothing to enforce' || true)" "0"
+else
+	fail "ghost probe: the node profile manifest was not copied"
+fi
+rm -rf "$_gp"
+# The precondition tool that legitimately has neither report nor runner is still passed, and
+# passed BY NAME, so the reader can see which contract is actually being enforced for it.
+_c=0; _out=$(sh "$COVERAGE" --profile node --stage pr 2>&1) || _c=$?
+check "the real node profile still passes" "$_c" "0"
+check "  and deps-install is passed as an executable contract, not as 'nothing'" \
+	"$(printf '%s' "$_out" | grep -c 'deps-install: precondition tool' || true)" "2"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '285-installed-product-compatibility: ALL CHECKS PASSED\n'
