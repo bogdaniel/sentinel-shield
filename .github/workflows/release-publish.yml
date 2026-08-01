@@ -268,7 +268,16 @@ jobs:
         # cannot be read, or bypass actors that cannot be inspected are all "protection NOT
         # proven", never "protection present".
         env:
-          GH_TOKEN: ${{ github.token }}
+          # NOT ${{ github.token }}. GitHub omits `bypass_actors` from the ruleset payload
+          # unless the caller has ruleset write access, and GITHUB_TOKEN cannot hold it — so
+          # with the default token this step could never pass, whatever the repository is
+          # actually configured to do. A check that is impossible to satisfy is not a
+          # fail-closed check; it is a broken one, and the pressure it creates is to delete it.
+          #
+          # Supply a token that CAN read the ruleset: a GitHub App installation token for an
+          # app with Administration: read, or a protected PAT. It is used ONLY for this
+          # read-only inspection; publication itself continues to use github.token.
+          GH_TOKEN: ${{ secrets.SENTINEL_SHIELD_RULESET_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
@@ -284,6 +293,11 @@ jobs:
             echo "::error::  reference:  docs/production-release-runbook.md#tag_protection_unproven--publication-refused"
             exit 1
           }
+
+          # The token has to be able to SEE bypass actors, or every answer below is "unknown".
+          # Saying so here, once, beats failing later with a message that looks like a
+          # repository misconfiguration when it is really a missing credential.
+          [ -n "${GH_TOKEN:-}" ] || fail "no SENTINEL_SHIELD_RULESET_TOKEN secret is configured. GitHub omits 'bypass_actors' unless the caller has ruleset write access, which the default GITHUB_TOKEN cannot have, so tag protection cannot be proven with it. Configure a GitHub App installation token (Administration: read) or a protected PAT as the SENTINEL_SHIELD_RULESET_TOKEN secret; it is used only for this read-only inspection."
 
           # ---- list the rulesets (with parents: an org-level ruleset protects too) ----------
           RS=""
@@ -321,9 +335,22 @@ jobs:
               # The pattern is BOUND first: inside `$ref | test(… . …)` the pipe rebinds `.`
               # to $ref, so the pattern would be compared against itself and every ruleset
               # would appear to cover every tag.
-              | def m($pats): any($pats[]; . as $p
+              # GitHub ref-name patterns are fnmatch, not regex, so the pattern is translated
+              # rather than pasted in. Escaping only `.` left every OTHER regex metacharacter
+              # live: `+`, `?`, `(`, `)`, `[`, `]`, `^`, `$`, `|`, `{`, `}` in a pattern were
+              # interpreted instead of matched, so a ruleset could appear to cover a tag it
+              # does not (or fail to cover one it does). Each metacharacter is escaped first,
+              # then only the glob operators are translated back:
+              #   **  -> .*      (crosses `/`)
+              #   *   -> [^/]*   (does not cross `/`)
+              #   ?   -> [^/]
+              | def fn: . as $p
+                  | ($p | gsub("(?<c>[.+?()\\[\\]^$|{}\\\\])"; "\\" + .c))
+                  | gsub("\\*\\*"; "\u0001") | gsub("\\*"; "[^/]*") | gsub("\u0001"; ".*")
+                  | gsub("\\\\\\?"; "[^/]");
+                def m($pats): any($pats[]; . as $p
                   | $p == "~ALL" or $p == $ref
-                  or ($ref | test("^" + ($p | gsub("\\."; "\\.") | gsub("\\*"; "[^/]*")) + "$")));
+                  or ($ref | test("^" + ($p | fn) + "$")));
                 if (m($inc)) and ((($exc | length) == 0) or (m($exc) | not)) then "yes" else "no" end' 2>/dev/null || printf 'error')
             [ "$_covers" = "yes" ] || { [ "$_covers" = "error" ] && fail "the ref conditions of tag ruleset $_id could not be evaluated."; continue; }
 

@@ -460,6 +460,61 @@ missing "the ruleset gate has no bypass input" "$(cat "$WF")" "allow_unprotected
 
 
 printf '\n'
+# --- the ref matcher must translate fnmatch, not paste a pattern into a regex ----
+# GitHub ref-name conditions are fnmatch: `*` does not cross `/`, `**` does, `?` is exactly
+# one character, and every regex metacharacter is a LITERAL. The first version escaped only
+# `.`, leaving `+ ? ( ) [ ] ^ $ | { }` live — so a ruleset could appear to cover a tag it does
+# not (a false positive is the dangerous direction: it reports protection that is not there).
+_FN=$(sed -n '/def fn:/,/\[\^\/\]");/p' "$WORK/ruleset.sh" | sed '1s/^[[:space:]]*|[[:space:]]*//')
+if [ -z "$_FN" ]; then
+	fail "could not extract the ref-pattern translation — these checks would test nothing"
+else
+	pass "extracted the ref-pattern translation"
+	# fnm <pattern> <ref> — "true"/"false" from the SHIPPED translation.
+	fnm() {
+		printf '%s' "$2" | jq -R --arg p "$1" "$_FN"' . as $ref | ($p | fn) as $re | ($ref | test("^" + $re + "$"))' 2>/dev/null || printf 'error'
+	}
+	while IFS='~' read -r _p _r _want _why; do
+		[ -n "$_p" ] || continue
+		check "ref match: $_why" "$(fnm "$_p" "$_r")" "$_want"
+	done <<'EOF'
+refs/tags/v*~refs/tags/v2.2.0~true~* matches within a segment
+refs/tags/v*~refs/tags/v2/2/0~false~* does not cross /
+refs/tags/**~refs/tags/a/b/c~true~** crosses /
+refs/tags/v2.2.0~refs/tags/v2.2.0~true~an exact pattern matches
+refs/tags/v2.2.0~refs/tags/v2X2.0~false~. is a literal dot, not a wildcard
+refs/tags/v?.0~refs/tags/v2.0~true~? is one character
+refs/tags/v?.0~refs/tags/v22.0~false~? is exactly one character
+refs/tags/rel+x~refs/tags/rel+x~true~+ is a literal plus
+refs/tags/rel+x~refs/tags/relx~false~+ is not one-or-more
+refs/tags/a|b~refs/tags/a|b~true~a pipe is a literal pipe
+refs/tags/a|b~refs/tags/a~false~a pipe is not alternation
+refs/tags/x[0]~refs/tags/x[0]~true~[] are literal
+refs/tags/x[0]~refs/tags/x0~false~[] is not a character class
+refs/tags/a{2}~refs/tags/a{2}~true~{} are literal
+refs/tags/a{2}~refs/tags/aa~false~{} is not a repeat count
+refs/tags/rel(1)~refs/tags/rel(1)~true~() are literal
+refs/tags/^v~refs/tags/^v~true~^ is literal
+EOF
+fi
+
+# --- the inspection token must be one that CAN see bypass actors -----------------
+# GitHub omits `bypass_actors` unless the caller has ruleset write access, which GITHUB_TOKEN
+# cannot hold. Inspecting with ${{ github.token }} therefore made this step impossible to
+# satisfy no matter how the repository was configured — not fail-closed, just broken, and the
+# only pressure such a check creates is to delete it.
+_rsenv=$(awk '/^      - name: Require an enforced, non-bypassable tag ruleset/ { inb = 1 }
+	inb && /GH_TOKEN:/ { print; exit }' "$WF")
+check "the ruleset step does not inspect with the default GITHUB_TOKEN" \
+	"$(printf '%s' "$_rsenv" | grep -c 'github.token' || true)" "0"
+check "  and uses a dedicated ruleset-inspection secret instead" \
+	"$(printf '%s' "$_rsenv" | grep -c 'SENTINEL_SHIELD_RULESET_TOKEN' || true)" "1"
+check "  and refuses up front when that secret is absent" \
+	"$(grep -c 'no SENTINEL_SHIELD_RULESET_TOKEN secret is configured' "$WORK/ruleset.sh" || true)" "1"
+# Publication itself must still use the workflow token, not the elevated one.
+check "  while publication still uses the workflow token" \
+	"$(grep -c 'GH_TOKEN: ${{ github.token }}' "$WF" || true)" "3"
+
 if [ "$FAILED" -eq 0 ]; then
 	printf '297-release-signing-identity: ALL CHECKS PASSED\n'
 	exit 0
