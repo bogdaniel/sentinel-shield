@@ -152,11 +152,25 @@
   "evidence": {
     "sbom": {
       "present": true,
-      "path": "reports/sbom.spdx.json"
+      "path": "reports/sbom.spdx.json",
+      "verification": {
+        "status": "verified",
+        "reason": "verified",
+        "provenance": "verified",
+        "sha256": null,
+        "validator": "build-security-summary/2.2"
+      }
     },
     "release_evidence": {
       "present": true,
-      "path": "reports/release-evidence.md"
+      "path": "reports/release-evidence.md",
+      "verification": {
+        "status": "verified",
+        "reason": "verified",
+        "provenance": "verified",
+        "sha256": null,
+        "validator": "build-security-summary/2.2"
+      }
     }
   }
 }
