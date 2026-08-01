@@ -18,6 +18,30 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# st_attestation <summary> <out> — echo `--attestation <out>` after writing a record bound to
+# <summary> as it exists on disk, or nothing if one cannot be built.
+#
+# `regulated` requires a verified source attestation supplied SEPARATELY from the summary:
+# whoever writes a summary could otherwise write `verified: true` into it, and a document
+# cannot bind its own sha256 because writing the digest in changes it. In production the record
+# comes from scripts/verify-source-attestation.sh, anchored on `gh attestation verify`; the
+# self-test cannot reach that anchor offline, so it synthesises one. The enforcer still checks
+# the format, the verified flag, the bound identity and the digest equality.
+st_attestation() {
+	command -v jq >/dev/null 2>&1 || return 0
+	jq -e . "$1" >/dev/null 2>&1 || return 0
+	_sta=$(sha256sum "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_sta" ] || _sta=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_sta" ] || return 0
+	jq -n --arg d "sha256:$_sta" \
+		--arg r "$(jq -r '.source.repository // "example-org/example-repo"' "$1")" \
+		--arg c "$(jq -r '.source.commit // "0123456789abcdef0123456789abcdef01234567"' "$1")" \
+		'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+		  verifier:"self-test", artifact:"summary", artifact_digest:$d,
+		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$2" 2>/dev/null || return 0
+	printf -- '--attestation %s' "$2"
+}
 cd "$ROOT"
 
 command_exists jq || { log_error "jq is required for the self-test"; exit 2; }
@@ -533,7 +557,12 @@ run_third_party() {
 
 	# 5. regulated blocks third-party findings; the four gates appear in failed_gates.
 	sh scripts/resolve-gates.sh --mode regulated --output-dir "$_d" --format env >/dev/null 2>&1
-	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	# regulated needs the source-attestation record supplied SEPARATELY (see st_attestation);
+	# without it the enforcer refuses the input (exit 2), which is not the question this case
+	# asks — it asks whether the third-party GATES block.
+	_tpat=$(st_attestation "$_d/security-summary.json" "$_d/att-regulated.json")
+	# shellcheck disable=SC2086
+	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" $_tpat --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
 	tp_check "regulated blocks (exit 1)" "$_rc" "1"
 	_failed=$(jq -r '[.failed_gates[]|select(startswith("third_party"))]|length' "$_d/sentinel-shield-enforcement.json")
 	tp_check "regulated: all 4 third-party gates failed" "$_failed" "4"
@@ -912,7 +941,10 @@ run_scanner_matrix() {
 		# mode's verdict as this one's.
 		rm -f "$_E"
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format env --output-dir "$_d" >/dev/null 2>&1
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1 || true
+		_stat=""
+		[ "$_m" = regulated ] && _stat=$(st_attestation "$_d/sum.json" "$_d/att-$_m.json")
+		# shellcheck disable=SC2086
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" $_stat --output-dir "$_d" --format json >/dev/null 2>&1 || true
 		if [ -f "$_E" ]; then
 			eval "_e_$(echo "$_m" | tr '-' '_')=\"$(jq -r '[.evaluated_gates[]|select(.key=="iac_violations")][0].result' "$_E")|$(jq -r '[.evaluated_gates[]|select(.key=="ai_review_findings")][0].result' "$_E")\""
 		else
@@ -1577,7 +1609,16 @@ run_v023_coverage() {
 	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
 		_em=0
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		# `regulated` requires an INDEPENDENT source-attestation record: a summary cannot attest
+		# to itself, and cannot bind its own digest. Without one the enforcer refuses the INPUT
+		# (exit 2), which is not the gate behaviour these cases are about — they ask whether a
+		# gate BLOCKS. Bind a record to the summary as it is now.
+		_emat=""
+		if [ "$1" = regulated ]; then
+			_emat=$(st_attestation "$2" "$_d/att-$1.json")
+		fi
+		# shellcheck disable=SC2086  # controlled two-token flag or empty
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" $_emat --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
 		case "$_em" in
 			0) echo pass ;;
 			1) echo fail ;;
@@ -1756,7 +1797,13 @@ run_v024_coverage() {
 	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
 		_em=0
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		# See st_attestation: regulated needs the record supplied separately, or the enforcer
+		# refuses the INPUT and the case reads as `refused` rather than answering whether the
+		# GATE blocks.
+		_emat=""
+		[ "$1" = regulated ] && _emat=$(st_attestation "$2" "$_d/att-$1.json")
+		# shellcheck disable=SC2086
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" $_emat --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
 		case "$_em" in
 			0) echo pass ;;
 			1) echo fail ;;
