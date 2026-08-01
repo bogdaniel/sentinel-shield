@@ -218,6 +218,71 @@ check "a summary built in CI records its run but claims no trust" "$(src "$CID/s
 check "  while still recording the platform run id" "$(src "$CID/s2.json" run_id)" "1234"
 check "  with the platform commit" "$(src "$CID/s2.json" commit)" "$SHA_A"
 
+# --- the verifier: a successful signature is not an identity ------------------
+# `gh attestation verify --repo X` succeeds for ANY attestation that repository can produce.
+# Without --signer-workflow it is a signature check, not an identity check, and a genuine
+# attestation from a workflow that never certifies release evidence would verify happily.
+VA="$ROOT/scripts/verify-source-attestation.sh"
+VW=$(mktemp -d); mkdir -p "$VW/bin"; printf '{"summary":"x"}\n' > "$VW/s.json"
+cat > "$VW/bin/gh" <<'STUB'
+#!/bin/sh
+[ -n "${GH_FAIL:-}" ] && { echo "gh: verification failed" >&2; exit 1; }
+cat <<JSON
+[{"verificationResult":{"signature":{"certificate":{
+  "sourceRepositoryURI":"https://github.com/${GH_REPO:-acme/app}",
+  "sourceRepositoryDigest":"${GH_COMMIT:-1111111111111111111111111111111111111111}",
+  "buildSignerURI":"https://github.com/acme/app/.github/workflows/${GH_WF:-sentinel-shield.yml}@refs/heads/main",
+  "runInvocationURI":"https://github.com/acme/app/actions/runs/${GH_RUN:-999}/attempts/1"
+}}}}]
+JSON
+STUB
+chmod +x "$VW/bin/gh"
+vrun() { # vrun <expected-rc> <label> <marker|-> [env...]
+	_vw=$1; _vl=$2; _vm=$3; shift 3
+	rm -f "$VW/att.json"; _vrc=0
+	env PATH="$VW/bin:$PATH" "$@" sh "$VA" --summary "$VW/s.json" --repository acme/app \
+		--signer-workflow sentinel-shield.yml --output "$VW/att.json" >"$VW/log" 2>&1 || _vrc=$?
+	check "$_vl" "$_vrc" "$_vw"
+	[ "$_vm" = "-" ] || { grep -q "$_vm" "$VW/log" && pass "  reported as $_vm" || fail "  did not report $_vm"; }
+}
+# --signer-workflow is not optional.
+_vc=0; env PATH="$VW/bin:$PATH" sh "$VA" --summary "$VW/s.json" --repository acme/app \
+	--output "$VW/att.json" >/dev/null 2>&1 || _vc=$?
+check "the verifier refuses to run without --signer-workflow" "$_vc" 2
+
+vrun 0 "a verified attestation from the required producer is recorded" -
+check "  bound to the digest computed by the verifier, not read from the file" \
+	"$(jq -r '.artifact_digest' "$VW/att.json" 2>/dev/null)" \
+	"sha256:$(sha256sum "$VW/s.json" 2>/dev/null | awk '{print $1}' || shasum -a 256 "$VW/s.json" | awk '{print $1}')"
+vrun 1 "a SUCCESSFUL verification from another workflow is refused" SOURCE_ATTESTATION_WRONG_PRODUCER GH_WF=release-notes.yml
+check "  and no record is written" "$([ -f "$VW/att.json" ] && echo yes || echo no)" "no"
+vrun 1 "a SUCCESSFUL verification for another repository is refused" SOURCE_ATTESTATION_WRONG_REPOSITORY GH_REPO=evil/other
+vrun 1 "an unverified artifact is refused" SOURCE_ATTESTATION_UNVERIFIED GH_FAIL=1
+# The filters must actually reach gh, not just be accepted as arguments.
+cat > "$VW/bin/gh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" > "$VW/args"
+exit 1
+STUB
+chmod +x "$VW/bin/gh"
+env PATH="$VW/bin:$PATH" sh "$VA" --summary "$VW/s.json" --repository acme/app \
+	--signer-workflow sentinel-shield.yml --output "$VW/a.json" >/dev/null 2>&1 || true
+check "the signer workflow is passed through to gh" \
+	"$(grep -c -- '--signer-workflow sentinel-shield.yml' "$VW/args" 2>/dev/null || true)" "1"
+check "the predicate type is passed through to gh" \
+	"$(grep -c -- '--predicate-type https://slsa.dev/provenance/v1' "$VW/args" 2>/dev/null || true)" "1"
+rm -rf "$VW"
+
+# --- regulated must pin the trusted producer ---------------------------------
+att_for "$WORK/attested.json" "$WORK/wrongwf.json" '.workflow = "release-notes.yml"'
+_c=0
+sh "$RESOLVE" --mode regulated --output-dir "$G" --format env >/dev/null 2>&1
+env SENTINEL_SHIELD_TRUSTED_WORKFLOW=sentinel-shield sh "$ENFORCE" \
+	--gates-env "$G/sentinel-shield-gates.env" --summary "$WORK/attested.json" \
+	--attestation "$WORK/wrongwf.json" --output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
+check "regulated refuses a record from a workflow this repository does not trust" "$_c" 2
+contains "  naming the trusted producer" "$(cat "$G/log")" "this repository trusts"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '296-source-attestation: ALL CHECKS PASSED\n'

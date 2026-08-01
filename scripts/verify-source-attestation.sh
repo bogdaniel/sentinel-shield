@@ -29,11 +29,19 @@ usage() {
 	cat <<'EOF'
 Usage:
   verify-source-attestation.sh --summary <security-summary.json> --repository <owner/name>
-                               --output <attestation.json>
-                               [--signer-workflow <path>] [--gh <path-to-gh>]
+                               --signer-workflow <path> --output <attestation.json>
+                               [--predicate-type <uri>] [--gh <path-to-gh>]
 
 Verifies that <summary> was produced by an attested workflow run of <repository>, using
 GitHub artifact attestations, and writes the verification record to <output>.
+
+--signer-workflow is REQUIRED. `gh attestation verify --repo X` alone succeeds for ANY
+attestation that repository can produce, so without it a genuine attestation from a DIFFERENT
+workflow — one that was never meant to certify release evidence — verifies happily. Naming the
+producing workflow is what makes this an identity check rather than a signature check.
+
+--predicate-type defaults to SLSA provenance. A valid attestation of the wrong KIND is not
+provenance about how the artifact was built.
 
 The record binds: repository, commit, workflow, run_id and the sha256 of the summary FILE.
 `enforce-gates.sh --attestation <output>` requires all five and cross-checks them against the
@@ -42,12 +50,14 @@ EOF
 }
 
 SUMMARY=""; REPOSITORY=""; OUTPUT=""; SIGNER_WORKFLOW=""; GH_BIN="gh"
+PREDICATE_TYPE="https://slsa.dev/provenance/v1"
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--summary) SUMMARY="${2:?--summary requires a value}"; shift 2 ;;
 		--repository) REPOSITORY="${2:?--repository requires a value}"; shift 2 ;;
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
 		--signer-workflow) SIGNER_WORKFLOW="${2:?--signer-workflow requires a value}"; shift 2 ;;
+		--predicate-type) PREDICATE_TYPE="${2:?--predicate-type requires a value}"; shift 2 ;;
 		--gh) GH_BIN="${2:?--gh requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) log_error "unknown argument: $1"; usage >&2; exit 2 ;;
@@ -57,6 +67,11 @@ done
 [ -n "$SUMMARY" ] || { log_error "--summary is required"; usage >&2; exit 2; }
 [ -n "$REPOSITORY" ] || { log_error "--repository is required"; usage >&2; exit 2; }
 [ -n "$OUTPUT" ] || { log_error "--output is required"; usage >&2; exit 2; }
+# NOT optional. Without it, any attestation the repository can produce satisfies the check —
+# including one from a workflow that has nothing to do with releasing evidence. A signature
+# proves something signed; only the signer identity proves WHO.
+[ -n "$SIGNER_WORKFLOW" ] || { log_error "--signer-workflow is required: 'gh attestation verify --repo' alone accepts an attestation from ANY workflow in that repository, which is a signature check, not an identity check"; usage >&2; exit 2; }
+[ -n "$PREDICATE_TYPE" ] || { log_error "--predicate-type must not be empty"; exit 2; }
 [ -f "$SUMMARY" ] || { log_error "summary not found: $SUMMARY"; exit 2; }
 command_exists jq || { log_error "jq is required but was not found"; exit 3; }
 command_exists "$GH_BIN" || { log_error "gh is required but was not found (the attestation anchor lives outside this repository; without it nothing here can be verified)"; exit 3; }
@@ -71,8 +86,8 @@ printf '%s' "$_digest" | grep -Eq '^[0-9a-f]{64}$' \
 # THE ANCHOR. `gh attestation verify` checks the Sigstore bundle for this artifact against the
 # identity that produced it. Everything below only records what it returned; nothing here can
 # turn an unverified artifact into a verified one.
-set -- attestation verify "$SUMMARY" --repo "$REPOSITORY" --format json
-[ -z "$SIGNER_WORKFLOW" ] || set -- "$@" --signer-workflow "$SIGNER_WORKFLOW"
+set -- attestation verify "$SUMMARY" --repo "$REPOSITORY" --format json \
+	--signer-workflow "$SIGNER_WORKFLOW" --predicate-type "$PREDICATE_TYPE"
 _out=""
 if ! _out=$("$GH_BIN" "$@" 2>&1); then
 	log_error "SOURCE_ATTESTATION_UNVERIFIED"
@@ -103,6 +118,28 @@ for _f in repository commit workflow run_id; do
 	_v=$(printf '%s' "$_rec" | jq -r --arg f "$_f" '.[$f] // ""')
 	[ -n "$_v" ] || { log_error "the verified attestation does not bind $_f — a verified flag with no bound identity is not provenance"; exit 1; }
 done
+
+# Re-check the identity against what was ASKED for, rather than assuming the flags were
+# honoured. `gh` is trusted to do the cryptography; it is not trusted to have applied the
+# filters silently and correctly, and a future flag rename that stopped filtering would
+# otherwise turn this into a plain signature check without anything noticing.
+_got_repo=$(printf '%s' "$_rec" | jq -r '.repository // ""')
+[ "$_got_repo" = "$REPOSITORY" ] || {
+	log_error "SOURCE_ATTESTATION_WRONG_REPOSITORY"
+	log_error "  verified attestation is for '$_got_repo' but verification was requested for '$REPOSITORY'"
+	exit 1
+}
+_want_wf=${SIGNER_WORKFLOW##*/}; _want_wf=${_want_wf%%@*}
+_got_wf=$(printf '%s' "$_rec" | jq -r '.workflow // ""')
+case "$_got_wf" in
+	"$_want_wf" | "$SIGNER_WORKFLOW") : ;;
+	*)  log_error "SOURCE_ATTESTATION_WRONG_PRODUCER"
+	    log_error "  the attestation verifies, but it was produced by '$_got_wf', not the"
+	    log_error "  required signer workflow '$SIGNER_WORKFLOW'. A valid attestation from a"
+	    log_error "  workflow that was never meant to certify release evidence is not evidence"
+	    log_error "  about this release."
+	    exit 1 ;;
+esac
 
 _tmp=$(mktemp) || { log_error "could not create a temporary file"; exit 3; }
 trap 'rm -f -- "$_tmp"' EXIT INT TERM HUP

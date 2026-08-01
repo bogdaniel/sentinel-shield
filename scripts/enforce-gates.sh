@@ -621,6 +621,19 @@ case "$MODE" in
 		# …and it must attest THIS summary's source.
 		_ar=$(_ajq '.repository'); _sr=$(jqr '(.source.repository // "")')
 		_ac=$(_ajq '.commit');     _sc=$(jqr '(.source.commit // "")')
+		# The PRODUCER must be the one this repository trusts, not merely some workflow that
+		# produced a valid attestation. `SENTINEL_SHIELD_TRUSTED_WORKFLOW` names it; when the
+		# caller declares one, a record from any other workflow is refused. Without this a
+		# genuine attestation from an unrelated workflow in the same repository would satisfy
+		# regulated — a signature check wearing an identity check's clothes.
+		if [ -n "${SENTINEL_SHIELD_TRUSTED_WORKFLOW:-}" ]; then
+			_aw=$(_ajq '.workflow')
+			_twf=${SENTINEL_SHIELD_TRUSTED_WORKFLOW##*/}; _twf=${_twf%%@*}
+			case "$_aw" in
+				"$_twf" | "$SENTINEL_SHIELD_TRUSTED_WORKFLOW") : ;;
+				*) die_cfg "'regulated': the attestation was produced by workflow '$_aw', but this repository trusts '$SENTINEL_SHIELD_TRUSTED_WORKFLOW'. A valid attestation from a workflow that was never meant to certify release evidence is not evidence about this release." ;;
+			esac
+		fi
 		[ "$_ar" = "$_sr" ] || die_cfg "'regulated': the attestation is for repository '$_ar' but the summary claims '$_sr'"
 		[ "$_ac" = "$_sc" ] || die_cfg "'regulated': the attestation is for commit '$_ac' but the summary claims '$_sc'" ;;
 esac
