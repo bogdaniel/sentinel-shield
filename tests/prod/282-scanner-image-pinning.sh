@@ -265,6 +265,31 @@ check "  and still prints the closing summary" \
 # --- ref_tag: the tag separator is the ':' after the last '/', not the last ':' ----
 # A registry host may carry a port. Matching the last ':' in the whole reference read
 # 'registry.example.com:5000/team/img' as carrying the tag '5000/team/img'.
+# --- ref_canonical: normalise the tag away, never anything else --------------
+# One parser is safer than three interpretations, but only if it preserves every supported
+# form. `${ref%%:*}` cut at the FIRST colon, which on a ported registry is the PORT: it turned
+# registry.example.com:5000/team/img:v1@sha256:… into registry.example.com@sha256:…, discarding
+# the repository path and making two different images on that host indistinguishable.
+_rcfn=$(sed -n '/^ref_canonical()/,/^}/p' "$VALIDATOR")
+_rc() { printf '%s\nref_canonical "%s"\n' "$_rcfn" "$1" | sh; }
+check "ref_canonical: a tag-only reference is unchanged" \
+	"$(_rc 'repo/img:v1.2.3')" "repo/img:v1.2.3"
+check "ref_canonical: a digest-only reference is unchanged" \
+	"$(_rc 'repo/img@sha256:aaaa')" "repo/img@sha256:aaaa"
+check "ref_canonical: tag+digest reduces to the digest form" \
+	"$(_rc 'repo/img:v1.2.3@sha256:aaaa')" "repo/img@sha256:aaaa"
+check "ref_canonical: a ported registry keeps its port and path (tag+digest)" \
+	"$(_rc 'registry.example.com:5000/team/img:v1@sha256:bbbb')" "registry.example.com:5000/team/img@sha256:bbbb"
+check "ref_canonical: a ported registry keeps its port and path (digest only)" \
+	"$(_rc 'registry.example.com:5000/team/img@sha256:cccc')" "registry.example.com:5000/team/img@sha256:cccc"
+check "ref_canonical: a ported registry with no tag or digest is unchanged" \
+	"$(_rc 'registry.example.com:5000/team/img')" "registry.example.com:5000/team/img"
+check "ref_canonical: a bare repository is unchanged" \
+	"$(_rc 'repo/img')" "repo/img"
+# Two DIFFERENT images on the same ported host must not canonicalise to the same string.
+check "ref_canonical: two images on one ported host stay distinct" \
+	"$([ "$(_rc 'registry.example.com:5000/a/img@sha256:1')" = "$(_rc 'registry.example.com:5000/b/img@sha256:1')" ] && echo same || echo distinct)" "distinct"
+
 _rt=$(sed -n '/^ref_tag()/,/^}/p' "$VALIDATOR")
 check "ref_tag treats a ported registry with no tag as untagged" \
 	"$(printf '%s\nref_tag "registry.example.com:5000/team/img"\n' "$_rt" | sh)" ""

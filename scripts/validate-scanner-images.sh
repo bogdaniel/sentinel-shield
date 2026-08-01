@@ -162,9 +162,20 @@ image_operands() {
 # every comparison in this file goes through here rather than keeping three copies of the rule.
 ref_canonical() {
 	case "$1" in
-		*:*@sha256:*) printf '%s@%s' "${1%%:*}" "${1#*@}" ;;
-		*) printf '%s' "$1" ;;
+		*@sha256:*) : ;;
+		*) printf '%s' "$1"; return ;;
 	esac
+	_rc_pre=${1%%@*}          # repository[:tag]
+	_rc_dig=${1#*@}           # sha256:…
+	# Drop a TAG if there is one — and only a tag. `${ref%%:*}` cut at the FIRST colon, which
+	# on a ported registry is the port: registry.example.com:5000/team/img:v1@sha256:… became
+	# registry.example.com@sha256:…, silently discarding the repository path and leaving two
+	# different images on the same host indistinguishable. The tag separator is the `:` after
+	# the last `/`, the same rule ref_tag uses.
+	case "${_rc_pre##*/}" in
+		*:*) _rc_pre=${_rc_pre%:*} ;;
+	esac
+	printf '%s@%s' "$_rc_pre" "$_rc_dig"
 }
 
 # ref_tag <image-ref> — the tag part of repo:tag, empty for a digest ref or a bare repo.
