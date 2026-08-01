@@ -123,9 +123,24 @@ jq '.summary.dast_findings' "$OUT/security-summary.json"      # 2
 # 3. Resolve gates for each mode and enforce.
 for MODE in strict regulated; do
   sh scripts/resolve-gates.sh --mode "$MODE" --output-dir "$OUT" --format env
+  # `regulated` additionally requires an INDEPENDENTLY verified source attestation, passed with
+  # --attestation. A summary cannot attest to itself: whoever writes it can write
+  # `verified: true` into it, and it cannot bind its own sha256, because writing the digest in
+  # changes it. Produce the record from an anchor outside the document:
+  #
+  #     sh scripts/verify-source-attestation.sh \
+  #        --summary "$OUT/security-summary.json" \
+  #        --repository "$GITHUB_REPOSITORY" --output "$OUT/attestation.json"
+  #
+  # That anchors on `gh attestation verify`, so it needs the PRODUCING workflow to have emitted
+  # an artifact attestation for this summary. Until that is wired, `regulated` is legitimately
+  # unreachable and this dry run exercises `strict` — which is attestation-limited and says so.
+  ATT=""
+  [ "$MODE" = regulated ] && [ -f "$OUT/attestation.json" ] && ATT="--attestation $OUT/attestation.json"
   # enforce-gates.sh consumes the resolved env + the summary and exits non-zero on a block.
+  # shellcheck disable=SC2086
   if sh scripts/enforce-gates.sh \
-        --summary "$OUT/security-summary.json" \
+        --summary "$OUT/security-summary.json" $ATT \
         --gates "$OUT/sentinel-shield-gates.env"; then
     echo "$MODE: PASS"
   else

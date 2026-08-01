@@ -13,6 +13,12 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 FAILED=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
@@ -227,7 +233,7 @@ jq '.tools = {"phpstan":{"tool":"phpstan","policy":"required","status":"unavaila
 	"$ROOT/templates/security-summary.example.json" > "$D/s.json"
 wf "$D/cw.json" "[$(rec WVR-E2E-1 phpstan "$(ds -10)" "$(ds +20)")]"
 _c=0
-sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" \
+sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" $(ss_att "$D/s.json") \
 	--control-waivers "$D/cw.json" --output-dir "$D" --format all >"$D/enf.log" 2>&1 || _c=$?
 check "a valid waiver downgrades the required-tool failure" "$_c" 0
 check "  the JSON report names the waiver" \
@@ -241,7 +247,7 @@ contains "  the console warning names the waiver" "$(cat "$D/enf.log")" "waiver=
 # A superseded waiver does not downgrade anything, even inside its own window.
 wf "$D/cw-shadow.json" "[$(rec WVR-OLD phpstan "$(ds -10)" "$(ds +20)"), $(rec WVR-NEW phpstan "$(ds -5)" "$(ds -1)" '{"supersedes":"WVR-OLD"}')]"
 _c=0
-sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" \
+sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" $(ss_att "$D/s.json") \
 	--control-waivers "$D/cw-shadow.json" --output-dir "$D" --format json >"$D/enf2.log" 2>&1 || _c=$?
 check "a superseded waiver does NOT downgrade the control" "$_c" 1
 check "  the tool is reported as a required-tool failure" \
@@ -250,7 +256,7 @@ check "  the tool is reported as a required-tool failure" \
 # A conflicting waiver file is a configuration failure, not a silent waiver.
 wf "$D/cw-conflict.json" "[$(rec WVR-A phpstan "$(ds -10)" "$(ds +20)"), $(rec WVR-B phpstan "$(ds -5)" "$(ds +25)")]"
 _c=0
-sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" \
+sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" $(ss_att "$D/s.json") \
 	--control-waivers "$D/cw-conflict.json" --output-dir "$D" --format json >"$D/enf3.log" 2>&1 || _c=$?
 check "a conflicting waiver file fails the run as configuration" "$_c" 2
 
@@ -271,7 +277,7 @@ jq '.tools = {"tests":{"tool":"tests","policy":"required","status":"pass","gate_
 	"$ROOT/templates/security-summary.example.json" > "$D2/s.json"
 wf "$D2/cw.json" "[$(rec WVR-LONG phpstan "$(ds -10)" "$(ds +70)")]"
 _c=0
-sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D2/sentinel-shield-gates.env" --summary "$D2/s.json" \
+sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$D2/sentinel-shield-gates.env" --summary "$D2/s.json" $(ss_att "$D2/s.json") \
 	--control-waivers "$D2/cw.json" --output-dir "$D2" --format json >"$D2/enf.log" 2>&1 || _c=$?
 check "regulated refuses an 80-day waiver window" "$_c" 2
 contains "  naming the regulated maximum" "$(cat "$D2/enf.log")" "30-day maximum"

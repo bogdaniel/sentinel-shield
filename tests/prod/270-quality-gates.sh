@@ -31,6 +31,12 @@ jq '.source += {trust:"github-actions-attested"}
 
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 BUILD="$ROOT/scripts/build-security-summary.sh"
 COLL="$ROOT/scripts/collectors"
 
@@ -172,7 +178,7 @@ mk_summary 2 0 1 "$WORK/sum.json"
 
 # strict: coverage_threshold_violations fails, mutation is off (skipped)
 sh "$RESOLVE" --mode strict --output-dir "$WORK/enf-strict" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/sum.json" --output-dir "$WORK/enf-strict" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/sum.json" $(ss_att "$WORK/sum.json") --output-dir "$WORK/enf-strict" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-strict/sentinel-shield-enforcement.json"
 if [ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("coverage_threshold_violations")' "$ej")" != "null" ] \
 	&& [ "$(jq -r '.failed_gates | index("mutation_score_violations")' "$ej")" = "null" ]; then
@@ -184,19 +190,19 @@ else fail "enforcer strict wrong (rc=$rc, failed=$(jq -c .failed_gates "$ej"))";
 
 # regulated: mutation now fails too
 sh "$RESOLVE" --mode regulated --output-dir "$WORK/enf-reg" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/sum.json" --output-dir "$WORK/enf-reg" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/sum.json" $(ss_att "$WORK/sum.json") --output-dir "$WORK/enf-reg" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-reg/sentinel-shield-enforcement.json"
 [ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("mutation_score_violations")' "$ej")" != "null" ] \
 	&& pass "enforcer(regulated): mutation_score_violations fails" || fail "enforcer regulated mutation not failing"
 
 # clean quality summary passes when enabled
 mk_summary 0 0 0 "$WORK/clean.json"
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/clean.json" --output-dir "$WORK/enf-clean" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/clean.json" $(ss_att "$WORK/clean.json") --output-dir "$WORK/enf-clean" --format json >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && pass "enforcer: all quality gates pass at count 0" || fail "enforcer clean should pass, got $rc"
 
 # report-only: quality counts present but all gates skipped
 sh "$RESOLVE" --mode report-only --output-dir "$WORK/enf-ro" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-ro/sentinel-shield-gates.env" --summary "$WORK/sum.json" --output-dir "$WORK/enf-ro" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-ro/sentinel-shield-gates.env" --summary "$WORK/sum.json" $(ss_att "$WORK/sum.json") --output-dir "$WORK/enf-ro" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-ro/sentinel-shield-enforcement.json"
 if [ "$(jq -r '.evaluated_gates[] | select(.key=="coverage_threshold_violations") | .result' "$ej")" = "skipped" ]; then
 	pass "enforcer(report-only): quality gate visible but skipped (non-blocking)"
@@ -207,7 +213,7 @@ else fail "enforcer report-only should skip quality gates"; fi
 jq '.tools = {tests:{status:"pass"}}
 	| .summary += {complexity_violations:1, duplication_violations:2, dead_code_violations:3}' \
 	"$EXAMPLE" > "$WORK/q3.json"
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3s" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/q3.json" $(ss_att "$WORK/q3.json") --output-dir "$WORK/enf-q3s" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-q3s/sentinel-shield-enforcement.json"
 if [ "$rc" -eq 1 ] \
 	&& [ "$(jq -r '.failed_gates | index("complexity_violations")' "$ej")" != "null" ] \
@@ -215,7 +221,7 @@ if [ "$rc" -eq 1 ] \
 	&& [ "$(jq -r '.failed_gates | index("dead_code_violations")' "$ej")" = "null" ]; then
 	pass "enforcer(strict): complexity + duplication block; dead-code skipped"
 else fail "enforcer strict complexity/duplication/dead-code wrong: $(jq -c .failed_gates "$ej")"; fi
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3r" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-reg/sentinel-shield-gates.env" --summary "$WORK/q3.json" $(ss_att "$WORK/q3.json") --output-dir "$WORK/enf-q3r" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-q3r/sentinel-shield-enforcement.json"
 if [ "$rc" -eq 1 ] \
 	&& [ "$(jq -r '.failed_gates | index("complexity_violations")' "$ej")" != "null" ] \
@@ -227,12 +233,12 @@ else fail "enforcer regulated complexity/duplication/dead-code wrong: $(jq -c .f
 # missing_coverage_evidence (unit): true summary blocks strict; skipped in report-only.
 jq '.tools = {tests:{status:"pass"}} | .summary.missing_coverage_evidence = true' \
 	"$EXAMPLE" > "$WORK/mce.json"
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mce" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/mce.json" $(ss_att "$WORK/mce.json") --output-dir "$WORK/enf-mce" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-mce/sentinel-shield-enforcement.json"
 [ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("missing_coverage_evidence")' "$ej")" != "null" ] \
 	&& pass "enforcer(strict): missing_coverage_evidence=true blocks (absent coverage fails)" \
 	|| fail "enforcer strict missing_coverage_evidence not failing: $(jq -c .failed_gates "$ej")"
-rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-ro/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mcero" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-ro/sentinel-shield-gates.env" --summary "$WORK/mce.json" $(ss_att "$WORK/mce.json") --output-dir "$WORK/enf-mcero" --format json >/dev/null 2>&1 || rc=$?
 [ "$(jq -r '.evaluated_gates[] | select(.key=="missing_coverage_evidence") | .result' "$WORK/enf-mcero/sentinel-shield-enforcement.json")" = "skipped" ] \
 	&& pass "enforcer(report-only): missing_coverage_evidence skipped" || fail "missing_coverage_evidence should skip in report-only"
 
@@ -397,21 +403,21 @@ _q2ov=$(jq -nc '{changed_lines_coverage_violations:1, debug_code_violations:2, f
 qsum "$WORK/q2.json" "$_q2ov"
 # baseline: changed/debug/focused/missing_test/empty block; skipped_marker/large/skipped_tests do NOT
 sh "$RESOLVE" --mode baseline --output-dir "$WORK/e2b" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/e2b/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2b" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2b/sentinel-shield-gates.env" --summary "$WORK/q2.json" $(ss_att "$WORK/q2.json") --output-dir "$WORK/e2b" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/e2b/sentinel-shield-enforcement.json"; ok=1
 for g in changed_lines_coverage_violations debug_code_violations focused_test_violations missing_test_evidence empty_test_suite; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" != "null" ] || ok=0; done
 for g in skipped_test_marker_violations large_file_violations skipped_tests; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" = "null" ] || ok=0; done
 { [ "$rc" -eq 1 ] && [ "$ok" -eq 1 ]; } && pass "enforcer(baseline): §2 baseline gates block; strict/regulated-only gates skip" || fail "enforcer baseline §2 wrong: $(jq -c .failed_gates "$ej")"
 # strict adds large_file/large_function/skipped_marker; skipped_tests still off
 sh "$RESOLVE" --mode strict --output-dir "$WORK/e2s" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/e2s/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2s" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2s/sentinel-shield-gates.env" --summary "$WORK/q2.json" $(ss_att "$WORK/q2.json") --output-dir "$WORK/e2s" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/e2s/sentinel-shield-enforcement.json"; ok=1
 for g in large_file_violations large_function_violations skipped_test_marker_violations; do [ "$(jq -r --arg g "$g" '.failed_gates|index($g)' "$ej")" != "null" ] || ok=0; done
 [ "$(jq -r '.failed_gates|index("skipped_tests")' "$ej")" = "null" ] || ok=0
 { [ "$rc" -eq 1 ] && [ "$ok" -eq 1 ]; } && pass "enforcer(strict): §2 maintainability + skip-marker block; skipped_tests off" || fail "enforcer strict §2 wrong: $(jq -c .failed_gates "$ej")"
 # regulated adds skipped_tests
 sh "$RESOLVE" --mode regulated --output-dir "$WORK/e2r" --format env >/dev/null 2>&1
-rc=0; sh "$ENFORCE" --gates-env "$WORK/e2r/sentinel-shield-gates.env" --summary "$WORK/q2.json" --output-dir "$WORK/e2r" --format json >/dev/null 2>&1 || rc=$?
+rc=0; sh "$ENFORCE" --gates-env "$WORK/e2r/sentinel-shield-gates.env" --summary "$WORK/q2.json" $(ss_att "$WORK/q2.json") --output-dir "$WORK/e2r" --format json >/dev/null 2>&1 || rc=$?
 [ "$(jq -r '.failed_gates|index("skipped_tests")' "$WORK/e2r/sentinel-shield-enforcement.json")" != "null" ] \
 	&& pass "enforcer(regulated): skipped_tests blocks" || fail "enforcer regulated skipped_tests not blocking"
 

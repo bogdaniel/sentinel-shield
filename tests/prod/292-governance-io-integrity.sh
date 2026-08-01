@@ -17,6 +17,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 EXAMPLE="$ROOT/templates/security-summary.example.json"
 FAILED=0
@@ -37,7 +43,7 @@ jq '.tools = {"tests":{"status":"pass","policy":"required","gate_enforced":true}
 # enf [extra args] — run the enforcer against the fixture, echo its exit code.
 enf() {
 	_c=0
-	sh "$ENFORCE" --gates-env "$WORK/out/sentinel-shield-gates.env" --summary "$WORK/s.json" \
+	sh "$ENFORCE" --gates-env "$WORK/out/sentinel-shield-gates.env" --summary "$WORK/s.json" $(ss_att "$WORK/s.json") \
 		--output-dir "$WORK/out" "$@" >"$WORK/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }
@@ -239,8 +245,10 @@ armk() {  # armk <approved_at> <expires_at> [status]
 arrun() {  # arrun <mode> [env-assignment]
 	sh "$RESOLVE" --mode "$1" --output-dir "$WORK/w" --format all >/dev/null 2>&1
 	_c=0
+	# shellcheck disable=SC2046  # ss_att emits a controlled two-token flag or nothing
 	env ${2:+"$2"} sh "$ENFORCE" --gates-env "$WORK/w/sentinel-shield-gates.env" \
-		--summary "$WORK/win-summary.json" --accepted-risks "$WORK/ar-win.json" \
+		--summary "$WORK/win-summary.json" $(ss_att "$WORK/win-summary.json") \
+		--accepted-risks "$WORK/ar-win.json" \
 		--output-dir "$WORK/w" --format json >"$WORK/w/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }

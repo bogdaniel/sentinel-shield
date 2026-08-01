@@ -117,13 +117,32 @@ rm -f "$WORK/raw/semgrep.json"
 # 3. The assurance modes refuse an unbound summary.
 # ---------------------------------------------------------------------------
 G="$WORK/g"; mkdir -p "$G"
-# gate <summary> <mode> — echo the enforcer's exit code.
+# gate <summary> <mode> [attestation-record] — echo the enforcer's exit code.
 gate() {
 	sh "$RESOLVE" --mode "$2" --output-dir "$G" --format env >/dev/null 2>&1
 	_c=0
-	sh "$ENFORCE" --gates-env "$G/sentinel-shield-gates.env" --summary "$1" \
-		--output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
+	if [ -n "${3:-}" ]; then
+		sh "$ENFORCE" --gates-env "$G/sentinel-shield-gates.env" --summary "$1" \
+			--attestation "$3" --output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
+	else
+		sh "$ENFORCE" --gates-env "$G/sentinel-shield-gates.env" --summary "$1" \
+			--output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
+	fi
 	printf '%s' "$_c"
+}
+# att_for <summary> <out> [overrides-jq] — an attestation record bound to <summary> as it
+# exists on disk. The digest is computed HERE, which is the whole point: a summary cannot
+# carry its own digest, because writing it in changes it.
+att_for() {
+	_ad=$(sha256sum "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_ad" ] || _ad=$(shasum -a 256 "$1" | awk '{print $1}')
+	jq -n --arg d "sha256:$_ad" \
+		--arg r "$(jq -r '.source.repository // ""' "$1")" \
+		--arg c "$(jq -r '.source.commit // ""' "$1")" \
+		'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+		  verifier:"test", artifact:"summary", artifact_digest:$d,
+		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1234567890"}' \
+		| jq "${3:-.}" > "$2"
 }
 # regulated requires a VERIFIED platform attestation — the builder never emits one, so an
 # attested fixture is what a real attestation-verification step would have produced.
@@ -134,18 +153,34 @@ jq '.tools = {"tests":{"status":"pass"}}
 		workflow_sha:"1111111111111111111111111111111111111111", run_id:"1234567890",
 		run_attempt:"1", artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
 	"$EXAMPLE" > "$WORK/attested.json"
-check "a fully attested summary passes regulated" "$(gate "$WORK/attested.json" regulated)" 0
-# …and every way of removing the attestation fails closed.
-jq 'del(.attestation)' "$WORK/attested.json" > "$WORK/noatt.json"
-check "regulated refuses a summary with NO attestation" "$(gate "$WORK/noatt.json" regulated)" 2
-jq '.attestation.verified = false' "$WORK/attested.json" > "$WORK/unver.json"
-check "regulated refuses attestation.verified=false" "$(gate "$WORK/unver.json" regulated)" 2
-jq 'del(.attestation.artifact_digest)' "$WORK/attested.json" > "$WORK/nodig.json"
-check "regulated refuses an attestation that binds no artifact digest" "$(gate "$WORK/nodig.json" regulated)" 2
-jq '.attestation.commit = "ffffffffffffffffffffffffffffffffffffffff"' "$WORK/attested.json" > "$WORK/wrongc.json"
-check "regulated refuses an attestation for another commit" "$(gate "$WORK/wrongc.json" regulated)" 2
-jq '.attestation.repository = "evil/repo"' "$WORK/attested.json" > "$WORK/wrongr.json"
-check "regulated refuses an attestation for another repository" "$(gate "$WORK/wrongr.json" regulated)" 2
+# THE ATTESTATION MUST COME FROM OUTSIDE THE DOCUMENT IT ATTESTS.
+# Reading `.attestation` out of the summary meant whoever writes the summary could write
+# `verified: true` beside their own `.source` claims — the document authorising itself. The
+# record now arrives via --attestation and is bound to the summary's digest, computed at
+# enforcement time.
+check "a summary that attests to ITSELF does not satisfy regulated" \
+	"$(gate "$WORK/attested.json" regulated)" 2
+att_for "$WORK/attested.json" "$WORK/att.json"
+check "  but an independently supplied record bound to it does" \
+	"$(gate "$WORK/attested.json" regulated "$WORK/att.json")" 0
+# …and every way of weakening the RECORD fails closed.
+att_for "$WORK/attested.json" "$WORK/unver.json" '.verified = false'
+check "regulated refuses a record with verified=false" "$(gate "$WORK/attested.json" regulated "$WORK/unver.json")" 2
+att_for "$WORK/attested.json" "$WORK/nodig.json" 'del(.artifact_digest)'
+check "regulated refuses a record that binds no artifact digest" "$(gate "$WORK/attested.json" regulated "$WORK/nodig.json")" 2
+att_for "$WORK/attested.json" "$WORK/otherdig.json" '.artifact_digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"'
+check "regulated refuses a record bound to a DIFFERENT artifact" "$(gate "$WORK/attested.json" regulated "$WORK/otherdig.json")" 2
+att_for "$WORK/attested.json" "$WORK/wrongc.json" '.commit = "ffffffffffffffffffffffffffffffffffffffff"'
+check "regulated refuses a record for another commit" "$(gate "$WORK/attested.json" regulated "$WORK/wrongc.json")" 2
+att_for "$WORK/attested.json" "$WORK/wrongr.json" '.repository = "evil/repo"'
+check "regulated refuses a record for another repository" "$(gate "$WORK/attested.json" regulated "$WORK/wrongr.json")" 2
+att_for "$WORK/attested.json" "$WORK/badfmt.json" '.attestation = "something/else@9"'
+check "regulated refuses an unrecognised record format" "$(gate "$WORK/attested.json" regulated "$WORK/badfmt.json")" 2
+check "regulated refuses a record file that does not exist" "$(gate "$WORK/attested.json" regulated "$WORK/absent.json")" 2
+# The verifier that produces these records must exist and be runnable.
+check "the independent verifier exists" "$([ -f "$ROOT/scripts/verify-source-attestation.sh" ] && echo yes || echo no)" "yes"
+_vc=0; sh "$ROOT/scripts/verify-source-attestation.sh" >/dev/null 2>&1 || _vc=$?
+check "  and refuses an invocation with no arguments" "$_vc" 2
 jq '.source.trust = "github-actions"' "$WORK/attested.json" > "$WORK/oldtrust.json"
 check "an unrecognised trust level is never treated as the trusted one" "$(gate "$WORK/oldtrust.json" regulated)" 2
 check "  and strict" "$(gate "$WORK/attested.json" strict)" 0

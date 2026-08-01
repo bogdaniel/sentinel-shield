@@ -17,6 +17,12 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 SELECT="$ROOT/scripts/select-security-summary.sh"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 BUILD="$ROOT/scripts/build-security-summary.sh"
 EXAMPLE="$ROOT/templates/security-summary.example.json"
@@ -102,7 +108,7 @@ check "  no partial summary was published" "$([ -e "$D/s.json" ] && echo written
 D="$WORK/enfmark"; mkdir -p "$D"
 sh "$SELECT" --mode report-only --summary "$D/s.json" --example "$EXAMPLE" >/dev/null 2>&1
 sh "$RESOLVE" --mode baseline --output-dir "$D" --format all >/dev/null 2>&1
-_c=0; sh "$ENFORCE" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" \
+_c=0; sh "$ENFORCE" --gates-env "$D/sentinel-shield-gates.env" --summary "$D/s.json" $(ss_att "$D/s.json") \
 	--output-dir "$D" --format json >"$D/enf.log" 2>&1 || _c=$?
 check "the enforcer refuses a marked fallback in baseline" "$_c" 2
 grep -q 'non-production fallback' "$D/enf.log" && pass "  the refusal names the marker" || fail "  the refusal does not name the marker"
@@ -122,7 +128,7 @@ enf() {
 	_d="$WORK/e"; rm -rf "$_d"; mkdir -p "$_d"
 	sh "$RESOLVE" --mode "$2" --output-dir "$_d" --format all >/dev/null 2>&1
 	_c=0
-	sh "$ENFORCE" --gates-env "$_d/sentinel-shield-gates.env" --summary "$1" \
+	sh "$ENFORCE" --gates-env "$_d/sentinel-shield-gates.env" --summary "$1" $(ss_att "$1") \
 		--output-dir "$_d" --format json >"$_d/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }

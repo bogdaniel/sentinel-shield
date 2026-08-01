@@ -117,6 +117,9 @@ QUALITY_INFO_KEYS="coverage_line_percent coverage_branch_percent coverage_method
 # --- defaults / CLI ----------------------------------------------------------
 GATES_ENV_FILE="reports/sentinel-shield-gates.env"
 SUMMARY="reports/security-summary.json"
+# An INDEPENDENTLY produced source-attestation record (scripts/verify-source-attestation.sh).
+# Empty means none was supplied, which `regulated` refuses.
+ATTESTATION_FILE=""
 OUTPUT_DIR="reports"
 FORMAT="all"
 STRICT_SUMMARY=0
@@ -148,6 +151,13 @@ Options:
   --strict-summary     Opt into the COMPLETE structural validation (source, evidence, tool
                        statuses, version) in report-only. It is applied automatically —
                        and cannot be turned off — in baseline/strict/regulated.
+  --attestation <path> An INDEPENDENTLY verified source-attestation record, produced by
+                       scripts/verify-source-attestation.sh. REQUIRED by `regulated`: a
+                       summary cannot attest to itself (whoever writes it can write
+                       'verified: true' into it) and cannot bind its own sha256, so the
+                       binding has to come from outside the document. The record must bind
+                       repository, commit, workflow, run_id and an artifact digest equal to
+                       the sha256 of the summary being enforced.
   --accepted-risks <path>  Accepted-risk records (default: .sentinel-shield/accepted-risks.json).
                        An APPROVED, unexpired, owned record may suppress a
                        suppressible gate (unsafe_docker, medium_vulnerabilities).
@@ -190,6 +200,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--gates-env) GATES_ENV_FILE="${2:?--gates-env requires a value}"; shift 2 ;;
 		--summary) SUMMARY="${2:?--summary requires a value}"; shift 2 ;;
+		--attestation) ATTESTATION_FILE="${2:?--attestation requires a value}"; shift 2 ;;
 		--output-dir) OUTPUT_DIR="${2:?--output-dir requires a value}"; shift 2 ;;
 		--format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
 		--strict-summary) STRICT_SUMMARY=1; shift ;;
@@ -569,20 +580,47 @@ case "$MODE" in
 		# Regulated certifies audited evidence, so it requires a VERIFIED platform attestation.
 		# Environment variables are claims, and the builder emits `unverified` precisely so
 		# that no amount of environment control can reach this branch.
-		_averified=$(jqr '(.attestation | if type == "object" and (.verified == true) then "true" else "false" end)')
-		if [ "$_averified" != "true" ] || [ "$_strust" != "github-actions-attested" ]; then
-			die_cfg "'regulated' requires a VERIFIED platform attestation: source.trust='${_strust:-unverified}', attestation.verified=$(jqr '(.attestation.verified // "absent")'). Environment variables are claims, not provenance — run the attestation verification step against the producer artifact, or use 'strict' for an attestation-limited assurance run (docs/security-summary-schema.md)."
-		fi
+		# The attestation must come from OUTSIDE the document it attests.
+		#
+		# This used to read `.attestation` from the summary itself. Whoever can write the
+		# summary can write `{"verified": true}` beside their own `.source` claims, so the
+		# gate was checking the SHAPE of a self-authored assertion, not its authenticity —
+		# the document authorised itself. A summary also cannot bind its own sha256, because
+		# writing the digest in changes it, which is why the binding has to live elsewhere.
+		#
+		# `--attestation` is that elsewhere: a record produced by
+		# scripts/verify-source-attestation.sh, whose anchor is `gh attestation verify`
+		# against the workflow identity that actually produced the file. The summary's own
+		# `.attestation` object, if present, is advisory and is never consulted here.
+		[ -n "$ATTESTATION_FILE" ] \
+			|| die_cfg "'regulated' requires an independently verified source attestation, supplied with --attestation <record>. A summary cannot attest to itself: whoever writes it can write 'verified: true' into it, and it cannot bind its own digest. Produce the record with scripts/verify-source-attestation.sh, or use 'strict' for an attestation-limited assurance run (docs/security-summary-schema.md)."
+		[ -f "$ATTESTATION_FILE" ] \
+			|| die_cfg "'regulated': the attestation record was not found: $ATTESTATION_FILE"
+		jq -e . "$ATTESTATION_FILE" >/dev/null 2>&1 \
+			|| die_cfg "'regulated': the attestation record is not valid JSON: $ATTESTATION_FILE"
+		_ajq() { jq -r "$1 // \"\"" "$ATTESTATION_FILE" 2>/dev/null || printf ''; }
+		[ "$(_ajq '.attestation')" = "sentinel-shield/source-attestation@1" ] \
+			|| die_cfg "'regulated': unrecognised attestation record format '$(_ajq '.attestation')'; an unknown format is never treated as the verified one."
+		[ "$(_ajq '.verified')" = "true" ] \
+			|| die_cfg "'regulated': the attestation record does not report verified=true."
+		# It must bind the SUMMARY BEING ENFORCED, by digest computed here and now.
+		if command_exists sha256sum; then _sdig=$(sha256sum "$SUMMARY" | awk '{print $1}')
+		elif command_exists shasum; then _sdig=$(shasum -a 256 "$SUMMARY" | awk '{print $1}')
+		else log_error "'regulated': no sha256 tool (sha256sum/shasum) is available, so the attestation cannot be bound to this summary; an unverifiable binding is not a verified one"; exit 3; fi
+		[ "$(_ajq '.artifact_digest')" = "sha256:$_sdig" ] \
+			|| die_cfg "'regulated': the attestation is for artifact digest '$(_ajq '.artifact_digest')' but the summary being enforced is sha256:$_sdig. An attestation for a different artifact is not evidence about this one."
+		_averified=true
+		_strust=github-actions-attested
 		# The attestation must name what it attests. A verified flag with no bound identity is
 		# not provenance.
 		for _af in repository commit workflow run_id artifact_digest; do
-			_av=$(jqr "(.attestation.$_af // \"\")")
+			_av=$(_ajq ".$_af")
 			[ -n "$_av" ] && [ "$_av" != "null" ] \
 				|| die_cfg "'regulated': the attestation does not bind $_af. A verified flag with no bound identity is not provenance."
 		done
 		# …and it must attest THIS summary's source.
-		_ar=$(jqr '(.attestation.repository // "")'); _sr=$(jqr '(.source.repository // "")')
-		_ac=$(jqr '(.attestation.commit // "")'); _sc=$(jqr '(.source.commit // "")')
+		_ar=$(_ajq '.repository'); _sr=$(jqr '(.source.repository // "")')
+		_ac=$(_ajq '.commit');     _sc=$(jqr '(.source.commit // "")')
 		[ "$_ar" = "$_sr" ] || die_cfg "'regulated': the attestation is for repository '$_ar' but the summary claims '$_sr'"
 		[ "$_ac" = "$_sc" ] || die_cfg "'regulated': the attestation is for commit '$_ac' but the summary claims '$_sc'" ;;
 esac

@@ -27,6 +27,12 @@ trap 'rm -rf -- "$WORK"' EXIT INT TERM
 
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 BUILD="$ROOT/scripts/build-security-summary.sh"
 COLL="$ROOT/scripts/collectors"
 RUNNERS="$ROOT/scripts/runners"
@@ -309,7 +315,7 @@ mkav "$WORK/clean.json" 0 false
 
 enf() { # enf <mode> <summary> -> exit code, enforcement json in $WORK/out-<mode>
 	rc=0
-	sh "$ENFORCE" --gates-env "$WORK/enf-$1/sentinel-shield-gates.env" --summary "$2" \
+	sh "$ENFORCE" --gates-env "$WORK/enf-$1/sentinel-shield-gates.env" --summary "$2" $(ss_att "$2") \
 		--output-dir "$WORK/out-$1" --format json >/dev/null 2>&1 || rc=$?
 	printf '%s' "$rc"
 }

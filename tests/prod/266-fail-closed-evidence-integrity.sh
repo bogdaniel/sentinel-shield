@@ -34,9 +34,29 @@ COLL="$ROOT/scripts/collectors"
 # gate <summary> <mode> — resolve gates for <mode>, enforce, echo the exit code.
 gate() {
 	sh "$RESOLVE" --mode "$2" --output-dir "$WORK/g" --format env >/dev/null 2>&1
-	sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
-		--output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	if [ -n "${3:-}" ]; then
+		sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
+			--attestation "$3" --output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	else
+		sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
+			--output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	fi
 }
+# att_for <summary> <out> — an attestation record bound to <summary> as it exists on disk.
+# regulated no longer accepts an `.attestation` object embedded in the summary it is gating:
+# whoever writes the summary could write `verified: true` into it, and a document cannot bind
+# its own digest. The record therefore comes from outside, via --attestation.
+att_for() {
+	_ad=$(sha256sum "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_ad" ] || _ad=$(shasum -a 256 "$1" | awk '{print $1}')
+	jq -n --arg d "sha256:$_ad" \
+		--arg r "$(jq -r '.source.repository // ""' "$1")" \
+		--arg c "$(jq -r '.source.commit // ""' "$1")" \
+		'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+		  verifier:"test", artifact:"summary", artifact_digest:$d,
+		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$2"
+}
+
 # cstat <collector> <json> — run a collector over inline JSON, echo "status:key=value...".
 cstat() {
 	printf '%s' "$2" > "$WORK/in.json"
@@ -100,7 +120,9 @@ jq '.tools.gitleaks = {"status":"pass","findings":0}
 		missing_architecture_evidence:false, missing_test_change_evidence:false,
 		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
 	"$WORK/evid.json" > "$WORK/evid2.json"
-check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated)" "0"
+att_for "$WORK/evid2.json" "$WORK/evid2.att.json"
+check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated "$WORK/evid2.att.json")" "0"
+check "  and does NOT pass on its own embedded attestation alone" "$(gate "$WORK/evid2.json" regulated)" "2"
 
 # A hand-built summary with NO producers cannot certify an assurance mode. This was the
 # documented residual gap ("a caller who hand-writes \"tools\": {} still bypasses this"):
@@ -197,7 +219,11 @@ jq '.summary.secrets = 5' "$S/base.json" > "$S/secrets.json"
 # "TRUE" is a canonical spelling: the gate must be ENFORCED (and therefore fail on 5
 # secrets), not silently skipped as it was when compared literally against "true".
 sed 's/^SENTINEL_SHIELD_FAIL_ON_SECRETS=.*/SENTINEL_SHIELD_FAIL_ON_SECRETS=TRUE/' "$GENV" > "$WORK/g/upper.env"
+# This block is about the FAIL_ON_ flag SPELLING, not about provenance, so it supplies the
+# attestation regulated now requires rather than tripping over it first.
+att_for "$S/secrets.json" "$WORK/g/secrets.att.json"
 sh "$ENFORCE" --gates-env "$WORK/g/upper.env" --summary "$S/secrets.json" \
+	--attestation "$WORK/g/secrets.att.json" \
 	--output-dir "$WORK/g" --format json >/dev/null 2>&1 && _rc=0 || _rc=$?
 check_ne "FAIL_ON_SECRETS=TRUE does not silently skip the gate" "$_rc" "0"
 if [ -f "$WORK/g/sentinel-shield-enforcement.json" ]; then
