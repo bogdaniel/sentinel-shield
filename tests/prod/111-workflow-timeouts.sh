@@ -104,12 +104,22 @@ job_timeout() { # job_timeout <file> <job>
 			sub(/^[[:space:]]*timeout-minutes:[[:space:]]*/, ""); print; exit }
 	' "$ROOT/$1" 2>/dev/null
 }
+# The floors come from MEASUREMENT, not from a guess. Timed on the branch tip:
+#
+#     scripts/self-test.sh all                  3589s = 59.8 min
+#     scripts/self-test.sh production-readiness 2672s = 44.5 min
+#
+# A first attempt at this fix used 35/30, which is below BOTH figures — it would have been
+# killed at a higher wall and looked like the remediation failed rather than like the budget
+# was still wrong. CI additionally pays for checkout, dependency setup and cleanup, and
+# full-self-test runs workflow-sanity and fixtures on top of `all`, so the floors carry real
+# headroom for runner variance rather than tracking the measurement exactly.
 _t=$(job_timeout "$ST" full-self-test); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
-[ "$_t" -ge 30 ] && pass "ci-self-test/full-self-test budget is $_t min (>= 30)" \
-	|| fail "ci-self-test/full-self-test budget is $_t min; the complete suite does not fit and the job is killed at the budget"
+[ "$_t" -ge 90 ] && pass "ci-self-test/full-self-test budget is $_t min (>= 90)" \
+	|| fail "ci-self-test/full-self-test budget is $_t min; \`self-test.sh all\` measured 59.8 min before setup and the extra steps, so this job is killed at the budget"
 _t=$(job_timeout "$PR" self-tests); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
-[ "$_t" -ge 30 ] && pass "ci-production-readiness/self-tests budget is $_t min (>= 30)" \
-	|| fail "ci-production-readiness/self-tests budget is $_t min; the sweep does not fit and the job is killed at the budget"
+[ "$_t" -ge 75 ] && pass "ci-production-readiness/self-tests budget is $_t min (>= 75)" \
+	|| fail "ci-production-readiness/self-tests budget is $_t min; the production sweep measured 44.5 min before setup, so this job is killed at the budget"
 
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d workflow job(s) missing timeout-minutes\n' "$FAILS" >&2
