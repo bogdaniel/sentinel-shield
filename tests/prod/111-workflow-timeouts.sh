@@ -104,6 +104,11 @@ job_timeout() { # job_timeout <file> <job>
 			sub(/^[[:space:]]*timeout-minutes:[[:space:]]*/, ""); print; exit }
 	' "$ROOT/$1" 2>/dev/null
 }
+# These are CURRENT SAFETY FLOORS derived from observed runtime — not targets, not optima, and
+# not a claim that the suite should take this long. They exist so a job cannot be given less
+# time than the work it is known to need. Raising them later needs no change here; LOWERING
+# them does, and should be accompanied by a fresh measurement showing the suite got faster.
+#
 # The floors come from MEASUREMENT, not from a guess. Timed on the branch tip:
 #
 #     scripts/self-test.sh all                  3589s = 59.8 min
@@ -116,10 +121,10 @@ job_timeout() { # job_timeout <file> <job>
 # headroom for runner variance rather than tracking the measurement exactly.
 _t=$(job_timeout "$ST" full-self-test); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
 [ "$_t" -ge 90 ] && pass "ci-self-test/full-self-test budget is $_t min (>= 90)" \
-	|| fail "ci-self-test/full-self-test budget is $_t min; \`self-test.sh all\` measured 59.8 min before setup and the extra steps, so this job is killed at the budget"
+	|| fail "ci-self-test/full-self-test budget is $_t min, below the current safety floor of 90. \`self-test.sh all\` was measured at 59.8 min, before checkout, dependency setup and this job's extra workflow-sanity and fixture steps — at $_t min the job is killed at the budget and GitHub reports it as 'cancelled'. The floor is derived from that observation, not from an ideal runtime; lower it only with a fresh measurement."
 _t=$(job_timeout "$PR" self-tests); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
 [ "$_t" -ge 75 ] && pass "ci-production-readiness/self-tests budget is $_t min (>= 75)" \
-	|| fail "ci-production-readiness/self-tests budget is $_t min; the production sweep measured 44.5 min before setup, so this job is killed at the budget"
+	|| fail "ci-production-readiness/self-tests budget is $_t min, below the current safety floor of 75. The production sweep was measured at 44.5 min before setup — at $_t min the job is killed at the budget and GitHub reports it as 'cancelled'. The floor is derived from that observation, not from an ideal runtime; lower it only with a fresh measurement."
 
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d workflow job(s) missing timeout-minutes\n' "$FAILS" >&2

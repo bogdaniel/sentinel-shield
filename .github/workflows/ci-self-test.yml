@@ -43,6 +43,12 @@ jobs:
     # consecutive runs looked like concurrency cancellation rather than a job that never had
     # long enough. No amount of waiting for the stack to settle could have produced evidence.
     # This job owns the COMPLETE suite; ci-production-readiness runs the focused sweep only.
+    #
+    # 90 is a CURRENT SAFETY FLOOR, not a target and not an optimum. It is derived from an
+    # observed local runtime of 3589s (59.8 min) for `self-test.sh all`, plus headroom for
+    # checkout, dependency setup, cleanup, the workflow-sanity and fixture steps this job also
+    # runs, and runner variance. If the suite gets faster this number should come DOWN; if it
+    # keeps growing this number is not the fix — sharding is. Re-measure before changing it.
     timeout-minutes: 90
     steps:
       - name: Checkout
