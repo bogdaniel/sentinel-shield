@@ -60,7 +60,11 @@ rm -rf -- "$_np"
 # the count the inventory is validated against — an unpinned action in list form would have
 # passed both.
 _tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
-_pin=$(grep -rhoE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+# The SHA must END after 40 hex characters. `@[0-9a-f]{40}` alone matches a PREFIX, so a
+# 41-character hex ref — or a branch/tag whose name begins with 40 hex — counted as pinned and
+# was dropped from the unpinned list. Neither is immutable. Anchored to end-of-token, allowing
+# only trailing whitespace or a YAML comment after it.
+_pin=$(grep -rhE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}([[:space:]]|#|$)' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
 case "$_tot" in '' | *[!0-9]*) _tot=0 ;; esac
 case "$_pin" in '' | *[!0-9]*) _pin=0 ;; esac
 check "every 'uses:' is SHA-pinned ($_pin/$_tot)" "$_pin" "$_tot"
@@ -94,16 +98,27 @@ jobs:
     steps:
       - uses: evilcorp/rogue-action@v1
 ' 	> "$_pf/.github/workflows/zz-probe.yml"
+# A 41-character hex ref is NOT a SHA pin: `@[0-9a-f]{40}` matches only its PREFIX, so it was
+# counted as pinned and dropped from the unpinned list. A branch whose name merely begins with
+# 40 hex characters behaves the same way. Neither is immutable.
+_long_hex=$(printf 'a%.0s' 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1)
+printf 'name: probe2\non: push\njobs:\n  q:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - uses: evilcorp/long-hex@%s\n' \
+	"$_long_hex" > "$_pf/.github/workflows/zz-probe2.yml"
 _p_tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
-_p_pin=$(grep -rhoE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
+_p_pin=$(grep -rhE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}([[:space:]]|#|$)' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
 case "$_p_tot" in '' | *[!0-9]*) _p_tot=0 ;; esac
 case "$_p_pin" in '' | *[!0-9]*) _p_pin=0 ;; esac
 _unpinned=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null \
-	| grep -vE '@[0-9a-f]{40}' | sed 's/^[[:space:]]*//')
+	| grep -vE '@[0-9a-f]{40}$' | sed 's/^[[:space:]]*//')
 if [ "$_p_pin" -eq "$_p_tot" ]; then
 	fail "regression control: an unpinned LIST-FORM '- uses:' was NOT detected — the pin check cannot see that step form"
 elif printf '%s' "$_unpinned" | grep -q 'evilcorp/rogue-action@v1'; then
 	pass "regression control: an unpinned list-form '- uses:' is detected, and named"
+	if printf '%s' "$_unpinned" | grep -q 'evilcorp/long-hex@'; then
+		pass "regression control: a 41-character hex ref is classified unpinned, not pinned"
+	else
+		fail "regression control: a 41-character hex ref was treated as a SHA pin — that is a prefix match, not an immutable reference"
+	fi
 else
 	fail "regression control: the count changed but the unpinned step was not identified — the failure would not say why"
 fi
@@ -274,9 +289,12 @@ fi
 #
 # The temp dir is removed by a trap rather than a trailing `rm`, so an assertion that aborts
 # the script does not leak it. `trap` is additive here: the existing EXIT handler is preserved.
-_benv=$(mktemp -d)
-_benv_prev=$(trap -p EXIT 2>/dev/null | sed "s/^trap -- '//; s/' EXIT$//")
-trap 'rm -rf -- "$_benv"; '"${_benv_prev:-}" EXIT INT TERM HUP
+# `trap -p EXIT` is a bashism — dash, which is /bin/sh on the CI runner, does not support it,
+# so the "preserve the caller's handler" logic silently produced an empty string there. The
+# only EXIT handler this suite has is the WORK cleanup installed at the top, so the temp dir is
+# simply created INSIDE it and removed with the rest. No handler to preserve, nothing to lose.
+_benv="$WORK/baseline-env"
+mkdir -p "$_benv"
 if ! sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >"$_benv/out" 2>&1; then
 	fail "resolve-gates.sh --mode baseline FAILED; the gate assertions below would blame the gate defaults for a resolver fault"
 	sed 's/^/       /' "$_benv/out" 2>/dev/null | head -5
