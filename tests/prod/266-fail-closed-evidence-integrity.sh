@@ -69,7 +69,14 @@ cstat() {
 # zeros into a pristine document. sbom + release-evidence are staged so those two gates
 # cannot be what fails — the ONLY thing under test is "no scanner ran".
 E="$WORK/empty"; mkdir -p "$E/raw" "$E/rep"
-sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
+# Pin the commit on BOTH sides, exactly as scripts/self-test.sh pins its own fixtures to
+# ST_FIXTURE_COMMIT. Left unpinned, the builder resolves the commit from the environment:
+# `unknown` locally (so the manifest's commit binding is never compared) and a real SHA under
+# Actions (so it is). That difference is what made this fixture pass locally and fail in CI.
+# Pinning makes the binding EXERCISED in every environment rather than only in CI.
+FIXTURE_COMMIT=0123456789abcdef0123456789abcdef01234567
+sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t \
+	--commit "$FIXTURE_COMMIT" >/dev/null 2>&1
 # Evidence is VALIDATED now (#237), so staging empty files no longer stages evidence —
 # write a real SPDX document and a real attestation, otherwise the two gates under
 # exclusion would be exactly what fails.
@@ -83,18 +90,15 @@ printf '# Release evidence\n\nProduced by the 266 fixture.\nScope: engine self-t
 # manifest a real handoff would produce, so the artifacts are attributed as well as valid.
 _msha() { ss_sha256_file "$1" 2>/dev/null || printf ''; }
 . "$ROOT/scripts/lib/sentinel-shield-common.sh" 2>/dev/null || true
-# The manifest must name the commit the BUILDER recorded, not a literal. A manifest that
-# omits `.commit` is only accepted when the builder could not resolve one at all, so under
-# a CI environment (where GITHUB_SHA resolves the commit) an omitted `.commit` is correctly
-# read as replayed evidence and both evidence gates fail. Taking the commit from the summary
-# just built makes the fixture bind the same way in every environment — and makes it
-# EXERCISE the commit binding rather than skip it.
+# The manifest must name the commit the summary records, or the artifacts are unattributed:
+# evidence that names no commit, produced by a run that has one, is replayed evidence.
 jq -n --arg s "$(_msha "$E/rep/sbom.spdx.json")" --arg r "$(_msha "$E/rep/release-evidence.md")" \
-	--arg c "$(jq -r '.source.commit // ""' "$E/rep/s.json")" \
+	--arg c "$FIXTURE_COMMIT" \
 	'{version:"1", commit:$c, files:[{path:"sbom.spdx.json", sha256:$s},
 	                                 {path:"release-evidence.md", sha256:$r}]}' \
 	> "$E/rep/sentinel-shield-artifact-manifest.json"
-sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
+sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t \
+	--commit "$FIXTURE_COMMIT" >/dev/null 2>&1
 # Assert the staging worked BEFORE using it. Without this, an environment that changes how
 # the builder resolves the commit turns "the fixture failed to stage evidence" into "the
 # gate under test rejected the summary" — which is how a CI-only failure read as a defect in
