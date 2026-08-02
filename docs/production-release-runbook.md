@@ -78,8 +78,185 @@ scripts/verify-published-release.sh smoke --manifest release/2.0.0-manifest.json
 ```
 
 `verify-tag` fails closed if the tag peels to a different commit (a moved/mis-targeted tag) or
-if its signature is unverifiable. `smoke` re-confirms the published artifact digests still
+if its signature is unverifiable. The publisher additionally requires GitHub to *attribute* the
+signature to a registered signing identity — see
+[`TAG_SIGNING_IDENTITY_UNVERIFIED`](#tag_signing_identity_unverified--publication-refused). `smoke` re-confirms the published artifact digests still
 reproduce the manifest fingerprint.
+
+Publication is also asserted in the canonical contract
+([`config/release-status.json`](../config/release-status.json)) and is checked by
+`check-release-readiness.sh`. A release declared `published: true` with no GitHub Release
+behind it is a **non-waivable** readiness failure:
+
+```sh
+sh scripts/validate-release-status.sh published --verify-github
+```
+
+## `TAG_SIGNING_IDENTITY_UNVERIFIED` — publication refused
+
+The publisher requires `verification.verified == true` from the GitHub API before it will
+create a release. **Every** other state blocks:
+
+| Reported state | Blocks | Why |
+| --- | --- | --- |
+| `verified: true` | no | the only publishing state |
+| `unknown_key` | **yes** | the tag carries signature bytes GitHub cannot attribute to a registered key |
+| `unknown_signature_type` | **yes** | same — the signature type is not one GitHub can attribute |
+| `bad_signature`, `expired_key`, `revoked_key`, `unsigned` | **yes** | the signature itself does not verify |
+| verification fields absent / `null` | **yes** | a missing verification result is not a passed one |
+| malformed or empty API response | **yes** | an unreadable check is not a passed check |
+| API request failure (after 3 attempts) | **yes** | an unknown integrity state is not a verified one |
+
+**Signature material is not release authorization.** `unknown_key` means the tag is signed by
+*something*; it does not establish *who*, and it does not establish that the signer may publish
+Sentinel Shield releases. There is deliberately **no** bootstrap exception, owner-approved
+bypass, expiring waiver, or warning-only path — publication either proves the signing identity
+or does not happen.
+
+### What the failure tells you
+
+The diagnostic names the tag, the tag target, the published commit, GitHub's verification
+reason, the TAGGER when the API can name one, and the remediation.
+
+The tagger is not the signer. `.tagger` is the tag's author field — unauthenticated metadata
+that anyone creating a tag can set to any value — and the workflow labels it that way at the
+point it prints it. Only `verification.verified` speaks to who signed, which is why that field
+alone decides publication. Reading the tagger as signing authorisation is the exact confusion
+this gate exists to prevent, so this document names it the tagger too.
+
+### Remediation
+
+1. **Register the public signing key** on the account that signed the tag
+   (GitHub → Settings → SSH and GPG keys). This is the preferred fix: it makes the *existing*
+   tag verifiable.
+2. Re-run publication for the same tag:
+
+   ```sh
+   gh workflow run release-publish.yml -f tag=<tag>
+   ```
+
+   The workflow is idempotent: re-running it for an already-published tag does not fail.
+3. **If the signing key cannot be registered or recovered**, cut a **new** reviewed release
+   tag. Do not attempt to rescue the old one.
+
+### What you must NOT do
+
+An existing tag in this state is **immutable**:
+
+- do **not** force-update, move, or delete-and-recreate it;
+- do **not** re-sign it in place;
+- do **not** replace it silently with a new tag of the same name;
+- do **not** add an exception file, environment variable, or workflow input to get past the
+  check — none exists, and adding one would defeat the control.
+
+## `TAG_PROTECTION_UNPROVEN` — publication refused
+
+The publisher re-reads the tag ref and the verification verdict immediately before
+`gh release create`. Those are still SEPARATE API operations: `create` resolves the tag NAME
+again, and nothing binds that resolution to the object this run verified. A writer able to move
+`refs/tags/<tag>` in the interval between the two calls could therefore have a release published
+for a target nobody verified. Re-checking narrows that interval; it does not close it.
+
+**What closes it is the repository refusing the move.** Before publication the workflow proves
+that an ACTIVE tag ruleset covers this exact tag, restricts **both** updates and deletions, and
+grants no bypass that could be used to retarget it mid-run. This code means that proof failed.
+
+Requirements, all of which must hold:
+
+- a ruleset whose `target` is `tag` and whose `enforcement` is **`active`** — `evaluate` and
+  `disabled` report violations, they do not prevent them;
+- its ref conditions cover `refs/tags/<tag>` (an explicit pattern or `~ALL`, and not excluded);
+- its rules include **both** `update` and `deletion`;
+- **no** bypass actor with `bypass_mode: always` — not the publishing workflow, a GitHub App,
+  a repository role, a team, or an administrator.
+
+Everything fails closed. An API error, an unreadable ruleset, rules whose detail cannot be read,
+and bypass actors that cannot be inspected are all *protection not proven*, never *protection
+present*.
+
+**The `bypass_actors` trap.** GitHub omits `bypass_actors` entirely unless the caller has write
+access to the ruleset. An absent field therefore means the bypasses **could not be inspected**,
+which is exactly the state this check exists to rule out — it is never read as "there are no
+bypasses". If you see that error, give the publisher permission to read the ruleset rather than
+assuming the ruleset is clean.
+
+There is no override. A release published onto a movable tag is a release whose target nobody
+can vouch for.
+
+## `TAG_TARGET_COMMIT_MISMATCH` / `TAG_REF_MOVED` — publication refused
+
+Both mean the tag ref **changed** between the moment this run resolved it and the moment it
+was about to publish.
+
+- **`TAG_TARGET_COMMIT_MISMATCH`** — the tag object whose signature GitHub verified does not
+  peel to the commit this run is publishing. A verified signature on object B is not evidence
+  about commit A, so the run refuses before any release is created.
+- **`TAG_REF_MOVED`** — the ref no longer resolves to the object that was verified moments
+  earlier. Nothing about the new object has been verified.
+
+Neither is recoverable by re-running. **This project treats a release tag as write-once**:
+the publisher never creates, moves or rewrites one, and nothing in the workflow will publish a
+tag whose target changed under it. Note that git itself does not enforce that — a tag is a ref
+and it can be retargeted, which is exactly what these two codes detect. Enforcement comes from
+the repository: an active, non-bypassable tag ruleset restricting updates and deletions, which
+the publisher now requires before it will publish. If you see either code:
+
+1. Do **not** move the tag back — the fact that it moved is itself the incident.
+2. Establish who changed the ref and why. Repository settings should prevent this: protect
+   the `refs/tags/v*` namespace against force-push and deletion, and restrict who may push
+   tags. Workflow concurrency does **not** protect against an external ref mutation.
+3. Cut a **new** reviewed release tag at the intended commit and publish that.
+4. Leave the disturbed tag in place, recorded as tagged-but-unpublished.
+
+Such a tag stays in the repository as **tagged but unpublished / unverified**. Record it that
+way in `config/release-status.json` and in the release notes; it is an honest historical fact,
+not a defect to be edited away.
+
+There is no "retry later" for these two codes. Re-running publishes nothing, because the
+object this run verified is no longer what the ref names; the route forward is step 3 above, a
+new reviewed tag at the intended commit. (Retry-once-fixed is the remediation for
+[`TAG_SIGNING_IDENTITY_UNVERIFIED`](#tag_signing_identity_unverified--publication-refused),
+where the tag is untouched and only the signing identity has to be registered — a different
+failure with a different fix.)
+
+## Recovery: a tag exists but no GitHub Release was created
+
+A tag-push event **triggers** the publisher; it does not prove a release was published. The
+release exists only once the publisher has created it and the verification step has confirmed
+it. If the event never produced one — the publisher workflow was added or fixed **after** the
+tag was pushed, the run failed, the signing identity was not verified, or the release notes
+were not yet merged to the default branch — the repository ends up with an immutable tag and
+no GitHub Release, while the documentation claims a published release. The tag is the input to
+publication, never the evidence of it.
+
+Recover with the publisher's **backfill** path. It publishes an **existing** tag and can
+never create, move, or force-update one:
+
+1. Confirm the gap (this is what fails the readiness gate):
+
+   ```sh
+   sh scripts/validate-release-status.sh published --verify-github
+   gh release view <tag> --repo <owner/name>     # expect: release not found
+   ```
+
+2. Make sure `docs/<tag>-release-notes.md` exists on the default branch (or in the tagged
+   commit). **Missing notes fail the job** — the publisher no longer skips silently.
+
+3. Run the recovery dispatch (Actions → `release-publish` → *Run workflow*), or:
+
+   ```sh
+   gh workflow run release-publish.yml --repo <owner/name> -f tag=<tag>
+   ```
+
+   The job re-validates the tag name grammar, requires the tag to already exist, requires it
+   to be an **annotated, signed** tag, publishes with `gh release create --verify-tag`, and
+   then re-verifies the published release. It is **idempotent**: if the release already
+   exists (including one created concurrently), it is left exactly as-is.
+
+4. Re-run step 1. It must now pass.
+
+Never "fix" a missed publication by deleting and re-pushing the tag. Released tags are
+immutable; a bad release rolls **forward** ([`rollback-policy.md`](rollback-policy.md)).
 
 ## Exit codes (both tools)
 

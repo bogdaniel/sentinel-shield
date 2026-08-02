@@ -2,17 +2,57 @@
 
 All notable changes to Sentinel Shield are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). History began at `v0.1.0`
-and reached the **stable v1.x line** (`v1.9.2`, still supported). **`v2.0.1` is the latest
-published release** — an engine-only maintenance release (2026-07-09, marked latest, tag
-target `32812ed`) that refreshes the `v2.0.0` engine-only production release (tag target
-`13be630`, still an intact release) with no executable engine change. Engine-only scope:
+and reached the **stable v1.x line** (`v1.9.2`, still supported). **`v2.2.0` is the latest
+published release** — an engine-only feature release (2026-07-24, marked latest, tag target
+`99fcd276`) that supersedes `v2.0.1` (engine-only maintenance, tag target `32812ed`) and
+`v2.0.0` (tag target `13be630`), both still intact releases. Engine-only scope:
 **not** framework-validated and **not** a full-platform GA claim (Laravel/Symfony are
 engine- and fixture-tested only, not live-validated in real consumer
-repositories). See [`docs/product-status.md`](docs/product-status.md)
-for canonical status and [`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the
-engine-only v2 scope.
+repositories). The machine-readable source of truth for this status is
+[`config/release-status.json`](config/release-status.json); see
+[`docs/product-status.md`](docs/product-status.md) for canonical status and
+[`docs/v2-release-scope.md`](docs/v2-release-scope.md) for the engine-only v2 scope.
 
 ## [Unreleased]
+
+### Fixed — canonical release status, template pins, and publication integrity (#81, #82, #83)
+
+- **New `config/release-status.json`** (+ [`schemas/release-status.schema.json`](schemas/release-status.schema.json))
+  — the single machine-readable statement of which release is current, whether it is actually
+  **published** as a GitHub Release, which releases it supersedes, and which immutable ref shipped
+  consumer templates must pin. Release literals were previously hand-copied into ~30 documents and
+  seven workflow templates, and drifted.
+- **New `scripts/validate-release-status.sh`** — fail-closed reader/enforcer with modes
+  `contract | docs | changelog | templates | published | show | all`. It proves every declared
+  status surface names the current release, that **no active document presents a superseded
+  release as latest** (frozen historical records are exempt by declaration and keep their
+  historical truth), that the CHANGELOG introduction agrees with its newest released section, that
+  every shipped workflow template pins the contract ref, and that a release declared published has
+  a real GitHub Release (`--verify-github`) rather than only a pushed tag.
+- **Reconciled every current-status surface to `v2.2.0`** — README, CHANGELOG introduction,
+  `product-status.md` (canonical table), `product-contract.md`, `index.md`, `roadmap.md`,
+  `product-readiness-checklist.md`, `production-readiness-audit.md`, `sentinel-shield-release-process.md`,
+  `support-policy.md`, `v2-release-scope.md`, `v2-tracking-issues.md`. The engineering-quality,
+  architecture-governance and testing-discipline blocks no longer describe themselves as
+  "unreleased": they shipped in `v2.2.0` and are off by default in existing modes.
+- **Shipped workflow templates no longer pin the superseded `v2.0.1` engine.** All seven templates
+  and the reference example now pin `SENTINEL_SHIELD_REF: v2.2.0`, so a fresh install runs the
+  release the checkout documents. Consumer pins stay consumer-owned and immutable —
+  [`upgrading.md`](docs/upgrading.md) documents the `v2.0.1 → v2.2.0` upgrade and rollback.
+- **`check-release-readiness.sh` now gates on the contract.** Doc/CHANGELOG/template disagreement
+  fails the readiness check; a release declared published with no GitHub Release behind it is
+  **NON-WAIVABLE**.
+- **`release-publish.yml` gained a `workflow_dispatch` backfill recovery path** for a tag whose
+  push event never produced a release, and **no longer skips publication when release notes are
+  missing** (that silent skip is how a tag ends up documented as published with no release). The
+  backfill validates the tag grammar, requires the tag to already **exist** and to be an annotated
+  **signed** tag, is idempotent, and can never create, move, or force-update a tag.
+- **New `tests/prod/281-release-status-contract.sh`** — positive controls on the real repository
+  plus isolated fake-repository negative controls for every drift class (short/ambiguous SHA,
+  superseded-newer-than-current, branch consumer ref, stale README/doc/CHANGELOG claims, over-broad
+  historical exclusions, stale/missing/branch template pins, wrong-repository and wrong-tag release
+  URLs, missing notes, unpublished-with-publication-fields), plus idempotency and read-only checks.
+- `scripts/self-test.sh syntax` now jq-validates `config/*.json` as well.
 
 ## [2.2.0] — Engine-Only Feature Release — 2026-07-24
 

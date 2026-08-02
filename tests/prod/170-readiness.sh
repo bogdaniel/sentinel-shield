@@ -103,10 +103,28 @@ case "\$2" in
   */actions/runs/9001) echo '{"id":9001,"name":"ci-self-test","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9001","repository":{"full_name":"org/engine"}}' ;;
   */actions/runs/9002) echo '{"id":9002,"name":"ci-pipeline","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9002","repository":{"full_name":"org/engine"}}' ;;
   repos/org/engine) echo '{"default_branch":"master"}' ;;
+  # The release-status gate proves that a release declared published really exists as a
+  # GitHub Release. Stub it as PUBLISHED (tag echoed back from the request path) so this
+  # suite stays hermetic; the absent-release case is asserted separately in (i).
+  */releases/tags/*) echo "{\"tag_name\":\"\${2##*/}\",\"draft\":false,\"prerelease\":false}" ;;
   *) echo '{}' ;;
 esac
 JSON
 chmod +x "$BIN/gh"
+
+# A second stub whose release lookup FAILS the way GitHub does when no release exists.
+cat >"$BIN/gh-norelease" <<JSON
+#!/bin/sh
+case "\$2" in
+  */actions/runs/9001/artifacts|*/actions/runs/9002/artifacts) echo '{"artifacts":[]}' ;;
+  */actions/runs/9001) echo '{"id":9001,"name":"ci-self-test","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9001","repository":{"full_name":"org/engine"}}' ;;
+  */actions/runs/9002) echo '{"id":9002,"name":"ci-pipeline","head_sha":"$CM","head_branch":"master","event":"push","conclusion":"success","html_url":"https://github.com/org/engine/actions/runs/9002","repository":{"full_name":"org/engine"}}' ;;
+  repos/org/engine) echo '{"default_branch":"master"}' ;;
+  */releases/tags/*) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+  *) echo '{}' ;;
+esac
+JSON
+chmod +x "$BIN/gh-norelease"
 
 # (e) beta WITHOUT --verify-github fails closed (structural-only is insufficient).
 rc=0; out=$(run selftest-ok --version v2.0.0-beta.1 --stage beta --scope engine-only --evidence "$GOOD_ENGINE") || rc=$?
@@ -131,6 +149,13 @@ rc=0; out=$(run selftest-ok --version v2.0.0-beta.1 --stage beta --scope engine-
 [ "$rc" -eq 0 ] && ok "(h) beta --verify-github exits 0 on valid engine evidence" || bad "(h) beta --verify-github expected 0, got $rc; out: $out"
 printf '%s' "$out" | grep -q 'Evidence verification: GitHub-verified' && ok "(h) beta --verify-github labels evidence GitHub-verified" || bad "(h) beta --verify-github missing GitHub-verified label"
 printf '%s' "$out" | grep -q 'READY (all required gates met)' && ok "(h) beta --verify-github prints READY" || bad "(h) beta --verify-github missing READY"
+
+# (i) A release documented as PUBLISHED with no GitHub Release behind it must block, and
+#     must block NON-WAIVABLY — this is the #81 regression (tags existed, releases did not).
+rc=0; out=$(GH_BIN=gh-norelease run selftest-ok --version v2.0.0-beta.1 --stage beta --scope engine-only --verify-github --evidence "$GOOD_ENGINE") || rc=$?
+[ "$rc" -eq 1 ] && ok "(i) a missing GitHub Release fails release readiness (exit 1)" || bad "(i) missing GitHub Release expected exit 1, got $rc"
+printf '%s' "$out" | grep -q 'declared PUBLISHED but no valid GitHub Release' && ok "(i) the missing-release failure is named explicitly" || bad "(i) missing-release failure not reported"
+printf '%s' "$out" | grep -q 'no valid GitHub Release was proven.*\[NON-WAIVABLE\]' && ok "(i) the missing-release failure is NON-WAIVABLE" || bad "(i) missing-release failure is not marked NON-WAIVABLE"
 
 # (d) bad args -> exit 2 (missing --version / invalid --stage / unknown flag).
 rc=0; run selftest-ok --stage alpha >/dev/null 2>&1 || rc=$?

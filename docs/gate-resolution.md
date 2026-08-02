@@ -117,10 +117,19 @@ them non-blocking except strict (install-script + network) and regulated (all).
 
 ## Engineering quality gates (v2.1)
 
-> **Unreleased, additive engine capability.** These six gate keys are **not** part of `v2.0.1`/`v2.0.0`
-> and are **not** a new release claim (latest release remains `v2.0.1`, engine-only). They are additive
-> to the resolver: existing gates and their mode defaults above are **unchanged**, and consumers may
-> ignore them entirely. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only). These six gate keys are additive
+> to the resolver: existing gates and their mode defaults above are **unchanged**.
+>
+> **Upgrade impact — read this before upgrading a `strict` or `regulated` consumer.** "Additive" means
+> no existing gate changed, NOT that nothing new can block you: the mode matrices below enable several
+> of these gates in `strict` and `regulated`, and `changed_lines_coverage_violations` and
+> `focused_test_violations` enforce from `baseline` and report-only respectively once their evidence
+> exists. A consumer already running `strict`/`regulated` can therefore see NEW blocking outcomes on
+> the first run after upgrading. Preflight with `--mode report-only` on one branch before
+> promoting the engine, or disable individual gates explicitly with
+> `SENTINEL_SHIELD_FAIL_ON_<GATE>=false` (one variable per gate — there is no wildcard form, and
+> a glob is read as a literal gate name that matches nothing).
+> Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 The engineering-quality family is a **separate counter channel** from security (the two are never
 folded together). The resolver emits these alongside the canonical keys, uppercased and prefixed
@@ -191,9 +200,9 @@ falls back to documented defaults. Missing quality summary keys are treated as `
 
 ## Architecture governance gates (v2.1)
 
-> **Unreleased, additive engine capability.** `architecture_violations` is a **canonical** gate and its
-> mode defaults above are **unchanged**; v2.1 adds one new gate key alongside it and does **not** make a
-> new release claim (latest release remains `v2.0.1`, engine-only). Full reference:
+> **Additive engine capability, released in `v2.2.0`** (engine-only). `architecture_violations` is a
+> **canonical** gate and its mode defaults above are **unchanged**; `v2.2.0` adds one new gate key
+> alongside it. Full reference:
 > [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac is

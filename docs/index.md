@@ -1,16 +1,18 @@
 # Sentinel Shield — Documentation Hub
 
-> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
-> on 2026-07-09 at tag target `32812ed`. It refreshes the **`v2.0.0`** engine-only production release
-> evidence after documentation reconciliation and workflow-action upgrades, with **no executable
-> engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
+> **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
+> on 2026-07-24 at tag target `99fcd276`. It supersedes **`v2.0.1`** (engine-only maintenance,
+> 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families. Which of their gates enforce
+> in which mode varies per gate — several enforce from `baseline` once their evidence exists;
+> the matrix is [`docs/gate-resolution.md`](../docs/gate-resolution.md). The machine-readable source of truth for this status is
+> [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a supported prior stable line but
 > is **no longer the latest** overall release. The v2 line is scoped **engine-only**
 > ([`v2-release-scope.md`](v2-release-scope.md)) — a reusable-engine/baseline release, **not** a claim
 > of framework-specific production proof. **Laravel and Symfony are supported by profiles, fixtures and
 > engine tests but are not independently live-validated in real consumer repositories.**
 > **Framework-validated and full-platform GA are not claimed.** Single source of truth for maturity:
 > [`product-status.md`](product-status.md). v2 release notes:
-> [`v2.0.1-release-notes.md`](v2.0.1-release-notes.md), [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) ·
+> [`v2.2.0-release-notes.md`](v2.2.0-release-notes.md), [`v2.0.1-release-notes.md`](v2.0.1-release-notes.md), [`v2.0.0-release-notes.md`](v2.0.0-release-notes.md) ·
 > branch protection: [`branch-protection.md`](branch-protection.md) · merge-commit CI evidence:
 > [`v2-merge-commit-ci-evidence.md`](v2-merge-commit-ci-evidence.md).
 >
@@ -58,7 +60,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 
 ### Modes, gates & governance
 - [`gate-resolution.md`](gate-resolution.md) — mode → gate flags → enforce **[stable]**
-- [`engineering-quality-gates.md`](engineering-quality-gates.md) — coverage/mutation/complexity/duplication/dead-code quality gates (v2.1; unreleased, additive engine capability) **[experimental]**
+- [`engineering-quality-gates.md`](engineering-quality-gates.md) — coverage/mutation/complexity/duplication/dead-code quality gates (released in `v2.2.0`, engine-only) **[reference]**
 - [`severity-policy.md`](severity-policy.md) — severity → gate mapping **[stable]**
 - [`strict-mode-readiness.md`](strict-mode-readiness.md) — strict opt-in pre-flight **[stable]**
 - [`regulated-mode-readiness.md`](regulated-mode-readiness.md) — regulated (not default) **[advanced]**

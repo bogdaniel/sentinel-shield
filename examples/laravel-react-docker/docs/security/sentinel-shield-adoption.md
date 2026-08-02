@@ -35,7 +35,7 @@ ref and calls its scripts from there. Set these in
 ```yaml
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # your Sentinel Shield repo
-  SENTINEL_SHIELD_REF: v0.1.0                            # tag for first adoption; FULL SHA before production
+  SENTINEL_SHIELD_REF: v2.2.0                            # tag for first adoption; FULL SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
 ```
 

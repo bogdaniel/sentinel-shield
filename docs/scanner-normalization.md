@@ -106,8 +106,8 @@ severity mapping) is documented in
 
 ### Engineering-quality collectors (v2.1)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim. Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
+> modes). Full reference: [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
 Five additional collectors map coverage/mutation/complexity/duplication/dead-code raw reports into the
 engineering-quality summary keys. These are a **separate counter channel** from security — they are
@@ -129,8 +129,8 @@ the quality channel.
 
 ### Architecture collectors (v2.1.0)
 
-> **Unreleased, additive engine capability** — **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim. Full reference: [`architecture-governance.md`](architecture-governance.md).
+> **Additive engine capability, released in `v2.2.0`** (engine-only; off by default in existing
+> modes). Full reference: [`architecture-governance.md`](architecture-governance.md).
 
 Sentinel Shield enforces architecture governance through normalized architecture evidence. Deptrac
 is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS

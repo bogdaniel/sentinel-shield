@@ -61,15 +61,16 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 | **strict** | + `medium_vulnerabilities`, `missing_sbom`, style_violations, iac_violations, container_image_violations, and the higher-confidence third-party signals — whole codebase, not just new code | A clean run is achievable on demand; medium/style triaged or accept-risked; pre-flight ([`strict-mode-readiness.md`](strict-mode-readiness.md)) passes. **Opt-in.** |
 | **regulated** | + release-evidence, scorecard, the noisier third-party signals | A compliance regime requires auditable evidence per release; pre-flight ([`regulated-mode-readiness.md`](regulated-mode-readiness.md)) passes. **Opt-in.** |
 
-> **Engineering quality gates (v2.1) — unreleased, additive engine capability.** A separate
+> **Engineering quality gates (released in `v2.2.0`) — additive engine capability.** A separate
 > engineering-quality counter channel (coverage, coverage regression, mutation, complexity,
 > duplication, dead code) follows the **same promotion path** as the modes above: non-blocking in
 > report-only/baseline, `strict` adds coverage threshold/regression + complexity + duplication, and
-> `regulated` adds mutation + dead-code. It is **not** part of `v2.0.1`/`v2.0.0` and **not** a new
-> release claim (latest release remains `v2.0.1`); adopt it report-only-first via
+> `regulated` adds mutation + dead-code. Not every gate in the family waits for an opt-in —
+> `changed_lines_coverage_violations` enforces from `baseline` and `focused_test_violations` in
+> every mode ([`gate-resolution.md`](gate-resolution.md)); adopt it report-only-first via
 > `.sentinel-shield/quality-policy.yaml`. See [`engineering-quality-gates.md`](engineering-quality-gates.md).
-
-> **Architecture Governance v2 (v2.1) — unreleased, additive engine capability.** Sentinel Shield
+>
+> **Architecture Governance v2 (released in `v2.2.0`) — additive engine capability.** Sentinel Shield
 > enforces architecture governance through normalized architecture evidence. Deptrac is the PHP
 > structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS producers. Custom
 > architecture tests can also emit the same contract. It follows the **same promotion path** as the
@@ -77,8 +78,10 @@ thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is 
 > and blocks from `baseline`; `strict` adds `missing_architecture_evidence`
 > (`SENTINEL_SHIELD_FAIL_ON_MISSING_ARCHITECTURE_EVIDENCE`), so absent/unavailable/errored expected
 > evidence blocks too; `regulated` keeps that and additionally requires the raw architecture reports to
-> be retained as evidence. It is **not** part of `v2.0.1`/`v2.0.0` and **not** a new release claim
-> (latest release remains `v2.0.1`); adopt it report-only-first via
+> be retained as evidence. To be exact about what v2.2.0 changed: `architecture_violations` is the
+> CANONICAL gate and keeps its existing blocking defaults (`baseline` upward) — upgrading does not
+> disable it — while `missing_architecture_evidence` is the NEW gate, and it is the one `strict` adds
+> ([`gate-resolution.md`](gate-resolution.md)). Adopt it report-only-first via
 > `.sentinel-shield/architecture-policy.yaml`. See [`architecture-governance.md`](architecture-governance.md).
 
 Architecture-governance rollout ramp (same shape as every other gate):

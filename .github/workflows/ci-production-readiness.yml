@@ -116,7 +116,16 @@ jobs:
   # Self-test matrix + every prod test (single source of truth: scripts/self-test.sh).
   self-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # This job ran `self-test.sh all` and THEN the production-readiness sweep, so it duplicated
+    # everything ci-self-test already owns and reliably exceeded its budget on the second half.
+    # The complete suite stays with ci-self-test; this job is the focused independent sweep.
+    #
+    # 75 is a CURRENT SAFETY FLOOR, not a target and not an optimum. It is derived from an
+    # observed local runtime of 2672s (44.5 min) for the production sweep, plus headroom for
+    # setup and runner variance. Note this sweep is ALSO run inside `self-test.sh all` over in
+    # ci-self-test; the duplication is deliberate independence, and removing it is a CI
+    # performance change with its own required-check design, not a timeout adjustment.
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -141,9 +150,9 @@ jobs:
         with:
           php-version: "8.3"
 
-      - name: self-test.sh all (BLOCKING)
-        run: sh scripts/self-test.sh all
-
+      # NOT `self-test.sh all` — that is ci-self-test's job, and running it here as well is
+      # what pushed this job past its budget. Duplicating a 20-minute suite buys no additional
+      # signal; it only guarantees the sweep after it never reports.
       - name: All prod tests (BLOCKING)
         run: sh scripts/self-test.sh production-readiness
 

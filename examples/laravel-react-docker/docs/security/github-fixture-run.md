@@ -70,7 +70,7 @@ Edit `.github/workflows/sentinel-shield.yml` `env:`:
 ```yaml
 env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # the published Sentinel Shield repo
-  SENTINEL_SHIELD_REF: v0.1.0                            # a TAG for first adoption
+  SENTINEL_SHIELD_REF: v2.2.0                            # a TAG for first adoption
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
 ```
 

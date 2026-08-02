@@ -1,8 +1,9 @@
 # Sentinel Shield Release Process (v0.1.16)
 
-> **Canonical status.** Latest release: **`v2.0.1`** — an engine-only maintenance release published
-> on 2026-07-09 at tag target `32812ed`, refreshing the **`v2.0.0`** engine-only production release
-> evidence with **no executable engine change**. The prior **v1.x** line (latest `v1.9.2`) remains a
+> **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
+> on 2026-07-24 at tag target `99fcd27`, superseding **`v2.0.1`** (engine-only maintenance,
+> 2026-07-09, tag target `32812ed`). The machine-readable source of truth for this status is
+> [`config/release-status.json`](../config/release-status.json). The prior **v1.x** line (latest `v1.9.2`) remains a
 > supported prior stable line but is **no longer the latest** overall release. **Framework-validated
 > and full-platform GA are not claimed.** The `v2.0.0-beta.1` / `v2.0.0-alpha.1` references below are
 > historical pre-release milestones, retained as accurate release history. Canonical status:
@@ -67,9 +68,16 @@ scanner binary run is part of the engine's own release gate** — by design.
 
 ### Published GitHub Releases (v2)
 
+Publication state is asserted in [`config/release-status.json`](../config/release-status.json)
+and proven by `sh scripts/validate-release-status.sh published --verify-github`. A tag alone
+is **not** a release; if a tag-push event never produced a GitHub Release, use the backfill
+recovery path in
+[`production-release-runbook.md`](production-release-runbook.md#recovery-a-tag-exists-but-no-github-release-was-created).
+
 | Version | Stage | Published Release page |
 | --- | --- | --- |
-| `v2.0.1` | ga (engine-only maintenance, **latest**) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.1> |
+| `v2.2.0` | ga (engine-only feature, **latest**) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.2.0> |
+| `v2.0.1` | ga (engine-only maintenance, prior) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.1> |
 | `v2.0.0` | ga (engine-only production, prior) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0> |
 | `v2.0.0-rc.1` | rc (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-rc.1> |
 | `v2.0.0-beta.1` | beta (engine-only, pre-release) | <https://github.com/bogdaniel/sentinel-shield/releases/tag/v2.0.0-beta.1> |

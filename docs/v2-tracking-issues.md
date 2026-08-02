@@ -23,19 +23,20 @@ framework-validated release can be claimed. They are not won't-fix.
 
 **Context:**
 v2 documentation and version references must be reconciled with reality.
-The latest published release is **`v2.0.1`** — an engine-only maintenance release
-(2026-07-09, tag target `32812ed`) refreshing the **`v2.0.0`** engine-only production
-release (tag target `13be630`) with no executable engine change. The **v1.x** line
+The latest published release is **`v2.2.0`** — an engine-only feature release
+(2026-07-24, tag target `99fcd276`) superseding **`v2.0.1`** (engine-only maintenance,
+2026-07-09, tag target `32812ed`), which refreshed the **`v2.0.0`** engine-only production
+release (tag target `13be630`). The **v1.x** line
 (latest `v1.9.2`) remains a supported prior stable line but is no longer the latest
 overall release. `v2.0.0-beta.1` / `v2.0.0-alpha.1` are historical pre-release
 milestones. Docs must not imply a stable, framework-validated v2.
 
 **Acceptance criteria:**
 - [x] All docs distinguish "pre-release" from published for v2 artifacts.
-- [x] Version references agree with the actual tag state (`v2.0.1` latest, tag `32812ed`; `v2.0.0` prior production release; `v1.9.2` supported prior stable line).
+- [x] Version references agree with the actual tag state (`v2.2.0` latest, tag `99fcd27`; `v2.0.1` and `v2.0.0` superseded engine-only releases; `v1.9.2` supported prior stable line).
 - [x] Release-scope wording (engine-only vs framework-validated vs full-platform) is consistent across docs.
 
-**Current status:** Addressed for the published `v2.0.1` release — canonical status is
+**Current status:** Addressed for the published `v2.2.0` release — canonical status is
 [`docs/product-status.md`](product-status.md); entry docs reconciled against it. Residual
 follow-up: keep version wording in sync as future candidates progress.
 

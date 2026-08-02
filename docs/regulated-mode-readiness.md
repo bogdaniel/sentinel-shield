@@ -37,17 +37,22 @@ to `strict`, regulated **promotes these from advisory to hard blockers**:
   + allowlist + approval are configured** ([`dast-policy.md`](dast-policy.md)).
 - `repository_health_warnings` — OpenSSF Scorecard / repo-health gates here (`✗/✗/✓`).
 
-Regulated also completes the **engineering-quality gates (v2.1)** — an unreleased, additive engine
-capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
-`v2.0.1`). On top of the four quality gates strict already blocks (coverage threshold, coverage
+Regulated also completes the **engineering-quality gates (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only). Its gate keys are additive; which of them enforce in which
+mode is the per-gate matrix in [`gate-resolution.md`](gate-resolution.md) (several enforce
+from `baseline` once their evidence exists). On top of the four quality gates strict already blocks (coverage threshold, coverage
 regression, complexity, duplication), regulated **additionally enables** `mutation_score_violations`
 and `dead_code_violations` — so all six quality gates block in regulated, in a **separate counter
 channel** from security. These are **not** accepted-risk-suppressible. See
 [`engineering-quality-gates.md`](engineering-quality-gates.md).
 
-Regulated also completes **Architecture Governance v2 (v2.1)** — an unreleased, additive engine
-capability (**not** part of `v2.0.1`/`v2.0.0`, **not** a new release claim; latest release remains
-`v2.0.1`). Sentinel Shield enforces architecture governance through normalized architecture evidence.
+Regulated also completes **Architecture Governance v2 (v2.1)** — an additive engine capability
+**released in `v2.2.0`** (engine-only). `architecture_violations` enforces from `baseline` and
+regulated keeps it; `missing_architecture_evidence` is the new gate regulated adds on top
+([`gate-resolution.md`](gate-resolution.md)). **Upgrade impact:** regulated is itself an opt-in, so a
+consumer already running it can see NEW blocking outcomes on the first run after upgrading — preflight
+in report-only before promoting the engine.
+Sentinel Shield enforces architecture governance through normalized architecture evidence.
 Deptrac is the PHP structural-boundary producer. dependency-cruiser and ESLint boundaries are JS/TS
 producers. Custom architecture tests can also emit the same contract. Regulated keeps the strict
 behavior — `architecture_violations` (summed across all producers) and `missing_architecture_evidence`
@@ -120,7 +125,7 @@ first, review real output, then tighten:**
 | OWASP Dependency-Check | `*_vulnerabilities` | `experimental` — **attempted, NOT live-validated** | No real artifact; cold NVD exceeds CI budget. Run **nightly** with warm cache, advisory, before gating. |
 | Checkov / Conftest / Terrascan | `iac_violations` | `experimental` — **only if configured** | No consumer with IaC validated; meaningful only with IaC. |
 | Deptrac | `architecture_violations` | `supported` — not live-validated | Live-validate on a consumer with `deptrac.yaml`. |
-| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | v2.1 unreleased — engine-tested + fixture-tested, **no real consumer validation** | Absent/unavailable/errored evidence blocks here, and the raw reports must be retained. Wire producers in report-only/baseline, tighten through strict, then regulate. |
+| Architecture evidence (Deptrac / PHPArkitect / dependency-cruiser / ESLint boundaries / custom architecture tests) | `missing_architecture_evidence` | released in `v2.2.0` (engine-only) — engine-tested + fixture-tested, **no real consumer validation** | Absent/unavailable/errored evidence blocks here, and the raw reports must be retained. Wire producers in report-only/baseline, tighten through strict, then regulate. |
 | OpenSSF Scorecard | `repository_health_warnings` | `experimental` — regulated-only gate | Needs repo token; review real warnings before blocking. |
 | Trivy (image) | `*_vulnerabilities` | `experimental`/nightly | Needs an image ref; nightly home. |
 | TruffleHog | `secrets` | `experimental`/nightly | Verified-only count; live-validate. |

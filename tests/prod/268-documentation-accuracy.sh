@@ -55,11 +55,74 @@ check "negative control: a manifest with no tools and no operative flag reads 'u
 rm -rf -- "$_np"
 
 # --- SHA-pinning claims must match the workflows -----------------------------
-_tot=$(grep -rhoE '^[[:space:]]*uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
-_pin=$(grep -rhoE '^[[:space:]]*uses: [^@[:space:]]+@[0-9a-f]{40}' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+# `- uses:` (list form) counts too. The previous pattern matched only `uses:` at the start of
+# a line, so 14 of the shipped references were never checked for pinning and never included in
+# the count the inventory is validated against — an unpinned action in list form would have
+# passed both.
+_tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+# The SHA must END after 40 hex characters. `@[0-9a-f]{40}` alone matches a PREFIX, so a
+# 41-character hex ref — or a branch/tag whose name begins with 40 hex — counted as pinned and
+# was dropped from the unpinned list. Neither is immutable. Anchored to end-of-token, allowing
+# only trailing whitespace or a YAML comment after it.
+_pin=$(grep -rhE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}([[:space:]]|#|$)' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
 case "$_tot" in '' | *[!0-9]*) _tot=0 ;; esac
 case "$_pin" in '' | *[!0-9]*) _pin=0 ;; esac
 check "every 'uses:' is SHA-pinned ($_pin/$_tot)" "$_pin" "$_tot"
+# Enumerate the two step forms SEPARATELY, so neither can be silently absent. The original
+# pattern matched only mapping-form `uses:` at line start; the 14 list-form `- uses:` steps
+# were never counted and never pin-checked, so an unpinned action written in list form passed
+# both this assertion and the inventory's cited count.
+_map_tot=$(grep -rhoE '^[[:space:]]*uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+_lst_tot=$(grep -rhoE '^[[:space:]]*- uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+case "$_map_tot" in '' | *[!0-9]*) _map_tot=0 ;; esac
+case "$_lst_tot" in '' | *[!0-9]*) _lst_tot=0 ;; esac
+[ "$_map_tot" -gt 0 ] && pass "mapping-form 'uses:' steps are enumerated ($_map_tot)" \
+	|| fail "no mapping-form 'uses:' steps were found — that form would go unchecked"
+[ "$_lst_tot" -gt 0 ] && pass "list-form '- uses:' steps are enumerated ($_lst_tot)" \
+	|| fail "no list-form '- uses:' steps were found — that form would go unchecked, which is exactly how 14 references escaped this suite"
+[ $((_map_tot + _lst_tot)) -eq "$_tot" ] && pass "  and the two forms account for every counted reference" \
+	|| fail "  the two forms sum to $((_map_tot + _lst_tot)) but $_tot were counted — a third step form is unaccounted for"
+
+# REGRESSION CONTROL: an unpinned LIST-FORM step must fail this suite for the pinning reason,
+# not merely because a total moved. Run the pin check against a fixture tree, so the assertion
+# is about detection rather than about the repository happening to be clean.
+_pf=$(mktemp -d)
+mkdir -p "$_pf/.github/workflows"
+cp .github/workflows/*.yml "$_pf/.github/workflows/" 2>/dev/null || true
+printf 'name: probe
+on: push
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: evilcorp/rogue-action@v1
+' 	> "$_pf/.github/workflows/zz-probe.yml"
+# A 41-character hex ref is NOT a SHA pin: `@[0-9a-f]{40}` matches only its PREFIX, so it was
+# counted as pinned and dropped from the unpinned list. A branch whose name merely begins with
+# 40 hex characters behaves the same way. Neither is immutable.
+_long_hex=$(printf 'a%.0s' 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1)
+printf 'name: probe2\non: push\njobs:\n  q:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - uses: evilcorp/long-hex@%s\n' \
+	"$_long_hex" > "$_pf/.github/workflows/zz-probe2.yml"
+_p_tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
+_p_pin=$(grep -rhE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}([[:space:]]|#|$)' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
+case "$_p_tot" in '' | *[!0-9]*) _p_tot=0 ;; esac
+case "$_p_pin" in '' | *[!0-9]*) _p_pin=0 ;; esac
+_unpinned=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null \
+	| grep -vE '@[0-9a-f]{40}$' | sed 's/^[[:space:]]*//')
+if [ "$_p_pin" -eq "$_p_tot" ]; then
+	fail "regression control: an unpinned LIST-FORM '- uses:' was NOT detected — the pin check cannot see that step form"
+elif printf '%s' "$_unpinned" | grep -q 'evilcorp/rogue-action@v1'; then
+	pass "regression control: an unpinned list-form '- uses:' is detected, and named"
+	if printf '%s' "$_unpinned" | grep -q 'evilcorp/long-hex@'; then
+		pass "regression control: a 41-character hex ref is classified unpinned, not pinned"
+	else
+		fail "regression control: a 41-character hex ref was treated as a SHA pin — that is a prefix match, not an immutable reference"
+	fi
+else
+	fail "regression control: the count changed but the unpinned step was not identified — the failure would not say why"
+fi
+rm -rf "$_pf"
 
 # Checking the PROPERTY is not enough: the inventory doc also cites a literal ("126 of
 # 126"). A property check stays green while that literal silently goes stale — the very
@@ -102,7 +165,10 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
 	# Assert the claim count so under-coverage fails loudly instead of reading as clean.
 	_tagclaims=$(grep -ohE '`v[0-9]+\.[0-9]+\.[0-9]+`[^`]{0,120}tag target `[0-9a-f]{7,40}`' docs/support-policy.md 2>/dev/null | grep -c . || true)
 	case "$_tagclaims" in '' | *[!0-9]*) _tagclaims=0 ;; esac
-	check "support-policy.md states both tag-target claims on single lines (grep-visible)" "$_tagclaims" "2"
+	# Three claims since v2.2.0 became current: v2.2.0 (latest) plus the intact v2.0.1/v2.0.0.
+	# The literal is the COUNT, not the versions — the loop below checks each cited target
+	# against the real tag, and config/release-status.json is the canonical version source.
+	check "support-policy.md states all three tag-target claims on single lines (grep-visible)" "$_tagclaims" "3"
 
 	while IFS= read -r _line; do
 		[ -n "$_line" ] || continue
@@ -130,7 +196,35 @@ if [ -n "$_latest" ]; then
 fi
 
 # --- the gate count must not be asserted as a stale literal ------------------
-_w=$(mktemp -d); trap 'rm -rf -- "$_w"' EXIT INT TERM
+# A test harness must not be able to exit 0 without finishing.
+#
+# `trap 'rm -rf …' EXIT` ends with a successful `rm`, and that success became the script's
+# status: an abort part-way through exited 0 and this suite printed ALL CHECKS PASSED while
+# every check after the abort never ran. Capturing `$?` in the trap does not fix it either —
+# under bash-as-/bin/sh the EXIT trap observes `$? = 0` for a `set -u` abort (verified: bash
+# reports 0, dash reports 2), so the status is not available to preserve at all.
+#
+# Both dimensions are therefore tracked EXPLICITLY and neither is inferred from `$?`:
+#   COMPLETED  did the script reach its end at all
+#   FINAL_RC   what the run actually decided, set only on a normal outcome
+# `trap - EXIT` inside the handler prevents re-entry, and the deliberate final status can never
+# be replaced by the cleanup's own.
+COMPLETED=0
+FINAL_RC=1
+_w=$(mktemp -d)
+cleanup() {
+	rm -rf -- "$_w"
+
+	trap - EXIT
+
+	if [ "$COMPLETED" -ne 1 ]; then
+		printf '%s\n' "268-documentation-accuracy: ABORTED before completion — the checks after the abort never ran, so this run proves nothing" >&2
+		exit 1
+	fi
+
+	exit "$FINAL_RC"
+}
+trap cleanup EXIT INT TERM HUP
 sh scripts/resolve-gates.sh --mode strict --output-dir "$_w" --format env >/dev/null 2>&1
 _gates=$(grep -c '^SENTINEL_SHIELD_FAIL_ON_' "$_w/sentinel-shield-gates.env" 2>/dev/null || true)
 case "$_gates" in '' | *[!0-9]*) _gates=0 ;; esac
@@ -193,9 +287,64 @@ if [ "$_rowchecked" -eq 0 ]; then
 	fail "profile-compatibility table parsed 0 rows — the count check is not actually running"
 fi
 
+# --- "off by default" must not be claimed for the v2.2 gate families ---------
+# The families are ADDITIVE, not uniformly disabled: resolve-gates.sh enables
+# architecture_violations, changed_lines_coverage_violations, acceptance_test_failures,
+# missing_test_evidence, empty_test_suite and debug_code_violations from `baseline`, and
+# focused_test_violations in EVERY mode. Prose saying "off by default in existing modes"
+# tells an adopter upgrading changes no gate outcome, which is false. Published release
+# notes are excluded: they are immutable historical records of what was said at the time.
+# `grep -r "$ROOT"/docs/*.md` is a shell glob over TOP-LEVEL files only — `-r` never sees a
+# nested directory. Walk the whole docs tree so a stale claim under docs/<subdir>/ cannot hide.
+_offclaim=$(find "$ROOT/docs" -type f -name '*.md' -print 2>/dev/null | LC_ALL=C sort |
+	{ xargs grep -l 'off by default in existing modes' 2>/dev/null || true; } |
+	grep -v -- '-release-notes\.md$' || true)
+if grep -q 'off by default in existing modes' "$ROOT/README.md" 2>/dev/null; then
+	_offclaim="$_offclaim
+$ROOT/README.md"
+fi
+if [ -n "$_offclaim" ]; then
+	fail "these docs still claim the v2.2 gate families are off by default in existing modes: $(printf '%s' "$_offclaim" | tr '\n' ' ')"
+else
+	pass "no active doc claims the v2.2 gate families are off by default in existing modes"
+fi
+# The claim is false BECAUSE the resolver enables these in baseline — assert that, so the
+# check above cannot be satisfied by weakening the engine instead of the prose.
+# The resolver's own result is checked BEFORE anything is asserted about its output. It used
+# to be `>/dev/null 2>&1` with the status discarded: a resolver that failed, or wrote no env
+# file, made every gate below report "baseline no longer enforces <gate>" — pointing the
+# operator at gate defaults when the actual fault was the run that never produced them.
+#
+# The temp dir is removed by a trap rather than a trailing `rm`, so an assertion that aborts
+# the script does not leak it. `trap` is additive here: the existing EXIT handler is preserved.
+# `trap -p EXIT` is a bashism — dash, which is /bin/sh on the CI runner, does not support it,
+# so the "preserve the caller's handler" logic silently produced an empty string there. The
+# only EXIT handler this suite has is the WORK cleanup installed at the top, so the temp dir is
+# simply created INSIDE it and removed with the rest. No handler to preserve, nothing to lose.
+_benv="$_w/baseline-env"
+mkdir -p "$_benv"
+if ! sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >"$_benv/out" 2>&1; then
+	fail "resolve-gates.sh --mode baseline FAILED; the gate assertions below would blame the gate defaults for a resolver fault"
+	sed 's/^/       /' "$_benv/out" 2>/dev/null | head -5
+elif [ ! -s "$_benv/sentinel-shield-gates.env" ]; then
+	fail "resolve-gates.sh --mode baseline wrote no gate env; the gate assertions below cannot mean anything"
+else
+	pass "the baseline resolution used by the assertions below actually succeeded"
+	for _g in architecture_violations changed_lines_coverage_violations focused_test_violations; do
+		if grep -q "^SENTINEL_SHIELD_FAIL_ON_$(printf '%s' "$_g" | tr 'a-z' 'A-Z')=true" "$_benv/sentinel-shield-gates.env" 2>/dev/null; then
+			pass "baseline really does enforce $_g (so the prose above must not say otherwise)"
+		else
+			fail "baseline no longer enforces $_g — the doc claim and the engine have swapped places"
+		fi
+	done
+fi
+
 if [ "$FAILED" -eq 0 ]; then
 	printf '\n268-documentation-accuracy: ALL CHECKS PASSED\n'
+	FINAL_RC=0
 else
 	printf '\n268-documentation-accuracy: FAILURES PRESENT\n'
+	FINAL_RC=1
 fi
-exit "$FAILED"
+COMPLETED=1
+exit "$FINAL_RC"

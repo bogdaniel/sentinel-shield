@@ -7,7 +7,18 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 > **Pinning status (applies to all consumer templates):** third-party actions/images carry
 > version tags or `YOUR_ORG`/TODO placeholders by default — **not digest-pinned**. The consumer
 > must pin to SHAs/digests before production ([`pinned-tool-references.md`](pinned-tool-references.md)).
-> ALL workflows and templates are SHA-pinned: **131 of 131** `uses:` lines across `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). An earlier revision of this line claimed only `ci-self-test.yml` was pinned.
+> **What IS pinned:** every GitHub **Action reference** — **145 of 145** `uses:` lines across
+> `.github/workflows/` and `templates/workflows/` carry a full 40-hex commit SHA, enforced
+> fail-closed by `workflow-runtime-audit.sh` (`uses-sha-pin`). The count is asserted against
+> the repository by `tests/prod/268-documentation-accuracy.sh`, so it cannot go stale — the
+> figure was 131 because that assertion matched only `uses:` at the start of a line and never
+> saw the 14 list-form `- uses:` references, which are now counted and pin-checked too.
+>
+> **What is NOT pinned by this claim:** container **images** and the Sentinel Shield
+> **ref** (`SENTINEL_SHIELD_REF`) in consumer templates. Scanner images are governed
+> separately by `config/scanner-images.json`; the engine ref is the consumer's decision and
+> is validated by `scripts/validate-release-status.sh`. Do not read "SHA-pinned" as
+> "nothing left to pin before production" — see the paragraph above.
 
 ---
 
@@ -22,7 +33,8 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Tool maturity:** core scanners `proven`; aggregate pipeline `template-only` (not yet run
   end-to-end on a live consumer — the pilot used the pr-fast workflow).
 - **Known limitations:** whole-file managed; local edits overwritten on sync.
-- **Pinning status:** `SENTINEL_SHIELD_REPOSITORY`/`_REF` + action refs must be set/pinned.
+- **Pinning status:** `SENTINEL_SHIELD_REPOSITORY`/`_REF` must be set and pinned by the
+  consumer. Action refs are already SHA-pinned in the shipped template (18 of 18).
 
 ## `templates/workflows/sentinel-shield-pr-fast.yml`
 - **Purpose:** fast, deterministic PR gate (php -l, PHPStan, Psalm, Pint/PHP-CS-Fixer, ESLint,
@@ -37,7 +49,9 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Tool maturity:** **`proven`** — live-validated on zenchron-tools (run 27170148123); Semgrep
   hardened to curated `semgrep/app` (**never `--config=auto`**).
 - **Known limitations:** Psalm/Deptrac/ESLint only fire if the project configures them.
-- **Pinning status:** action refs carry tags; pin before production.
+- **Pinning status:** action refs are SHA-pinned in the shipped template (3 of 3) — this
+  entry previously said they "carry tags", which contradicted the header and the file itself.
+  What the consumer must still pin is `SENTINEL_SHIELD_REF` and any scanner image override.
 
 ## `templates/workflows/sentinel-shield-main.yml`
 - **Purpose:** heavier main-branch gate (CodeQL, OSV-Scanner, Trivy fs, Dependency-Check, Grype,
@@ -53,7 +67,9 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
   (chicken-and-egg). **v0.1.17:** validate the same scanners branch-safely **first** with
   `scripts/run-main-gate-validation.sh --all` ([`main-gate-validation-strategy.md`](main-gate-validation-strategy.md)),
   then merge; do not merge unvalidated.
-- **Pinning status:** unpinned by default.
+- **Pinning status:** the ENGINE ref (`SENTINEL_SHIELD_REF`) and any scanner images are
+  unpinned by default; the consumer pins them before production. Third-party `uses:` action
+  references in this template ARE SHA-pinned, like every other shipped workflow.
 
 ## `templates/workflows/sentinel-shield-scheduled.yml`
 - **Purpose:** nightly deep scans. Job `nightly` (Grype fs, OpenSSF Scorecard, TruffleHog deep,
@@ -84,7 +100,9 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Safe for PR?** **No** — explicitly not a PR check.
 - **Tool maturity:** **`manual`** — never scans an arbitrary target; host mismatch → fail closed.
 - **Known limitations:** active/full scan is intrusive; approval required; never live-run.
-- **Pinning status:** unpinned by default.
+- **Pinning status:** the ENGINE ref (`SENTINEL_SHIELD_REF`) and any scanner images are
+  unpinned by default; the consumer pins them before production. Third-party `uses:` action
+  references in this template ARE SHA-pinned, like every other shipped workflow.
 
 ## `templates/workflows/sentinel-shield-ai-review.yml`
 - **Purpose:** assistive AI review (Claude Code Security Review / Kuzushi) → artifacts for human triage.
@@ -96,7 +114,9 @@ Every shipped workflow template, what it is for, and its honest status. Maturity
 - **Tool maturity:** **`non-gating`** — never blocks a release unless the profile explicitly sets
   `fail_on.ai_review_findings: true`.
 - **Known limitations:** non-deterministic; assistive; not a substitute for scanners or humans.
-- **Pinning status:** unpinned by default.
+- **Pinning status:** the ENGINE ref (`SENTINEL_SHIELD_REF`) and any scanner images are
+  unpinned by default; the consumer pins them before production. Third-party `uses:` action
+  references in this template ARE SHA-pinned, like every other shipped workflow.
 
 ---
 

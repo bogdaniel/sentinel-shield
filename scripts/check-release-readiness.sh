@@ -297,6 +297,56 @@ else
 	fail "zizmor is REQUIRED at stage '$STAGE' but is not installed (fail closed)"
 fi
 
+# --- release-status contract gate --------------------------------------------
+# config/release-status.json is the single source of truth for "what is current and is
+# it actually published". A repository whose README/CHANGELOG/status docs or shipped
+# workflow templates disagree with it is not releasable: consumers would be pinned to,
+# or told to install, a different release than the one being promoted.
+#
+# EVERY check in this gate is NON-WAIVABLE, not just the publication one. A waiver is for an
+# unmet milestone — work that is genuinely outstanding and consciously deferred. A disagreement
+# here is not that: it is the repository making two contradictory claims at once, and the one
+# consumers act on is the stale template or changelog, not the contract. Waiving it does not
+# defer anything, it just publishes the contradiction. The `templates` mode is the sharpest
+# case — a shipped workflow pinning a stale SENTINEL_SHIELD_REF makes every consumer install a
+# different engine than the release being promoted.
+printf '\n[%s] release-status contract (config/release-status.json)\n' "$STAGE"
+_rs="$REPO_ROOT/scripts/validate-release-status.sh"
+if [ ! -f "$_rs" ]; then
+	failx "release-status validator not found: scripts/validate-release-status.sh (fail closed)"
+else
+	for _rsmode in contract docs changelog templates; do
+		if sh "$_rs" "$_rsmode" --repo-root "$REPO_ROOT" >/dev/null 2>&1; then
+			pass "release-status '$_rsmode' agrees with config/release-status.json"
+		else
+			failx "release-status '$_rsmode' DISAGREES with config/release-status.json (run: sh scripts/validate-release-status.sh $_rsmode)"
+		fi
+	done
+	set -- published --repo-root "$REPO_ROOT"
+	[ "$VERIFY_MODE" = verify-github ] && set -- "$@" --verify-github
+	_rsrc=0
+	sh "$_rs" "$@" >/dev/null 2>&1 || _rsrc=$?
+	if [ "$_rsrc" -eq 0 ]; then
+		if [ "$VERIFY_MODE" = verify-github ]; then
+			pass "every release declared published has a verified GitHub Release"
+		else
+			pass "publication declaration is self-consistent (structural-only; --verify-github proves the GitHub Release exists)"
+		fi
+	elif [ "$_rsrc" -eq 3 ]; then
+		# NON-WAIVABLE like the other publication failures: "we could not run the check" is
+		# not "the release is published". A missing or transiently failing `gh` must not be
+		# waivable past a publication claim nobody proved.
+		failx "release-status publication check needs a tool that is unavailable (exit 3) — publication was NOT proven; fail closed"
+	elif [ "$_rsrc" -eq 2 ]; then
+		# Exit 2 is "the contract could not be READ" (invalid invocation, missing or malformed
+		# status file), not "the release is unpublished". Sending the operator to backfill a
+		# GitHub Release is the wrong remediation and would hide a broken contract.
+		failx "release-status contract is missing or malformed (exit 2) — publication could not be evaluated at all; repair config/release-status.json and re-run (this is NOT evidence that the release is unpublished)"
+	else
+		failx "a release is declared PUBLISHED but no valid GitHub Release was proven (run: sh scripts/validate-release-status.sh published --verify-github; backfill via the release-publish workflow_dispatch recovery path)"
+	fi
+fi
+
 # --- evidence gate: delegate to the evidence validator -----------------------
 # The validator owns evidence SHAPE and the cumulative ladder. FAIL CLOSED if it
 # is absent or reports the stage unmet. Validator exit 2 (malformed / integrity /
