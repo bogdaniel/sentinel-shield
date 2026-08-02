@@ -209,7 +209,17 @@ else
 fi
 missing "the workflow has no allow-unverified switch"     "$_wf" "allow_unverified"
 missing "the workflow has no allow-unsigned switch"       "$_wf" "allow-unsigned"
-missing "the workflow does not accept an exception file"  "$_wf" "exception"
+# Scoped to EXECUTABLE lines, like the unknown_key check just below. `missing` is a
+# case-sensitive substring test, and the workflow's policy comment says "THERE IS NO EXCEPTION
+# PATH" in capitals — so the lower-case needle passed on letter case alone. Any future comment
+# that writes "exception" in lower case would have failed the suite for a prose reason, and a
+# real exception INPUT spelled in capitals would have slipped through. The question is whether
+# the workflow ACCEPTS one, so ask it of an input declaration.
+if grep -vE '^[[:space:]]*#' "$WF" | grep -qiE '^[[:space:]]+[a-z_]*exception[a-z_]*:'; then
+	fail "the workflow declares an exception input"
+else
+	pass "the workflow does not accept an exception file"
+fi
 # Only EXECUTABLE lines matter: the policy comment names the reasons deliberately.
 if grep -vE '^[[:space:]]*#' "$WF" | grep -qE 'unknown_key|unknown_signature_type'; then
 	fail "the workflow still branches on unknown_key/unknown_signature_type — those must not be special-cased at all"
@@ -217,7 +227,23 @@ else
 	pass "unknown_key and unknown_signature_type are not special-cased in any executable line"
 fi
 # The step must be able to fail the job: no continue-on-error, no `|| true` on the verdict.
-_step=$(awk '/^      - name: Require a GitHub-verified tag signing identity/{f=1} f&&/^      - name: Create GitHub Release/{exit} f' "$WF")
+# step_body <name-prefix> — the body of ONE workflow step: from its `- name:` line to the
+# NEXT step at the same indentation, whatever that step happens to be.
+#
+# Ranges that stop at a NAMED later step break the moment a step is inserted between the two.
+# That is what happened here: the range ran from "Require a GitHub-verified tag signing
+# identity" to "Create GitHub Release", and the new "Require an enforced, non-bypassable tag
+# ruleset" step landed between them, so `_step` silently covered two step bodies. The
+# continue-on-error and `|| true` assertions below then passed only because the ruleset step
+# happens to use `|| fail` rather than `|| true` — they were no longer isolating anything.
+step_body() {
+	awk -v want="      - name: $1" '
+		index($0, want) == 1 { inb = 1; print; next }
+		inb && /^      - name: / { exit }
+		inb { print }
+	' "$WF"
+}
+_step=$(step_body 'Require a GitHub-verified tag signing identity')
 missing "the verification step has no continue-on-error" "$_step" "continue-on-error"
 missing "the verification verdict is not swallowed by || true" "$_step" "|| true"
 contains "the extracted step sets -eu" "$_step" "set -eu"
@@ -509,8 +535,17 @@ fi
 # cannot hold. Inspecting with ${{ github.token }} therefore made this step impossible to
 # satisfy no matter how the repository was configured — not fail-closed, just broken, and the
 # only pressure such a check creates is to delete it.
-_rsenv=$(awk '/^      - name: Require an enforced, non-bypassable tag ruleset/ { inb = 1 }
-	inb && /GH_TOKEN:/ { print; exit }' "$WF")
+# Bounded to the ruleset step. The previous version set inb=1 at the step name and never
+# reset it, so it took the first GH_TOKEN: line ANYWHERE after that point — if this step ever
+# stopped declaring its own, it would silently validate the "Create GitHub Release" step's
+# token instead and report success about the wrong step. Same unbounded-range defect as above,
+# reintroduced at a new location; both now go through step_body.
+# Anchored to the ENV DECLARATION, not to any line mentioning GH_TOKEN. A bare
+# `grep 'GH_TOKEN:'` also matches the step's own preflight `[ -n "${GH_TOKEN:-}" ] || fail
+# "...SENTINEL_SHIELD_RULESET_TOKEN..."`, whose message text contains the secret name — so the
+# assertions below would have passed by reading an error string rather than the declaration
+# they claim to check.
+_rsenv=$(step_body 'Require an enforced, non-bypassable tag ruleset' | grep -E '^[[:space:]]+GH_TOKEN:' | head -n1)
 check "the ruleset step does not inspect with the default GITHUB_TOKEN" \
 	"$(printf '%s' "$_rsenv" | grep -c 'github.token' || true)" "0"
 check "  and uses a dedicated ruleset-inspection secret instead" \

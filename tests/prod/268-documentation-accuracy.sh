@@ -55,8 +55,12 @@ check "negative control: a manifest with no tools and no operative flag reads 'u
 rm -rf -- "$_np"
 
 # --- SHA-pinning claims must match the workflows -----------------------------
-_tot=$(grep -rhoE '^[[:space:]]*uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
-_pin=$(grep -rhoE '^[[:space:]]*uses: [^@[:space:]]+@[0-9a-f]{40}' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+# `- uses:` (list form) counts too. The previous pattern matched only `uses:` at the start of
+# a line, so 14 of the shipped references were never checked for pinning and never included in
+# the count the inventory is validated against — an unpinned action in list form would have
+# passed both.
+_tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+_pin=$(grep -rhoE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
 case "$_tot" in '' | *[!0-9]*) _tot=0 ;; esac
 case "$_pin" in '' | *[!0-9]*) _pin=0 ;; esac
 check "every 'uses:' is SHA-pinned ($_pin/$_tot)" "$_pin" "$_tot"
@@ -219,16 +223,31 @@ else
 fi
 # The claim is false BECAUSE the resolver enables these in baseline — assert that, so the
 # check above cannot be satisfied by weakening the engine instead of the prose.
+# The resolver's own result is checked BEFORE anything is asserted about its output. It used
+# to be `>/dev/null 2>&1` with the status discarded: a resolver that failed, or wrote no env
+# file, made every gate below report "baseline no longer enforces <gate>" — pointing the
+# operator at gate defaults when the actual fault was the run that never produced them.
+#
+# The temp dir is removed by a trap rather than a trailing `rm`, so an assertion that aborts
+# the script does not leak it. `trap` is additive here: the existing EXIT handler is preserved.
 _benv=$(mktemp -d)
-sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >/dev/null 2>&1
-for _g in architecture_violations changed_lines_coverage_violations focused_test_violations; do
-	if grep -q "^SENTINEL_SHIELD_FAIL_ON_$(printf '%s' "$_g" | tr 'a-z' 'A-Z')=true" "$_benv/sentinel-shield-gates.env" 2>/dev/null; then
-		pass "baseline really does enforce $_g (so the prose above must not say otherwise)"
-	else
-		fail "baseline no longer enforces $_g — the doc claim and the engine have swapped places"
-	fi
-done
-rm -rf "$_benv"
+_benv_prev=$(trap -p EXIT 2>/dev/null | sed "s/^trap -- '//; s/' EXIT$//")
+trap 'rm -rf -- "$_benv"; '"${_benv_prev:-}" EXIT INT TERM HUP
+if ! sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >"$_benv/out" 2>&1; then
+	fail "resolve-gates.sh --mode baseline FAILED; the gate assertions below would blame the gate defaults for a resolver fault"
+	sed 's/^/       /' "$_benv/out" 2>/dev/null | head -5
+elif [ ! -s "$_benv/sentinel-shield-gates.env" ]; then
+	fail "resolve-gates.sh --mode baseline wrote no gate env; the gate assertions below cannot mean anything"
+else
+	pass "the baseline resolution used by the assertions below actually succeeded"
+	for _g in architecture_violations changed_lines_coverage_violations focused_test_violations; do
+		if grep -q "^SENTINEL_SHIELD_FAIL_ON_$(printf '%s' "$_g" | tr 'a-z' 'A-Z')=true" "$_benv/sentinel-shield-gates.env" 2>/dev/null; then
+			pass "baseline really does enforce $_g (so the prose above must not say otherwise)"
+		else
+			fail "baseline no longer enforces $_g — the doc claim and the engine have swapped places"
+		fi
+	done
+fi
 
 if [ "$FAILED" -eq 0 ]; then
 	printf '\n268-documentation-accuracy: ALL CHECKS PASSED\n'

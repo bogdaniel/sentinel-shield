@@ -116,7 +116,13 @@ or does not happen.
 ### What the failure tells you
 
 The diagnostic names the tag, the tag target, the published commit, GitHub's verification
-reason, the signer when the API can name one, and the remediation.
+reason, the TAGGER when the API can name one, and the remediation.
+
+The tagger is not the signer. `.tagger` is the tag's author field — unauthenticated metadata
+that anyone creating a tag can set to any value — and the workflow labels it that way at the
+point it prints it. Only `verification.verified` speaks to who signed, which is why that field
+alone decides publication. Reading the tagger as signing authorisation is the exact confusion
+this gate exists to prevent, so this document names it the tagger too.
 
 ### Remediation
 
