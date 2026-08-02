@@ -83,11 +83,24 @@ printf '# Release evidence\n\nProduced by the 266 fixture.\nScope: engine self-t
 # manifest a real handoff would produce, so the artifacts are attributed as well as valid.
 _msha() { ss_sha256_file "$1" 2>/dev/null || printf ''; }
 . "$ROOT/scripts/lib/sentinel-shield-common.sh" 2>/dev/null || true
+# The manifest must name the commit the BUILDER recorded, not a literal. A manifest that
+# omits `.commit` is only accepted when the builder could not resolve one at all, so under
+# a CI environment (where GITHUB_SHA resolves the commit) an omitted `.commit` is correctly
+# read as replayed evidence and both evidence gates fail. Taking the commit from the summary
+# just built makes the fixture bind the same way in every environment — and makes it
+# EXERCISE the commit binding rather than skip it.
 jq -n --arg s "$(_msha "$E/rep/sbom.spdx.json")" --arg r "$(_msha "$E/rep/release-evidence.md")" \
-	'{version:"1", files:[{path:"sbom.spdx.json", sha256:$s},
-	                      {path:"release-evidence.md", sha256:$r}]}' \
+	--arg c "$(jq -r '.source.commit // ""' "$E/rep/s.json")" \
+	'{version:"1", commit:$c, files:[{path:"sbom.spdx.json", sha256:$s},
+	                                 {path:"release-evidence.md", sha256:$r}]}' \
 	> "$E/rep/sentinel-shield-artifact-manifest.json"
 sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
+# Assert the staging worked BEFORE using it. Without this, an environment that changes how
+# the builder resolves the commit turns "the fixture failed to stage evidence" into "the
+# gate under test rejected the summary" — which is how a CI-only failure read as a defect in
+# the gate rather than in the fixture.
+check "fixture staging: sbom is attributed to this run"    "$(jq -r '.evidence.sbom.verification.provenance' "$E/rep/s.json")" "verified"
+check "fixture staging: release evidence is attributed"    "$(jq -r '.evidence.release_evidence.verification.provenance' "$E/rep/s.json")" "verified"
 check_ne "zero scanners: regulated does NOT pass"        "$(gate "$E/rep/s.json" regulated)" "0"
 check_ne "zero scanners: strict does NOT pass"           "$(gate "$E/rep/s.json" strict)" "0"
 # report-only/baseline are visibility/migration modes and never claimed evidence
