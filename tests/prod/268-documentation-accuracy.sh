@@ -196,7 +196,35 @@ if [ -n "$_latest" ]; then
 fi
 
 # --- the gate count must not be asserted as a stale literal ------------------
-_w=$(mktemp -d); trap 'rm -rf -- "$_w"' EXIT INT TERM
+# A test harness must not be able to exit 0 without finishing.
+#
+# `trap 'rm -rf …' EXIT` ends with a successful `rm`, and that success became the script's
+# status: an abort part-way through exited 0 and this suite printed ALL CHECKS PASSED while
+# every check after the abort never ran. Capturing `$?` in the trap does not fix it either —
+# under bash-as-/bin/sh the EXIT trap observes `$? = 0` for a `set -u` abort (verified: bash
+# reports 0, dash reports 2), so the status is not available to preserve at all.
+#
+# Both dimensions are therefore tracked EXPLICITLY and neither is inferred from `$?`:
+#   COMPLETED  did the script reach its end at all
+#   FINAL_RC   what the run actually decided, set only on a normal outcome
+# `trap - EXIT` inside the handler prevents re-entry, and the deliberate final status can never
+# be replaced by the cleanup's own.
+COMPLETED=0
+FINAL_RC=1
+_w=$(mktemp -d)
+cleanup() {
+	rm -rf -- "$_w"
+
+	trap - EXIT
+
+	if [ "$COMPLETED" -ne 1 ]; then
+		printf '%s\n' "268-documentation-accuracy: ABORTED before completion — the checks after the abort never ran, so this run proves nothing" >&2
+		exit 1
+	fi
+
+	exit "$FINAL_RC"
+}
+trap cleanup EXIT INT TERM HUP
 sh scripts/resolve-gates.sh --mode strict --output-dir "$_w" --format env >/dev/null 2>&1
 _gates=$(grep -c '^SENTINEL_SHIELD_FAIL_ON_' "$_w/sentinel-shield-gates.env" 2>/dev/null || true)
 case "$_gates" in '' | *[!0-9]*) _gates=0 ;; esac
@@ -293,7 +321,7 @@ fi
 # so the "preserve the caller's handler" logic silently produced an empty string there. The
 # only EXIT handler this suite has is the WORK cleanup installed at the top, so the temp dir is
 # simply created INSIDE it and removed with the rest. No handler to preserve, nothing to lose.
-_benv="$WORK/baseline-env"
+_benv="$_w/baseline-env"
 mkdir -p "$_benv"
 if ! sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_benv" --format env >"$_benv/out" 2>&1; then
 	fail "resolve-gates.sh --mode baseline FAILED; the gate assertions below would blame the gate defaults for a resolver fault"
@@ -313,7 +341,10 @@ fi
 
 if [ "$FAILED" -eq 0 ]; then
 	printf '\n268-documentation-accuracy: ALL CHECKS PASSED\n'
+	FINAL_RC=0
 else
 	printf '\n268-documentation-accuracy: FAILURES PRESENT\n'
+	FINAL_RC=1
 fi
-exit "$FAILED"
+COMPLETED=1
+exit "$FINAL_RC"
