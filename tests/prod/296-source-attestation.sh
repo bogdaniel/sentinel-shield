@@ -29,11 +29,45 @@ SHA_A=0123456789abcdef0123456789abcdef01234567
 SHA_B=fedcba9876543210fedcba9876543210fedcba98
 
 # b <output> [args…] — local build (no CI environment), echoing the exit code.
-b() { _o="$1"; shift; _c=0; sh "$BUILD" --raw-dir "$WORK/raw" --output "$_o" "$@" >"$WORK/log" 2>&1 || _c=$?; printf '%s' "$_c"; }
+# EVERY GitHub Actions variable the builder consumes. The builder treats these as CLAIMS and
+# uses them when the corresponding CLI value is absent — including replacing `commit: unknown`
+# with GITHUB_SHA. That behaviour is correct and deliberate; it is what makes a CI build
+# self-describing. It also means this suite cannot invoke the builder with an inherited
+# environment and call the result "local".
+#
+# It did exactly that: `b()` was documented as "local build (no CI environment)" and ran with
+# whatever the shell had. In a developer shell that is nothing, so the suite passed. On a
+# GitHub runner it is a full set of real values, so "a local build with no commit says
+# `unknown`" received the runner's own SHA and failed — deterministically, and only in CI.
+# That is the entire reason #278 was red on the runner while passing locally at the same SHA.
+#
+# Listed explicitly rather than globbed: a glob would silently stop covering a variable the
+# builder starts reading, which is the same class of gap this is fixing.
+SA_GH_VARS='GITHUB_REPOSITORY GITHUB_REF GITHUB_EVENT_NAME GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_SHA'
+# sa_clean_env — the `env -u …` prefix that removes all of them.
+sa_clean_env() {
+	_sce=""
+	for _v in $SA_GH_VARS; do _sce="$_sce -u $_v"; done
+	printf 'env%s' "$_sce"
+}
+SA_CLEAN=$(sa_clean_env)
+
+# b <output> [args…] — LOCAL build: no CI environment, guaranteed, not merely assumed.
+b() {
+	_o="$1"; shift; _c=0
+	# shellcheck disable=SC2086  # SA_CLEAN is a controlled `env -u …` prefix
+	$SA_CLEAN sh "$BUILD" --raw-dir "$WORK/raw" --output "$_o" "$@" >"$WORK/log" 2>&1 || _c=$?
+	printf '%s' "$_c"
+}
 # ci <output> [args…] — build with a GitHub Actions environment.
+#
+# Starts from the SAME sanitized baseline and then sets the complete fixture identity, so an
+# omitted field cannot be quietly supplied by the runner. Before, `ci()` set seven variables on
+# top of whatever was already there; any consumed variable it did not name would have leaked.
 ci() {
 	_o="$1"; shift; _c=0
-	env GITHUB_ACTIONS=true GITHUB_RUN_ID=1234 GITHUB_RUN_ATTEMPT=2 \
+	# shellcheck disable=SC2086
+	$SA_CLEAN env GITHUB_ACTIONS=true GITHUB_RUN_ID=1234 GITHUB_RUN_ATTEMPT=2 \
 		GITHUB_REPOSITORY=acme/shield GITHUB_REF=refs/heads/main \
 		GITHUB_EVENT_NAME=push GITHUB_SHA="$SHA_A" \
 		sh "$BUILD" --raw-dir "$WORK/raw" --output "$_o" "$@" >"$WORK/log" 2>&1 || _c=$?
@@ -282,6 +316,65 @@ env SENTINEL_SHIELD_TRUSTED_WORKFLOW=sentinel-shield sh "$ENFORCE" \
 	--attestation "$WORK/wrongwf.json" --output-dir "$G" --format json >"$G/log" 2>&1 || _c=$?
 check "regulated refuses a record from a workflow this repository does not trust" "$_c" 2
 contains "  naming the trusted producer" "$(cat "$G/log")" "this repository trusts"
+
+# --- the local helper must be local even ON a runner --------------------------
+# This is the defect that made #278 red in CI while passing in a developer shell at the same
+# commit: `b()` inherited the ambient environment, so on GitHub Actions its "local" builds
+# silently became CI builds and `commit: unknown` came back as the runner's SHA.
+#
+# Seeding realistic HOSTILE values here means the suite now fails in a developer shell too if
+# the isolation regresses — the bug can no longer hide until it reaches a runner.
+_HOSTILE_SHA=99999999999999999999999999999999999999ff
+_hostile() { # _hostile <cmd…> — run with a full, plausible Actions environment present
+	env GITHUB_ACTIONS=true \
+		GITHUB_REPOSITORY=evil-org/hijacked-repo \
+		GITHUB_REF=refs/heads/attacker-branch \
+		GITHUB_EVENT_NAME=pull_request_target \
+		GITHUB_RUN_ID=666666 \
+		GITHUB_RUN_ATTEMPT=9 \
+		GITHUB_SHA="$_HOSTILE_SHA" \
+		"$@"
+}
+# Sanity: the fixture really would leak if the helper did not sanitize. Build DIRECTLY with the
+# hostile environment and confirm the builder picks it up — otherwise the assertions below
+# would pass for want of anything to leak.
+_hostile sh "$BUILD" --raw-dir "$WORK/raw" --output "$WORK/leak-proof.json" >/dev/null 2>&1 || true
+check "control: an unsanitized build DOES absorb the ambient runner identity" \
+	"$(src "$WORK/leak-proof.json" commit)" "$_HOSTILE_SHA"
+check "  and the ambient repository too" \
+	"$(src "$WORK/leak-proof.json" repository)" "evil-org/hijacked-repo"
+
+# Now the real assertion: the SHIPPED b() helper, called with that environment exported, must
+# still produce a local build. Exercising b() itself rather than a re-implementation of it is
+# the point — a copy could be sanitized while the helper the suite actually uses is not.
+(
+	export GITHUB_ACTIONS=true \
+		GITHUB_REPOSITORY=evil-org/hijacked-repo \
+		GITHUB_REF=refs/heads/attacker-branch \
+		GITHUB_EVENT_NAME=pull_request_target \
+		GITHUB_RUN_ID=666666 \
+		GITHUB_RUN_ATTEMPT=9 \
+		GITHUB_SHA="$_HOSTILE_SHA"
+	b "$WORK/local-under-ci.json" >/dev/null 2>&1
+)
+check "a LOCAL build under a hostile Actions environment reports no commit claim" \
+	"$(src "$WORK/local-under-ci.json" commit)" "unknown"
+check "  and no repository claim" \
+	"$(src "$WORK/local-under-ci.json" repository)" "null"
+check "  and no run id" \
+	"$(src "$WORK/local-under-ci.json" run_id)" "null"
+check "  and trust stays unverified" \
+	"$(src "$WORK/local-under-ci.json" trust)" "unverified"
+check "  and it did NOT pick up the hostile SHA" \
+	"$([ "$(src "$WORK/local-under-ci.json" commit)" = "$_HOSTILE_SHA" ] && echo leaked || echo clean)" "clean"
+
+# The sanitizer must cover EVERY variable the builder reads — not a snapshot of today's list.
+_missing=""
+for _v in $(grep -ohE 'GITHUB_[A-Z_]+' "$BUILD" | sort -u); do
+	case " $SA_GH_VARS " in *" $_v "*) ;; *) _missing="$_missing $_v" ;; esac
+done
+[ -z "$_missing" ] && pass "the sanitizer covers every GITHUB_* the builder consumes" \
+	|| fail "the builder now reads$_missing, which this suite does not sanitize — a local build would absorb it on a runner"
 
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
