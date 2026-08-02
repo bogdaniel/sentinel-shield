@@ -176,8 +176,17 @@ fi
 # B3d: an image that resolves to a digest OTHER than the approved one is drift. The approved
 # digest comes from config/scanner-images.json, so this cannot pass by editing the test.
 O3D="$WORK/prov-image-drift.json"
-_APPROVED_DC=$(jq -r '.images.SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE.digest' "$ROOT/config/scanner-images.json")
-_WRONG_DIGEST="sha256:$(printf '0%.0s' $(seq 1 64) | cut -c1-64)"
+# `jq -r` prints the literal string "null" for an absent key, which passes `[ -n ... ]` and
+# turns the negative control below into a confusing failure against
+# `owasp/dependency-check@null` — a wrong answer that looks like a scanner problem. Validate
+# the shape instead of merely the emptiness.
+_APPROVED_DC=$(jq -r '.images.SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE.digest // empty' "$ROOT/config/scanner-images.json")
+case "$_APPROVED_DC" in
+	sha256:[0-9a-f]*) : ;;
+	*) fail "the approved Dependency-Check digest is not a sha256 reference: '${_APPROVED_DC:-<absent>}'"; _APPROVED_DC="" ;;
+esac
+# `seq` is not POSIX; printf's width specifier is, and is clearer about the intent.
+_WRONG_DIGEST="sha256:$(printf '%064d' 0)"
 if SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE="owasp/dependency-check@${_WRONG_DIGEST}" \
 	sh "$AUDIT" --require-image-digest --output "$O3D" dependency-check >/dev/null 2>&1; then
 	fail "provenance audit exited 0 for an image digest that is not the approved one"

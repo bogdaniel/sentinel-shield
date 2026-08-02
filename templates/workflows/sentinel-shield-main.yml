@@ -27,6 +27,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read   # CodeQL runs with upload:false, so no security-events write is needed
+  actions: read    # REQUIRED by CodeQL's `actions` language: it reads workflow definitions
+                   # through the Actions API. Without it, analysis of that language fails on a
+                   # private repository — and because both CodeQL steps carry
+                   # `continue-on-error: true`, it fails SILENTLY: no SARIF, no signal, and a
+                   # green job that analysed nothing.
 # Release-gate runs must complete. Group per COMMIT (not per ref) so a newer push
 # never supersedes/drops a queued gate for an earlier commit — each commit is gated
 # to completion; only redundant re-runs of the SAME sha dedupe, never cancelling

@@ -163,8 +163,15 @@ grants no bypass that could be used to retarget it mid-run. This code means that
 
 Requirements, all of which must hold:
 
-- a ruleset whose `target` is `tag` and whose `enforcement` is **`active`** — `evaluate` and
-  `disabled` report violations, they do not prevent them;
+- a ruleset whose `target` is `tag` and whose `enforcement` is **`active`** — neither of the
+  other two states protects the tag, and they do not fail the same way:
+  - `evaluate` does not block. It records what *would* have been blocked on the Rule Insights
+    page, so violations are visible after the fact but nothing is prevented.
+  - `disabled` is neither enforced *nor* evaluated. It blocks nothing and reports nothing, so
+    a disabled ruleset looks like configured protection while producing no signal at all.
+
+  The publisher therefore treats anything other than `active` as absent, and says so: a
+  ruleset that only reports is not a ruleset that prevents;
 - its ref conditions cover `refs/tags/<tag>` (an explicit pattern or `~ALL`, and not excluded);
 - its rules include **both** `update` and `deletion`;
 - **no** bypass actor with `bypass_mode: always` — not the publishing workflow, a GitHub App,

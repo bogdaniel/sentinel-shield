@@ -105,6 +105,32 @@ if [ -n "$WORKFLOWS" ]; then
 	WORKFLOW_MAP=$(for _w in $WORKFLOWS; do for _s in pr main scheduled; do printf 'custom|%s|%s\n' "$_s" "$_w"; done; done)
 fi
 
+# The SAME check for the built-in map, and for the same reason. It has to happen here, at the
+# top level, because the guard inside workflow_section() cannot stop this program:
+#
+#   if workflow_section "$_ef" "$_ejob" | grep -Fq "$_wp_path"; then
+#
+# puts workflow_section on the left of a pipe, inside an `if` condition, inside a `while` fed
+# by a pipe — three nested subshells. Its `exit 2` leaves the innermost one, grep then reads
+# empty input and returns 1, and the report says "no producer" for a workflow that was never
+# opened. That is precisely the outcome the guard was written to prevent, and it is the shape
+# this tool exists to refuse: an unreadable input silently becoming a clean (or a false) result.
+for _entry in $WORKFLOW_MAP; do
+	[ -n "$_entry" ] || continue
+	# `custom` entries come from --workflow and were validated just above, against the CWD as
+	# well as the repo root, because the user typed those paths. A BUILT-IN entry is always
+	# repo-relative and is resolved against REPO_ROOT and nothing else: allowing a CWD
+	# fallback here would let an unrelated file that merely shares a name stand in for a
+	# shipped template that is missing — which is how this check first failed to fire.
+	case "$_entry" in custom\|*) continue ;; esac
+	_pf=$(printf '%s' "$_entry" | cut -d'|' -f3)
+	_pf="${_pf%%#*}"
+	[ -f "$REPO_ROOT/$_pf" ] || {
+		log_error "workflow file not found: $REPO_ROOT/$_pf — refusing to report coverage against a file that cannot be read"
+		exit 2
+	}
+done
+
 # variants_for_stage <stage> — the variants that ship a workflow for this stage.
 variants_for_stage() {
 	printf '%s\n' "$WORKFLOW_MAP" | awk -F'|' -v s="$1" '$2 == s { print $1 }' | sort -u
@@ -118,6 +144,13 @@ FAILURES=0
 ROWS=""
 pass() { [ "$FORMAT" = text ] && printf '  PASS  %s\n' "$*"; return 0; }
 fail() { FAILURES=$((FAILURES + 1)); [ "$FORMAT" = text ] && printf '  FAIL  %s\n' "$*"; return 0; }
+
+# The preflight above proves every mapped workflow is readable at start-up. This is the
+# backstop for the interval after it: a file removed mid-run would reach the guard inside
+# workflow_section(), whose `exit 2` only unwinds a subshell. A FILE survives that unwind, so
+# the guard records the failure here and the top level refuses the whole run.
+UNREADABLE=$(mktemp) || { log_error "could not create a temporary file"; exit 2; }
+trap 'rm -f -- "$UNREADABLE"' EXIT INT TERM HUP
 
 # workflow_section <file> <job|""> — print the file, or just one job block of it. The block
 # runs from `^  <job>:` to the next key at the same indent, which is how a GitHub workflow
@@ -133,6 +166,9 @@ workflow_section() {
 	_ws_job="${2:-}"
 	if [ ! -f "$_ws_f" ]; then
 		log_error "workflow file not found: $1 (resolved '$_ws_f') — refusing to report 'no producer' for a file that was never read"
+		# `exit 2` here unwinds only the enclosing subshell; the caller's `grep -Fq` would
+		# then read empty input and record "no producer". Leave a durable mark first.
+		printf '%s\n' "$1" >> "$UNREADABLE" 2>/dev/null || :
 		exit 2
 	fi
 	if [ -z "$_ws_job" ]; then cat "$_ws_f"; return 0; fi
@@ -205,6 +241,14 @@ for _p in $PROFILES; do
 			_runner=$(printf '%s' "$_eff" | jq -r --arg k "$_k" '.tools[$k].runner // ""')
 			_report=$(printf '%s' "$_eff" | jq -r --arg k "$_k" '.tools[$k].report // ""')
 			_wfp=$(workflow_producers "$_report" "$_s" "$_v")
+			# A workflow that became unreadable during the scan makes every "no producer"
+			# conclusion drawn from it unsound. Refuse the run rather than report it.
+			if [ -s "$UNREADABLE" ]; then
+				log_error "one or more workflow files could not be read during the scan:"
+				while IFS= read -r _u; do log_error "  $_u"; done < "$UNREADABLE"
+				log_error "coverage conclusions drawn from an unread workflow are not evidence; refusing to report."
+				exit 2
+			fi
 			_wfn=0
 			[ -n "$_report" ] && _wfn=$(printf '%s' "$_wfp" | grep -c . || true)
 			case "$_wfn" in '' | *[!0-9]*) _wfn=0 ;; esac

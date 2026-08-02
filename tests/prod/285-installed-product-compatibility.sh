@@ -221,7 +221,9 @@ check "an unknown --stage is rejected" "$_c" 2
 # (a) stale engine ref in an active template
 _ref=$(jq -r '.consumer_ref.value' config/release-status.json 2>/dev/null || printf '')
 if [ -n "$_ref" ]; then
-	_stale=$(grep -lE "^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*(?!${_ref})" templates/workflows/*.yml 2>/dev/null | grep -c . || true)
+	# (No `grep -E "(?!…)"` here. A negative lookahead is PCRE, not POSIX ERE: grep rejects
+	# the pattern, exits 2, the redirected stderr hides it and the count is always 0. The loop
+	# below is the check that actually reads each template and compares the pinned ref.)
 	_bad=0
 	for _wf in templates/workflows/*.yml; do
 		_v=$(sed -nE 's/^[[:space:]]*SENTINEL_SHIELD_REF:[[:space:]]*([^[:space:]#]+).*/\1/p' "$_wf" | head -n1)
@@ -269,6 +271,32 @@ else
 fi
 rm -rf "$(dirname "$_tmpwf")"
 
+# The same guarantee for the BUILT-IN workflow map, which had no such check. Only the
+# user-supplied --workflow paths were validated up front; the guard covering the built-in
+# entries lived inside workflow_section(), which is called as
+#
+#   if workflow_section "$f" "$job" | grep -Fq "$path"; then
+#
+# — left of a pipe, inside an `if`, inside a `while` fed by a pipe. Its `exit 2` unwound only
+# the innermost subshell; grep then read empty input and returned 1. Deleting one mapped
+# template made the tool emit 62 "NO PRODUCER" findings for a file it never opened and exit 1
+# (findings) instead of 2 (unreadable input) — an unreadable input turned into a result.
+_probe="$WORK/coverage-tree"
+rm -rf "$_probe"; mkdir -p "$_probe"
+# A tree the script can run from: it resolves REPO_ROOT from its own location.
+(cd "$ROOT" && tar cf - scripts config profiles templates schemas 2>/dev/null) | (cd "$_probe" && tar xf -)
+_missing="$_probe/templates/workflows/sentinel-shield-main.yml"
+if [ -f "$_missing" ]; then
+	rm -f "$_missing"
+	_c=0; _out=$(sh "$_probe/scripts/verify-producer-coverage.sh" --stage main 2>&1) || _c=$?
+	check "a MISSING built-in mapped workflow exits 2, not a report of findings" "$_c" 2
+	check "  and no 'NO PRODUCER' finding is emitted for the file that was never read" \
+		"$(printf '%s' "$_out" | grep -c 'NO PRODUCER' || true)" "0"
+else
+	fail "fixture setup: sentinel-shield-main.yml was not copied into the probe tree"
+fi
+rm -rf "$_probe"
+
 # ---------------------------------------------------------------------------
 # An unresolved profile is a configuration failure, never a guessed default.
 # ---------------------------------------------------------------------------
@@ -284,7 +312,17 @@ for _wf in "$ROOT"/templates/workflows/sentinel-shield.yml \
 	else
 		pass "$_b has no hardcoded profile fallback"
 	fi
-	if grep -vE '^[[:space:]]*#' "$_wf" | grep -q "SENTINEL_SHIELD_PROJECT_TYPE=' .*head -n1"; then
+	# The previous pattern was "SENTINEL_SHIELD_PROJECT_TYPE=' .*head -n1" — a stray quote and
+	# a space that no workflow line can contain, so the `else` branch always ran and this
+	# passed vacuously, in a suite whose header promises "no assertion is satisfied by a skip".
+	#
+	# What actually constitutes first-wins is piping a grep for the key into `head -n1` (or
+	# `sed -n 1p`, or `awk NR==1`) and using that as the value. Match the SHAPE of that, and
+	# exempt the counting line, which legitimately reads the key to reject a duplicate.
+	if grep -vE '^[[:space:]]*#' "$_wf" \
+		| grep -E 'SENTINEL_SHIELD_PROJECT_TYPE=' \
+		| grep -vE 'grep -cE|_pt_n' \
+		| grep -qE '\|[[:space:]]*(head -n ?1|sed -n .?1p|awk .?NR ?== ?1)'; then
 		fail "$_b still takes the FIRST value of a possibly duplicated policy key"
 	else
 		pass "  and does not first-wins a duplicated policy key"

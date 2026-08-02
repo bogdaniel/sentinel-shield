@@ -56,6 +56,10 @@ on:
 
 permissions:
   contents: read
+  actions: read    # REQUIRED by CodeQL's `actions` language, which reads workflow definitions
+                   # through the Actions API. Without it that analysis fails on a private
+                   # repository, and since the CodeQL steps carry `continue-on-error: true` it
+                   # fails SILENTLY — no SARIF, no signal, a green job that analysed nothing.
 
 concurrency:
   group: sentinel-shield-${{ github.ref }}
