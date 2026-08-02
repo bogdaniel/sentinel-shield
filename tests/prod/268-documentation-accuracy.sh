@@ -64,6 +64,50 @@ _pin=$(grep -rhoE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}' .github/
 case "$_tot" in '' | *[!0-9]*) _tot=0 ;; esac
 case "$_pin" in '' | *[!0-9]*) _pin=0 ;; esac
 check "every 'uses:' is SHA-pinned ($_pin/$_tot)" "$_pin" "$_tot"
+# Enumerate the two step forms SEPARATELY, so neither can be silently absent. The original
+# pattern matched only mapping-form `uses:` at line start; the 14 list-form `- uses:` steps
+# were never counted and never pin-checked, so an unpinned action written in list form passed
+# both this assertion and the inventory's cited count.
+_map_tot=$(grep -rhoE '^[[:space:]]*uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+_lst_tot=$(grep -rhoE '^[[:space:]]*- uses: [^[:space:]]+' .github/workflows/ templates/workflows/ 2>/dev/null | grep -c . || true)
+case "$_map_tot" in '' | *[!0-9]*) _map_tot=0 ;; esac
+case "$_lst_tot" in '' | *[!0-9]*) _lst_tot=0 ;; esac
+[ "$_map_tot" -gt 0 ] && pass "mapping-form 'uses:' steps are enumerated ($_map_tot)" \
+	|| fail "no mapping-form 'uses:' steps were found — that form would go unchecked"
+[ "$_lst_tot" -gt 0 ] && pass "list-form '- uses:' steps are enumerated ($_lst_tot)" \
+	|| fail "no list-form '- uses:' steps were found — that form would go unchecked, which is exactly how 14 references escaped this suite"
+[ $((_map_tot + _lst_tot)) -eq "$_tot" ] && pass "  and the two forms account for every counted reference" \
+	|| fail "  the two forms sum to $((_map_tot + _lst_tot)) but $_tot were counted — a third step form is unaccounted for"
+
+# REGRESSION CONTROL: an unpinned LIST-FORM step must fail this suite for the pinning reason,
+# not merely because a total moved. Run the pin check against a fixture tree, so the assertion
+# is about detection rather than about the repository happening to be clean.
+_pf=$(mktemp -d)
+mkdir -p "$_pf/.github/workflows"
+cp .github/workflows/*.yml "$_pf/.github/workflows/" 2>/dev/null || true
+printf 'name: probe
+on: push
+jobs:
+  p:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: evilcorp/rogue-action@v1
+' 	> "$_pf/.github/workflows/zz-probe.yml"
+_p_tot=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
+_p_pin=$(grep -rhoE '^[[:space:]]*(- )?uses: [^@[:space:]]+@[0-9a-f]{40}' "$_pf/.github/workflows/" 2>/dev/null | grep -c . || true)
+case "$_p_tot" in '' | *[!0-9]*) _p_tot=0 ;; esac
+case "$_p_pin" in '' | *[!0-9]*) _p_pin=0 ;; esac
+_unpinned=$(grep -rhoE '^[[:space:]]*(- )?uses: [^[:space:]]+' "$_pf/.github/workflows/" 2>/dev/null \
+	| grep -vE '@[0-9a-f]{40}' | sed 's/^[[:space:]]*//')
+if [ "$_p_pin" -eq "$_p_tot" ]; then
+	fail "regression control: an unpinned LIST-FORM '- uses:' was NOT detected — the pin check cannot see that step form"
+elif printf '%s' "$_unpinned" | grep -q 'evilcorp/rogue-action@v1'; then
+	pass "regression control: an unpinned list-form '- uses:' is detected, and named"
+else
+	fail "regression control: the count changed but the unpinned step was not identified — the failure would not say why"
+fi
+rm -rf "$_pf"
 
 # Checking the PROPERTY is not enough: the inventory doc also cites a literal ("126 of
 # 126"). A property check stays green while that literal silently goes stale — the very
