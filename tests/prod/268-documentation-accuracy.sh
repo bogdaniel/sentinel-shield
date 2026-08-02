@@ -374,6 +374,26 @@ else
 	done
 fi
 
+# --- the documented mode enum must cover the modes actually shipped -----------
+# profile-compatibility.md states the manifest `mode` enum twice: in prose, and in an embedded
+# Python reproduction a reader is invited to run. `merge-required-lines` shipped in five
+# manifests while both copies still listed four modes, so that reproduction would have
+# assert-failed for anyone who ran it — on manifests that are perfectly valid.
+_modes_used=$(for _m in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.manifest.json; do
+	[ -f "$_m" ] || continue
+	jq -r '((.files // []) + (.workflows // []) + (.docs // []))[].mode' "$_m" 2>/dev/null
+done | sort -u)
+[ -n "$_modes_used" ] || fail "no manifest modes were read — this check would pass vacuously"
+_undocumented=""
+for _mode in $_modes_used; do
+	grep -q -- "$_mode" "$ROOT/docs/profile-compatibility.md" 2>/dev/null || _undocumented="$_undocumented $_mode"
+done
+if [ -z "$_undocumented" ]; then
+	pass "every manifest mode in use appears in profile-compatibility.md"
+else
+	fail "manifests use mode(s)$_undocumented that profile-compatibility.md does not document — its embedded reproduction would assert-fail on a valid manifest"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
 	printf '\n268-documentation-accuracy: ALL CHECKS PASSED\n'
 	FINAL_RC=0

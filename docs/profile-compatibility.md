@@ -19,8 +19,8 @@ by default** and writes nothing without `--apply`.
 
 Each manifest is JSON and conforms to `profiles/profile.manifest.schema.json`
 (`required: ["profile","files"]`; `files`/`workflows`/`docs` entries are
-`{source,target,mode}` with `mode ∈ {create-if-missing, overwrite-if-force,
-sync-managed-block, manual}`). The schema sets `additionalProperties: true`, so the
+`{source,target,mode}` with `mode ∈ {create-if-missing, merge-required-lines,
+overwrite-if-force, sync-managed-block, manual}`). The schema sets `additionalProperties: true`, so the
 v0.1.22 `recommended_*` fields validate.
 
 Reproduce:
@@ -34,8 +34,9 @@ for f in sorted(glob.glob('profiles/**/*.manifest.json', recursive=True)):
     for key in ('files', 'workflows', 'docs'):
         for e in d.get(key, []):
             assert set(e) == {'source', 'target', 'mode'}, (f, e)
-            assert e['mode'] in {'create-if-missing', 'overwrite-if-force',
-                                 'sync-managed-block', 'manual'}, (f, e)
+            assert e['mode'] in {'create-if-missing', 'merge-required-lines',
+                                 'overwrite-if-force', 'sync-managed-block',
+                                 'manual'}, (f, e)
     print('ok', f)
 PY
 ```
