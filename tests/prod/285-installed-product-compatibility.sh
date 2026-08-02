@@ -367,6 +367,40 @@ check "the real node profile still passes" "$_c" "0"
 check "  and deps-install is passed as an executable contract, not as 'nothing'" \
 	"$(printf '%s' "$_out" | grep -c 'deps-install: precondition tool' || true)" "2"
 
+# --- a configuration refusal is not a missing-producer finding ---------------
+# Both stop the run, and they mean opposite things. A finding says a required tool has no
+# producer — real coverage work. A refusal says an input could not be read, so no coverage
+# conclusion was reached at all. Reporting the second as the first is what turned one
+# unreadable template into 62 fabricated NO PRODUCER findings, and it sends the reader to wire
+# a producer for what is actually a missing file or a bad flag.
+#
+# Exit 2 already separated them, but `--format json` printed NOTHING on refusal: a consumer saw
+# empty output and had only the exit code, while a findings run produced a JSON document.
+_rc=0; _out=$(sh "$COVERAGE" --workflow /nonexistent-probe.yml 2>&1) || _rc=$?
+check "an unreadable input REFUSES (exit 2), it does not report findings" "$_rc" "2"
+check "  and says so in words" "$(printf '%s' "$_out" | grep -c 'REFUSED' || true)" "1"
+check "  naming it a configuration refusal, not a finding" \
+	"$(printf '%s' "$_out" | grep -c 'not a missing-producer finding' || true)" "1"
+check "  and emits no NO PRODUCER finding at all" \
+	"$(printf '%s' "$_out" | grep -c 'NO PRODUCER' || true)" "0"
+_rc=0; _out=$(sh "$COVERAGE" --format json --workflow /nonexistent-probe.yml 2>&1) || _rc=$?
+check "the same refusal is machine-readable in json" "$_rc" "2"
+check "  as a refused record, not an empty document" \
+	"$(printf '%s' "$_out" | grep -c '\"refused\":true' || true)" "1"
+
+# A GENUINE finding must still read as a finding in both formats.
+_fp=$(mktemp -d)
+printf 'name: e\non: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: "true"\n' > "$_fp/e.yml"
+_rc=0; _out=$(sh "$COVERAGE" --profile laravel --stage main --workflow "$_fp/e.yml" 2>&1) || _rc=$?
+check "a workflow that produces nothing is a FINDING (exit 1)" "$_rc" "1"
+check "  reported as NO PRODUCER" "$([ "$(printf '%s' "$_out" | grep -c 'NO PRODUCER')" -gt 0 ] && echo yes || echo no)" "yes"
+check "  and never as a refusal" "$(printf '%s' "$_out" | grep -c 'REFUSED' || true)" "0"
+_rc=0; _out=$(sh "$COVERAGE" --format json --profile laravel --stage main --workflow "$_fp/e.yml" 2>&1) || _rc=$?
+check "the finding is a failures document in json" \
+	"$(printf '%s' "$_out" | grep -c '\"failures\":' || true)" "1"
+check "  and carries no refused flag" "$(printf '%s' "$_out" | grep -c '\"refused\"' || true)" "0"
+rm -rf "$_fp"
+
 printf '\n'
 if [ "$FAILED" -eq 0 ]; then
 	printf '285-installed-product-compatibility: ALL CHECKS PASSED\n'

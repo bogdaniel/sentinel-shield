@@ -60,6 +60,33 @@ while [ $# -gt 0 ]; do
 done
 case "$STAGE" in pr | main | scheduled | all) ;; *) log_error "--stage must be pr|main|scheduled|all"; exit 2 ;; esac
 case "$FORMAT" in text | json) ;; *) log_error "--format must be text|json"; exit 2 ;; esac
+
+# refuse <reason> — a CONFIGURATION REFUSAL, which is categorically not a coverage finding.
+#
+# Both stop the run, but they mean opposite things and call for opposite actions. A finding
+# says "this profile requires a tool nothing produces" — real, actionable coverage work. A
+# refusal says "an input could not be read, so no coverage conclusion was reached at all".
+# Reporting the second as the first sends someone to wire a producer for a problem that is a
+# missing file or a bad flag, which is how an unreadable template previously turned into 62
+# fabricated NO PRODUCER findings.
+#
+# Exit 2 already separated them, but in `--format json` a refusal printed NOTHING: a consumer
+# saw empty output and had only the exit code to go on, while a findings run produced a JSON
+# document. The two outcomes are now both machine-readable and self-describing.
+refuse() {
+	log_error "$1"
+	if [ "${FORMAT:-text}" = json ]; then
+		printf '{"refused":true,"reason":%s}\n' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/')"
+	else
+		printf '\n----\n'
+		printf 'verify-producer-coverage: REFUSED — no coverage conclusion was reached.\n'
+		printf '  %s\n' "$1"
+		printf '  This is a configuration refusal, not a missing-producer finding: nothing here\n'
+		printf '  says a required tool lacks a producer. Fix the input and re-run.\n'
+	fi
+	exit 2
+}
+
 command_exists jq || { log_error "jq is required"; exit 3; }
 
 # Default profile set: every shipped standalone profile plus every combination.
@@ -98,8 +125,8 @@ if [ -n "$WORKFLOWS" ]; then
 	# was never opened turns a typo into a security finding (or, worse, hides one).
 	for _w in $WORKFLOWS; do
 		case "$_w" in
-			/*) [ -f "$_w" ] || { log_error "--workflow file not found: $_w"; exit 2; } ;;
-			*) [ -f "$REPO_ROOT/$_w" ] || [ -f "$_w" ] || { log_error "--workflow file not found: $_w (looked in '$REPO_ROOT/$_w' and '$_w')"; exit 2; } ;;
+			/*) [ -f "$_w" ] || refuse "--workflow file not found: $_w" ;;
+			*) [ -f "$REPO_ROOT/$_w" ] || [ -f "$_w" ] || refuse "--workflow file not found: $_w (looked in '$REPO_ROOT/$_w' and '$_w')" ;;
 		esac
 	done
 	WORKFLOW_MAP=$(for _w in $WORKFLOWS; do for _s in pr main scheduled; do printf 'custom|%s|%s\n' "$_s" "$_w"; done; done)
@@ -125,10 +152,7 @@ for _entry in $WORKFLOW_MAP; do
 	case "$_entry" in custom\|*) continue ;; esac
 	_pf=$(printf '%s' "$_entry" | cut -d'|' -f3)
 	_pf="${_pf%%#*}"
-	[ -f "$REPO_ROOT/$_pf" ] || {
-		log_error "workflow file not found: $REPO_ROOT/$_pf — refusing to report coverage against a file that cannot be read"
-		exit 2
-	}
+	[ -f "$REPO_ROOT/$_pf" ] || refuse "workflow file not found: $REPO_ROOT/$_pf — refusing to report coverage against a file that cannot be read"
 done
 
 # variants_for_stage <stage> — the variants that ship a workflow for this stage.
@@ -244,10 +268,8 @@ for _p in $PROFILES; do
 			# A workflow that became unreadable during the scan makes every "no producer"
 			# conclusion drawn from it unsound. Refuse the run rather than report it.
 			if [ -s "$UNREADABLE" ]; then
-				log_error "one or more workflow files could not be read during the scan:"
-				while IFS= read -r _u; do log_error "  $_u"; done < "$UNREADABLE"
-				log_error "coverage conclusions drawn from an unread workflow are not evidence; refusing to report."
-				exit 2
+				while IFS= read -r _u; do log_error "  unreadable: $_u"; done < "$UNREADABLE"
+				refuse "one or more workflow files could not be read during the scan; coverage conclusions drawn from an unread workflow are not evidence"
 			fi
 			_wfn=0
 			[ -n "$_report" ] && _wfn=$(printf '%s' "$_wfp" | grep -c . || true)
