@@ -80,7 +80,22 @@ case "$_path" in
 				case "${GH_PEEL:-}" in
 					fail)      exit 1 ;;
 					mismatch)  printf 'commit|9999999999999999999999999999999999999999\n'; exit 0 ;;
-					nested)    printf 'tag|%s\n' "$GH_OBJ"; exit 0 ;;
+					nested)
+						# A GENUINE two-level peel: tag -> tag -> commit. The production loop
+						# re-queries with the SHA it just peeled to, so the hop is visible in
+						# the request path. This used to echo GH_OBJ back on EVERY hop, which
+						# is self-referential: the loop could never reach PTYPE=commit, so the
+						# case only ever exercised the hop-limit refusal that `fail` and
+						# `not-commit` already cover, and a successful nested resolution — the
+						# reason the loop exists — was never tested at all.
+						case "$_path" in
+							*aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa*)
+								printf 'commit|%s\n' "$GH_COMMIT"; exit 0 ;;
+							*)  printf 'tag|aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'; exit 0 ;;
+						esac ;;
+					# A tag that peels to ITSELF forever — the hop limit must stop it. This is
+					# what `nested` used to be; it keeps that coverage under an honest name.
+					nested-loop) printf 'tag|%s\n' "$GH_OBJ"; exit 0 ;;
 					not-commit) printf 'tree|1234567890123456789012345678901234567890\n'; exit 0 ;;
 					*)         printf 'commit|%s\n' "$GH_COMMIT"; exit 0 ;;
 				esac ;;
@@ -280,7 +295,16 @@ check "a tag object that cannot be peeled is refused" "$(run verified fail)" 1
 contains "  named as an unresolved target" "$(cat "$WORK/log")" "TAG_TARGET_UNRESOLVED"
 check "a tag object that does not peel to a commit is refused" "$(run verified not-commit)" 1
 contains "  also named as an unresolved target" "$(cat "$WORK/log")" "TAG_TARGET_UNRESOLVED"
-check "a tag pointing at a tag is peeled, not refused outright" "$(run verified nested)" 1
+# A tag pointing at a tag must be PEELED THROUGH to the commit, not refused. The previous
+# assertion here expected exit 1 under a stub that peeled to itself, so it proved only that
+# the hop limit works — the two cases above already prove that. This one proves the loop
+# actually resolves tag -> tag -> commit and publishes.
+check "a tag pointing at a tag is peeled through to the commit" "$(run verified nested)" 0
+contains "  and the resolved target is not reported as unresolved" \
+	"$(grep -c 'TAG_TARGET_UNRESOLVED' "$WORK/log" || true)" "0"
+# The hop limit still stops a tag that peels to itself forever.
+check "a tag that peels to itself is refused at the hop limit" "$(run verified nested-loop)" 1
+contains "  named as an unresolved target" "$(cat "$WORK/log")" "TAG_TARGET_UNRESOLVED"
 
 # ---------------------------------------------------------------------------
 # 6. The ref must still be the verified object at the moment of publication.

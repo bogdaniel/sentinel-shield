@@ -52,6 +52,10 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# shellcheck source=scripts/lib/source-config.sh
+# The source-configuration preflight below uses the CANONICAL placeholder detector and value
+# parser rather than keeping a second copy of the regexes here.
+. "$SCRIPT_DIR/lib/source-config.sh"
 # Opt-in operational-event emission (off by default). Sourced defensively; every oe_emit is a
 # no-op unless SENTINEL_SHIELD_EVENTS=1 + a sink are configured.
 if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
@@ -321,6 +325,42 @@ if [ -f "$IM_FILE" ] && command_exists jq; then
   [ "$_managed_missing" -eq 0 ] && ok "managed files present (run sync-baseline to compare content)"
 fi
 
+# (4a) Engine source configuration: an installed workflow still carrying the shipped
+#      placeholder cannot check the engine out, so the pipeline is guaranteed to fail on its
+#      first run. This is a CONFIGURATION failure (exit 2), caught before the workflow is
+#      committed rather than by a red CI run.
+if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
+  _ph=""
+  _mutable_ref=""
+  for _wf in "$TARGET"/.github/workflows/*.y*ml; do
+    [ -e "$_wf" ] || continue
+    grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wf" 2>/dev/null || continue
+    # Use the CANONICAL detector and value parser from source-config.sh rather than a second
+    # copy of the regexes. The local copy did not allow for a QUOTED value, so
+    # `SENTINEL_SHIELD_REPOSITORY: "YOUR_ORG/repo"` walked straight past this preflight — the
+    # exact thing it exists to catch — and the same omission dropped the quotes from a
+    # single-quoted SENTINEL_SHIELD_REF, which then failed the immutability pattern.
+    if sc_has_placeholder "$_wf"; then
+      _ph="$_ph $(basename "$_wf")"
+      continue
+    fi
+    _r=$(sc_workflow_value "$_wf" SENTINEL_SHIELD_REF)
+    case "$_r" in
+      '') _mutable_ref="$_mutable_ref $(basename "$_wf"):<unset>" ;;
+      *) printf '%s' "$_r" | grep -Eq '^([0-9a-fA-F]{40}|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$' \
+        || _mutable_ref="$_mutable_ref $(basename "$_wf"):$_r" ;;
+    esac
+  done
+  if [ -n "$_ph" ]; then
+    cfgfail "managed workflow(s) still carry the SENTINEL_SHIELD_REPOSITORY placeholder:$_ph — the engine cannot be checked out and the pipeline will fail on its first run. Re-run install-baseline.sh with --source-repository <owner/name> (do not hand-edit the YAML)."
+  else
+    ok "engine source configuration is set (no placeholder in the installed workflows)"
+  fi
+  if [ -n "$_mutable_ref" ]; then
+    degraded "SENTINEL_SHIELD_REF is not provably immutable in:$_mutable_ref — pin a release tag or a full 40-hex commit SHA (a moving branch lets the engine change under the gate)"
+  fi
+fi
+
 # (4b) Semgrep scope: the embedded Sentinel Shield checkout must not be scanned as
 #      application code. The managed workflows check the engine out at SENTINEL_SHIELD_PATH
 #      and run Semgrep from the repository ROOT, so an ignore file that does not exclude that
@@ -330,8 +370,16 @@ fi
 #      NON-DEFAULT SENTINEL_SHIELD_PATH is checked against what is actually configured rather
 #      than against a hardcoded assumption.
 if ls "$TARGET"/.github/workflows/*.y*ml >/dev/null 2>&1; then
-  _ss_paths=$(grep -hoE '^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*[^[:space:]#]+' "$TARGET"/.github/workflows/*.y*ml 2>/dev/null \
-    | sed -E 's/^[[:space:]]*SENTINEL_SHIELD_PATH:[[:space:]]*//; s/^"(.*)"$/\1/; s#/*$##' | sort -u || true)
+  # Read through the canonical accessor rather than re-implementing the extraction here. The
+  # local copy stripped only DOUBLE quotes, so the equally valid YAML
+  # `SENTINEL_SHIELD_PATH: 'tools/sentinel-shield'` kept its quotes and never matched any
+  # .semgrepignore spelling — a correctly configured project was reported as unexcluded.
+  _ss_paths=$(for _wf in "$TARGET"/.github/workflows/*.y*ml; do
+      [ -f "$_wf" ] || continue
+      _v=$(sc_workflow_value "$_wf" SENTINEL_SHIELD_PATH)
+      [ -n "$_v" ] || continue
+      printf '%s\n' "${_v%"${_v##*[!/]}"}"
+    done | sort -u || true)
   if [ -n "$_ss_paths" ]; then
     if [ ! -f "$TARGET/.semgrepignore" ]; then
       # Only a problem when Semgrep is actually part of the plan; the profile decides.

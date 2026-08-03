@@ -39,6 +39,8 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/source-config.sh
+. "$SCRIPT_DIR/lib/source-config.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
 # Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
@@ -52,6 +54,8 @@ fi
 
 TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; MODE="report-only"
 TOOL_MODE="config-only"; EMIT_PLAN=""; EMIT_INSTALL_PLAN=""; NONINTERACTIVE=0; RECOVER=0
+# Engine source configuration rendered into the managed workflow (see lib/source-config.sh).
+SOURCE_REPOSITORY=""; SOURCE_REF=""; ALLOW_BRANCH_REF=0; RENDER_SOURCE=1
 VERSION="${SENTINEL_SHIELD_VERSION:-2.0.0}"
 
 # usage — print CLI usage/help to stdout.
@@ -73,6 +77,17 @@ Usage: install-baseline.sh --target <dir> [--profile <name>] [--mode <mode>] [--
                        bootstrap-tools   inspect versions via compat-resolver and print the exact
                                          install plan (dry-run); with --apply, install packages,
                                          validate the lockfile, run tests, and roll back on failure.
+  --source-repository <r>  Sentinel Shield repository the managed workflow checks out
+                     (owner/name, or an https/ssh github.com URL of one). A URL for another
+                     host is refused: actions/checkout resolves owner/name against the
+                     runner's server, so the host cannot be honoured by dropping it.
+                     Default: derived from THIS checkout's `origin` remote when unambiguous.
+  --source-ref <r>   Immutable ref to pin (release tag or full 40-hex commit SHA).
+                     Default: the current release from config/release-status.json.
+  --allow-branch-ref Permit a moving branch as --source-ref (local preview only; never
+                     permitted for --mode strict|regulated).
+  --no-source-render Leave SENTINEL_SHIELD_REPOSITORY/REF exactly as the template ships them
+                     (the installed workflow will NOT be runnable until they are set).
   --emit-plan <path> Write the read-only tool resolution plan (JSON) to <path>.
   --emit-install-plan <path> Write the DETERMINISTIC installation plan (JSON) to <path>
                      (schemas/installation-plan.schema.json): the per-file actions this run would take.
@@ -91,6 +106,10 @@ while [ $# -gt 0 ]; do
 		--apply) APPLY=1; shift ;;
 		--force) FORCE=1; shift ;;
 		--tool-mode) TOOL_MODE="${2:?--tool-mode requires a value}"; shift 2 ;;
+		--source-repository) SOURCE_REPOSITORY="${2:?--source-repository requires a value}"; shift 2 ;;
+		--source-ref) SOURCE_REF="${2:?--source-ref requires a value}"; shift 2 ;;
+		--allow-branch-ref) ALLOW_BRANCH_REF=1; shift ;;
+		--no-source-render) RENDER_SOURCE=0; shift ;;
 		--emit-plan) EMIT_PLAN="${2:?--emit-plan requires a value}"; shift 2 ;;
 		--emit-install-plan) EMIT_INSTALL_PLAN="${2:?--emit-install-plan requires a value}"; shift 2 ;;
 		--non-interactive) NONINTERACTIVE=1; shift ;;
@@ -134,6 +153,7 @@ ss_cleanup() {
 		[ "$_rc" -eq 0 ] && _rc=4
 	fi
 	[ -n "${SUM:-}" ] && rm -f "$SUM" 2>/dev/null || true
+	[ -n "${WRITTEN_LIST:-}" ] && rm -f "$WRITTEN_LIST" 2>/dev/null || true
 	[ -n "${EFFECTIVE:-}" ] && rm -f "$EFFECTIVE" 2>/dev/null || true
 	exit "$_rc"
 }
@@ -337,6 +357,8 @@ emit_install_plan() {
 
 # Results accumulate in a temp file (the entry loop runs in a subshell via the pipe).
 SUM=$(mktemp); : > "$SUM"
+# Targets this run actually wrote, one per line (see render_source_config).
+WRITTEN_LIST=$(mktemp); : > "$WRITTEN_LIST"
 
 do_entry() { # do_entry <source> <target> <mode>
 	_src="$ROOT/$1"; _tgt="$TARGET/$2"; _mode="$3"
@@ -369,12 +391,170 @@ do_entry() { # do_entry <source> <target> <mode>
 		awk -v m="$MODE" 'BEGIN{d=0} /^  mode: / && !d {sub(/^  mode: .*/, "  mode: " m); d=1} {print}' "$_tgt" > "$_tgt.tmp" && mv "$_tgt.tmp" "$_tgt"
 	fi
 	echo "wrote [$_mode]: $2"; echo created >> "$SUM"
+	# Remember what this run actually wrote. render_source_config must only touch those:
+	# a managed workflow that already existed and was SKIPPED for want of --force is a file
+	# the installer explicitly declined to modify. The manifest loop runs in a PIPELINE, so
+	# this has to be a file — a shell variable set in that subshell is discarded.
+	printf '%s\n' "$2" >> "$WRITTEN_LIST"
 	# Test-only fault seam: simulate a mid-operation crash after a chosen file is written so
 	# transactional rollback can be exercised deterministically. Inert unless the env is set.
 	if [ -n "${SENTINEL_SHIELD_FAULT_AFTER:-}" ] && [ "$2" = "$SENTINEL_SHIELD_FAULT_AFTER" ]; then
 		echo "fault-injection: simulated failure after writing $2" >&2
 		exit 1
 	fi
+}
+
+# --- engine source configuration (repository + ref rendered into the workflow) ---------
+# The template ships SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield. Until it is a real
+# repository the installed workflow cannot check the engine out, so a "successful" install used
+# to leave CI guaranteed to fail on its first run. Resolve and VALIDATE both values here; they
+# are rendered into the managed workflow after the files are written.
+SRC_REPO_ORIGIN=""
+SRC_REF_ORIGIN=""
+SRC_REF_KIND=""
+if [ "$RENDER_SOURCE" -eq 1 ]; then
+	if [ -n "$SOURCE_REPOSITORY" ]; then
+		_srepo=$(sc_normalize_repository "$SOURCE_REPOSITORY") || {
+			echo "error: --source-repository '$SOURCE_REPOSITORY' is not usable. Expected owner/name, or an https/ssh URL on github.com. A URL for a different host is refused rather than retargeted: actions/checkout resolves owner/name against the RUNNER's GitHub server, so the host you supplied would be ignored. Plain http:// is refused as insecure." >&2
+			exit 2; }
+		SOURCE_REPOSITORY="$_srepo"; SRC_REPO_ORIGIN="--source-repository"
+	else
+		SOURCE_REPOSITORY=$(sc_derive_repository "$ROOT")
+		[ -n "$SOURCE_REPOSITORY" ] && SRC_REPO_ORIGIN="derived from this checkout's origin remote"
+	fi
+
+	if [ -n "$SOURCE_REF" ]; then
+		SRC_REF_KIND=$(sc_ref_kind "$SOURCE_REF") || {
+			echo "error: --source-ref '$SOURCE_REF' is not a valid ref (expected a release tag or a full 40-hex commit SHA)" >&2
+			exit 2; }
+		SRC_REF_ORIGIN="--source-ref"
+	else
+		SOURCE_REF=$(sc_approved_ref "$ROOT")
+		if [ -n "$SOURCE_REF" ]; then
+			SRC_REF_KIND=$(sc_ref_kind "$SOURCE_REF") || {
+				echo "error: config/release-status.json declares an invalid consumer_ref '$SOURCE_REF'" >&2; exit 2; }
+			SRC_REF_ORIGIN="config/release-status.json (current release)"
+		fi
+	fi
+
+	if [ "$SRC_REF_KIND" = "branch" ] && [ "$ALLOW_BRANCH_REF" -eq 0 ]; then
+		echo "error: --source-ref '$SOURCE_REF' is a moving branch. A moving ref means the engine can change under the gate with no consumer change. Pass a release tag or a full 40-hex commit SHA, or --allow-branch-ref for a local preview." >&2
+		exit 2
+	fi
+	# PRODUCTION policy: strict/regulated adopt an enforcing gate, so the engine they execute
+	# must be immutable — a full commit SHA, or the release tag the release-status contract
+	# approves for consumers. A tag-shaped NAME alone never proves immutability.
+	# An EMPTY ref is not "the approved ref": it means --source-ref was omitted and
+	# sc_approved_ref could not read config/release-status.json (missing, unreadable, or no
+	# jq). Both guards below compare equal to an empty $_approved, so the run used to sail
+	# past them and die much later inside render_source_config with "could not render the
+	# engine source configuration", rolling the whole install back for an unrelated-looking
+	# reason.
+	if [ -z "$SOURCE_REF" ]; then
+		echo "error: no engine ref to pin. --source-ref was not given and the approved release ref could not be read from '$ROOT/config/release-status.json' (missing, unreadable, or jq unavailable). Pass --source-ref <tag|40-hex commit>, or install jq and run from a complete checkout." >&2
+		exit 2
+	fi
+	case "$MODE" in
+		strict | regulated)
+			# A full commit SHA is immutable ON ITS OWN and is accepted below, so it must not
+			# depend on the contract being readable. Only a NON-commit ref needs the approved
+			# release tag — telling a user who already passed a 40-hex SHA to "pass a 40-hex
+			# SHA" was the previous behaviour whenever jq or the contract was unavailable.
+			_approved=$(sc_approved_ref "$ROOT")
+			if [ "$SRC_REF_KIND" != "commit" ] && [ -z "$_approved" ]; then
+				echo "error: --mode $MODE requires an immutable engine ref. '$SOURCE_REF' is not a commit SHA, and no approved release ref is readable from '$ROOT/config/release-status.json' (missing, unreadable, or jq unavailable) to compare it against. Pass --source-ref <40-hex commit>, or restore the release-status contract." >&2
+				exit 2
+			fi
+			if [ "$SRC_REF_KIND" != "commit" ] && [ "$SOURCE_REF" != "$_approved" ]; then
+				echo "error: --mode $MODE requires an immutable engine ref: a full 40-hex commit SHA, or the approved release tag '${_approved:-<none declared>}'. Got '$SOURCE_REF'." >&2
+				exit 2
+			fi ;;
+	esac
+fi
+
+# render_source_config — write the resolved repository/ref into every managed workflow the
+# manifest installed. Atomic per file (lib/source-config.sh); a failed render is fatal so the
+# transaction rolls back rather than leaving a half-configured workflow.
+render_source_config() {
+	if [ "$RENDER_SOURCE" -ne 1 ]; then
+		# report-only/baseline are advisory adoption modes, so leaving the source unset is a
+		# documented choice there. strict/regulated install an ENFORCING gate: a workflow that
+		# cannot check the engine out cannot run it, and a gate that never runs blocks nothing
+		# while every dashboard shows it installed. That is the failure this project refuses —
+		# an absent check reading as a satisfied one — so it is an error, not a note.
+		case "$MODE" in
+			strict | regulated)
+				echo "error: --mode $MODE with --no-source-render would install an ENFORCING gate that cannot run: SENTINEL_SHIELD_REPOSITORY/REF stay as shipped, so the workflow cannot check the engine out and the gate silently enforces nothing. Drop --no-source-render (optionally with --source-repository <owner/name>), or install with --mode report-only|baseline." >&2
+				return 1 ;;
+		esac
+		echo "source-config: --no-source-render — SENTINEL_SHIELD_REPOSITORY/REF left as shipped (workflow NOT runnable until set)"
+		return 0
+	fi
+	_rendered=0; _skipped=0
+	for _wfpair in $(jq -r '(.workflows // [])[] | "\(.target)|\(.source)"' "$MANIFEST"); do
+		_wf="${_wfpair%%|*}"; _wfsrc="${_wfpair#*|}"
+		# Dry-run inspects the TEMPLATE (the target does not exist yet) so the plan can show
+		# the exact substitutions without writing anything.
+		if [ "$APPLY" -eq 1 ]; then _wff="$TARGET/$_wf"; else _wff="$ROOT/$_wfsrc"; fi
+		# Only render what this run WROTE. An existing managed workflow skipped for want of
+		# --force was deliberately left alone; rewriting its source configuration anyway
+		# edited a file the installer had just declined to touch.
+		if [ "$APPLY" -eq 1 ] && ! grep -qxF -- "$_wf" "$WRITTEN_LIST" 2>/dev/null; then
+			echo "source-config: $_wf was not written by this run (skipped) — left exactly as it is"
+			_skipped=$((_skipped + 1))
+			continue
+		fi
+		# The DRY RUN has to predict that same skip. There is no WRITTEN_LIST yet, so it applies
+		# the rule directly: a managed workflow that already exists is not rewritten without
+		# --force. Without this the plan contradicted itself — the entry above printed
+		# "skip (managed, exists; use --force to update)" for a file, and the preview here then
+		# printed "would set … in" the very same file, so the two halves of one dry run
+		# disagreed about what --apply was going to do.
+		if [ "$APPLY" -eq 0 ] && [ -e "$TARGET/$_wf" ] && [ "$FORCE" -eq 0 ]; then
+			echo "source-config: would leave $_wf exactly as it is (managed, exists; use --force to update)"
+			_skipped=$((_skipped + 1))
+			continue
+		fi
+		grep -qE '^[[:space:]]*SENTINEL_SHIELD_REPOSITORY:' "$_wff" 2>/dev/null || continue
+		if [ -z "$SOURCE_REPOSITORY" ]; then
+			# Same reasoning as --no-source-render above: under an enforcing mode an
+			# unrunnable managed workflow is a gate that cannot fail, which is worse than no
+			# gate because it looks like one.
+			case "$MODE" in
+				strict | regulated)
+					echo "error: --mode $MODE cannot leave $_wf carrying the engine-source placeholder. No repository could be resolved (this checkout has no unambiguous 'origin' remote), so the workflow cannot check the engine out and the enforcing gate would never run. Re-run with --source-repository <owner/name>, or install with --mode report-only|baseline." >&2
+					return 1 ;;
+			esac
+			echo "source-config: WARNING — no repository resolved (this checkout has no unambiguous 'origin' remote). $_wf keeps the placeholder and is NOT runnable; re-run with --source-repository <owner/name>."
+			continue
+		fi
+		if [ "$APPLY" -eq 0 ]; then
+			echo "would set in $_wf: SENTINEL_SHIELD_REPOSITORY=$SOURCE_REPOSITORY ($SRC_REPO_ORIGIN), SENTINEL_SHIELD_REF=$SOURCE_REF ($SRC_REF_KIND, $SRC_REF_ORIGIN)"
+			_rendered=$((_rendered + 1))
+			continue
+		fi
+		# The render MUTATES a managed file, so it belongs to the transaction: without a
+		# snapshot a rollback would restore the file to its pre-install state for every other
+		# mutation but leave this one unrecoverable.
+		tx_snapshot "$_wf"
+		if sc_render_workflow "$_wff" "$SOURCE_REPOSITORY" "$SOURCE_REF"; then
+			echo "source-config: $_wf -> repository=$SOURCE_REPOSITORY ref=$SOURCE_REF ($SRC_REF_KIND)"
+			_rendered=$((_rendered + 1))
+		else
+			echo "error: could not render the engine source configuration into $_wf" >&2
+			return 1
+		fi
+	done
+	# "nothing to render" and "everything was left alone" are different outcomes, and reporting
+	# the second as the first reads like the profile ships no configurable workflow at all.
+	if [ "$_rendered" -eq 0 ]; then
+		if [ "$_skipped" -gt 0 ]; then
+			echo "source-config: nothing rendered — all $_skipped managed workflow(s) were left exactly as they are"
+		else
+			echo "source-config: no managed workflow declares SENTINEL_SHIELD_REPOSITORY — nothing to render"
+		fi
+	fi
+	return 0
 }
 
 # Emit the COMPLETE plan BEFORE any mutation: every manifest entry + the protected set.
@@ -400,6 +580,9 @@ printf '%s\n' "$ENTRIES" | while IFS="$(printf '\t')" read -r s t m; do
 	do_entry "$s" "$t" "$m"
 done
 IFS=$OLDIFS
+
+# Render the engine source configuration into the managed workflow(s) just installed.
+render_source_config || exit 1
 
 # compute_tools — fill ENABLED_NL/DISABLED_NL (newline lists) from the effective profile.
 compute_tools() {
@@ -501,7 +684,11 @@ if [ "$APPLY" -eq 0 ]; then
 else
 	echo "Install complete. Next:"
 	echo "  1. Review .sentinel-shield/profile.yaml (mode=$MODE) + project metadata."
-	echo "  2. Set SENTINEL_SHIELD_REPOSITORY + a pinned SENTINEL_SHIELD_REF in .github/workflows/sentinel-shield.yml."
+	if [ "$RENDER_SOURCE" -eq 1 ] && [ -n "$SOURCE_REPOSITORY" ]; then
+		echo "  2. Engine source already configured: repository=$SOURCE_REPOSITORY ref=$SOURCE_REF ($SRC_REF_KIND). For production, pin the full commit SHA."
+	else
+		echo "  2. Set SENTINEL_SHIELD_REPOSITORY + a pinned SENTINEL_SHIELD_REF in .github/workflows/sentinel-shield.yml (re-run with --source-repository to have it written for you)."
+	fi
 	echo "  3. Copy .sentinel-shield/accepted-risks.example.json -> accepted-risks.json ONLY when accepting a risk (owner-approved)."
 	echo "  4. Run the pipeline (push/PR or workflow_dispatch)."
 fi

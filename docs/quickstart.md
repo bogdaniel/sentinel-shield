@@ -91,8 +91,25 @@ Copy the ones you want from `templates/workflows/` (next sections).
 ### Post-install manual steps (the script prints these)
 
 1. Edit `.sentinel-shield/profile.yaml` — set `project.{name,type,criticality,owner}`.
-2. In each workflow you adopt, set `SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield`
-   and pin `SENTINEL_SHIELD_REF` to a tag (pin to a full SHA before production).
+2. **The managed workflow's engine source is already configured** — `install-baseline.sh`
+   renders `SENTINEL_SHIELD_REPOSITORY` / `SENTINEL_SHIELD_REF` for you:
+
+   ```sh
+   sh scripts/install-baseline.sh --target /path/to/project --profile laravel --apply \
+     --source-repository <owner/name> --source-ref <tag-or-40-hex-SHA>
+   ```
+
+   With no flags it derives the repository from this checkout's `origin` remote and pins the
+   current release from `config/release-status.json`. The dry-run prints the exact
+   substitutions before anything is written. `--mode strict|regulated` requires an immutable
+   ref (full commit SHA, or the approved release tag) and refuses a moving branch.
+   **Do not hand-edit the YAML** — the CLI validates the repository grammar and the ref policy
+   and renders injection-safely; `doctor.sh` fails closed on a leftover `YOUR_ORG` placeholder.
+   For the **per-job** templates you copy manually (`sentinel-shield-pr-fast.yml`, `-main.yml`,
+   …) set the two values to match what the installer wrote.
+   **Private engine repository:** keep the values as they are and add a token or deploy key to
+   the `Checkout Sentinel Shield` steps (`with: token: ${{ secrets.SS_READ_TOKEN }}`); never
+   embed a credential in `SENTINEL_SHIELD_REPOSITORY`.
 
 ---
 
