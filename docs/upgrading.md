@@ -19,9 +19,12 @@ so sync can reason about managed vs project-owned paths.
 ## Standard upgrade (drop-in minor)
 
 ```sh
-# 1. Pin the IMMUTABLE engine ref you are upgrading to (a tag or full 40-char SHA,
+# 1. Pin the engine ref you are upgrading to (a release tag or a full 40-char commit SHA,
 #    never a moving branch). There is no GA default — supply the exact approved ref.
-SENTINEL_SHIELD_REF=<immutable tag or full SHA>      # never main/master/HEAD/latest
+#    Only the full COMMIT SHA is immutable by construction: a git tag is a NAME, and it can
+#    be retargeted unless the repository protects it. Prefer the SHA for anything you need
+#    to reproduce later; use the tag for readability when you accept that dependency.
+SENTINEL_SHIELD_REF=<release tag or full 40-char SHA>   # never main/master/HEAD/latest
 SENTINEL_SHIELD_PATH=.sentinel-shield-tools
 
 # 2. Acquire the engine at that ref. The acquire bootstrap is the ONE script run
@@ -54,7 +57,9 @@ Shipped workflow templates now pin `SENTINEL_SHIELD_REF: v2.2.0` — the current
 recorded in [`config/release-status.json`](../config/release-status.json). Existing
 consumers installed from an older checkout are still pinned to `v2.0.1` and keep running
 that engine until they bump the ref: **nothing changes under you**, because the pin is
-immutable and consumer-owned.
+consumer-owned — no engine release moves it. (A pin to a full commit SHA is immutable
+outright; a pin to a tag additionally depends on that tag not being retargeted upstream,
+which is why production should pin the SHA.)
 
 `v2.2.0` is backward-compatible with `v2.0.1` — no stable CLI, exit code, environment
 variable, or schema was renamed or removed, and the three new engineering-governance gate
@@ -72,7 +77,8 @@ families (testing-discipline, engineering-quality, architecture governance v2) a
 
 ```sh
 # 1. Bump the pin in every installed Sentinel Shield workflow.
-#    A tag is immutable and fine; production SHOULD use the full commit the tag targets:
+#    A tag is readable and fine for development; production SHOULD use the full commit the
+#    tag targets, because a tag name can be retargeted and a commit SHA cannot:
 #    v2.2.0 -> 99fcd2767560b257344211aae57e027ea39a5304
 SENTINEL_SHIELD_REF=v2.2.0
 
@@ -93,8 +99,9 @@ first, exactly like every other gate ([`production-rollout.md`](production-rollo
 
 **Rolling back to `v2.0.1`** is the standard rollback below: set `SENTINEL_SHIELD_REF`
 back to `v2.0.1` (tag target `32812ed43289104af61b0eb2fc20c784ca2b72c1`), re-acquire, and
-re-run `sync-baseline.sh --apply --force` from that checkout. Both tags are immutable, so
-the prior managed files are always reproducible. `v2.0.x` stays on security patches only
+re-run `sync-baseline.sh --apply --force` from that checkout. Both tag targets are recorded
+above as full commit SHAs, so the prior managed files are always reproducible — pin those
+SHAs rather than the tag names if the rollback has to be provable. `v2.0.x` stays on security patches only
 until the next feature release ([`support-policy.md`](support-policy.md)).
 
 ## Preview a tool plan while you sync
@@ -128,9 +135,11 @@ opportunistic `run-local-scanner-sweep.sh` is **not** — a clean sweep never pr
 
 ## Rollback
 
-Tags are immutable, so the prior behavior is always retrievable:
+Every released engine version stays retrievable, so the prior behavior can always be
+restored. Roll back to the full commit SHA rather than the tag name: a commit is immutable,
+whereas a tag is a ref that can be retargeted upstream:
 
-- **Engine version:** set `SENTINEL_SHIELD_REF` back to the prior immutable ref,
+- **Engine version:** set `SENTINEL_SHIELD_REF` back to the prior ref (its full commit SHA),
   re-acquire (`acquire-sentinel-shield.sh … --verify`), and re-run
   `sync-baseline.sh --apply --force` from that checkout to restore the prior
   managed files.

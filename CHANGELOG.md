@@ -15,6 +15,40 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — the installed main gate is satisfiable, and an executable matrix proves it (#84, #87)
+
+- **Every required tool now has exactly one producer.** The Laravel profile marked
+  `codeql`/`osv-scanner`/`grype`/`syft`/`dependency-check` required at `main` while the managed
+  workflow produced none of them, and the profile expected Syft at `reports/raw/syft.json` while
+  the workflow wrote `reports/sbom.spdx.json`. A fresh installation therefore exited `3` on a
+  wiring gap rather than on findings.
+- **New `scripts/verify-producer-coverage.sh`** derives the matrix from the **resolved effective
+  profile** and fails closed when a required tool has no producer, when the producer belongs to a
+  workflow that does not run that stage, or when a runner and a workflow step both target the same
+  report (which `run-tool-plan.sh` would resolve by deleting the workflow's evidence).
+- **Producers added** to the combined and split main gates using already-approved SHA-pinned
+  actions: Syft (`syft-json` → `reports/raw/syft.json`, alongside the SPDX artifact), OSV-Scanner,
+  Grype (SBOM-first), and CodeQL (`upload: false`, exported by the existing runner). The PR-fast and
+  nightly templates gained the producers their stages require (Gitleaks, `composer audit`,
+  OSV-Scanner, Trivy-fs, Syft, repository-hygiene audits).
+- **The split main template is no longer a subset of the combined one** — both now run the same
+  producer set and the profile-driven tool plan, and the matrix compares them.
+- **`build-security-summary.sh --stage pr|main|scheduled`** scopes required-tool **gating** to the
+  tools the profile selects for that stage (matching `run-tool-plan.sh`). The overlay was
+  stage-blind, so a nightly-only tool was gate-enforced in a main-gate summary and no main run could
+  pass. Status is still reported for every tool; omitting `--stage` keeps the old behaviour.
+- **Dependency-Check is required at `scheduled`, not at `main`** (Laravel, Symfony), with the
+  rationale recorded in the manifest and the docs: it needs the NVD dataset and a warm cache, and
+  the nightly workflow is its documented home. The scheduled stage still enforces it.
+- `profiles/php-library` declares the CodeQL export runner, so its required `codeql` report has a
+  producer like every other profile.
+- **New `tests/prod/285-installed-product-compatibility.sh`** — the blocking installed-product
+  matrix: producer coverage for all 9 profiles × 3 stages × both workflow variants, report-path
+  agreement between profiles and collectors, install (dry-run + apply) → sync → drift-repair per
+  profile, a deterministic offline run over the recorded fixture evidence, and negative controls for
+  a producer-less workflow, invalid JSON, a missing required report, a stale engine ref, and the
+  Semgrep self-scan regression.
+
 ### Added — one-command installation renders a runnable, validated engine source config (#90)
 
 - **`install-baseline.sh` now renders `SENTINEL_SHIELD_REPOSITORY` / `SENTINEL_SHIELD_REF`.** New

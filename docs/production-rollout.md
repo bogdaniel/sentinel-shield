@@ -54,17 +54,26 @@ Modes are set per project in `.sentinel-shield/profile.yaml` (`gates.mode`) and 
 thresholds via [`gate-resolution.md`](gate-resolution.md). Full phase detail is in
 [`adoption-guide.md`](adoption-guide.md); use this table as the trigger checklist.
 
+> This table is a **summary**, not the gate contract. Two v2.2 gates enforce earlier than the
+> "additive" reading suggests and are called out in their rows:
+> `focused_test_violations` blocks in EVERY mode, including report-only, and
+> `changed_lines_coverage_violations` blocks from `baseline`. Selecting a mode from this table
+> without reading them is how an operator picks report-only expecting nothing to block and then
+> fails CI. [`gate-resolution.md`](gate-resolution.md) is the authoritative per-gate, per-mode
+> matrix; where the two disagree, it wins.
+
 | Mode | What gates (additive) | Use it when… |
 | --- | --- | --- |
-| **report-only** | Observe only — nothing blocks except `secrets` and `expired_exceptions` | First contact with any repo; legacy backlog; measuring true noise before committing to a gate |
-| **baseline** | + secrets, critical/high vulns, architecture, type errors, test failures, unsafe_docker, unsafe_github_actions — new-code gating; **migration/legacy debt tolerated** | The default steady state: new risk must not merge, but you are not forcing a backlog burn-down |
+| **report-only** | Observe only — nothing blocks except `secrets`, `expired_exceptions` and `focused_test_violations` | First contact with any repo; legacy backlog; measuring true noise before committing to a gate |
+| **baseline** | + secrets, critical/high vulns, architecture, type errors, test failures, unsafe_docker, unsafe_github_actions, `changed_lines_coverage_violations` — new-code gating; **migration/legacy debt tolerated** | The default steady state: new risk must not merge, but you are not forcing a backlog burn-down |
 | **strict** | + `medium_vulnerabilities`, `missing_sbom`, style_violations, iac_violations, container_image_violations, and the higher-confidence third-party signals — whole codebase, not just new code | A clean run is achievable on demand; medium/style triaged or accept-risked; pre-flight ([`strict-mode-readiness.md`](strict-mode-readiness.md)) passes. **Opt-in.** |
 | **regulated** | + release-evidence, scorecard, the noisier third-party signals | A compliance regime requires auditable evidence per release; pre-flight ([`regulated-mode-readiness.md`](regulated-mode-readiness.md)) passes. **Opt-in.** |
 
 > **Engineering quality gates (released in `v2.2.0`) — additive engine capability.** A separate
 > engineering-quality counter channel (coverage, coverage regression, mutation, complexity,
-> duplication, dead code) follows the **same promotion path** as the modes above: non-blocking in
-> report-only/baseline, `strict` adds coverage threshold/regression + complexity + duplication, and
+> duplication, dead code) follows the **same promotion path** as the modes above: **most** of the
+> family is non-blocking in report-only/baseline — with the two exceptions named below, which
+> block earlier — `strict` adds coverage threshold/regression + complexity + duplication, and
 > `regulated` adds mutation + dead-code. Not every gate in the family waits for an opt-in —
 > `changed_lines_coverage_violations` enforces from `baseline` and `focused_test_violations` in
 > every mode ([`gate-resolution.md`](gate-resolution.md)); adopt it report-only-first via

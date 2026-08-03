@@ -1,7 +1,7 @@
 # Product Readiness Checklist (v0.1.16)
 
 > **Canonical status.** Latest release: **`v2.2.0`** — an engine-only feature release published
-> on 2026-07-24 at tag target `99fcd27`. It supersedes **`v2.0.1`** (engine-only maintenance,
+> on 2026-07-24 at tag target `99fcd276`. It supersedes **`v2.0.1`** (engine-only maintenance,
 > 2026-07-09, tag target `32812ed`), adding three additive engineering-governance gate families. Which of their gates enforce
 > in which mode varies per gate — several enforce from `baseline` once their evidence exists;
 > the matrix is [`docs/gate-resolution.md`](../docs/gate-resolution.md). The machine-readable source of truth for this status is

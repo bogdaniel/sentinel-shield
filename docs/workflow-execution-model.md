@@ -102,6 +102,57 @@ This is distinct from the provisioning `--tool-mode` on `install-baseline.sh`
 tools get installed*; this one decides *how strictly their absence gates*. See
 [`tool-provisioning.md`](tool-provisioning.md).
 
+## <a id="producer-coverage"></a>Producer coverage: every required report has exactly one producer
+
+A required tool is only enforceable if something actually **produces** its report. `run-tool-plan.sh`
+exits `3` when a required tool has no valid report — correct fail-closed behaviour, but it fires
+just as loudly when the shipped workflow simply has no step producing it. That is a **wiring**
+defect, not a finding, and it made a fresh installation unpassable.
+
+Every required report therefore has exactly one producer, and that is **checked mechanically**:
+
+```sh
+sh scripts/verify-producer-coverage.sh                      # all profiles, all stages, both variants
+sh scripts/verify-producer-coverage.sh --profile laravel --stage main
+```
+
+| Producer kind | Meaning |
+| --- | --- |
+| `runner` | the effective profile declares `runner:`; `run-tool-plan.sh` invokes it and it writes the report |
+| `workflow` | a shipped workflow step writes the exact report path the profile expects |
+
+Rules the checker enforces, derived from the **resolved effective profile** (never a hand-written
+list):
+
+- a required tool selected for a stage must have a producer **in a workflow that runs that stage** —
+  a nightly step is not a producer for the main gate;
+- the **combined** template (what `install-baseline.sh` writes) and the **split** per-job templates
+  are two independently installable products, so each must cover the stage on its own;
+- declaring both a `runner` and a workflow step for the same path is **ambiguous** and fails:
+  `run-tool-plan.sh` deletes the report before invoking the runner (stale-report protection), so the
+  evidence reaching the gate would not be the evidence the workflow produced. CodeQL is the one
+  documented pairing that is *not* ambiguous: the workflow writes SARIF into `codeql-results/` and
+  `scripts/runners/codeql-export.sh` exports it to `reports/raw/codeql.json`.
+
+### Stage-scoped required-tool gating
+
+`build-security-summary.sh --stage pr|main|scheduled` scopes required-tool **gating** to the tools
+the profile selects for that stage, exactly as `run-tool-plan.sh` does. Without it the overlay was
+stage-blind: a tool required only nightly was gate-enforced in a main-gate summary, so a main run
+could never pass however clean the project was. Status is still reported for every tool — only the
+gating is scoped, and omitting `--stage` keeps the previous behaviour.
+
+**OWASP Dependency-Check is required at `scheduled`, not at `main`.** It needs the full NVD dataset
+(large, rate-limited without an API key) and a warm persistent cache, so its documented home is the
+nightly workflow ([`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)).
+Requiring it at `main` gave every Laravel/Symfony adopter an unsatisfiable main gate. The scheduled
+workflow still enforces it.
+
+**CodeQL** analyses `actions` always, and `javascript-typescript` when the project ships a
+`package.json`. It runs with `upload: false`, so the workflow needs no `security-events: write`.
+CodeQL does not support PHP — a PHP-only project is still analysed for its workflows, which is what
+its `required` contract at `main` means.
+
 ## Reproducing the gate locally (`run-local-pipeline.sh`)
 
 `run-local-pipeline.sh` is the authoritative local equivalent of the CI release

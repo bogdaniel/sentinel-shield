@@ -19,8 +19,8 @@ by default** and writes nothing without `--apply`.
 
 Each manifest is JSON and conforms to `profiles/profile.manifest.schema.json`
 (`required: ["profile","files"]`; `files`/`workflows`/`docs` entries are
-`{source,target,mode}` with `mode ∈ {create-if-missing, overwrite-if-force,
-sync-managed-block, manual}`). The schema sets `additionalProperties: true`, so the
+`{source,target,mode}` with `mode ∈ {create-if-missing, merge-required-lines,
+overwrite-if-force, sync-managed-block, manual}`). The schema sets `additionalProperties: true`, so the
 v0.1.22 `recommended_*` fields validate.
 
 Reproduce:
@@ -34,8 +34,9 @@ for f in sorted(glob.glob('profiles/**/*.manifest.json', recursive=True)):
     for key in ('files', 'workflows', 'docs'):
         for e in d.get(key, []):
             assert set(e) == {'source', 'target', 'mode'}, (f, e)
-            assert e['mode'] in {'create-if-missing', 'overwrite-if-force',
-                                 'sync-managed-block', 'manual'}, (f, e)
+            assert e['mode'] in {'create-if-missing', 'merge-required-lines',
+                                 'overwrite-if-force', 'sync-managed-block',
+                                 'manual'}, (f, e)
     print('ok', f)
 PY
 ```
@@ -107,14 +108,14 @@ all `create-if-missing`). `node` and `react` install no doc templates.
 
 | Profile | Stack(s) | Install command | PR-fast tools | Main-gate tools | Scheduled tools | Raw reports (count) |
 |---|---|---|---|---|---|---|
-| laravel | laravel | `install-baseline.sh --target <dir> --profile laravel` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype | 16 |
-| symfony | symfony, php | `install-baseline.sh --target <dir> --profile symfony` | php-syntax, phpstan, psalm, php-style, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, dependency-check | trufflehog, scorecard, dependency-check, grype | 19 |
-| node | node | `install-baseline.sh --target <dir> --profile node` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype | 14 |
-| react | react, node | `install-baseline.sh --target <dir> --profile react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype | 16 |
-| docker | docker | `install-baseline.sh --target <dir> --profile docker` | hadolint, docker-base-digest, gitleaks, actionlint, zizmor, github-actions-pins | trivy-fs, syft, grype, dockle, checkov, terrascan, conftest | trufflehog, scorecard, dockle, grype | 13 |
-| php-library | php | `install-baseline.sh --target <dir> --profile php-library` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype | 15 |
-| laravel-react-docker | laravel, react, node, docker | `install-baseline.sh --target <dir> --profile laravel-react-docker` | php-syntax, phpstan, composer-audit, npm-audit, eslint, typescript, hadolint, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, checkov, dependency-check | trufflehog, scorecard, dockle, dependency-check, grype | 35 |
-| node-react | node, react | `install-baseline.sh --target <dir> --profile node-react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, dependency-check | trufflehog, scorecard, dependency-check, grype | 12 |
+| laravel | laravel | `install-baseline.sh --target <dir> --profile laravel` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac | trufflehog, scorecard, dependency-check, grype | 16 |
+| symfony | symfony, php | `install-baseline.sh --target <dir> --profile symfony` | php-syntax, phpstan, psalm, php-style, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac | trufflehog, scorecard, dependency-check, grype | 19 |
+| node | node | `install-baseline.sh --target <dir> --profile node` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype | trufflehog, scorecard, dependency-check, grype | 14 |
+| react | react, node | `install-baseline.sh --target <dir> --profile react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype | trufflehog, scorecard, dependency-check, grype | 16 |
+| docker | docker | `install-baseline.sh --target <dir> --profile docker` | hadolint, docker-base-digest, gitleaks, actionlint, zizmor, github-actions-pins | trivy-fs, syft, grype, dockle, checkov, terrascan, conftest | trufflehog, scorecard, grype | 13 |
+| php-library | php | `install-baseline.sh --target <dir> --profile php-library` | php-syntax, phpstan, composer-audit, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype | trufflehog, scorecard, dependency-check, grype | 15 |
+| laravel-react-docker | laravel, react, node, docker | `install-baseline.sh --target <dir> --profile laravel-react-docker` | php-syntax, phpstan, composer-audit, npm-audit, eslint, typescript, hadolint, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype, deptrac, checkov | trufflehog, scorecard, dockle, dependency-check, grype | 35 |
+| node-react | node, react | `install-baseline.sh --target <dir> --profile node-react` | npm-audit, eslint, typescript, gitleaks, semgrep, tests | codeql, osv-scanner, trivy-fs, syft, grype | trufflehog, scorecard, dependency-check, grype | 12 |
 
 `install-baseline.sh` resolves `--profile <name>` from `profiles/<name>/profile.manifest.json`
 first, then `profiles/combinations/<name>.manifest.json`. Default profile is

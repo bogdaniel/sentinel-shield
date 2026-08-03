@@ -62,8 +62,7 @@
     "osv-scanner",
     "trivy-fs",
     "syft",
-    "grype",
-    "dependency-check"
+    "grype"
   ],
   "recommended_scheduled_tools": [
     "trufflehog",
@@ -245,6 +244,7 @@
     "codeql": {
       "policy": "required",
       "category": "static-analysis",
+      "runner": "scripts/runners/codeql-export.sh",
       "executable": [
         "codeql"
       ],

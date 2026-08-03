@@ -3,8 +3,10 @@
 # Tools ACTUALLY run by this workflow: php -l, PHPStan, npm audit, Semgrep (curated),
 # Hadolint, GH Actions pin audit, Docker base digest, dependency policy. Psalm/Pint/ESLint/
 # tsc run ONLY if the steps below are wired for a configured project.
-# NOTE: Gitleaks (secrets), actionlint and zizmor are NOT run here — they run in the separate
-# security workflow (ci-security.yml). This PR-fast gate is NOT the secrets gate.
+# Gitleaks (secrets) IS run here: `secrets` is a non-suppressible control that every profile
+# marks required at `pr`, and a CONSUMER does not have the engine's own ci-security.yml, so
+# leaving it out left a consumer's PR plan with no secrets producer at all.
+# NOTE: actionlint and zizmor are NOT run here — they run in the main and scheduled gates.
 # Enforces the project's profile mode.
 name: sentinel-shield-pr-fast
 on:
@@ -20,13 +22,17 @@ env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v2.2.0                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
-  # NOTE: this template runs Semgrep only. gitleaks / actionlint / zizmor run in the main and
-  # scheduled gates, so their image variables are deliberately NOT declared here — overriding
-  # SENTINEL_SHIELD_GITLEAKS_IMAGE in this file would have no effect because nothing reads it.
-  # Semgrep scanner image — DIGEST-pinned by default (config/scanner-images.json). The trailing
+  # NOTE: actionlint / zizmor run in the main and scheduled gates, so their image variables
+  # are deliberately NOT declared here — overriding them in this file would have no effect
+  # because nothing reads them. Semgrep and gitleaks ARE run here, so both are declared: a
+  # step that reads an undeclared variable executes whatever its inline fallback says, not
+  # the approved reference. Enforced by `validate-scanner-images.sh templates`.
+  #
+  # Scanner images — DIGEST-pinned by default (config/scanner-images.json). The trailing
   # comment records the readable tag the digest was resolved from; see
   # docs/scanner-image-digest-pinning.md. Override the variable to run a different build.
   SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba   # v8.18.4
 jobs:
   pr-fast:
     runs-on: ubuntu-latest
@@ -46,6 +52,12 @@ jobs:
       - name: PHP fast checks (best-effort; never fake)
         run: |
           mkdir -p reports/raw
+          # composer audit is REQUIRED at `pr` by every PHP profile; without it the PR plan
+          # records the dependency-advisory channel as unavailable.
+          if [ -f composer.json ]; then
+            composer install --no-interaction --no-progress --prefer-dist --no-scripts || true
+            composer audit --format=json > reports/raw/composer-audit.json 2>/dev/null || true
+          fi
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/php-syntax.sh reports/raw/php-syntax.json || true
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/runners/laravel-phpstan.sh || true
           # TODO (optional, NOT wired): Psalm / Pint / PHP-CS-Fixer — add the runner calls here if
@@ -68,13 +80,56 @@ jobs:
         # is honored via `-w /src`. Do NOT switch to --config=auto in production — it is noisy.
         continue-on-error: true
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/${{ env.SENTINEL_SHIELD_PATH }}/semgrep/app || true
-          # NOTE: gitleaks + actionlint + zizmor are NOT run here — they run in ci-security.yml.
+      - name: Gitleaks secrets (pinned image → reports/raw/gitleaks.json)
+        # `secrets` is a NON-SUPPRESSIBLE control and every profile marks gitleaks required at
+        # `pr`. It used to be left to the engine's own ci-security.yml, which a CONSUMER does
+        # not have — so a consumer's PR plan had no secrets producer at all.
+        continue-on-error: true
+        run: |
+          mkdir -p reports/raw
+          docker run --rm -v "$PWD:/repo" "${SENTINEL_SHIELD_GITLEAKS_IMAGE}" \
+            detect --source=/repo --report-format json \
+            --report-path /repo/reports/raw/gitleaks.json --redact || true
+      - name: OSV-Scanner (SHA-pinned action → reports/raw/osv-scanner.json)
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --format=json
+            --output=reports/raw/osv-scanner.json
+            --recursive
+            ./
+        continue-on-error: true
       - name: Build summary + enforce
         run: |
-          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --raw-dir reports/raw --output reports/security-summary.json
+          set -eu
+          # Same fallback as the run-tool-plan step above: an EMPTY --profile silently drops
+          # the whole tool-policy overlay, so --stage would be inert and required-tool
+          # enforcement would vanish. Re-deriving it without the fallback is how that
+          # happened; without `set -eu` a failed extraction or a failed build then let
+          # enforce-gates run against a stale or missing summary.
+          # The effective profile decides which producers are required and which gates
+          # enforce, so it is NEVER guessed. A duplicated key is ambiguous rather than
+          # first-wins, and a missing one is a configuration failure — silently running
+          # `laravel-react-docker` would prove coverage for one profile while enforcing a
+          # different stack.
+          _pt_n=$(grep -cE '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env 2>/dev/null || printf '0')
+          case "$_pt_n" in '' | *[!0-9]*) _pt_n=0 ;; esac
+          if [ "$_pt_n" -ne 1 ]; then
+            echo "::error::gate resolution declares SENTINEL_SHIELD_PROJECT_TYPE $_pt_n times in reports/sentinel-shield-gates.env; exactly one is required. Zero means the profile is unresolved; more than one is ambiguous policy."
+            exit 2
+          fi
+          PROFILE=$(grep -E '^SENTINEL_SHIELD_PROJECT_TYPE=' reports/sentinel-shield-gates.env | sed 's/^SENTINEL_SHIELD_PROJECT_TYPE=//')
+          if [ -z "$PROFILE" ]; then
+            echo "::error::SENTINEL_SHIELD_PROJECT_TYPE is empty in reports/sentinel-shield-gates.env — the effective profile cannot be guessed."
+            exit 2
+          fi
+          # --stage is INERT without --profile: the stage-applicability column is computed
+          # only inside the effective-profile overlay, so without it there is no policy
+          # overlay, no required_tool_failures, and --stage pr changes nothing.
+          sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/build-security-summary.sh --profile "$PROFILE" --stage pr --target . --raw-dir reports/raw --output reports/security-summary.json
           sh ${{ env.SENTINEL_SHIELD_PATH }}/scripts/enforce-gates.sh --summary reports/security-summary.json --gates-env reports/sentinel-shield-gates.env --output-dir reports --format all
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()   # preserve raw reports even when the gate fails on real findings

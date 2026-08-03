@@ -69,7 +69,6 @@
     "trivy-fs",
     "syft",
     "grype",
-    "dependency-check",
     "deptrac",
     "behat-acceptance",
     "playwright-acceptance"
