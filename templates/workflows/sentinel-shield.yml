@@ -68,10 +68,11 @@ env:
   # and fine for adoption; pin to the FULL COMMIT SHA the tag targets before production.
   SENTINEL_SHIELD_REF: v2.2.0
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
-  # Scanner images — readable tags by default; pin by @sha256 digest in production
-  # (docs/scanner-image-digest-pinning.md). NEVER use a `latest` tag.
-  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep:1.165.0   # or semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
-  SENTINEL_SHIELD_GITLEAKS_IMAGE: zricethezav/gitleaks:v8.18.4   # pinned version (NOT latest); pin by @sha256 in production
+  # Scanner images — DIGEST-pinned by default from config/scanner-images.json; the trailing
+  # comment records the readable tag each digest was resolved from
+  # (docs/scanner-image-digest-pinning.md). A `latest` tag is refused by the contract.
+  SENTINEL_SHIELD_SEMGREP_IMAGE: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
+  SENTINEL_SHIELD_GITLEAKS_IMAGE: zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba   # v8.18.4
 
 jobs:
   # --------------------------------------------------------------------------

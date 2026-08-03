@@ -12,6 +12,11 @@
       "mode": "create-if-missing"
     },
     {
+      "source": "profiles/node/.semgrepignore",
+      "target": ".semgrepignore",
+      "mode": "merge-required-lines"
+    },
+    {
       "source": "templates/accepted-risks.example.json",
       "target": ".sentinel-shield/accepted-risks.example.json",
       "mode": "create-if-missing"

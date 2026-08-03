@@ -96,6 +96,7 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 | Target | Source | Manifest mode | Effective behavior |
 |---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
+| `.semgrepignore` | `profiles/node/.semgrepignore` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
@@ -180,6 +181,18 @@ Legend for **Effective behavior**: `create` = create-if-missing (project owns af
 | `.semgrepignore` | `profiles/react/.semgrepignore` | create-if-missing | create |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | overwrite-if-force | managed |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create |
+| `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
+
+### Profile: `hardened-enterprise`  (`profiles/hardened-enterprise/profile.manifest.json`)
+
+`never_touch`: `.sentinel-shield/accepted-risks.json`
+
+| Target | Source | Manifest mode | Effective behavior |
+|---|---|---|---|
+| `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create |
+| `.semgrepignore` | `profiles/hardened-enterprise/.semgrepignore` | create-if-missing | create |
+| `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create |
+| `.sentinel-shield/hardened/sentinel-shield-hardened.snippet.yml` | `examples/hardened/sentinel-shield-hardened.snippet.yml` | create-if-missing | create |
 | `.sentinel-shield/accepted-risks.json` | — | (never_touch) | **PROTECTED** |
 
 ## Per-profile notes

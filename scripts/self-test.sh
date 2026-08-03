@@ -45,6 +45,18 @@ run_syntax() {
 			grep -q "$pat" "$f" || { log_error "$f missing exclusion: $pat"; return 1; }
 		done
 	done
+	# The EMBEDDED ENGINE CHECKOUT must be excluded by every shipped ignore template: the
+	# managed workflows check Sentinel Shield out at tools/sentinel-shield and run Semgrep from
+	# the consumer root, so without this the engine's own scripts and intentionally insecure
+	# test fixtures are scanned as application code. tests/prod/283-semgrep-scope.sh proves the
+	# installed behaviour per profile; this is the cheap syntax-tier guard.
+	for f in profiles/laravel/.semgrepignore profiles/node/.semgrepignore profiles/react/.semgrepignore \
+		profiles/hardened-enterprise/.semgrepignore \
+		templates/.semgrepignore examples/laravel-react-docker/.semgrepignore; do
+		[ -f "$f" ] || { log_error "missing .semgrepignore: $f"; return 1; }
+		grep -qE '^tools/sentinel-shield/?$' "$f" \
+			|| { log_error "$f does not exclude the embedded engine checkout (tools/sentinel-shield/)"; return 1; }
+	done
 	# The example (Laravel+Filament) must exclude the published Filament JS that
 	# motivated this — guard against regressions.
 	grep -q 'public/js/filament/' examples/laravel-react-docker/.semgrepignore \
@@ -1542,7 +1554,7 @@ run_v023_regression() {
 	for _m in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.manifest.json; do
 		[ -f "$_m" ] || continue
 		jq -e 'has("profile") and has("files")' "$_m" >/dev/null 2>&1 || { log_error "  manifest missing keys: $_m"; _badman=$((_badman + 1)); continue; }
-		[ "$(jq '[(.files+ (.workflows//[]) + (.docs//[]))[]|select(.mode|test("^(create-if-missing|overwrite-if-force|sync-managed-block|manual)$")|not)]|length' "$_m")" = "0" ] || { log_error "  manifest bad mode: $_m"; _badman=$((_badman + 1)); }
+		[ "$(jq '[(.files+ (.workflows//[]) + (.docs//[]))[]|select(.mode|test("^(create-if-missing|merge-required-lines|overwrite-if-force|sync-managed-block|manual)$")|not)]|length' "$_m")" = "0" ] || { log_error "  manifest bad mode: $_m"; _badman=$((_badman + 1)); }
 	done
 	rg_check "all profile manifests valid" "$_badman" "0"
 

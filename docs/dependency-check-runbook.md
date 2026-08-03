@@ -149,10 +149,11 @@ still see their symptoms if a cache or mount is in a bad state:
 
 ## 8. Recommended production settings
 
-1. **Pin the DC image by digest**, not a moving tag:
-   `owasp/dependency-check@sha256:ad169904…` (validated v0.1.30). Templates ship the readable
-   `:latest` tag for onboarding — override with the digest before production. See
-   `scanner-image-digest-pinning.md`.
+1. **The DC image is digest-pinned by default** — `owasp/dependency-check@sha256:ad169904…`, the
+   approved reference in [`config/scanner-images.json`](../config/scanner-images.json). Templates no
+   longer ship a moving `:latest` tag; a readable tag is a local-development override only, and
+   `scripts/validate-scanner-images.sh` fails the build if a template drifts back. See
+   `scanner-image-digest-pinning.md` for the reviewed update procedure.
 2. **Keep the cache warm.** Use the monthly `nvd-v030-<os>-<month>` cache with conditional save so a
    failed run never poisons it; only the first run per month is cold.
 3. **Provide the NVD API key secret** (`SENTINEL_SHIELD_DEPENDENCY_CHECK_NVD_API_KEY`) so the

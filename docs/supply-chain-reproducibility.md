@@ -93,10 +93,14 @@ env:
   SENTINEL_SHIELD_DOCKLE_IMAGE:  goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
 ```
 
-The upstream Sentinel Shield templates ship the **readable tag** form (`semgrep/semgrep:1.165.0`)
+~~The upstream Sentinel Shield templates ship the **readable tag** form (`semgrep/semgrep:1.165.0`)
 with the digest in a `# or …@sha256:…` comment — readability for the template, digest-pinning as a
 consumer-side production decision. Do not replace the readable tag in the upstream templates with a
-digest.
+digest.~~ **Superseded from v2.2+:** shipped defaults ARE digest pins, enforced against
+`config/scanner-images.json` by `scripts/validate-scanner-images.sh`; the readable tag survives as
+the `resolved_from` field in the contract and as a trailing comment, not as the executed
+reference. Everything below this line describing templates as tag-based is the historical record
+of the superseded policy, not current guidance.
 
 ---
 
@@ -124,24 +128,22 @@ key is present and its value (or trailing comment) carries the matching readable
 Production guidance never recommends a mutable `latest` tag — it defeats reproducibility and is a
 supply-chain risk. The pinned scanner images (Semgrep/Grype/Dockle) are all tag- or digest-pinned.
 
-**One allowed exception:** OWASP Dependency-Check. It appears as `owasp/dependency-check:latest` in
-`templates/workflows/sentinel-shield-dependency-check.yml` and
-`templates/workflows/sentinel-shield-scheduled.yml` **only as a not-yet-validated placeholder**, with
-an explicit pin-before-prod comment in the template:
+**No exception remains.** OWASP Dependency-Check used to ship as `owasp/dependency-check:latest`
+(a "not-yet-validated placeholder" with a pin-before-prod comment). That default meant every adopter
+executed whatever the moving tag pointed at that day, so the scanner implementation could change with
+no repository change and no review. Both templates now ship the digest by default:
 
 ```yaml
-# No validated Dependency-Check digest yet — readable tag; pin by digest before production.
-SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
+SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9
 ```
 
-This is honest: Dependency-Check is *attempted, not live-validated* (see
-[`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md)), so we deliberately do
-**not** invent a digest for it. The `latest` tag here is a placeholder, and **must be pinned by
-digest before any production use** — resolve and pin it only once a nightly run produces a real
-artifact, then move it into the digest table in `scanner-image-digest-pinning.md`. No other
-production doc or template recommends `latest`. Self-test assertion (expected form): no `:latest`
-appears in any template **except** this one Dependency-Check placeholder, which must retain its
-pin-before-prod comment.
+The approved image, the tag its digest was resolved from, and the resolution date live in
+[`config/scanner-images.json`](../config/scanner-images.json).
+`scripts/validate-scanner-images.sh` fails the build when any shipped template executes a moving tag
+or drifts from the approved reference, and `scripts/audits/tool-provenance-audit.sh` reports what a
+run actually executed (`image-mutable-tag`, `image-digest-drift`). A readable tag remains available
+as a **local development override** via the same environment variable; it is never the shipped
+default and never valid for production or release evidence.
 
 ---
 
@@ -174,8 +176,9 @@ Only after steps 3–6 is the new digest a "validated baseline" eligible for rol
       digest still equals the table in `scanner-image-digest-pinning.md`.
 - [ ] Each pinned digest, run by `@sha256:`, reports the **expected version** (§2b).
 - [ ] No digest was hand-written/invented — every one traces to a `docker` command output.
-- [ ] No production doc or template recommends `latest` (the Dependency-Check placeholder is the one
-      documented exception and carries a pin-before-prod comment — §6).
+- [ ] No production doc or template recommends `latest` — from v2.2+ there is **no** exception:
+      `latest` is listed under `mutable_tags` in `config/scanner-images.json` and any template
+      referencing it fails `scripts/validate-scanner-images.sh`.
 - [ ] `SENTINEL_SHIELD_*_IMAGE` override env vars present in the relevant templates (§5).
 - [ ] GitHub Actions pinned to full-length commit SHAs (§9).
 - [ ] SBOM inputs deterministic; Grype scans SBOM-first (§10).
@@ -230,6 +233,7 @@ scans that SBOM rather than re-walking the image. Reproducibility properties:
   verify / update / rollback narrative.
 - [`pinned-tool-references.md`](pinned-tool-references.md) — Action SHA table + image digests.
 - [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md) — why
-  Dependency-Check is attempted, not validated (the `latest` exception).
+  Dependency-Check is attempted, not validated (its former `latest` exception was removed by the
+  v2.2+ approved-image contract).
 - [`main-gate-live-evidence.md`](main-gate-live-evidence.md) — citable live validation runs.
 - [`github-actions-security.md`](github-actions-security.md) — Action pinning rationale.

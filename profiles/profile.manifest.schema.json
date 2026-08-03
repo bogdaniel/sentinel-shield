@@ -95,11 +95,12 @@
             "type": "string",
             "enum": [
               "create-if-missing",
+              "merge-required-lines",
               "overwrite-if-force",
               "sync-managed-block",
               "manual"
             ],
-            "description": "create-if-missing: write only if absent (project owns it after). overwrite-if-force: managed; create if absent, overwrite only with --force. sync-managed-block: managed marker block updated in place (reserved). manual: never auto-written; printed for the maintainer to handle."
+            "description": "create-if-missing: write only if absent (project owns it after). merge-required-lines: project-owned, but every non-comment line of the source is REQUIRED — an existing file keeps its own entries and the missing required lines are appended (idempotent). overwrite-if-force: managed; create if absent, overwrite only with --force. sync-managed-block: managed marker block updated in place (reserved). manual: never auto-written; printed for the maintainer to handle."
           }
         }
       }

@@ -151,6 +151,10 @@ emit_install_plan() {
 			case "$_m" in
 				manual) _act="manual" ;;
 				create-if-missing) if [ -e "$TARGET/$_t" ]; then _act="skip-existing"; else _act="create"; fi ;;
+				merge-required-lines)
+					if [ ! -e "$TARGET/$_t" ]; then _act="create"
+					elif [ -n "$(sb_missing_lines "$ROOT/$_s" "$TARGET/$_t")" ]; then _act="merge"
+					else _act="skip-existing"; fi ;;
 				overwrite-if-force|sync-managed-block)
 					if [ -e "$TARGET/$_t" ]; then
 						if [ "$FORCE" -eq 1 ]; then _act="overwrite-managed"; else _act="skip-managed-no-force"; fi
@@ -175,6 +179,22 @@ emit_install_plan() {
 }
 [ -n "$EMIT_INSTALL_PLAN" ] && emit_install_plan "$EMIT_INSTALL_PLAN"
 
+# sb_missing_lines <source> <target> — the REQUIRED rules from <source> that <target> does
+# not already carry, one per line. Blank and comment lines are presentation, not rules, so
+# they are not required; matching is on the exact rule text, which makes the merge idempotent
+# and order-independent.
+sb_missing_lines() {
+	_sml_out=""
+	while IFS= read -r _sml_line || [ -n "$_sml_line" ]; do
+		case "$_sml_line" in '' | '#'*) continue ;; esac
+		if ! grep -qxF -- "$_sml_line" "$2" 2>/dev/null; then
+			_sml_out="${_sml_out}${_sml_line}
+"
+		fi
+	done < "$1"
+	printf '%s' "$_sml_out"
+}
+
 SUM=$(mktemp); : > "$SUM"
 
 sync_entry() { # <source> <target> <mode>
@@ -193,6 +213,31 @@ sync_entry() { # <source> <target> <mode>
 	case "$_mode" in
 		create-if-missing)
 			echo "project-local-preserved (project owns it; NOT overwritten): $2"; echo preserved >> "$SUM" ;;
+		merge-required-lines)
+			# The file stays project-owned — user entries are never removed or reordered —
+			# but the rules it exists to carry are REQUIRED, and leaving an existing file
+			# untouched silently dropped them (a `.semgrepignore` that does not exclude the
+			# embedded engine checkout loses the whole scope guarantee).
+			_miss=$(sb_missing_lines "$_src" "$_tgt")
+			if [ -z "$_miss" ]; then
+				echo "up-to-date (all required rules present): $2"; echo uptodate >> "$SUM"; return
+			fi
+			if [ "$APPLY" -eq 1 ]; then
+				_mtmp=$(mktemp)
+				{
+					cat "$_tgt"
+					# A file with no trailing newline would otherwise fuse with the first
+					# appended rule.
+					[ -z "$(tail -c 1 "$_tgt" 2>/dev/null)" ] || printf '\n'
+					printf '%s\n' "# --- added by sentinel-shield sync-baseline (required rules) ---"
+					printf '%s\n' "$_miss"
+				} > "$_mtmp"
+				tx_install_file "$_mtmp" "$2"
+				rm -f "$_mtmp"
+				echo "merged (required rules appended; project entries kept): $2"; echo updated >> "$SUM"
+			else
+				echo "would merge (missing required rules): $2"; echo updated >> "$SUM"
+			fi ;;
 		overwrite-if-force|sync-managed-block)
 			if [ "$APPLY" -eq 1 ] && [ "$FORCE" -eq 1 ]; then
 				tx_install_file "$_src" "$2"; echo "updated (managed): $2"; echo updated >> "$SUM"

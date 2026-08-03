@@ -69,9 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container:
-      # Maintained Semgrep image. Pin to a digest (image: semgrep/semgrep@sha256:...)
-      # for reproducibility in sensitive pipelines.
-      image: semgrep/semgrep:1.165.0   # SENTINEL_SHIELD_SEMGREP_IMAGE default; pin by digest before prod
+      # Maintained Semgrep image, DIGEST-pinned from config/scanner-images.json — a version
+      # tag is a mutable registry pointer and would let this job execute changed scanner
+      # bytes with no repository change.
+      image: semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b   # 1.165.0
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -200,7 +201,7 @@ jobs:
         # is honored (excludes vendored/generated assets — SAST only; dependency
         # scanners below are unaffected). See docs/semgrep-scoping.md.
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
             semgrep --json --output /src/reports/raw/semgrep.json \
             --config /src/semgrep/app || true
         continue-on-error: true
@@ -227,7 +228,7 @@ jobs:
             exit 0
           fi
           # shellcheck disable=SC2086 # $MOUNTS/$SCANT intentionally word-split into multiple -v/path args
-          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" -c \
+          docker run --rm -v "$PWD:/src" $MOUNTS --entrypoint sh "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" -c \
             "cd /tmp && semgrep --json --output /src/reports/raw/third-party-semgrep.json \
               --config /src/semgrep/supply-chain/third-party \
               --exclude='*.min.js' --exclude='dist' --exclude='build' --exclude='coverage' $SCANT" || true
@@ -235,7 +236,7 @@ jobs:
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
@@ -359,14 +360,14 @@ jobs:
       # run succeeded — never as an unconditional fallback that masks a failure.
       - name: Semgrep (JSON → reports/raw/semgrep.json)
         run: |
-          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep:1.165.0}" \
+          docker run --rm -v "$PWD:/src" -w /src "${SENTINEL_SHIELD_SEMGREP_IMAGE:-semgrep/semgrep@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b}" \
             semgrep --json --output /src/reports/raw/semgrep.json --config /src/semgrep/app || true
           jq -e '.results | type == "array"' reports/raw/semgrep.json >/dev/null 2>&1 \
             || { echo "semgrep produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
 
       - name: Gitleaks (JSON → reports/raw/gitleaks.json)
         run: |
-          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.18.4 \
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks@sha256:75bdb2b2f4db213cde0b8295f13a88d6b333091bbfbf3012a4e083d00d31caba \
             detect --source=/repo --report-format json \
             --report-path /repo/reports/raw/gitleaks.json --redact || true
           jq -e 'type == "array"' reports/raw/gitleaks.json >/dev/null 2>&1 \
@@ -423,7 +424,7 @@ jobs:
       - name: actionlint (JSON → reports/raw/actionlint.json)
         run: |
           set +e
-          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -format '{{json .}}' \
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 -format '{{json .}}' \
             > reports/raw/actionlint.json 2> reports/raw/actionlint.err
           rc=$?
           set -e

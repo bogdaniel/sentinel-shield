@@ -63,7 +63,7 @@ Legend for **mode** (manifest `mode`, enforced by both scripts):
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once (mode stamped) | preserved on drift |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved on drift |
-| `.semgrepignore` | `profiles/laravel/.semgrepignore` | create-if-missing | create once | preserved on drift |
+| `.semgrepignore` | `profiles/laravel/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` to update | **managed** — `--apply --force` updates |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create once | preserved on drift |
 | `phpstan.neon` | (project) | **protected** (`never_touch`) | never written | never written |
@@ -76,7 +76,7 @@ Legend for **mode** (manifest `mode`, enforced by both scripts):
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved |
-| `.semgrepignore` | `profiles/react/.semgrepignore` | create-if-missing | create once | preserved |
+| `.semgrepignore` | `profiles/react/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` | **managed** |
 | `.sentinel-shield/accepted-risks.json` | — | **protected** | never created | never overwritten |
 
@@ -100,7 +100,7 @@ hard default but irrelevant to a JS stack.)
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved |
-| `.semgrepignore` | `profiles/laravel/.semgrepignore` | create-if-missing | create once | preserved |
+| `.semgrepignore` | `profiles/laravel/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` | **managed** |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.json` | — | **protected** | never created | never overwritten |
@@ -123,7 +123,7 @@ hard default but irrelevant to a JS stack.)
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved |
-| `.semgrepignore` | `profiles/laravel/.semgrepignore` | create-if-missing | create once | preserved |
+| `.semgrepignore` | `profiles/laravel/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` | **managed** |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create once | preserved |
 | `psalm.xml` | `profiles/symfony/psalm.xml` | **manual** | MANUAL notice; not written | manual-review-needed |
@@ -139,7 +139,7 @@ hard default but irrelevant to a JS stack.)
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved |
-| `.semgrepignore` | `templates/.semgrepignore` | create-if-missing | create once | preserved |
+| `.semgrepignore` | `templates/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` | **managed** |
 | `.github/workflows/sentinel-shield-{pr-fast,main,scheduled,dast,ai-review}.yml` | `templates/workflows/*` | **manual** (×5) | MANUAL notice; not written | manual-review-needed |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create once | preserved |
@@ -159,7 +159,7 @@ hard default but irrelevant to a JS stack.)
 |---|---|---|---|---|
 | `.sentinel-shield/profile.yaml` | `templates/profile.yaml` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.example.json` | `templates/accepted-risks.example.json` | create-if-missing | create once | preserved |
-| `.semgrepignore` | `profiles/react/.semgrepignore` | create-if-missing | create once | preserved |
+| `.semgrepignore` | `profiles/react/.semgrepignore` | merge-required-lines | create; merge required rules | project entries preserved |
 | `.github/workflows/sentinel-shield.yml` | `templates/workflows/sentinel-shield.yml` | **overwrite-if-force** | create; `--force` | **managed** |
 | `docs/security/security-debt-register.md` | `templates/security-debt-register.md` | create-if-missing | create once | preserved |
 | `.sentinel-shield/accepted-risks.json` | — | **protected** | never created | never overwritten |
@@ -281,9 +281,12 @@ Applies to PHP-stack profiles (`laravel`, `php-library`, `symfony`) and the comb
 For `laravel` / `symfony`, the same P4/P5 pair must also cover **`phpstan.neon`** (it is in their
 `never_touch`; the dry-run reports it PROTECTED — see §1.2). Label: `$P: phpstan.neon never overwritten`.
 
-### 4.3 Task 54 — `.semgrepignore` (create-if-missing) never overwritten
+### 4.3 Task 54 — `.semgrepignore` (merge-required-lines) never overwritten
 
-`.semgrepignore` is **not** hard-protected; it is `create-if-missing`. The invariant is therefore
+`.semgrepignore` is **not** hard-protected; it is `merge-required-lines`: the project owns the
+file and nothing in it is overwritten, reordered or removed, but the shipped template's rules are
+REQUIRED and the missing ones are appended by `sync-baseline.sh` (idempotently). The invariant is
+therefore
 "create if absent, never overwrite if present" — a distinct gate (install line 88 / sync line 82),
 verified separately from the protected gate. Run on a profile that ships it (e.g. `laravel`,
 `react`, `node-react`):
@@ -292,8 +295,8 @@ verified separately from the protected gate. Run on a profile that ships it (e.g
 |---|---|---|---|---|
 | P6 | `$P: install creates .semgrepignore when absent` | clean apply | `[ -f "$_t/.semgrepignore" ]` | `yes` |
 | P7 | `$P: install --force does NOT overwrite existing .semgrepignore` | overwrite installed `.semgrepignore` with marker `MINE_$P`; re-run `install --apply --force` | `grep -c "MINE_$P" .semgrepignore` | `1` |
-| P8 | `$P: sync preserves edited .semgrepignore (project-local-preserved)` | marker present; `sync` dry-run | output contains `project-local-preserved` for `.semgrepignore` | `1` match |
-| P9 | `$P: sync --apply --force preserves edited .semgrepignore` | marker present; `sync --apply --force` | `grep -c "MINE_$P" .semgrepignore` | `1` |
+| P8 | `$P: sync keeps the edited .semgrepignore and merges the required rules` | marker present; `sync --apply` | `grep -c "MINE_$P" .semgrepignore` and the required rules both present | `1` match each |
+| P9 | `$P: sync --apply --force keeps the project's entries` | marker present; `sync --apply --force` | `grep -c "MINE_$P" .semgrepignore` | `1` |
 
 P7/P9 are the key distinction from the managed workflow (§5): `--force` updates the managed workflow
 but does **not** touch a `create-if-missing` file the project has edited — because the

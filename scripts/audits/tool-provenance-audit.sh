@@ -58,6 +58,34 @@ done
 [ -n "$TOOLS" ] || TOOLS="osv-scanner grype"
 
 PLATFORM=$(isolated_tool_platform)
+# Approved scanner-image contract (config/scanner-images.json). Optional by design: a minimal
+# copied tree in a fixture may not carry it, and its absence must not turn a provenance audit
+# into a hard error. When present, an executed image is checked against it.
+IMAGE_CONTRACT="$SCRIPT_DIR/../../config/scanner-images.json"
+# ABSENT is tolerated (a minimal fixture tree may not carry it). MALFORMED is NOT: a contract
+# that cannot be parsed used to be collapsed into "no contract", which silently switched OFF
+# mutable-tag and digest-drift enforcement — corrupting the file was a way to disable the
+# check that the file exists to perform.
+if [ -f "$IMAGE_CONTRACT" ]; then
+	if ! jq -e . "$IMAGE_CONTRACT" >/dev/null 2>&1; then
+		log_error "scanner-image contract is present but not valid JSON: $IMAGE_CONTRACT — refusing to audit provenance with enforcement silently disabled"
+		exit 2
+	fi
+	# The per-image RECORDS matter as much as the containers: `{"images":{"x":{}},
+	# "mutable_tags":[]}` used to pass, then left every lookup empty — an unenforceable
+	# contract that reads as an enforced one. Match scripts/validate-scanner-images.sh:
+	# a non-empty mutable-tag list, and a digest on every image record.
+	if ! jq -e '(.images | type == "object") and ((.images | length) > 0)
+			and (.mutable_tags | type == "array") and ((.mutable_tags | length) > 0)
+			and (all(.images[]; (type == "object") and (.digest | type == "string")
+				and (.digest | test("^sha256:[0-9a-f]{64}$"))))' \
+		"$IMAGE_CONTRACT" >/dev/null 2>&1; then
+		log_error "scanner-image contract is structurally invalid (needs a non-empty .images object whose every record carries a full sha256:<64 hex> .digest, and a non-empty .mutable_tags array): $IMAGE_CONTRACT"
+		exit 2
+	fi
+else
+	IMAGE_CONTRACT=""
+fi
 ensure_dir "$(dirname "$OUTPUT")"
 TMPV=$(mktemp); TMPR=$(mktemp); TMPP=$(mktemp)
 DPOUT=$(mktemp); DPERR=$(mktemp)
@@ -162,6 +190,41 @@ for tool in $TOOLS; do
 		if [ -z "$DIG" ] && [ "$REQUIRE_IMAGE_DIGEST" = "true" ]; then
 			add_violation "$tool" "image-digest-unverified" \
 				"configured image '$IMG' (SENTINEL_SHIELD_${EK}_IMAGE) resolved to no immutable @sha256 digest and --require-image-digest is set"
+		fi
+		# Approved-image contract (config/scanner-images.json). Both checks below fail closed
+		# only for the RELEASE-AUTHORITATIVE caller (--require-image-digest), matching this
+		# audit's documented contract that a normal run records provenance without failing.
+		# That is not a gap: no SHIPPED template can carry a moving tag at all — that is
+		# blocked statically and unconditionally by scripts/validate-scanner-images.sh — so
+		# this layer only governs what a run actually executed, where a developer may
+		# legitimately be trying a readable tag locally.
+		if [ -n "$IMAGE_CONTRACT" ] && [ "$REQUIRE_IMAGE_DIGEST" = "true" ]; then
+			_ic_tag=""
+			# A tag can only live in the FINAL path component. Matching `*:*` against the
+			# whole reference read the REGISTRY PORT of `registry.internal:5000/dep-check`
+			# as the tag `5000/dep-check`, so that bare reference dodged the implicit-latest
+			# rule. Strip the registry/namespace first, then look for `:tag`.
+			_ic_last="${IMG##*/}"
+			case "$IMG" in
+				*@sha256:*) ;;
+				*)
+					case "$_ic_last" in
+						*:*) _ic_tag="${_ic_last##*:}" ;;
+						# A BARE reference carries no tag, and Docker resolves it to
+						# `:latest` — the most mutable tag there is. Leaving _ic_tag empty
+						# skipped the check for exactly the reference that needs it most.
+						*) _ic_tag="latest" ;;
+					esac ;;
+			esac
+			if [ -n "$_ic_tag" ] && jq -e --arg t "$_ic_tag" 'any(.mutable_tags[]; . == $t)' "$IMAGE_CONTRACT" >/dev/null 2>&1; then
+				add_violation "$tool" "image-mutable-tag" \
+					"configured image '$IMG' (SENTINEL_SHIELD_${EK}_IMAGE) executes the MOVING tag '$_ic_tag'; pin the approved digest from config/scanner-images.json"
+			fi
+			_ic_approved=$(jq -r --arg v "SENTINEL_SHIELD_${EK}_IMAGE" '.images[$v].digest // ""' "$IMAGE_CONTRACT")
+			if [ -n "$_ic_approved" ] && [ -n "$DIG" ] && [ "$DIG" != "$_ic_approved" ]; then
+				add_violation "$tool" "image-digest-drift" \
+					"configured image '$IMG' resolved to $DIG but config/scanner-images.json approves $_ic_approved for SENTINEL_SHIELD_${EK}_IMAGE"
+			fi
 		fi
 		isolated_tool_provenance_record "$tool" "docker-image" "" "$IMG" "$DIG" "" "" "" "" "" "$PLATFORM" >> "$TMPR"
 	else

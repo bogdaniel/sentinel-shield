@@ -23,10 +23,12 @@ env:
   SENTINEL_SHIELD_REPOSITORY: YOUR_ORG/sentinel-shield   # TODO set
   SENTINEL_SHIELD_REF: v2.2.0                            # pin to a full SHA before production
   SENTINEL_SHIELD_PATH: tools/sentinel-shield
-  # Digest-pinned scanner images (resolved 2026-06-10; see docs/scanner-image-digest-pinning.md).
-  # Templates keep readable tags by default; override with the digest pins below before production.
-  SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype:v0.114.0     # or anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28
-  SENTINEL_SHIELD_DOCKLE_IMAGE: goodwithtech/dockle:v0.4.15 # or goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9
+  # Digest-pinned scanner images (resolved 2026-07-26; see docs/scanner-image-digest-pinning.md).
+  # These ARE the shipped defaults: a version tag is a mutable registry pointer, so a tag default
+  # would let these workflows execute changed scanner bytes with no repository change. The trailing
+  # comment records the readable tag each digest was resolved from.
+  SENTINEL_SHIELD_GRYPE_IMAGE: anchore/grype@sha256:7a9fc7f89ccef78ae5a7691a115d3f0d41b1f319d589dd8cc1dcb9ab3f01dd28     # v0.114.0
+  SENTINEL_SHIELD_DOCKLE_IMAGE: goodwithtech/dockle@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9 # v0.4.15
 jobs:
   nightly:
     runs-on: ubuntu-latest
@@ -90,10 +92,12 @@ jobs:
         env:
           SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE: enabled
           SENTINEL_SHIELD_DEPENDENCY_CHECK_CACHE: .sentinel-shield/cache/dependency-check
-          # Production: pin by digest (validated v0.1.30: owasp/dependency-check@sha256:ad169904…cc77b9).
-          # Dependency-Check keeps the readable :latest tag as the single documented, pin-before-prod
-          # exception (see docs/supply-chain-reproducibility-v025.md); override with the digest above.
-          SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check:latest
+          # Digest-pinned by DEFAULT (config/scanner-images.json is the approved-image contract;
+          # scripts/validate-scanner-images.sh fails the build on drift or a moving tag). This is the
+          # digest `owasp/dependency-check:latest` resolved to on 2026-07-26 and the one the recorded
+          # consumer-evidence runs used. For local development you MAY override with a readable tag;
+          # production and release evidence must keep the digest (docs/scanner-image-digest-pinning.md).
+          SENTINEL_SHIELD_DEPENDENCY_CHECK_IMAGE: owasp/dependency-check@sha256:ad169904106250816059f113d374d63a49a7cb0fd2c5e476d05c4fb814cc77b9
           SENTINEL_SHIELD_DEPENDENCY_CHECK_TIMEOUT: 40m
         run: |
           mkdir -p reports/raw

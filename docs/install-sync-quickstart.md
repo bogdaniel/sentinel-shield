@@ -89,8 +89,9 @@ sh scripts/sync-baseline.sh --target <project> --apply --force
 `never_touch` entries are never auto-created or overwritten (proven in the self-tests by the
 checks `install --force preserves real accepted-risks.json` and
 `sync preserves real accepted-risks.json` in `scripts/self-test.sh`).
-An edited `profile.yaml` / `.semgrepignore` is `create-if-missing` and is preserved on sync, so a
-forced sync cannot have clobbered it.
+An edited `profile.yaml` is `create-if-missing` and an edited `.semgrepignore` is
+`merge-required-lines` (nothing is overwritten, reordered or removed — the missing required rules
+are appended), so a forced sync cannot have clobbered either.
 
 The full rollback procedure (revert-by-commit, re-sync-from-previous-ref, restore-from-sync) is in
 [`install-sync-reliability.md`](install-sync-reliability.md#5-rollback-procedure-task-28).
@@ -109,7 +110,8 @@ The full rollback procedure (revert-by-commit, re-sync-from-previous-ref, restor
 | `skip (missing in Sentinel Shield): <path>` | manifest references a source not in this checkout | Check out the Sentinel Shield ref that matches the manifest. |
 | Dry-run "looks like it did nothing" | **By design** — dry-run writes nothing | Re-run with `--apply`. Confirm with `find <project> -type f` (should be unchanged after dry-run). |
 | `profile.yaml` mode not what I expected | `--mode` not passed (defaults to `report-only`) | Pass `--mode <X>` on first apply; after first write it is project-owned and `--force` won't revert it. |
-| Re-install didn't update `.semgrepignore` / `profile.yaml` | **By design** — `create-if-missing`, project owns it | Edit it directly; `--force` does not touch `create-if-missing` files. |
+| Re-install didn't update `profile.yaml` | **By design** — `create-if-missing`, project owns it | Edit it directly; `--force` does not touch `create-if-missing` files. |
+| Re-install didn't update `.semgrepignore` | **By design** — the installer only creates it | Run `sh scripts/sync-baseline.sh --target <project> --profile <profile> --apply`: it merges the missing REQUIRED rules and leaves your entries alone. |
 | `manual` files (e.g. `psalm.xml`, extra workflows) not created | **By design** — `manual` mode prints a notice, writes nothing | Copy them yourself if you want them. |
 
 ---
@@ -122,7 +124,8 @@ The full rollback procedure (revert-by-commit, re-sync-from-previous-ref, restor
 | Managed drift reported but file unchanged | sync is **dry-run by default** | After reviewing: `sync --target <project> --apply --force`. |
 | `--apply` alone didn't update the workflow | managed updates need **both** flags | Use `--apply --force`; without `--force` you get `manual-review-needed` by design. |
 | A protected file "won't sync" | **By design** | `accepted-risks.json`, `phpstan-baseline.neon`, `never_touch` paths are never written, even with `--force`. Edit by hand. |
-| Edited `profile.yaml` / `.semgrepignore` shows `project-local-preserved` | **By design** — `create-if-missing` project-owned | This is correct; sync will not overwrite your edits. |
+| Edited `profile.yaml` shows `project-local-preserved` | **By design** — `create-if-missing`, project-owned | This is correct; sync will not overwrite your edits. |
+| Edited `.semgrepignore` shows `merged` or `up-to-date` | **By design** — `merge-required-lines` | Your entries are untouched; only REQUIRED rules the file was missing are appended. `up-to-date` means it already had them all. |
 | `manual-review-needed` for a `manual`-mode file | that file is `manual` mode (never auto-written) | Update it by hand if wanted; sync intentionally won't. |
 
 Drift categories sync prints: `created` · `updated` · `up-to-date` · `manual-review-needed` ·

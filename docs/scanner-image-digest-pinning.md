@@ -79,8 +79,13 @@ an update (below) and re-validate.
 - Pin once, in the workflow `env:` (or a repo/org variable) so every job inherits it.
 - The Sentinel Shield wrappers accept the override transparently: `SENTINEL_SHIELD_SEMGREP_IMAGE`,
   `SENTINEL_SHIELD_GRYPE_IMAGE`, `SENTINEL_SHIELD_DOCKLE_IMAGE`.
-- Do **not** replace the readable tag in the upstream Sentinel Shield templates with a digest — the
-  digest is a consumer-side production decision; templates stay readable + overridable.
+- ~~Do **not** replace the readable tag in the upstream Sentinel Shield templates with a digest — the
+  digest is a consumer-side production decision; templates stay readable + overridable.~~
+  **Superseded** by the v2.2+ approved-image contract below: **every** shipped image default is now
+  a digest (`default_pin: "digest"` for all entries in `config/scanner-images.json`),
+  `scripts/validate-scanner-images.sh` fails any template that ships a mutable tag, and the readable
+  tag survives as `resolved_from` and as the trailing comment next to each pin. The override env
+  vars remain, so a consumer can still run a different build deliberately.
 
 ## Rollback process
 
@@ -105,26 +110,92 @@ Re-resolved with Docker on **2026-06-15**; every digest **matches** the prior re
 | `anchore/grype` | `v0.114.0` | `sha256:7a9fc7f8…01dd28` | **MATCH** (v0.1.21) |
 | `goodwithtech/dockle` | `v0.4.15` | `sha256:eade932f…7abe6b9` | **MATCH** (v0.1.21) |
 
-**Production recommendation.** Templates ship **readable tags** for legibility; consumers SHOULD pin
-each scanner to its `@sha256:` digest before production via the documented override env vars.
-Dependency-Check is the one image referenced as `:latest` (it tracks the NVD analyzers); for a
-reproducible consumer gate, pin it to `owasp/dependency-check@sha256:ad169904…cc77b9` (the digest
-behind the v0.1.27 consumer run). **Default templates remain tag-based by design**; moving them to
-digest-pinned-by-default is a separate v1.0 item (`v1-readiness.md` §6). Rollback and digest-mismatch
-guidance: see the section above (immutable digests → deterministic rollback).
+**Production recommendation (v0.1.28 — SUPERSEDED, retained as the record of what applied then).**
+> **Superseded by the v2.2+ approved-image contract below** (`config/scanner-images.json`): shipped defaults are digest-pinned and no template may execute a mutable tag.
+>
+> ~~Templates ship **readable tags** for legibility; consumers SHOULD pin each scanner to its
+> `@sha256:` digest before production via the documented override env vars. Dependency-Check is the
+> one image referenced as `:latest` (it tracks the NVD analyzers)… **Default templates remain
+> tag-based by design.**~~
+>
+> There is no longer a `:latest` exception: `owasp/dependency-check` is recorded in the contract with
+> the digest its tag resolved to, and `latest` is listed under `mutable_tags`, so a template
+> referencing it fails validation. Rollback and digest-mismatch guidance: see the section above
+> (immutable digests → deterministic rollback).
 
-## v0.1.28 — pinning policy (decided)
+## v2.2+ — approved-image contract (supersedes the v0.1.28 policy for Dependency-Check)
+
+The v0.1.28 policy below shipped `owasp/dependency-check:latest` as a **default**. A moving tag as a
+default means the scanner implementation can change with no repository change and no review, and no
+evidence run is reproducible from the workflow source alone. That is now fixed.
+
+**[`config/scanner-images.json`](../config/scanner-images.json)** is the approved-image contract: for
+every `SENTINEL_SHIELD_*_IMAGE` variable it records the repository, the tag the digest was resolved
+from, the immutable digest, and whether the shipped default is the **digest** or the readable
+**tag**. Enforcement:
+
+| Layer | Tool | What it rejects |
+|---|---|---|
+| shipped templates (static, blocking) | `sh scripts/validate-scanner-images.sh` | any moving tag, any image not in the contract, any drift from the approved reference, a `default_pin: digest` image downgraded to a tag |
+| recorded digests (opt-in, network) | `sh scripts/validate-scanner-images.sh registry` | the recorded tag no longer resolving to the recorded digest |
+| what a run actually executed | `sh scripts/audits/tool-provenance-audit.sh --require-image-digest` | `image-mutable-tag`, `image-digest-drift`, `image-digest-unverified` |
+| regression coverage | `sh tests/prod/282-scanner-image-pinning.sh` | all of the above, with isolated negative controls |
+
+| Context | Form | Why |
+|---|---|---|
+| **shipped default (Dependency-Check)** | **digest** (`owasp/dependency-check@sha256:ad169904…cc77b9`) | the upstream publishes only a moving tag, so nothing else is reproducible |
+| **shipped default (Semgrep / Gitleaks / Grype / Dockle)** | **digest** — the readable tag (`1.165.0`, `v8.18.4`, `v0.114.0`, `v0.4.15`) survives as `resolved_from` in the contract and as the trailing comment next to each pin | a version tag is a MUTABLE registry pointer: the publisher can retarget it, so a tag default lets a shipped workflow execute changed scanner bytes with no repository change |
+| **local development** | a readable tag override via the same env var | permitted, never the shipped default |
+| **production / release evidence** | **digest** for every scanner | reproducible, tamper-evident, deterministic rollback |
+
+### Updating an approved image (the reviewed procedure)
+
+Never bump the contract to "whatever the tag points at now". In order:
+
+1. **Resolve** the new digest from the registry and record the tag it came from:
+   `sh scripts/validate-scanner-images.sh registry` reports drift; it never rewrites the contract.
+2. **Verify the scanner version** behind the new digest by running it
+   (`docker run --rm <repo>@<digest> --version`) and record it in the contract's `engine_version`
+   for that image. It is left `null` until it has been read from a real run — it is never guessed,
+   and when it is set, a report whose reported engine version disagrees is visible drift.
+3. **Verify the report shape and collector compatibility**: run the scanner against the fixtures and
+   confirm the collector still normalizes it (`sh scripts/self-test.sh scanner-matrix`,
+   `sh tests/prod/267-collector-severity-mapping.sh`, `sh tests/prod/273-collector-shape-failclosed.sh`).
+   A shape change must fail closed, never silently produce zero findings.
+4. **Verify cache behaviour** for Dependency-Check: one **cold** run (full NVD download) and one
+   **warm** run against the persisted cache — see
+   [`dependency-check-runbook.md`](dependency-check-runbook.md) and
+   [`dependency-check-nightly-strategy.md`](dependency-check-nightly-strategy.md).
+5. **Verify NVD-key secrecy**: the key is passed through a `0600 --propertyfile`, never as a CLI
+   argument, never logged, never written into the report
+   (`sh tests/prod/253-redaction-security.sh`).
+6. **Update the contract and the templates together**, re-run
+   `sh scripts/validate-scanner-images.sh all` and `sh tests/prod/282-scanner-image-pinning.sh`, and
+   keep the previous digest in the changelog entry so rollback stays deterministic.
+
+**Rollback:** re-pin the previous `@sha256:` — digests are immutable, so the exact previously
+validated image is always retrievable.
+
+## v0.1.28 — pinning policy (SUPERSEDED by the approved-image contract above)
+
+> Retained as the historical record of the decision that shipped a moving Dependency-Check tag as a
+> default. The contract above replaces it: no shipped template may execute a moving tag.
 
 Digests re-verified again 2026-06-15 — DC/Semgrep/Grype/Dockle all **MATCH**. The pinning policy is
 now an explicit, documented decision:
 
-| Context | Form | Why |
-|---|---|---|
-| **development / onboarding** | **readable tags** (`owasp/dependency-check:latest`, `anchore/grype:v0.114.0`, …) | legible, easy to bump, low-friction adoption |
-| **production / hardened** | **digest-pinned overrides** (`@sha256:…` via the documented env vars) | reproducible, tamper-evident, deterministic rollback |
+> **Historical record — do not copy.** The table and the first bullet below describe what
+> applied at the time. Under the v2.2+ approved-image contract no shipped template may execute
+> a mutable tag, in any context, and the current rules are the ones stated above.
 
-- **Default templates stay tag-based by design** (legibility) — this is a deliberate stance, not an
-  open gap. Consumers harden by pinning before production.
+| Context (as it stood then) | Form | Why it was argued |
+|---|---|---|
+| ~~development / onboarding~~ | ~~readable tags (`anchore/grype:v0.114.0`, …)~~ — **no longer permitted**: a readable tag is a moving target and the contract now refuses one | legibility, easy bumps, low-friction adoption |
+| production / hardened | digest-pinned overrides (`@sha256:…` via the documented env vars) | reproducible, tamper-evident, deterministic rollback — **still the rule** |
+
+- ~~**Default templates stay tag-based by design** (legibility).~~ **Superseded:** every shipped
+  default is digest-pinned, Dependency-Check included, and validated against
+  `config/scanner-images.json`.
 - **Hardened reference:** [`examples/hardened/sentinel-shield-hardened.snippet.yml`](../examples/hardened/sentinel-shield-hardened.snippet.yml)
   pins every scanner image + Action by digest/SHA. **Do not use `:latest` in production** — pin
   Dependency-Check too (to `owasp/dependency-check@sha256:ad169904…cc77b9`).

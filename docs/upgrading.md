@@ -58,9 +58,17 @@ immutable and consumer-owned.
 
 `v2.2.0` is backward-compatible with `v2.0.1` — no stable CLI, exit code, environment
 variable, or schema was renamed or removed, and the three new engineering-governance gate
-families (testing-discipline, engineering-quality, architecture governance v2) are **off by
-default in existing modes**. A project that bumps the ref and changes nothing else sees no
-new blocking gate.
+families (testing-discipline, engineering-quality, architecture governance v2) add gate keys
+**additively** — no existing gate changed.
+>
+> **That is not the same as "nothing new can block you."** Several of the new gates are enabled
+> by the mode matrices: `architecture_violations`, `changed_lines_coverage_violations`,
+> `acceptance_test_failures`, `missing_test_evidence`, `empty_test_suite` and
+> `debug_code_violations` enforce from `baseline` once their evidence exists, and
+> `focused_test_violations` enforces in **every** mode. A project already running
+> `baseline`/`strict`/`regulated` can therefore see new blocking outcomes on the first run
+> after the bump. Preflight with `--mode report-only` on one branch first; the per-gate matrix
+> is [`gate-resolution.md`](gate-resolution.md).
 
 ```sh
 # 1. Bump the pin in every installed Sentinel Shield workflow.

@@ -1,4 +1,5 @@
-# Sentinel Shield — Semgrep scope for Laravel (+ Filament) projects.
+# Sentinel Shield — Semgrep scope for the hardened-enterprise profile.
+# It extends BOTH the Laravel and the Node stacks, so it carries both scopes.
 # Copy to your repository ROOT as `.semgrepignore`. Semgrep reads it from the scan
 # root, so the Sentinel Shield workflows run Semgrep with `-w /src` (repo root).
 #
@@ -39,3 +40,19 @@ public/js/filament/
 tools/sentinel-shield/
 
 # Do NOT exclude your application source — keep resources/js, app/, Modules/ scanned.
+
+# ---------------------------------------------------------------------------
+# hardened-enterprise ALSO extends the `node` stack (npm-audit, playwright
+# acceptance, JS quality producers), so the Laravel-only scope under-excluded
+# Node/React build output and Semgrep scanned generated JS/TS as application
+# code. These are the rules `profiles/node/.semgrepignore` carries that the
+# Laravel scope does not.
+# ---------------------------------------------------------------------------
+.cache/
+.next/
+.turbo/
+generated/
+lib-cov/
+out/
+**/*.generated.js
+**/*.generated.ts
