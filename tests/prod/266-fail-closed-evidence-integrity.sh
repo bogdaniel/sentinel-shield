@@ -62,7 +62,16 @@ check    "zero scanners: report-only unchanged"                  "$(gate "$E/rep
 # A summary carrying REAL evidence must still pass regulated — the guard must not simply
 # refuse everything.
 cp "$E/rep/s.json" "$WORK/evid.json"
-jq '.tools.gitleaks = {"status":"pass","findings":0}' "$WORK/evid.json" > "$WORK/evid2.json"
+# A real regulated run is built with --profile, so it carries the tool-policy overlay the
+# evidence gates need. The fixture is built without one (it is about scanner evidence, not
+# applicability), so add the overlay's neutral values — otherwise the enforcer refuses it for
+# the unrelated reason that evidence gates cannot be judged without the overlay.
+jq '.tools.gitleaks = {"status":"pass","findings":0}
+	| .summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
+		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
+		missing_architecture_evidence:false, missing_test_change_evidence:false,
+		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
+	"$WORK/evid.json" > "$WORK/evid2.json"
 check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated)" "0"
 
 # A hand-built summary with NO producers cannot certify an assurance mode. This was the

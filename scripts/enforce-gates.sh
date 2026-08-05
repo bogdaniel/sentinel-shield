@@ -125,6 +125,8 @@ CONTROL_WAIVERS_FILE=".sentinel-shield/control-waivers.json"  # required-tool wa
 RAW_HADOLINT=""        # default derived from --summary dir (reports/raw/hadolint.json)
 RAW_DOCKER_BASE=""     # default derived from --summary dir (reports/raw/docker-base-digest.json)
 RAW_DIR=""             # default derived from --summary dir (reports/raw); finding-scope sources
+# Execution plan (run-tool-plan.sh) used to RECONCILE required-tool scope claims.
+TOOL_PLAN=""
 
 # Gates that an approved accepted-risk record MAY suppress (v0.1.3). Deliberately
 # narrow. NEVER suppressible: secrets, expired_exceptions, missing_release_evidence,
@@ -154,6 +156,12 @@ Options:
                        Never suppresses secrets/expired_exceptions/missing_release_evidence.
   --raw-dir <path>       Raw scanner reports used for finding-scoped acceptance on
                        vulnerability gates (default: <summary dir>/raw).
+  --tool-plan <path>     Execution plan written by run-tool-plan.sh
+                       (reports/<stage>-execution.json). A SEPARATE artifact used to
+                       RECONCILE required-tool scope: applicability, stage selection and
+                       policy are taken from it, and a summary field that disagrees is a
+                       failure. Without it, strict/regulated do not honour a scope
+                       exemption the summary claims about itself.
   --hadolint-raw <path>  Raw Hadolint report for unsafe_docker finding-scope matching
                        (default: <summary-dir>/raw/hadolint.json).
   --control-waivers <path>  Required-tool control waivers (default: .sentinel-shield/control-waivers.json,
@@ -188,6 +196,7 @@ while [ $# -gt 0 ]; do
 		--accepted-risks) ACCEPTED_RISKS_FILE="${2:?--accepted-risks requires a value}"; shift 2 ;;
 		--control-waivers) CONTROL_WAIVERS_FILE="${2:?--control-waivers requires a value}"; shift 2 ;;
 		--raw-dir) RAW_DIR="${2:?--raw-dir requires a value}"; shift 2 ;;
+		--tool-plan) TOOL_PLAN="${2:?--tool-plan requires a value}"; shift 2 ;;
 		--hadolint-raw) RAW_HADOLINT="${2:?--hadolint-raw requires a value}"; shift 2 ;;
 		--docker-base-digest-raw) RAW_DOCKER_BASE="${2:?--docker-base-digest-raw requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
@@ -764,27 +773,44 @@ eval_unsafe_docker() {
 		# Normalize each source into {source, rule_id, file, severity}.
 		| ( [ (($hado[0] // []))[]
 				| select((.level // "" | ascii_downcase) == "error" or (.level // "" | ascii_downcase) == "warning")
-				| { source: "hadolint", rule_id: (.code // ""), file: ((.file // "") | norm), severity: (.level // "warning") } ]
+				| { source: "hadolint", rule_id: (.code // ""), file: ((.file // "") | norm),
+				    line: (.line // null), severity: (.level // "warning") } ]
 			+ [ (($base[0] // []))[]
-				| { source: "docker-base-digest", rule_id: (.code // "SS_DOCKER_BASE_DIGEST"), file: ((.file // "") | norm), severity: "warning" } ]
+				| { source: "docker-base-digest", rule_id: (.code // "SS_DOCKER_BASE_DIGEST"),
+				    file: ((.file // "") | norm), line: (.line // null), severity: "warning" } ]
 		) as $finds
 		| [ $finds[]
 			| . as $f
 			| ( ( first( $fs[]
 					| select(
 						( ((.rule_id // "") == "") or (.rule_id == $f.rule_id) or (((.rule_ids // []) | index($f.rule_id)) != null) )
+						# EXACT, repository-rooted path match. Suffix and basename matching meant a
+						# waiver for `Dockerfile` covered EVERY Dockerfile in the repository, and
+						# `service/Dockerfile` covered any deeper path ending that way — an
+						# exception silently wider than the one its author reviewed.
 						and ( (((.files // []) | length) == 0)
-							or any((.files // [])[]; (. | norm) as $rf | ($f.file == $rf) or ($f.file | endswith("/" + $rf)) or (($f.file | split("/") | last) == $rf)) )
+							or any((.files // [])[]; (. | norm) == $f.file) )
 					)
 					| .id ) ) // null ) as $rid
-			| { source: $f.source, rule_id: $f.rule_id, file: $f.file, accepted: ($rid != null), risk_id: ($rid // "") } ]
-		| ( length ) as $accounted
-		| ( [ .[] | select(.accepted) ] | length ) as $acc
-		| ( [ .[] | select(.accepted | not) ] | length ) as $unacc_visible
+			| { source: $f.source, rule_id: $f.rule_id, file: $f.file, line: $f.line,
+				accepted: ($rid != null), risk_id: ($rid // "") } ]
+		# Deduplicate identical findings before counting: a source reporting the same
+		# {source, rule_id, file} twice inflated `accepted` and could push it past the total.
+		| ( . as $all | reduce $all[] as $f ({seen: {}, out: []};
+				("\($f.source)|\($f.rule_id)|\($f.file)|\($f.line)") as $k
+				| if .seen[$k] then . else .seen[$k] = true | .out += [$f] end) | .out ) as $uniq
+		| ( $uniq | length ) as $accounted
+		| ( [ $uniq[] | select(.accepted) ] | length ) as $acc
+		| ( [ $uniq[] | select(.accepted | not) ] | length ) as $unacc_visible
 		| ( (if $total > $accounted then ($total - $accounted) else 0 end) ) as $unaccounted_sources
+		# The aggregate and the raw evidence must AGREE. Only the undercount direction was
+		# handled; when the raw sources hold MORE distinct findings than the summary counts, the
+		# aggregate is wrong — and if every extra finding matched a record, `accepted` could
+		# exceed `total` while `unaccepted` stayed 0: acceptance resting on a contradiction.
 		| { total: $total, accounted: $accounted, accepted: $acc,
 			unaccepted: ($unacc_visible + $unaccounted_sources),
-			unaccounted_sources: $unaccounted_sources, detail: . }' 2>/dev/null || printf '')
+			unaccounted_sources: $unaccounted_sources,
+			overcount: ($accounted > $total), detail: $uniq }' 2>/dev/null || printf '')
 	if [ -z "$_acct" ]; then
 		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
 		add_eval "$_key" true "$_val" fail
@@ -794,7 +820,16 @@ eval_unsafe_docker() {
 	UD_ACCEPTED=$(printf '%s' "$_acct" | jq '.accepted')
 	UD_UNACCEPTED=$(printf '%s' "$_acct" | jq '.unaccepted')
 	_unacc_src=$(printf '%s' "$_acct" | jq '.unaccounted_sources')
+	_overcount=$(printf '%s' "$_acct" | jq -r '.overcount')
 	UD_DETAIL=$(printf '%s' "$_acct" | jq -c '.detail')
+	if [ "$_overcount" = "true" ]; then
+		_acct_n=$(printf '%s' "$_acct" | jq '.accounted')
+		UD_ACCEPTED=0; UD_UNACCEPTED=$_val
+		add_eval "$_key" true "$_val" fail
+		log_error "unsafe_docker: the raw reports hold $_acct_n distinct finding(s) but summary.unsafe_docker=$_val."
+		log_error "  The aggregate contradicts its own evidence, so no accepted-risk verdict can be derived from it."
+		die_cfg "refusing to evaluate unsafe_docker accepted-risk against a contradictory count"
+	fi
 	if [ "$UD_UNACCEPTED" -eq 0 ] && [ "$UD_ACCEPTED" -gt 0 ]; then
 		add_eval "$_key" true "$_val" "accepted-risk"; ACCEPTED="$ACCEPTED $_key"
 		log_info "unsafe_docker: finding-scoped accepted-risk — total $_val, accepted $UD_ACCEPTED, unaccepted 0 (hadolint + docker-base-digest)."
@@ -992,7 +1027,45 @@ eval_medium_vulnerabilities() {
 eval_bool_gate() {
 	_key=$1
 	_flag=$(gate_flag "$_key")
-	_v=$(jqr ".summary.$_key")   # true|false|null
+	_v=$(jqr ".summary.$_key")   # true|false|null (RENDERED)
+	# `jq -r` renders the STRING "true" and the BOOLEAN true identically, so the rendered value
+	# alone cannot tell an evidence flag from a string that looks like one. Read the type too.
+	_vt=$(jqr ".summary.$_key | type")
+	# ONLY the two canonical booleans are readable. Everything else — a number, a string, an
+	# array, an object, a jq/read error — used to normalise to `false` and PASS, so a corrupt or
+	# hand-built summary cleared an ENABLED missing-evidence control (missing_coverage_evidence,
+	# empty_test_suite, missing_architecture_evidence, missing_acceptance_evidence …). An
+	# unreadable evidence flag is untrusted evidence, not an absence of findings.
+	case "$_v" in
+		true | false)
+			[ "$_vt" = "boolean" ] || die_cfg "summary.$_key must be a boolean, got a $_vt that renders as '$_v'. A string that looks like a boolean is not one." ;;
+		null)
+			# Absent. These evidence booleans are POLICY-OVERLAY output: the builder emits them
+			# only when run with --profile, because deciding "was this evidence expected?" needs
+			# the profile's applicability. So their absence means one of two different things:
+			#
+			#   * the overlay RAN and did not set this key -> the summary is incomplete for the
+			#     contract it declares (a build defect);
+			#   * the overlay never ran (no --profile) -> nothing could judge applicability, so
+			#     an enabled evidence gate cannot be certified at all.
+			#
+			# Either way it is not a clean `false`; only the message differs, and only the
+			# visibility modes tolerate the second case.
+			if [ "$_flag" = "true" ]; then
+				_overlay=$(jqr '.summary.required_tool_failures')
+				if [ "$_overlay" != "null" ] && [ -n "$SUMMARY_CONTRACT" ]; then
+					die_cfg "gate '$_key' is ENABLED, the summary declares gate contract '$SUMMARY_CONTRACT' and carries a tool-policy overlay, but has no '$_key' field. A declared contract must be complete — rebuild with scripts/build-security-summary.sh."
+				fi
+				case "$MODE" in
+					strict | regulated)
+						die_cfg "gate '$_key' is ENABLED but the summary carries no '$_key' field. Evidence gates need the tool-policy overlay to judge applicability — rebuild with scripts/build-security-summary.sh --profile <name>. Refusing to certify '$MODE' without it." ;;
+					*)
+						log_warn "gate '$_key' is enabled but the summary carries no '$_key' field (no tool-policy overlay, or a legacy summary). Documented tolerance for $MODE only — build with --profile to close this." ;;
+				esac
+			fi ;;
+		*)
+			die_cfg "summary.$_key must be a boolean (true/false), got '$_v'. An unreadable evidence flag never reads as a clean 'false'." ;;
+	esac
 	_trig=false; [ "$_v" = "true" ] && _trig=true
 	if [ "$_flag" = "true" ]; then
 		if [ "$_trig" = "true" ]; then add_eval "$_key" true "$_trig" fail; else add_eval "$_key" true "$_trig" pass; fi
@@ -1025,9 +1098,19 @@ eval_expired_gate() {
 	_ex=$(jqr '.exceptions.expired')
 	_trig=0
 	if [ "$_ee" -gt 0 ]; then _trig=1; fi
+	# The detailed exceptions object is EVIDENCE for the summary counter, so a malformed value
+	# is untrusted evidence (it used to be skipped silently), and the two must AGREE. A summary
+	# claiming zero expired exceptions beside a detail object reporting some — or the reverse —
+	# is contradictory governance state, and the report recorded only the summary value.
 	case "$_ex" in
-		'' | *[!0-9]*) : ;;
-		*) if [ "$_ex" -gt 0 ]; then _trig=1; fi ;;
+		null) : ;;   # no detailed object at all: the summary counter stands alone
+		'' | *[!0-9]*)
+			die_cfg "exceptions.expired must be a non-negative integer, got '$_ex'. Malformed exception evidence is never ignored." ;;
+		*)
+			if [ "$_ex" -gt 0 ]; then _trig=1; fi
+			if [ "$_ex" -ne "$_ee" ]; then
+				die_cfg "expired-exception evidence contradicts itself: summary.expired_exceptions=$_ee but exceptions.expired=$_ex. Rebuild the summary; the enforcer will not pick one of two disagreeing counts."
+			fi ;;
 	esac
 	if [ "$_flag" = "true" ]; then
 		if [ "$_trig" -eq 1 ]; then add_eval "expired_exceptions" true "$_ee" fail; else add_eval "expired_exceptions" true "$_ee" pass; fi
@@ -1128,6 +1211,63 @@ if [ "$HAS_POLICY" = "1" ]; then
 	done
 	is_waived() { case "$WAIVED_TOOLS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
+	# --- THE TRUSTED EXECUTION PLAN ------------------------------------------------------
+	# Every exemption below used to be read from the SAME summary being judged: the summary
+	# said a required tool was `not-applicable`, or carried `stage_selected: false`, and the
+	# enforcer believed it. A hand-built or modified summary could therefore declare an
+	# applicable required control out of scope. The plan written by run-tool-plan.sh is a
+	# SEPARATE artifact produced by a different process, and it is what decides scope now.
+	# Summary policy fields are informational echoes: disagreement with the plan is a failure.
+	PLAN_OK=0
+	if [ -n "${TOOL_PLAN:-}" ]; then
+		[ -f "$TOOL_PLAN" ] || die_cfg "--tool-plan '$TOOL_PLAN' does not exist. An exemption cannot be reconciled against a plan that is not there."
+		jq -e '(type == "object") and ((.stage // "") | type == "string") and ((.stage // "") != "")
+			and ((.profile // "") | type == "string") and ((.profile // "") != "")
+			and ((.tools // null) | type == "object")' "$TOOL_PLAN" >/dev/null 2>&1 \
+			|| die_cfg "--tool-plan '$TOOL_PLAN' is not a usable execution plan (needs a non-empty stage, profile and a tools object)"
+		PLAN_STAGE=$(jq -r '.stage' "$TOOL_PLAN")
+		PLAN_PROFILE=$(jq -r '.profile' "$TOOL_PLAN")
+		# The plan must describe THIS run. A plan for another stage or profile proves nothing
+		# about the summary in front of us, and reconciling against it would be theatre.
+		_sum_stage=$(jq -r '(.stage // "")' "$SUMMARY" 2>/dev/null || printf '')
+		[ "$_sum_stage" = "null" ] && _sum_stage=""
+		if [ -n "$_sum_stage" ] && [ "$_sum_stage" != "$PLAN_STAGE" ]; then
+			die_cfg "the execution plan is for stage '$PLAN_STAGE' but the summary declares stage '$_sum_stage' — a plan for another stage cannot authorise this summary."
+		fi
+		_sum_profile=$(jq -r '(.project.type // "")' "$SUMMARY" 2>/dev/null || printf '')
+		[ "$_sum_profile" = "null" ] && _sum_profile=""
+		if [ -n "$_sum_profile" ] && [ "$_sum_profile" != "unknown" ] && [ "$_sum_profile" != "$PLAN_PROFILE" ]; then
+			die_cfg "the execution plan is for profile '$PLAN_PROFILE' but the summary declares '$_sum_profile' — a plan for another profile cannot authorise this summary."
+		fi
+		PLAN_OK=1
+		log_info "reconciling required-tool scope against the execution plan ($TOOL_PLAN: profile=$PLAN_PROFILE stage=$PLAN_STAGE)"
+	fi
+	# plan_says <emit> <field> — the plan value, or "" when the plan does not cover the tool.
+	plan_says() {
+		[ "$PLAN_OK" -eq 1 ] || { printf ''; return 0; }
+		jq -r --arg k "$1" --arg f "$2" '((.tools[$k] // {})[$f] // "") | tostring' "$TOOL_PLAN" 2>/dev/null || printf ''
+	}
+	# plan_covers <emit> — true when the plan lists the tool for this stage at all.
+	plan_covers() {
+		[ "$PLAN_OK" -eq 1 ] || return 1
+		jq -e --arg k "$1" '(.tools // {}) | has($k)' "$TOOL_PLAN" >/dev/null 2>&1
+	}
+	# An enforcing mode must not accept a summary-authored exemption with NO plan to check it
+	# against. Without the plan the only safe reading of `gate_enforced:false` on a required
+	# tool is a required-tool failure, which is what happens below.
+	case "$MODE" in
+		strict | regulated)
+			if [ "$PLAN_OK" -ne 1 ]; then
+				log_warn "no --tool-plan supplied: in '$MODE' a required-tool exemption claimed by the summary cannot be substantiated, so scope claims will NOT be honoured."
+			fi ;;
+	esac
+
+	# A stage-scoped summary (build-security-summary.sh --stage) legitimately marks required
+	# tools that do not run at that stage as not gate-enforced. Without that marker, an
+	# unexplained gate_enforced:false is a configuration error rather than a scope statement.
+	STAGE_SCOPED=$(jq -r '(.stage // "")' "$SUMMARY" 2>/dev/null || printf '')
+	[ "$STAGE_SCOPED" = "null" ] && STAGE_SCOPED=""
+
 	# Per-tool policy records: emit|tool|policy|status|gate_enforced
 	_pl=$(jq -r '
 		(.tools // {}) | to_entries[]
@@ -1137,9 +1277,113 @@ if [ "$HAS_POLICY" = "1" ]; then
 
 	while IFS='|' read -r _emit _tkey _pol _st _ge; do
 		[ -n "$_emit" ] || continue
+		# POLICY IS THE PLAN'"'"'S TO STATE. A summary declaring `recommended` for a tool the plan
+		# requires would otherwise downgrade its own required control by editing one field.
+		if [ "$PLAN_OK" -eq 1 ] && plan_covers "$_emit"; then
+			_ppol=$(plan_says "$_emit" policy)
+			if [ -n "$_ppol" ] && [ "$_ppol" != "$_pol" ]; then
+				if [ "$_ppol" = "required" ]; then
+					log_warn "$_emit: the summary declares policy '"'"'$_pol'"'"' but the execution plan requires it — enforcing the plan."
+					_pol="required"
+				else
+					log_warn "$_emit: the summary declares policy '"'"'$_pol'"'"' but the execution plan says '"'"'$_ppol'"'"'; the plan is authoritative."
+					_pol="$_ppol"
+				fi
+			fi
+		fi
 		case "$_pol" in
 			required)
-				[ "$_ge" = "true" ] || continue
+				# `gate_enforced:false` on a REQUIRED tool used to skip the tool entirely, so the
+				# summary PRODUCER could switch off required-tool enforcement by emitting one
+				# field. It is only legitimate when the tool is genuinely out of scope for this
+				# run — not applicable, or not selected for this stage — and the summary has to
+				# say WHICH: an unexplained opt-out is a configuration error, not a pass.
+				if [ "$_ge" != "true" ]; then
+					case "$_st" in
+						# `not-applicable` is an APPLICABILITY CLAIM, and the summary is not
+						# an authority on it: the same document being judged asserted the
+						# control was out of scope. It is honoured only when the trusted
+						# execution plan agrees.
+						not-applicable)
+							if [ "$PLAN_OK" -eq 1 ]; then
+								_pst=$(plan_says "$_emit" status)
+								if ! plan_covers "$_emit"; then
+									log_warn "$_emit: the summary claims not-applicable but the execution plan for stage '$PLAN_STAGE' does not list the tool at all — treating the claim as unsubstantiated."
+									REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(not in plan)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(not in plan)
+"; continue
+								fi
+								if [ "$_pst" = "not-applicable" ]; then continue; fi
+								log_warn "$_emit: the summary claims not-applicable but the execution plan records status '$_pst' — the plan decides applicability."
+								REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(plan says ${_pst:-unknown})
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(plan says ${_pst:-unknown})
+"; continue
+							fi
+							case "$MODE" in
+								strict | regulated)
+									log_warn "$_emit: a not-applicable claim cannot be substantiated without --tool-plan; in '$MODE' it is a required-tool failure."
+									REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable(unsubstantiated)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable(unsubstantiated)
+"; continue ;;
+							esac
+							continue ;;
+						# `disabled` is a required-control FAILURE state, not an exemption. It
+						# used to skip the tool outright, so a summary producer could switch
+						# off its own required control by emitting status=disabled with
+						# gate_enforced:false. It now needs a validated control waiver, exactly
+						# like an unavailable required tool.
+						disabled)
+							if is_waived "$_tkey"; then
+								WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}|$(waiver_fields "$_tkey")
+"
+							else
+								REQF_REC="${REQF_REC}${_emit}|${_tkey}|disabled(no waiver)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|disabled(no waiver)
+"
+							fi
+							continue ;;
+						*)
+							# Stage scope must be proven PER TOOL. Accepting any non-empty
+							# top-level `.stage` let a hand-built summary mark arbitrary
+							# required tools non-enforced simply by declaring a stage; the
+							# enforcer never checked whether THIS tool is excluded at THAT
+							# stage. The builder now derives `stage_selected` from the
+							# effective-profile execution matrix, and only an explicit
+							# `stage_selected: false` — together with a declared stage — is a
+							# scope statement.
+							# `//` is NOT usable here: jq treats `false` as empty, so
+							# `.stage_selected // "absent"` turns the very value being looked
+							# for into the default. has() is the only correct probe.
+							_ssel=$(jqr "(.tools[\"$_emit\"] | if (type == \"object\") and has(\"stage_selected\") then (.stage_selected | tostring) else \"absent\" end)")
+							if [ -n "$STAGE_SCOPED" ] && [ "$_ssel" = "false" ]; then
+								# The summary saying "not selected at this stage" is a CLAIM
+								# about policy, made by the document under judgement. The
+								# trusted plan lists exactly the tools selected for the stage
+								# it was resolved for, so absence from the plan is the proof
+								# and presence contradicts the claim.
+								if [ "$PLAN_OK" -eq 1 ]; then
+									if plan_covers "$_emit"; then
+										log_warn "$_emit: the summary claims it is not selected at stage '$STAGE_SCOPED', but the execution plan for '$PLAN_STAGE' does select it — the plan decides stage scope."
+										REQF_REC="${REQF_REC}${_emit}|${_tkey}|stage-scope-contradicted
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|stage-scope-contradicted
+"; continue
+									fi
+									continue
+								fi
+								case "$MODE" in
+									strict | regulated)
+										log_warn "$_emit: a stage-scope exemption cannot be substantiated without --tool-plan; in '$MODE' it is a required-tool failure."
+										REQF_REC="${REQF_REC}${_emit}|${_tkey}|stage-scope(unsubstantiated)
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|stage-scope(unsubstantiated)
+"; continue ;;
+								esac
+								continue
+							fi
+							REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-gate-enforced(${_st:-unknown})
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-gate-enforced(${_st:-unknown})
+"; continue ;;
+					esac
+				fi
 				case "$_st" in
 					unavailable)
 						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
@@ -1155,7 +1399,28 @@ if [ "$HAS_POLICY" = "1" ]; then
 "; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
 "; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|${_st}
 "; fi ;;
-					*) : ;;  # pass/findings/not-applicable: findings handled by count gates, not here
+					pass | findings)
+						: ;;   # real execution; findings are judged by the count gates, not here
+					not-applicable)
+						# Trusted, but only as a CLAIM the summary must substantiate: the
+						# builder records applicability from the resolved profile, so an
+						# entry claiming not-applicable without the tool-policy overlay
+						# having run is unsubstantiated.
+						if [ "$(jqr '.summary.required_tool_failures')" = "null" ]; then
+							REQF_REC="${REQF_REC}${_emit}|${_tkey}|not-applicable-unsubstantiated
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|not-applicable-unsubstantiated
+"
+						fi ;;
+					*)
+						# Empty, unknown, `skipped`, `warn`, `fail`, malformed or a status from a
+						# future schema version. Falling through used to mean NO required-tool
+						# failure, so a producer could avoid enforcement with any string the
+						# enforcer did not recognise. An unrecognised status is untrusted
+						# evidence about a REQUIRED control.
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st:-unknown}
+"; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st:-unknown}
+"; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|${_st:-unknown}
+"; fi ;;
 				esac ;;
 			recommended)
 				case "$_st" in

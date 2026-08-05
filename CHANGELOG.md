@@ -15,6 +15,42 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — gate-evaluation correctness (#229, #230, #231, #232, #233)
+
+Five evaluators turned untrusted or contradictory evidence into a pass:
+
+- **Boolean evidence gates (#229).** `eval_bool_gate` triggered only on the literal `true`;
+  a number, a string, an array, an object, a read error, or an **absent** key for an ENABLED
+  gate all became `false` and PASSED — clearing `missing_coverage_evidence`,
+  `empty_test_suite`, `missing_architecture_evidence`, `missing_acceptance_evidence` and the
+  rest. Only a real boolean is accepted now (the **type** is checked, so the string `"true"`
+  is rejected rather than read as the flag), and an absent key for an enabled gate follows the
+  same contract negotiation as the counters — with the extra rule that these gates need the
+  tool-policy overlay to judge applicability, so a summary built without `--profile` cannot
+  certify them in strict/regulated.
+- **Expired-exception evidence (#230).** A malformed `exceptions.expired` was skipped in
+  silence, and the detailed object was never required to agree with `summary.expired_exceptions`.
+  Both are now errors: a summary claiming zero expired exceptions beside a detail object
+  reporting some (or the reverse) is contradictory governance state, not a value to pick from.
+- **Required-tool statuses (#231).** Only four failure statuses were handled; an empty,
+  unknown, `skipped`, `warn`, `fail` or future status fell through with **no** required-tool
+  failure. In-enum statuses now fail the policy, out-of-enum statuses are refused as a malformed
+  summary, `not-applicable` must be substantiated by the tool-policy overlay, and an
+  **unexplained** `gate_enforced: false` on a required tool is a failure — it is only accepted
+  when the tool is not-applicable/disabled or the summary is explicitly stage-scoped (the
+  builder now records `stage`).
+- **`unsafe_docker` reconciliation (#232).** Only the summary-undercount direction was handled.
+  More distinct raw findings than the summary counted could make `accepted` exceed `total` with
+  `unaccepted` zero — an accepted-risk verdict resting on a contradiction. The aggregate must now
+  reconcile with the raw evidence, and identical repeated findings (same rule, file **and** line)
+  are deduplicated so they cannot inflate `accepted`.
+- **Docker accepted-risk paths (#233).** Matching accepted a finding when its path merely ended
+  with the configured value or shared its basename, so a waiver for `Dockerfile` covered **every**
+  Dockerfile in the repository. Matching is now exact and repository-rooted.
+- **New `tests/prod/291-gate-evaluation-correctness.sh`** covers all five; `tests/prod/266`,
+  `280` and the `run_build_case` fixtures in `self-test.sh` were migrated to summaries that carry
+  the overlay the evidence gates need.
+
 ### Fixed — summary publication and evidence-contract negotiation (#216, #219)
 
 - **The report-only fallback is no longer staged with a bare `cp` (#216).** The destination was
