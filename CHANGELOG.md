@@ -15,6 +15,51 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — the enforcement input contract (#217, #218, #220, #221, #222)
+
+`enforce-gates.sh` decides the release verdict, so everything it reads is policy input. Five
+paths let a weaker-than-configured policy reach a `pass`:
+
+- **Duplicate and unknown gates-env keys (#217).** The parser validated line SHAPE only and
+  `env_get` returned the FIRST match, so `FAIL_ON_SECRETS=true` followed by
+  `FAIL_ON_SECRETS=false` enforced as enabled while the tail read as disabled — and a typo'd or
+  stale key was accepted silently. Duplicate keys are now rejected, keys outside the resolver's
+  namespace are rejected, and when the resolver's JSON artifact sits next to the env file the two
+  are **reconciled**: same mode, same gate set, same values. A typo'd `FAIL_ON_SECRTES` is caught
+  against the resolver's own key set rather than a second hand-maintained list.
+- **Unvalidated adoption mode (#218).** `SENTINEL_SHIELD_MODE` defaulted to `unknown` and was
+  never checked, so an undefined mode skipped the strict/regulated evidence preconditions while
+  enforcement could still report success. Only the four canonical modes are accepted, validated
+  before any gate is evaluated, and reconciled with the resolver's JSON.
+- **`.tools: {}` bypass (#220).** The strict/regulated evidence precondition explicitly left an
+  empty tools object alone — the code said so — so a hand-built summary that declared no producer
+  at all could certify the two highest-assurance modes. Omission is not an external-evidence
+  contract: an empty **or absent** tools object is now refused exactly like an all-unavailable
+  one. `report-only`/`baseline` are unchanged; they are visibility modes.
+- **Optional validation for production modes (#221).** Complete structural validation (source,
+  evidence, version, tool-status enum) ran only when the caller passed `--strict-summary`, so a
+  workflow that omitted the flag enforced `strict` with weaker validation than an optional CLI
+  option provided. It is now applied automatically — and cannot be turned off — in
+  baseline/strict/regulated; the flag remains an opt-in for report-only.
+- **`unsafe_docker` count coercion (#222).** `eval_unsafe_docker` still coerced negative,
+  fractional, string, boolean and unreadable counts to `0` and recorded `pass`, reintroducing the
+  fail-open the generic count gate had already closed. It now uses the same strict parser.
+- **New `tests/prod/288-enforcement-input-contract.sh`** covers all five, with controls in every
+  mode: both duplicate orderings, duplicate mode, typo'd and out-of-namespace keys, env/JSON
+  disagreement on a flag and on the mode, six invalid mode spellings plus an absent mode, empty /
+  absent / all-unavailable tools in strict and regulated (and their unchanged behaviour in
+  report-only/baseline), missing source, missing evidence, bad version and unknown tool status in
+  every enforcing mode **without** the legacy flag plus flag parity, and five malformed
+  `unsafe_docker` values against a real count and a generic-gate control.
+- `tests/prod/266`, `269` and `290` were updated to the new contract: `266` now asserts the
+  empty-tools refusal it previously documented as a residual gap, and the hand-built fixtures in
+  `269`/`290` declare the producers and structure that enforcing modes now require.
+
+**Not fixed here, deliberately:** an ENABLED gate whose summary key is absent still reads as `0`
+(issue #219). Closing it requires migrating the engine's own fixtures and the shipped example
+summary to the current gate contract, which is a separate change; the code says so at the point
+where it happens rather than leaving it implicit.
+
 ### Added — trusted cross-workflow security-evidence handoff, opt-in (#88)
 
 - **Same-run `needs:` remains the recommended default and is unchanged.** A standalone release

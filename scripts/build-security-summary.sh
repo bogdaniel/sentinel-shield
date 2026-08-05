@@ -448,7 +448,15 @@ if [ -n "$PROFILE_NAME" ]; then
 			(.value.config.path // ""), (.value.config.classification // ""),
 			(.value.category // ""),
 			(if $stage == "" then "yes"
-			 elif (.value.execution[$stage] // false) == true then "yes"
+			 # UNDECLARED is not the same as declared-false. `// false` collapsed the two, so a
+			 # tool whose execution map is missing, or which simply does not name this stage,
+			 # was read as "deliberately not selected here" and its required-tool enforcement
+			 # was skipped — a missing declaration silently turning into a clean result.
+			 # Undeclared now selects the tool: an unstated stage policy is not permission to
+			 # stop enforcing a REQUIRED tool. Explicit true/false still mean exactly that.
+			 elif ((.value.execution | type) != "object") then "yes"
+			 elif ((.value.execution | has($stage)) | not) then "yes"
+			 elif (.value.execution[$stage] == true) then "yes"
 			 else "no" end) ]
 		| join("|")')
 

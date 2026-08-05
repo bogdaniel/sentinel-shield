@@ -141,16 +141,16 @@ if [ "$(jq -r '.tools.php_coverage.status' "$S")" = "pass" ] && [ "$(jq -r '.too
 else fail "builder lost per-stack coverage visibility"; fi
 
 # --- (5) enforcer -------------------------------------------------------------
+# Every enforcing mode — baseline included — validates the COMPLETE structure now, so a
+# hand-written partial summary is REFUSED as malformed input (exit 2) before any gate is
+# judged, and a test asserting "the gate blocks" would read that refusal as "it did not
+# block". Fixtures derive from the SHIPPED EXAMPLE and override only the fields under test.
 mk_summary() { # mk_summary <coverage_thr> <regression> <mutation> <out>
-	jq -n --argjson c "$1" --argjson r "$2" --argjson m "$3" '{
-		version:"1.0", generated_at:"2026-07-14T00:00:00Z",
-		summary:{ secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0,
-			medium_vulnerabilities:0, architecture_violations:0, type_errors:0, test_failures:0,
-			unsafe_docker:0, unsafe_github_actions:0, missing_sbom:false, missing_release_evidence:false,
-			expired_exceptions:0, coverage_threshold_violations:$c, coverage_regression:$r,
-			mutation_score_violations:$m },
-		evidence:{ sbom:{present:true}, release_evidence:{present:true} }
-	}' > "$4"
+	jq --argjson c "$1" --argjson r "$2" --argjson m "$3" '
+		.tools = {tests:{status:"pass"}}
+		| .summary += { coverage_threshold_violations:$c, coverage_regression:$r,
+		                mutation_score_violations:$m }' \
+		"$ROOT/templates/security-summary.example.json" > "$4"
 }
 mk_summary 2 0 1 "$WORK/sum.json"
 
@@ -191,9 +191,9 @@ else fail "enforcer report-only should skip quality gates"; fi
 q_base=$(jq -nc '{secrets:0, critical_vulnerabilities:0, high_vulnerabilities:0, medium_vulnerabilities:0,
 	architecture_violations:0, type_errors:0, test_failures:0, unsafe_docker:0, unsafe_github_actions:0,
 	missing_sbom:false, missing_release_evidence:false, expired_exceptions:0}')
-jq -n --argjson b "$q_base" '{version:"1.0", generated_at:"2026-07-14T00:00:00Z",
-	summary: ($b + {complexity_violations:1, duplication_violations:2, dead_code_violations:3}),
-	evidence:{sbom:{present:true}, release_evidence:{present:true}}}' > "$WORK/q3.json"
+jq '.tools = {tests:{status:"pass"}}
+	| .summary += {complexity_violations:1, duplication_violations:2, dead_code_violations:3}' \
+	"$ROOT/templates/security-summary.example.json" > "$WORK/q3.json"
 rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/q3.json" --output-dir "$WORK/enf-q3s" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-q3s/sentinel-shield-enforcement.json"
 if [ "$rc" -eq 1 ] \
@@ -212,9 +212,8 @@ if [ "$rc" -eq 1 ] \
 else fail "enforcer regulated complexity/duplication/dead-code wrong: $(jq -c .failed_gates "$ej")"; fi
 
 # missing_coverage_evidence (unit): true summary blocks strict; skipped in report-only.
-jq -n --argjson b "$q_base" '{version:"1.0", generated_at:"2026-07-14T00:00:00Z",
-	summary: ($b + {missing_coverage_evidence:true}),
-	evidence:{sbom:{present:true}, release_evidence:{present:true}}}' > "$WORK/mce.json"
+jq '.tools = {tests:{status:"pass"}} | .summary.missing_coverage_evidence = true' \
+	"$ROOT/templates/security-summary.example.json" > "$WORK/mce.json"
 rc=0; sh "$ENFORCE" --gates-env "$WORK/enf-strict/sentinel-shield-gates.env" --summary "$WORK/mce.json" --output-dir "$WORK/enf-mce" --format json >/dev/null 2>&1 || rc=$?
 ej="$WORK/enf-mce/sentinel-shield-enforcement.json"
 [ "$rc" -eq 1 ] && [ "$(jq -r '.failed_gates | index("missing_coverage_evidence")' "$ej")" != "null" ] \
@@ -377,7 +376,8 @@ for m in report-only baseline strict regulated; do
 done
 
 # --- (10) enforcer §2 failure paths ------------------------------------------
-qsum() { jq -n --argjson b "$q_base" --argjson o "$2" '{version:"1.0",generated_at:"2026-07-14T00:00:00Z",summary:($b+$o),evidence:{sbom:{present:true},release_evidence:{present:true}}}' > "$1"; }
+qsum() { jq --argjson o "$2" '.tools = {tests:{status:"pass"}} | .summary += $o' \
+	"$ROOT/templates/security-summary.example.json" > "$1"; }
 _q2ov=$(jq -nc '{changed_lines_coverage_violations:1, debug_code_violations:2, focused_test_violations:1, missing_test_evidence:true, empty_test_suite:true, skipped_test_marker_violations:1, large_file_violations:1, large_function_violations:1, skipped_tests:2}')
 qsum "$WORK/q2.json" "$_q2ov"
 # baseline: changed/debug/focused/missing_test/empty block; skipped_marker/large/skipped_tests do NOT

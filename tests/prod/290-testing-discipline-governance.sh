@@ -295,6 +295,7 @@ check "testing discipline never enters security counters" \
 # so the ONLY thing under test here is the absence of the new keys.
 cat > "$B/old.json" <<'EOF'
 {"version":"1.0","generated_at":"2026-07-19T00:00:00Z",
+ "source":{},"tools":{"tests":{"status":"pass"}},
  "summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,
   "medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,
   "unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,
@@ -448,21 +449,21 @@ enf() {
 }
 check "pre-v2.2.0 summary still enforces cleanly (absent = 0/false)" "$(enf "$B/old.json" regulated)" "0"
 
-printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
+printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","source":{},"tools":{"tests":{"status":"pass"}},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
 	'"production_change_without_test_change":1' > "$WORK/sum-tdd.json"
 check "TDD proxy violation does NOT block in baseline" "$(enf "$WORK/sum-tdd.json" baseline)" "0"
 check "TDD proxy violation blocks in strict"           "$(enf "$WORK/sum-tdd.json" strict)" "1"
 
-printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
+printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","source":{},"tools":{"tests":{"status":"pass"}},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
 	'"acceptance_test_failures":2' > "$WORK/sum-atf.json"
 check "acceptance failures block from baseline when evidence exists" "$(enf "$WORK/sum-atf.json" baseline)" "1"
 
-printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
+printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","source":{},"tools":{"tests":{"status":"pass"}},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
 	'"orphan_behavior_specifications":3' > "$WORK/sum-orph.json"
 check "orphan behavior specs do NOT block in strict"  "$(enf "$WORK/sum-orph.json" strict)" "0"
 check "orphan behavior specs block in regulated"      "$(enf "$WORK/sum-orph.json" regulated)" "1"
 
-printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
+printf '{"version":"1.0","generated_at":"2026-07-19T00:00:00Z","source":{},"tools":{"tests":{"status":"pass"}},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0,%s}}\n' \
 	'"missing_test_change_evidence":true' > "$WORK/sum-mtce.json"
 check "missing changed-file evidence blocks in strict" "$(enf "$WORK/sum-mtce.json" strict)" "1"
 check "missing changed-file evidence is quiet in baseline" "$(enf "$WORK/sum-mtce.json" baseline)" "0"

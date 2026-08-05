@@ -143,7 +143,9 @@ Options:
   --summary <path>     Normalized findings (default: reports/security-summary.json)
   --output-dir <path>  Output directory (default: reports)
   --format <fmt>       markdown | json | all   (default: all)
-  --strict-summary     Validate optional structure (source, evidence, tool statuses)
+  --strict-summary     Opt into the COMPLETE structural validation (source, evidence, tool
+                       statuses, version) in report-only. It is applied automatically —
+                       and cannot be turned off — in baseline/strict/regulated.
   --accepted-risks <path>  Accepted-risk records (default: .sentinel-shield/accepted-risks.json).
                        An APPROVED, unexpired, owned record may suppress a
                        suppressible gate (unsafe_docker, medium_vulnerabilities).
@@ -212,25 +214,15 @@ command_exists jq || die_cfg "jq is required for security-summary.json enforceme
 [ -n "$RAW_DIR" ] || RAW_DIR="$(dirname "$SUMMARY")/raw"
 
 # --- load the gates env SAFELY (validate; never blind-source) ----------------
-# Allowed line shape: SENTINEL_SHIELD_<UPPER_KEY>=<safe-value>
-# Safe value characters: A-Z a-z 0-9 . _ -   (no spaces/quotes/`/$/;/&/|/<>/backslash)
-GATES_ENV=""
-_lineno=0
-while IFS= read -r _line || [ -n "$_line" ]; do
-	_lineno=$((_lineno + 1))
-	case "$_line" in
-		'' | '#'*) continue ;;
-	esac
-	if printf '%s' "$_line" | grep -Eq '^SENTINEL_SHIELD_[A-Z0-9_]+=[A-Za-z0-9._-]*$'; then
-		GATES_ENV="${GATES_ENV}${_line}
-"
-	else
-		die_cfg "suspicious or invalid line in gates env ($GATES_ENV_FILE:$_lineno): '$_line'"
-	fi
-done < "$GATES_ENV_FILE"
+# The parser is ss_gates_env_read in the shared library, so the enforcer, the summary selector
+# and the report generator cannot interpret the same policy file differently. It validates the
+# line shape, rejects duplicate keys (ambiguous policy) and rejects unknown keys (resolver /
+# enforcer drift) before any value is read.
+GATES_ENV=$(ss_gates_env_read "$GATES_ENV_FILE") || die_cfg "gates env is not usable: $GATES_ENV_FILE (see errors above)"
 
-# env_get <FULL_KEY> — value from the validated env content, or empty.
-env_get() { printf '%s\n' "$GATES_ENV" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,"");print;exit}'; }
+# env_get <FULL_KEY> — value from the validated env content, or empty. Uniqueness is proven
+# by the reader, so "first match" can no longer differ from "the value".
+env_get() { ss_gates_env_value "$GATES_ENV" "$1"; }
 
 # gate_flag <gate_key> — resolved fail_on flag (true/false). Absent -> false+warn.
 # gate_flag <key> — resolved boolean for a gate, parsed CANONICALLY.
@@ -254,7 +246,109 @@ gate_flag() {
 	printf '%s' "$_n"
 }
 
-MODE=$(env_get "SENTINEL_SHIELD_MODE"); [ -n "$MODE" ] || MODE="unknown"
+# MODE is a POLICY ENUM, not display metadata: strict/regulated trigger evidence-integrity
+# preconditions, so an unvalidated value ("unknown", a typo, a case variant) silently selected
+# a weaker state than the product defines and enforcement could still report success under it.
+MODE=$(env_get "SENTINEL_SHIELD_MODE")
+case "$MODE" in
+	report-only | baseline | strict | regulated) ;;
+	'') die_cfg "gates env declares no SENTINEL_SHIELD_MODE. The adoption mode selects the evidence preconditions; it is never inferred ($GATES_ENV_FILE)" ;;
+	*) die_cfg "gates env declares SENTINEL_SHIELD_MODE='$MODE', which is not one of the canonical modes report-only|baseline|strict|regulated. An unknown mode is a configuration error, never a weaker custom state ($GATES_ENV_FILE)" ;;
+esac
+
+# The env file and the resolver's JSON artifact must agree. A hand-edited env claiming
+# report-only next to a strict resolution (or vice versa) is contradictory policy.
+_gates_json="$(dirname "$GATES_ENV_FILE")/sentinel-shield-gates.json"
+# The reconciliation below is what makes the key check AUTHORITATIVE — the lexical scan
+# accepts any SENTINEL_SHIELD_FAIL_ON_* / _PROJECT_* name, so without the resolver artifact a
+# typo like SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO is simply an unknown key nothing rejects.
+# Treating the artifact as optional therefore meant that CORRUPTING it removed the check
+# entirely, which is why a malformed artifact is refused below.
+#
+# ABSENT is a different case and is deliberately NOT refused, in any mode. `--format env` is a
+# supported resolution flow (asserted by tests/prod/288 and documented in
+# docs/regulated-dry-run.md), so an absent artifact means "the env-only flow", not "the
+# artifact was removed". Its key set is still validated — not by the reconciliation below,
+# which has nothing to compare against, but against the gate registry read out of
+# resolve-gates.sh itself, immediately below.
+#
+# What env-only does NOT get is the mode/value agreement check: nothing can detect an env file
+# whose recorded mode or gate values differ from the resolution it claims to come from,
+# because the other side of that comparison is the file that is missing. Callers who need that
+# assurance resolve with `--format all` — which is what every shipped template does.
+#
+# A MALFORMED artifact is never a reason to fall back to the env file alone: corrupting the
+# file would otherwise remove the reconciliation below.
+if [ -f "$_gates_json" ] && ! jq -e . "$_gates_json" >/dev/null 2>&1; then
+	die_cfg "'$_gates_json' is not valid JSON. A malformed resolver artifact is a configuration error, never a reason to fall back to the env file alone — regenerate it with scripts/resolve-gates.sh."
+fi
+# When the JSON is ABSENT (the documented `--format env` flow), the key set still has to be
+# authoritative: the lexical scan accepts ANY SENTINEL_SHIELD_FAIL_ON_* name, so a typo like
+# SENTINEL_SHIELD_FAIL_ON_SECRETS_TYPO would simply be an unknown key nothing rejects. The
+# canonical list is read from the RESOLVER ITSELF (its FAIL_ON_KEYS declaration), so this
+# check cannot drift from the producer and no second copy is maintained here.
+if [ ! -f "$_gates_json" ]; then
+	_reg_tmp=$(mktemp); _envk_tmp=$(mktemp)
+	sed -n 's/^FAIL_ON_KEYS="\(.*\)"$/\1/p' "$SCRIPT_DIR/resolve-gates.sh" 2>/dev/null |
+		tr ' ' '\n' | sed '/^$/d' | tr 'a-z' 'A-Z' | sed 's/^/SENTINEL_SHIELD_FAIL_ON_/' | sort > "$_reg_tmp"
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_FAIL_ON_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_envk_tmp"
+	if [ -s "$_reg_tmp" ]; then
+		_unknown=$(grep -Fxv -f "$_reg_tmp" "$_envk_tmp" 2>/dev/null || true)
+		rm -f "$_reg_tmp" "$_envk_tmp"
+		[ -z "$_unknown" ] || die_cfg "gates env declares gate flag(s) that are not in the engine's gate registry: $(printf '%s' "$_unknown" | tr '\n' ' ')- a mistyped or stale flag is a configuration error ($GATES_ENV_FILE)"
+	else
+		rm -f "$_reg_tmp" "$_envk_tmp"
+		die_cfg "could not read the canonical gate registry from '$SCRIPT_DIR/resolve-gates.sh'; refusing to accept an unvalidated gate-flag set"
+	fi
+fi
+if [ -f "$_gates_json" ] && jq -e . "$_gates_json" >/dev/null 2>&1; then
+	_jmode=$(jq -r '(.mode // .adoption_mode // "")' "$_gates_json")
+	if [ -n "$_jmode" ] && [ "$_jmode" != "$MODE" ]; then
+		die_cfg "gate resolution disagrees with itself: '$GATES_ENV_FILE' says mode='$MODE' but '$_gates_json' says '$_jmode'. Regenerate both with scripts/resolve-gates.sh."
+	fi
+	# The resolver's JSON is the authoritative gate set, so a typo'd or stale FAIL_ON_ key is
+	# detectable without maintaining a second copy of the list here. POSIX sh: temp files, no
+	# process substitution.
+	_gk_tmp=$(mktemp); _ge_tmp=$(mktemp)
+	jq -r '(.gates // .fail_on // {}) | keys[] | "SENTINEL_SHIELD_FAIL_ON_" + (. | ascii_upcase)' "$_gates_json" 2>/dev/null | sort > "$_gk_tmp"
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_FAIL_ON_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_ge_tmp"
+	if [ -s "$_gk_tmp" ]; then
+		_extra=$(grep -Fxv -f "$_gk_tmp" "$_ge_tmp" 2>/dev/null || true)
+		_absent=$(grep -Fxv -f "$_ge_tmp" "$_gk_tmp" 2>/dev/null || true)
+		rm -f "$_gk_tmp" "$_ge_tmp"
+		if [ -n "$_extra" ]; then
+			die_cfg "gates env declares gate flag(s) the resolver does not know: $(printf '%s' "$_extra" | tr '\n' ' ')- a typo or a stale flag is a configuration error ($GATES_ENV_FILE)"
+		fi
+		if [ -n "$_absent" ]; then
+			die_cfg "gates env is missing resolver gate flag(s): $(printf '%s' "$_absent" | tr '\n' ' ')- regenerate it with scripts/resolve-gates.sh ($GATES_ENV_FILE)"
+		fi
+	else
+		rm -f "$_gk_tmp" "$_ge_tmp"
+	fi
+	_jbad=$(jq -r --arg env "$GATES_ENV" '
+		[ (.gates // .fail_on // {}) | to_entries[]
+		  | .key as $k | (.value | tostring) as $v
+		  | ("SENTINEL_SHIELD_FAIL_ON_" + ($k | ascii_upcase)) as $ek
+		  | select(($env | test("(^|\n)" + $ek + "=" + $v + "($|\n)")) | not)
+		  | $k ] | join(" ")' "$_gates_json" 2>/dev/null || printf '')
+	[ -z "$_jbad" ] || die_cfg "gate flags disagree between '$GATES_ENV_FILE' and '$_gates_json' for: $_jbad. Regenerate both with scripts/resolve-gates.sh."
+	# PROJECT_* metadata gets the same treatment: the lexical allowlist accepts any
+	# SENTINEL_SHIELD_PROJECT_* name, so an unknown one used to pass silently.
+	_pk_tmp=$(mktemp)
+	printf '%s\n' "$GATES_ENV" | sed -n 's/^\(SENTINEL_SHIELD_PROJECT_[A-Z0-9_]*\)=.*/\1/p' | sort > "$_pk_tmp"
+	# The canonical set is what resolve-gates.sh actually emits — read from the resolver
+	# script itself so this list cannot drift from the producer.
+	_pk_known=$(mktemp)
+	sed -n "s/^[[:space:]]*printf '\(SENTINEL_SHIELD_PROJECT_[A-Z0-9_]*\)=.*/\1/p" \
+		"$SCRIPT_DIR/resolve-gates.sh" 2>/dev/null | sort -u > "$_pk_known"
+	if [ ! -s "$_pk_known" ]; then
+		printf '%s\n' SENTINEL_SHIELD_PROJECT_NAME SENTINEL_SHIELD_PROJECT_TYPE \
+			SENTINEL_SHIELD_PROJECT_CRITICALITY SENTINEL_SHIELD_PROJECT_OWNER | sort > "$_pk_known"
+	fi
+	_punknown=$(grep -Fxv -f "$_pk_known" "$_pk_tmp" 2>/dev/null || true)
+	rm -f "$_pk_tmp" "$_pk_known"
+	[ -z "$_punknown" ] || die_cfg "gates env declares unknown project metadata key(s): $(printf '%s' "$_punknown" | tr '\n' ' ')- a mistyped or stale metadata key is a configuration error ($GATES_ENV_FILE)"
+fi
 PROJ_NAME=$(env_get "SENTINEL_SHIELD_PROJECT_NAME"); [ -n "$PROJ_NAME" ] || PROJ_NAME="unknown"
 PROJ_TYPE=$(env_get "SENTINEL_SHIELD_PROJECT_TYPE"); [ -n "$PROJ_TYPE" ] || PROJ_TYPE="unknown"
 PROJ_CRIT=$(env_get "SENTINEL_SHIELD_PROJECT_CRITICALITY"); [ -n "$PROJ_CRIT" ] || PROJ_CRIT="unknown"
@@ -321,9 +415,11 @@ done
 #     enforce it would break a documented capability rather than close a hole;
 #   * a run where even one scanner produced pass/findings/fail/warn proceeds to the normal
 #     gates, which is where real findings are judged.
-# Residual gap, stated plainly rather than papered over: a caller who hand-writes
-# `"tools": {}` still bypasses this. Closing that needs the evidence-completeness policy
-# work tracked separately — it is not a hotfix-sized change.
+# CLOSED (was: "a caller who hand-writes `\"tools\": {}` still bypasses this"). Omission is
+# not an external-evidence contract: a summary with NO tools proves nothing ran, which is
+# exactly the state strict/regulated must refuse. An external pipeline that produces its own
+# evidence declares it positively — the tools object lists what ran — rather than by leaving
+# the object empty.
 case "$MODE" in
 	strict | regulated)
 		_evi=$(jq -r '
@@ -341,6 +437,15 @@ case "$MODE" in
 			log_error "  An unparseable summary is untrusted evidence, never a clean result."
 			die_cfg "refusing to certify '$MODE' from a summary that cannot be read"
 		fi
+		if [ "$_evi" = "no-tools" ]; then
+			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): '$SUMMARY' declares an EMPTY tools object."
+			log_error "  An empty tools object is an ABSENCE of evidence, not an external-evidence contract:"
+			log_error "  nothing in it states that any scanner, test, architecture or quality producer ran."
+			log_error "  Build the summary with scripts/build-security-summary.sh --profile <name> (internal"
+			log_error "  producers), or have your external pipeline declare each producer and its status in"
+			log_error "  .tools — see docs/security-summary-schema.md."
+			die_cfg "refusing to certify '$MODE' from a summary that declares no producers"
+		fi
 		if [ "$_evi" = "none" ]; then
 			log_error "NO_EVIDENCE_FOR_$(upper "$MODE"): every tool in this summary reports a non-evidence status."
 			log_error "  '$SUMMARY' lists $(jq -r '(.tools // {}) | length' "$SUMMARY" 2>/dev/null) tool(s) and NOT ONE of them ran:"
@@ -352,7 +457,15 @@ case "$MODE" in
 		;;
 esac
 
-# Strict mode: validate optional-but-recommended structure.
+# Complete structural validation is MANDATORY for every enforcing mode. It used to run only
+# when the caller passed --strict-summary, so a workflow that forgot the flag enforced
+# strict/regulated with WEAKER validation than an optional CLI option provided — and the flag
+# name suggested it belonged to the product's `strict` mode, which it never did.
+# report-only keeps the flag as an opt-in: it is a visibility mode whose summary may be the
+# explicitly non-production fallback.
+case "$MODE" in
+	baseline | strict | regulated) STRICT_SUMMARY=1 ;;
+esac
 if [ "$STRICT_SUMMARY" -eq 1 ]; then
 	log_info "strict-summary: validating optional structure (source, evidence, tool statuses)"
 	_ver=$(jqr '.version')
@@ -511,6 +624,11 @@ eval_count_gate() {
 	# builder SUMS across collectors — one negative can cancel another scanner's real
 	# findings to zero.
 	if [ "$_val" = "null" ]; then
+		# NOTE: an ENABLED gate whose summary key is ABSENT is still read as 0 here. That is
+		# issue #219 (evidence-contract negotiation) and is NOT fixed in this change: closing
+		# it requires the engine's own fixtures and the shipped example to be migrated to the
+		# current gate contract first, which is a separate, larger change. It is called out
+		# rather than silently left behind.
 		_val=0
 	else
 		case "$_val" in
@@ -543,7 +661,19 @@ UD_TOTAL=0; UD_ACCEPTED=0; UD_UNACCEPTED=0; UD_SCOPE="none"; UD_DETAIL="[]"
 eval_unsafe_docker() {
 	_key="unsafe_docker"
 	_flag=$(gate_flag "$_key")
-	_val=$(jqr ".summary.$_key"); case "$_val" in '' | *[!0-9]*) _val=0 ;; esac
+	# Use the SAME strict parser as every other count gate. This function kept the old
+	# coercion, so a negative, fractional, string, boolean or unreadable unsafe_docker count
+	# became a clean 0 and the gate recorded `pass` — the exact fail-open the generic
+	# evaluator had already closed.
+	_val=$(jqr ".summary.$_key")
+	if [ "$_val" = "null" ]; then
+		_val=0
+	else
+		case "$_val" in
+			'' | *[!0-9]*)
+				die_cfg "summary.unsafe_docker must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
+		esac
+	fi
 	UD_TOTAL=$_val
 	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
 	if [ "$_val" -eq 0 ]; then add_eval "$_key" true 0 pass; return; fi
