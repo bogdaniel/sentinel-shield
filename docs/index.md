@@ -83,6 +83,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`evidence-contribution-guide.md`](evidence-contribution-guide.md) — evidence contribution rules **[reference]**
 - [`scanner-maturity-policy.md`](scanner-maturity-policy.md) — maturity labels + promotion/demotion **[reference]**
 - [`live-validation-playbook.md`](live-validation-playbook.md) — ci-validated → live-validated on a real consumer **[reference]**
+- [`local-validation-lanes.md`](local-validation-lanes.md) — the two environments a branch must pass locally **[reference]**
 - [`public-adoption-kit.md`](public-adoption-kit.md) — one-stop adoption entry point **[reference]**
 - [`external-adoption-test.md`](external-adoption-test.md) — author-independent adoption proof **[reference]**
 - [`severity-normalization.md`](severity-normalization.md) — cross-scanner severity spec **[reference]**

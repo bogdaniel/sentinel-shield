@@ -34,9 +34,29 @@ COLL="$ROOT/scripts/collectors"
 # gate <summary> <mode> — resolve gates for <mode>, enforce, echo the exit code.
 gate() {
 	sh "$RESOLVE" --mode "$2" --output-dir "$WORK/g" --format env >/dev/null 2>&1
-	sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
-		--output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	if [ -n "${3:-}" ]; then
+		sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
+			--attestation "$3" --output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	else
+		sh "$ENFORCE" --gates-env "$WORK/g/sentinel-shield-gates.env" --summary "$1" \
+			--output-dir "$WORK/g" --format json >/dev/null 2>&1 && printf 0 || printf '%s' "$?"
+	fi
 }
+# att_for <summary> <out> — an attestation record bound to <summary> as it exists on disk.
+# regulated no longer accepts an `.attestation` object embedded in the summary it is gating:
+# whoever writes the summary could write `verified: true` into it, and a document cannot bind
+# its own digest. The record therefore comes from outside, via --attestation.
+att_for() {
+	_ad=$(sha256sum "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_ad" ] || _ad=$(shasum -a 256 "$1" | awk '{print $1}')
+	jq -n --arg d "sha256:$_ad" \
+		--arg r "$(jq -r '.source.repository // ""' "$1")" \
+		--arg c "$(jq -r '.source.commit // ""' "$1")" \
+		'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+		  verifier:"test", artifact:"summary", artifact_digest:$d,
+		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$2"
+}
+
 # cstat <collector> <json> — run a collector over inline JSON, echo "status:key=value...".
 cstat() {
 	printf '%s' "$2" > "$WORK/in.json"
@@ -49,7 +69,14 @@ cstat() {
 # zeros into a pristine document. sbom + release-evidence are staged so those two gates
 # cannot be what fails — the ONLY thing under test is "no scanner ran".
 E="$WORK/empty"; mkdir -p "$E/raw" "$E/rep"
-sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
+# Pin the commit on BOTH sides, exactly as scripts/self-test.sh pins its own fixtures to
+# ST_FIXTURE_COMMIT. Left unpinned, the builder resolves the commit from the environment:
+# `unknown` locally (so the manifest's commit binding is never compared) and a real SHA under
+# Actions (so it is). That difference is what made this fixture pass locally and fail in CI.
+# Pinning makes the binding EXERCISED in every environment rather than only in CI.
+FIXTURE_COMMIT=0123456789abcdef0123456789abcdef01234567
+sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t \
+	--commit "$FIXTURE_COMMIT" >/dev/null 2>&1
 # Evidence is VALIDATED now (#237), so staging empty files no longer stages evidence —
 # write a real SPDX document and a real attestation, otherwise the two gates under
 # exclusion would be exactly what fails.
@@ -63,11 +90,21 @@ printf '# Release evidence\n\nProduced by the 266 fixture.\nScope: engine self-t
 # manifest a real handoff would produce, so the artifacts are attributed as well as valid.
 _msha() { ss_sha256_file "$1" 2>/dev/null || printf ''; }
 . "$ROOT/scripts/lib/sentinel-shield-common.sh" 2>/dev/null || true
+# The manifest must name the commit the summary records, or the artifacts are unattributed:
+# evidence that names no commit, produced by a run that has one, is replayed evidence.
 jq -n --arg s "$(_msha "$E/rep/sbom.spdx.json")" --arg r "$(_msha "$E/rep/release-evidence.md")" \
-	'{version:"1", files:[{path:"sbom.spdx.json", sha256:$s},
-	                      {path:"release-evidence.md", sha256:$r}]}' \
+	--arg c "$FIXTURE_COMMIT" \
+	'{version:"1", commit:$c, files:[{path:"sbom.spdx.json", sha256:$s},
+	                                 {path:"release-evidence.md", sha256:$r}]}' \
 	> "$E/rep/sentinel-shield-artifact-manifest.json"
-sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
+sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t \
+	--commit "$FIXTURE_COMMIT" >/dev/null 2>&1
+# Assert the staging worked BEFORE using it. Without this, an environment that changes how
+# the builder resolves the commit turns "the fixture failed to stage evidence" into "the
+# gate under test rejected the summary" — which is how a CI-only failure read as a defect in
+# the gate rather than in the fixture.
+check "fixture staging: sbom is attributed to this run"    "$(jq -r '.evidence.sbom.verification.provenance' "$E/rep/s.json")" "verified"
+check "fixture staging: release evidence is attributed"    "$(jq -r '.evidence.release_evidence.verification.provenance' "$E/rep/s.json")" "verified"
 check_ne "zero scanners: regulated does NOT pass"        "$(gate "$E/rep/s.json" regulated)" "0"
 check_ne "zero scanners: strict does NOT pass"           "$(gate "$E/rep/s.json" strict)" "0"
 # report-only/baseline are visibility/migration modes and never claimed evidence
@@ -82,13 +119,27 @@ cp "$E/rep/s.json" "$WORK/evid.json"
 # evidence gates need. The fixture is built without one (it is about scanner evidence, not
 # applicability), so add the overlay's neutral values — otherwise the enforcer refuses it for
 # the unrelated reason that evidence gates cannot be judged without the overlay.
+# A regulated run also requires a CI-attested source (#241): a LOCAL build is
+# attestation-limited by construction, and this fixture is built locally. Stamping the
+# attestation is exactly what a real CI build does from the platform environment.
 jq '.tools.gitleaks = {"status":"pass","findings":0}
+	| .source += {commit:"0123456789abcdef0123456789abcdef01234567", repository:"example-org/example-repo",
+		ref:"refs/heads/main", event:"push", run_id:"1", run_attempt:"1",
+		trust:"github-actions-attested", attestation_version:"1"}
+	# regulated requires a VERIFIED platform attestation (the builder only ever emits
+	# `unverified`), so the fixture carries what a real attested run would.
+	| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+		repository:"example-org/example-repo", commit:"0123456789abcdef0123456789abcdef01234567",
+		workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+		run_id:"1", run_attempt:"1", artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}
 	| .summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
 		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
 		missing_architecture_evidence:false, missing_test_change_evidence:false,
 		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
 	"$WORK/evid.json" > "$WORK/evid2.json"
-check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated)" "0"
+att_for "$WORK/evid2.json" "$WORK/evid2.att.json"
+check "a summary WITH evidence still passes regulated" "$(gate "$WORK/evid2.json" regulated "$WORK/evid2.att.json")" "0"
+check "  and does NOT pass on its own embedded attestation alone" "$(gate "$WORK/evid2.json" regulated)" "2"
 
 # A hand-built summary with NO producers cannot certify an assurance mode. This was the
 # documented residual gap ("a caller who hand-writes \"tools\": {} still bypasses this"):
@@ -185,7 +236,11 @@ jq '.summary.secrets = 5' "$S/base.json" > "$S/secrets.json"
 # "TRUE" is a canonical spelling: the gate must be ENFORCED (and therefore fail on 5
 # secrets), not silently skipped as it was when compared literally against "true".
 sed 's/^SENTINEL_SHIELD_FAIL_ON_SECRETS=.*/SENTINEL_SHIELD_FAIL_ON_SECRETS=TRUE/' "$GENV" > "$WORK/g/upper.env"
+# This block is about the FAIL_ON_ flag SPELLING, not about provenance, so it supplies the
+# attestation regulated now requires rather than tripping over it first.
+att_for "$S/secrets.json" "$WORK/g/secrets.att.json"
 sh "$ENFORCE" --gates-env "$WORK/g/upper.env" --summary "$S/secrets.json" \
+	--attestation "$WORK/g/secrets.att.json" \
 	--output-dir "$WORK/g" --format json >/dev/null 2>&1 && _rc=0 || _rc=$?
 check_ne "FAIL_ON_SECRETS=TRUE does not silently skip the gate" "$_rc" "0"
 if [ -f "$WORK/g/sentinel-shield-enforcement.json" ]; then

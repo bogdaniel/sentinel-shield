@@ -46,6 +46,60 @@
         },
         "workflow": {
           "type": "string"
+        },
+        "attestation_version": {
+          "type": "string",
+          "description": "Source-attestation version. \"1\" adds repository/ref/event/run identity, a trust classification, and a digest binding the attestation to the reports the summary was built from."
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "owner/name. Derived from GITHUB_REPOSITORY in CI; a conflicting CLI value fails the build."
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Full ref, derived from GITHUB_REF in CI."
+        },
+        "event": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Triggering event, derived from GITHUB_EVENT_NAME in CI."
+        },
+        "run_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "CI run id. Null for a local build, which may not claim one."
+        },
+        "run_attempt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "CI run attempt. Null for a local build."
+        },
+        "trust": {
+          "enum": [
+            "github-actions",
+            "local"
+          ],
+          "description": "How the identity was established. `local` is attestation-limited by construction and is not accepted as production evidence by `regulated`."
+        },
+        "inputs_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 over the sorted producer|report|sha256 manifest of every raw report consumed, so the identity cannot be transplanted onto another set of evidence."
         }
       }
     },

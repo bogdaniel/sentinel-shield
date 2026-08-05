@@ -239,6 +239,13 @@ CRIT="medium"
 COMMIT="unknown"
 BRANCH="master"
 WORKFLOW="local"
+# Source attestation (#241). These are DERIVED from the CI platform when it is present; a
+# CLI value that contradicts the platform is a configuration failure, not an override.
+REPOSITORY=""
+REF=""
+EVENT=""
+RUN_ID=""
+RUN_ATTEMPT=""
 STRICT_TOOLS=0
 REQUIRE_TOOLS=" "   # space-padded list for substring matching
 PROFILE_NAME=""    # when set, overlay effective-profile tool policy onto summary.tools
@@ -268,6 +275,12 @@ Options:
                           stage-blind behaviour.
   --strict-tools          Fail (exit 1) if ANY expected raw artifact is missing
   --require-tool <tool>   Fail (exit 1) if this tool's artifact is missing (repeatable)
+  --repository <owner/name>  Source repository. Derived from GITHUB_REPOSITORY in CI; a
+                          conflicting value fails closed.
+  --ref <ref>             Full ref (refs/heads/…, refs/tags/…). Derived from GITHUB_REF.
+  --event <name>          Triggering event. Derived from GITHUB_EVENT_NAME.
+  --run-id <id>           CI run id. Only meaningful in CI; refused for a local build.
+  --run-attempt <n>       CI run attempt. Only meaningful in CI.
   --require-evidence-provenance
                           Treat SBOM/release evidence that no producer manifest binds to
                           this repository/run/commit as MISSING, not merely unattributed.
@@ -299,6 +312,11 @@ while [ $# -gt 0 ]; do
 		--commit) COMMIT="${2:?--commit requires a value}"; shift 2 ;;
 		--branch) BRANCH="${2:?--branch requires a value}"; shift 2 ;;
 		--workflow) WORKFLOW="${2:?--workflow requires a value}"; shift 2 ;;
+		--repository) REPOSITORY="${2:?--repository requires a value}"; shift 2 ;;
+		--ref) REF="${2:?--ref requires a value}"; shift 2 ;;
+		--event) EVENT="${2:?--event requires a value}"; shift 2 ;;
+		--run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+		--run-attempt) RUN_ATTEMPT="${2:?--run-attempt requires a value}"; shift 2 ;;
 		--strict-tools) STRICT_TOOLS=1; shift ;;
 		--require-tool) REQUIRE_TOOLS="${REQUIRE_TOOLS}${2:?--require-tool requires a value} "; shift 2 ;;
 		--profile) PROFILE_NAME="${2:?--profile requires a value}"; shift 2 ;;
@@ -319,6 +337,84 @@ case "$STAGE" in
 	'' | pr | main | scheduled) ;;
 	*) log_error "--stage must be pr|main|scheduled (got '$STAGE')"; exit 2 ;;
 esac
+
+# --- source attestation (#241) -----------------------------------------------
+# `commit`, `branch` and `workflow` were free-form CLI labels defaulting to
+# `unknown`/`master`/`local`, emitted verbatim: a summary could claim any commit, and
+# nothing distinguished a real CI run from a local build asserting one.
+#
+# THE BUILDER NEVER ASSERTS TRUST. `GITHUB_*` variables are CLAIMS supplied to this process —
+# any local shell can export them — so they populate source METADATA and nothing more. The
+# emitted trust level is always `unverified`; only a separate attestation-verification step
+# (scripts/verify-source-attestation.sh) may raise it to `github-actions-attested`, and it
+# does that by verifying platform provenance, not by reading the environment.
+#
+# Because neither the CLI value nor the environment value is trusted, a disagreement between
+# them is RECORDED (both are kept, and the platform claim is reported) rather than fatal: a
+# fixture or replay build legitimately names a commit the surrounding process does not have,
+# and refusing it would only push callers to unset the variable — buying no security while
+# breaking honest use.
+ss_token_ok() { printf '%s' "$1" | LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/@+-]{0,199}$'; }
+
+# sa_claim <label> <cli-value> <platform-value> — record the value. The caller wins when it
+# supplied one; otherwise the platform claim fills it in. A disagreement is reported and
+# recorded in SA_DIVERGED.
+#
+# This assigns to SA_DIVERGED rather than echoing, because a command substitution runs in a
+# SUBSHELL — an assignment made there is discarded, which silently emptied the divergence
+# list. The resolved value comes back in SA_VALUE.
+sa_claim() {
+	if [ -n "$2" ]; then
+		SA_VALUE="$2"
+		if [ -n "$3" ] && [ "$2" != "$3" ]; then
+			log_warn "source: --$1 '$2' differs from the environment claim '$3'; recording the value you passed. Neither is trusted — trust comes from attestation verification, not from either of these."
+			SA_DIVERGED="${SA_DIVERGED}${1} "
+		fi
+	else
+		SA_VALUE="$3"
+	fi
+}
+
+# Always `unverified` out of this script. See the note above.
+SOURCE_TRUST="unverified"
+SA_DIVERGED=""
+
+sa_claim repository "$REPOSITORY" "${GITHUB_REPOSITORY:-}";   REPOSITORY="$SA_VALUE"
+sa_claim ref "$REF" "${GITHUB_REF:-}";                        REF="$SA_VALUE"
+sa_claim event "$EVENT" "${GITHUB_EVENT_NAME:-}";             EVENT="$SA_VALUE"
+sa_claim run-id "$RUN_ID" "${GITHUB_RUN_ID:-}";               RUN_ID="$SA_VALUE"
+sa_claim run-attempt "$RUN_ATTEMPT" "${GITHUB_RUN_ATTEMPT:-}"; RUN_ATTEMPT="$SA_VALUE"
+if [ -n "${GITHUB_SHA:-}" ] && [ "$COMMIT" = "unknown" ]; then COMMIT="${GITHUB_SHA}"; fi
+if [ -n "${GITHUB_SHA:-}" ] && [ "$COMMIT" != "unknown" ] && [ "$COMMIT" != "${GITHUB_SHA}" ]; then
+	log_warn "source: --commit '$COMMIT' differs from the environment claim '${GITHUB_SHA}'; recording the value you passed. Neither is trusted — a summary is bound to a commit by attestation verification, not by this field."
+	SA_DIVERGED="${SA_DIVERGED}commit "
+fi
+
+# A COMMIT is either a full 40-hex SHA or the explicit non-claim `unknown`. An abbreviated
+# or invented commit is neither, and must not look like provenance.
+if [ "$COMMIT" != "unknown" ]; then
+	printf '%s' "$COMMIT" | grep -Eq '^[0-9a-fA-F]{40}$' \
+		|| die_cfg "--commit must be a full 40-hex commit SHA or the literal 'unknown' (got '$COMMIT'); an abbreviated or invented commit is not provenance"
+	COMMIT=$(printf '%s' "$COMMIT" | tr 'A-F' 'a-f')
+fi
+if [ -n "$REPOSITORY" ]; then
+	case "$REPOSITORY" in
+		*/*) ss_token_ok "$REPOSITORY" || die_cfg "--repository '$REPOSITORY' is not a safe owner/name identifier" ;;
+		*) die_cfg "--repository must be owner/name (got '$REPOSITORY')" ;;
+	esac
+fi
+for _sv in "branch:$BRANCH" "workflow:$WORKFLOW" "ref:$REF" "event:$EVENT"; do
+	_sn=${_sv%%:*}; _svv=${_sv#*:}
+	if [ -z "$_svv" ]; then continue; fi
+	ss_token_ok "$_svv" || die_cfg "--$_sn '$_svv' contains characters that cannot appear in a ref/label"
+done
+for _sn in run-id run-attempt; do
+	if [ "$_sn" = "run-id" ]; then _svv="$RUN_ID"; else _svv="$RUN_ATTEMPT"; fi
+	if [ -z "$_svv" ]; then continue; fi
+	case "$_svv" in *[!0-9]*) die_cfg "--$_sn must be numeric (got '$_svv')" ;; esac
+done
+# A run id is metadata like everything else here; it confers nothing, because the trust level
+# this script emits is always `unverified`.
 command_exists jq || die_cfg "jq is required but was not found. Install jq."
 
 REPORTS_DIR=$(dirname -- "$OUTPUT")
@@ -1249,6 +1345,9 @@ fi
 STAGE_DIR=$(mktemp -d "$REPORTS_DIR/.security-summary.stage.XXXXXX") \
 	|| die_cfg "could not create a staging directory under $REPORTS_DIR"
 STAGED="$STAGE_DIR/security-summary.json"
+# One digest over the sorted producer|path|sha256 manifest: the source attestation is bound
+# to the exact evidence this summary was built from (#241).
+INPUTS_DIGEST=$(printf '%s' "$INPUT_MANIFEST" | LC_ALL=C sort | ss_sha256_stdin 2>/dev/null || printf '')
 INPUTS_JSON=$(printf '%s' "$INPUT_MANIFEST" | jq -R -s '
 	split("\n") | map(select(length > 0) | split("\t"))
 	| map({ producer: .[0], report: .[1], sha256: .[2] })')
@@ -1264,6 +1363,10 @@ jq -n \
 	--arg gen "$TS" \
 	--arg pname "$PNAME" --arg ptype "$PTYPE" --arg crit "$CRIT" \
 	--arg commit "$COMMIT" --arg branch "$BRANCH" --arg workflow "$WORKFLOW" \
+	--arg repository "$REPOSITORY" --arg ref "$REF" --arg event "$EVENT" \
+	--arg run_id "$RUN_ID" --arg run_attempt "$RUN_ATTEMPT" --arg trust "$SOURCE_TRUST" \
+	--arg diverged "$SA_DIVERGED" \
+	--arg inputs_digest "$INPUTS_DIGEST" \
 	--argjson ms "$MS" --argjson mr "$MR" \
 	--argjson sp "$SP" --argjson rp "$RP" \
 	--arg sbom_path "$SBOM_PATH" --arg rel_path "$RELEASE_PATH" \
@@ -1291,7 +1394,24 @@ jq -n \
 		stage: (if $stage == "" then null else $stage end),
 		project: { name: $pname, type: $ptype, criticality: $crit },
 		generated_at: $gen,
-		source: { commit: $commit, branch: $branch, workflow: $workflow },
+		# Source ATTESTATION (#241), not source labels. `trust` says how much of this was
+		# derived from a CI platform rather than asserted by the caller; `inputs_digest`
+		# binds it to the exact raw reports this summary was built from, so the identity
+		# cannot be transplanted onto another set of evidence.
+		source: { commit: $commit, branch: $branch, workflow: $workflow,
+			attestation_version: "1",
+			repository: (if $repository == "" then null else $repository end),
+			ref: (if $ref == "" then null else $ref end),
+			event: (if $event == "" then null else $event end),
+			run_id: (if $run_id == "" then null else $run_id end),
+			run_attempt: (if $run_attempt == "" then null else $run_attempt end),
+			# ALWAYS "unverified" from the builder. Only scripts/verify-source-attestation.sh
+			# may raise this, and only by verifying platform provenance.
+			trust: $trust,
+			# Fields whose CLI value and environment claim disagreed. Neither is trusted, so
+			# the disagreement is recorded rather than resolved here.
+			diverged_claims: ($diverged | split(" ") | map(select(length > 0))),
+			inputs_digest: (if $inputs_digest == "" then null else $inputs_digest end) },
 		summary: ($counts
 			+ { missing_sbom: $ms, missing_release_evidence: $mr }
 			# expired_exceptions has TWO independent sources and both must survive

@@ -14,6 +14,12 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 ENFORCE="$ROOT/scripts/enforce-gates.sh"
+# `regulated` requires an INDEPENDENT source-attestation record (a summary cannot attest to
+# itself, and cannot bind its own digest). The helper builds one bound to the summary being
+# enforced; the enforcer still checks it in full.
+# shellcheck source=tests/lib/attestation.sh
+. "$ROOT/tests/lib/attestation.sh"
+
 RESOLVE="$ROOT/scripts/resolve-gates.sh"
 MIGRATE="$ROOT/scripts/migrate-accepted-risks.sh"
 SCHEMA="$ROOT/schemas/accepted-risks-v2.schema.json"
@@ -48,7 +54,7 @@ v2() {
 doc() { printf '%s' "$1" > "$WORK/ar.json"; }
 enf() {
 	_c=0
-	sh "$ENFORCE" --gates-env "$WORK/out/sentinel-shield-gates.env" --summary "$WORK/s.json" \
+	sh "$ENFORCE" --gates-env "$WORK/out/sentinel-shield-gates.env" --summary "$WORK/s.json" $(ss_att "$WORK/s.json") \
 		--accepted-risks "$WORK/ar.json" --output-dir "$WORK/out" --format json >"$WORK/log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }

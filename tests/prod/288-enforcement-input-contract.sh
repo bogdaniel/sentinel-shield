@@ -34,7 +34,16 @@ mkcase() {
 	_d="$WORK/$1"; mkdir -p "$_d"
 	sh "$RESOLVE" --mode "$2" --output-dir "$_d" --format all >/dev/null 2>&1
 	# Evidence-bearing: strict/regulated legitimately refuse a summary with no producers.
-	jq '.tools = {"gitleaks":{"status":"pass"},"tests":{"status":"pass"}}' \
+	# regulated additionally requires a VERIFIED platform attestation (#278), so a fixture
+	# aimed at the INPUT contract carries what a real attested run would produce.
+	jq '.tools = {"gitleaks":{"status":"pass"},"tests":{"status":"pass"}}
+		| .source.trust = "github-actions-attested"
+		| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+			repository:(.source.repository // "example-org/example-repo"),
+			commit:(.source.commit // "0123456789abcdef0123456789abcdef01234567"),
+			workflow:"sentinel-shield", workflow_sha:"1111111111111111111111111111111111111111",
+			run_id:"1", run_attempt:"1",
+			artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
 		"$ROOT/templates/security-summary.example.json" > "$_d/s.json"
 	printf '%s' "$_d"
 }
@@ -42,8 +51,26 @@ mkcase() {
 enf() {
 	_d="$1"; shift
 	_c=0
+	# regulated requires an INDEPENDENT attestation record: a summary cannot attest to itself,
+	# and it cannot carry its own digest. Bind it HERE rather than in mkcase, because these
+	# cases mutate s.json afterwards and a record bound to the pre-mutation bytes would
+	# (correctly) be rejected for attesting a different artifact — which is not what any of
+	# these assertions is about. tests/prod/296 covers the mismatch case deliberately.
+	_att=""
+	if jq -e . "$_d/s.json" >/dev/null 2>&1; then
+		_ad=$(sha256sum "$_d/s.json" 2>/dev/null | awk '{print $1}')
+		[ -n "$_ad" ] || _ad=$(shasum -a 256 "$_d/s.json" | awk '{print $1}')
+		jq -n --arg d "sha256:$_ad" \
+			--arg r "$(jq -r '.source.repository // ""' "$_d/s.json")" \
+			--arg c "$(jq -r '.source.commit // ""' "$_d/s.json")" \
+			'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+			  verifier:"test", artifact:"s.json", artifact_digest:$d,
+			  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$_d/att.json" 2>/dev/null \
+			&& _att="--attestation $_d/att.json"
+	fi
+	# shellcheck disable=SC2086  # $_att is a controlled two-token flag, deliberately unquoted
 	sh "$ENFORCE" --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/s.json" \
-		--output-dir "$_d" --format json "$@" >"$_d/out.log" 2>&1 || _c=$?
+		$_att --output-dir "$_d" --format json "$@" >"$_d/out.log" 2>&1 || _c=$?
 	printf '%s' "$_c"
 }
 

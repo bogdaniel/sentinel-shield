@@ -18,6 +18,30 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# st_attestation <summary> <out> — echo `--attestation <out>` after writing a record bound to
+# <summary> as it exists on disk, or nothing if one cannot be built.
+#
+# `regulated` requires a verified source attestation supplied SEPARATELY from the summary:
+# whoever writes a summary could otherwise write `verified: true` into it, and a document
+# cannot bind its own sha256 because writing the digest in changes it. In production the record
+# comes from scripts/verify-source-attestation.sh, anchored on `gh attestation verify`; the
+# self-test cannot reach that anchor offline, so it synthesises one. The enforcer still checks
+# the format, the verified flag, the bound identity and the digest equality.
+st_attestation() {
+	command -v jq >/dev/null 2>&1 || return 0
+	jq -e . "$1" >/dev/null 2>&1 || return 0
+	_sta=$(sha256sum "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_sta" ] || _sta=$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}')
+	[ -n "$_sta" ] || return 0
+	jq -n --arg d "sha256:$_sta" \
+		--arg r "$(jq -r '.source.repository // "example-org/example-repo"' "$1")" \
+		--arg c "$(jq -r '.source.commit // "0123456789abcdef0123456789abcdef01234567"' "$1")" \
+		'{attestation:"sentinel-shield/source-attestation@1", verified:true,
+		  verifier:"self-test", artifact:"summary", artifact_digest:$d,
+		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$2" 2>/dev/null || return 0
+	printf -- '--attestation %s' "$2"
+}
 cd "$ROOT"
 
 command_exists jq || { log_error "jq is required for the self-test"; exit 2; }
@@ -58,6 +82,24 @@ st_evidence_overlay() {
 			missing_architecture_evidence:false, missing_test_change_evidence:false,
 			missing_behavior_specification:false, missing_acceptance_evidence:false}' \
 		"$1" > "$1.overlay" && mv "$1.overlay" "$1"
+}
+
+# st_attest <summary.json>
+# `strict` requires the evidence to be BOUND to a repository and a full commit, and
+# `regulated` additionally requires a VERIFIED platform attestation — the builder only ever
+# emits `unverified`. Fixtures whose subject is WHICH GATE FIRES carry what a real attested
+# run produces, so a provenance refusal cannot mask the mapping under test.
+st_attest() {
+	jq '.source.repository = "example-org/example-repo"
+		| .source.commit = "0123456789abcdef0123456789abcdef01234567"
+		| .source.trust = "github-actions-attested"
+		| .attestation = {verified:true, issuer:"https://token.actions.githubusercontent.com",
+			repository:"example-org/example-repo",
+			commit:"0123456789abcdef0123456789abcdef01234567",
+			workflow:"self-test", workflow_sha:"1111111111111111111111111111111111111111",
+			run_id:"1", run_attempt:"1",
+			artifact_digest:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}' \
+		"$1" > "$1.attested" && mv "$1.attested" "$1"
 }
 
 SUB="${1:-all}"
@@ -163,7 +205,7 @@ run_lifecycle() {
 		--project-name proxyflux \
 		--project-type laravel \
 		--criticality high \
-		--commit testcommit \
+		--commit 0123456789abcdef0123456789abcdef01234567 \
 		--branch master \
 		--workflow self-test
 
@@ -216,7 +258,7 @@ run_fallback() {
 	sh scripts/build-security-summary.sh \
 		--raw-dir "$_work/raw" \
 		--output "$_work/real-summary.json" \
-		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+		--project-name selftest --commit unknown --workflow self-test >/dev/null 2>&1
 
 	_ex="templates/security-summary.example.json"
 	cp "$_ex" "$_work/copied.json"
@@ -291,15 +333,21 @@ run_build_case() {
 	mkdir -p "$_d/raw"
 	printf '%s' "$5" > "$_d/raw/$4"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
-		--project-name selftest --commit c --workflow self-test >/dev/null 2>&1
+		--project-name selftest --commit unknown --workflow self-test >/dev/null 2>&1
 	# This case is about the COLLECTOR -> counter -> gate mapping, so the summary is built
 	# without --profile. The evidence gates need the tool-policy overlay to judge applicability
 	# and the enforcer refuses to certify strict/regulated without it, so add the overlay's
 	# neutral values here rather than letting an unrelated refusal mask the mapping under test.
+	# strict/regulated require evidence BOUND to a repository and a full commit (a claim is
+	# enough for strict; it is reported as attestation-limited). The fixture is built without a
+	# checkout, so bind it here rather than letting an unrelated provenance refusal mask the
+	# collector -> counter -> gate mapping this case is about.
 	jq '.summary += {required_tool_failures:0, tool_configuration_failures:0, tool_execution_failures:0,
 		missing_coverage_evidence:false, missing_test_evidence:false, empty_test_suite:false,
 		missing_architecture_evidence:false, missing_test_change_evidence:false,
-		missing_behavior_specification:false, missing_acceptance_evidence:false}' \
+		missing_behavior_specification:false, missing_acceptance_evidence:false}
+		| .source.repository = "example-org/example-repo"
+		| .source.commit = "0123456789abcdef0123456789abcdef01234567"' \
 		"$_d/security-summary.json" > "$_d/s.tmp" && mv "$_d/s.tmp" "$_d/security-summary.json"
 	sh scripts/resolve-gates.sh --mode "$2" --output-dir "$_d" --format env >/dev/null 2>&1
 	expect_exit_code "$1" "$3" \
@@ -496,8 +544,9 @@ run_third_party() {
 	mkdir -p "$_d/raw"
 	cp templates/raw/third-party-semgrep.example.json "$_d/raw/third-party-semgrep.json"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
-		--project-name tp --commit c --workflow self-test >/dev/null 2>&1
+		--project-name tp --commit unknown --workflow self-test >/dev/null 2>&1
 	st_evidence_overlay "$_d/security-summary.json"
+	st_attest "$_d/security-summary.json"
 	tp_check "build -> summary carries third_party_install_script_risk" \
 		"$(jq -r '.summary.third_party_install_script_risk' "$_d/security-summary.json")" "1"
 
@@ -508,7 +557,12 @@ run_third_party() {
 
 	# 5. regulated blocks third-party findings; the four gates appear in failed_gates.
 	sh scripts/resolve-gates.sh --mode regulated --output-dir "$_d" --format env >/dev/null 2>&1
-	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
+	# regulated needs the source-attestation record supplied SEPARATELY (see st_attestation);
+	# without it the enforcer refuses the input (exit 2), which is not the question this case
+	# asks — it asks whether the third-party GATES block.
+	_tpat=$(st_attestation "$_d/security-summary.json" "$_d/att-regulated.json")
+	# shellcheck disable=SC2086
+	if sh scripts/enforce-gates.sh --gates-env "$_d/sentinel-shield-gates.env" --summary "$_d/security-summary.json" $_tpat --output-dir "$_d" --format json >/dev/null 2>&1; then _rc=0; else _rc=$?; fi
 	tp_check "regulated blocks (exit 1)" "$_rc" "1"
 	_failed=$(jq -r '[.failed_gates[]|select(startswith("third_party"))]|length' "$_d/sentinel-shield-enforcement.json")
 	tp_check "regulated: all 4 third-party gates failed" "$_failed" "4"
@@ -878,6 +932,7 @@ run_scanner_matrix() {
 	mkdir -p "$_d/eraw"; echo '{"errors":2}' > "$_d/eraw/php-syntax.json"; echo '{"summary":{"failed":1}}' > "$_d/eraw/checkov.json"; echo '{"findings":[{"x":1}]}' > "$_d/eraw/ai-security-review.json"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/eraw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
 	st_evidence_overlay "$_d/sum.json"
+	st_attest "$_d/sum.json"
 	for _m in baseline strict regulated; do
 		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
 		_E="$_d/sentinel-shield-enforcement.json"
@@ -886,7 +941,10 @@ run_scanner_matrix() {
 		# mode's verdict as this one's.
 		rm -f "$_E"
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format env --output-dir "$_d" >/dev/null 2>&1
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1 || true
+		_stat=""
+		[ "$_m" = regulated ] && _stat=$(st_attestation "$_d/sum.json" "$_d/att-$_m.json")
+		# shellcheck disable=SC2086
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" $_stat --output-dir "$_d" --format json >/dev/null 2>&1 || true
 		if [ -f "$_E" ]; then
 			eval "_e_$(echo "$_m" | tr '-' '_')=\"$(jq -r '[.evaluated_gates[]|select(.key=="iac_violations")][0].result' "$_E")|$(jq -r '[.evaluated_gates[]|select(.key=="ai_review_findings")][0].result' "$_E")\""
 		else
@@ -1539,6 +1597,10 @@ run_v023_coverage() {
 	# The refusal used to be indistinguishable from a gate failure, so "strict FAILS
 	# style+iac+medium" was green for the wrong reason: the gate was never evaluated.
 	st_evidence_overlay "$_d/sum.json"
+	# strict additionally requires the evidence to be BOUND to a repository and a full commit.
+	# This case is about WHICH GATES fire per mode, so it carries that binding rather than
+	# being refused for provenance before any gate is judged.
+	st_attest "$_d/sum.json"
 	printf 'project:\n  name: t\ngates:\n  mode: baseline\n' > "$_d/p.yaml"
 	# `pass|fail` collapsed EVERY non-zero exit to "fail", so a configuration REFUSAL (exit 2 —
 	# the summary was never judged) read identically to a gate failure. A provenance contract
@@ -1547,7 +1609,16 @@ run_v023_coverage() {
 	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
 		_em=0
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		# `regulated` requires an INDEPENDENT source-attestation record: a summary cannot attest
+		# to itself, and cannot bind its own digest. Without one the enforcer refuses the INPUT
+		# (exit 2), which is not the gate behaviour these cases are about — they ask whether a
+		# gate BLOCKS. Bind a record to the summary as it is now.
+		_emat=""
+		if [ "$1" = regulated ]; then
+			_emat=$(st_attestation "$2" "$_d/att-$1.json")
+		fi
+		# shellcheck disable=SC2086  # controlled two-token flag or empty
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" $_emat --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
 		case "$_em" in
 			0) echo pass ;;
 			1) echo fail ;;
@@ -1572,6 +1643,7 @@ run_v023_coverage() {
 	st_bind_evidence "$_d/r2"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/r2/sum2.json"
+	st_attest "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
 	cv_check "regulated FAILS dast finding" "$(enforce_mode regulated "$_d/r2/sum2.json")" "fail"
 
@@ -1725,7 +1797,13 @@ run_v024_coverage() {
 	enforce_mode() { # <mode> <summary> -> pass | fail | refused
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$1" --format env --output-dir "$_d" >/dev/null 2>&1
 		_em=0
-		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
+		# See st_attestation: regulated needs the record supplied separately, or the enforcer
+		# refuses the INPUT and the case reads as `refused` rather than answering whether the
+		# GATE blocks.
+		_emat=""
+		[ "$1" = regulated ] && _emat=$(st_attestation "$2" "$_d/att-$1.json")
+		# shellcheck disable=SC2086
+		sh "$ROOT/scripts/enforce-gates.sh" --summary "$2" --gates-env "$_d/sentinel-shield-gates.env" $_emat --output-dir "$_d" --format json >"$_d/enforce-$1.log" 2>&1 || _em=$?
 		case "$_em" in
 			0) echo pass ;;
 			1) echo fail ;;
@@ -1741,6 +1819,7 @@ run_v024_coverage() {
 	# Same as the v023 multi-violation fixture: no --profile means no overlay, and strict
 	# REFUSES rather than evaluating. The refusal used to read as a gate failure.
 	st_evidence_overlay "$_d/mv/sum.json"
+	st_attest "$_d/mv/sum.json"
 	vc_check "modes-v024 multi: baseline PASS" "$(enforce_mode baseline "$_d/mv/sum.json")" "pass"
 	vc_check "modes-v024 multi: strict FAIL" "$(enforce_mode strict "$_d/mv/sum.json")" "fail"
 	# clean: all evidence present -> every mode passes.
@@ -1749,6 +1828,7 @@ run_v024_coverage() {
 	st_bind_evidence "$_d/cl"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/cl/sum.json"
+	st_attest "$_d/cl/sum.json"
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: regulated PASS" "$(enforce_mode regulated "$_d/cl/sum.json")" "pass"
@@ -1761,6 +1841,7 @@ run_v024_coverage() {
 	st_bind_evidence "$_d/da"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t --commit "$ST_FIXTURE_COMMIT" >/dev/null 2>&1
 	st_evidence_overlay "$_d/da/sum.json"
+	st_attest "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
 	vc_check "modes-v024 dast: regulated FAIL" "$(enforce_mode regulated "$_d/da/sum.json")" "fail"
 	# repo-health scorecard fixture maps to repository_health_warnings.

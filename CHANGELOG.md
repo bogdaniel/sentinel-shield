@@ -15,6 +15,37 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Changed — the summary carries a source attestation, and the assurance modes require it (#241)
+
+- **`source` was three free-form labels.** `--commit`, `--branch` and `--workflow` were
+  accepted verbatim, defaulted to `unknown` / `master` / `local`, and emitted without any
+  validation — so a production-looking summary could claim any commit, an abbreviated or
+  invented SHA was indistinguishable from a real one, and nothing separated a real CI run
+  from a local build asserting one. `source` is now a versioned attestation: `repository`,
+  `ref`, `event`, `run_id`, `run_attempt`, `trust` and `inputs_digest` alongside the
+  existing fields.
+- **Identity is derived, then cross-checked.** In GitHub Actions every field comes from the
+  platform environment; a CLI value that **contradicts** it fails the build instead of
+  overriding it ("a summary may not be relabelled onto another commit"). `--commit` must be
+  a full 40-hex SHA or the literal `unknown`; refs, labels and events must be safe tokens;
+  run id and attempt must be numeric. A **local** build may not claim a CI run at all.
+- **`inputs_digest`** binds the attestation to the exact raw reports the summary was built
+  from, so an identity cannot be transplanted onto another set of evidence.
+- **`strict` and `regulated` now refuse an unbound summary** — no full commit, or no
+  repository, means the evidence does not say what it describes. `regulated` additionally
+  refuses `source.trust: "local"`: a local build is attestation-limited by construction, and
+  the error points at `strict` for a local assurance run. `report-only` and `baseline` keep
+  the migration tolerance.
+- **New `tests/prod/296-source-attestation.sh`** — five invented commit forms, unsafe ref and
+  label values, a non-numeric run id, a bad repository, full CI derivation, three
+  contradicting CLI values, agreement not being a conflict, a local build claiming a run, the
+  inputs digest tracking the evidence, and the enforcer matrix across baseline/strict/
+  regulated for a missing commit, an abbreviated commit, a missing repository, a local trust
+  level, a missing attestation and an unknown trust value.
+- **Migration:** shipped workflows already pass `--commit "${GITHUB_SHA}"` and run inside
+  Actions, so the attestation fills itself with no template change. A caller that passed a
+  placeholder commit must pass a real one or omit the flag.
+
 ### Fixed — evidence and exception governance are validated, not assumed (#237, #242) **[breaking: `reports/exceptions.json` must be a record set]**
 
 - **`present` is a verified state, not `test -f` (#237).** The builder set the SBOM and

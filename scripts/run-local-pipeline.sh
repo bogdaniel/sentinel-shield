@@ -545,11 +545,22 @@ fi
 
 # --- 5. build the FRESH security summary (with --profile policy overlay) ----------
 BSS_RC=0
+# A commit is a 40-hex SHA or the explicit non-claim `unknown` — never a label. `local` was
+# neither, so the summary claimed a commit that cannot exist. Use the target checkout's real
+# HEAD when there is one, and say `unknown` when there is not: a local run has no commit to
+# claim, and saying so is the honest answer rather than inventing a word.
+LP_COMMIT=$(git -C "$TARGET" rev-parse HEAD 2>/dev/null) || LP_COMMIT=""
+case "$LP_COMMIT" in
+	[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+	*) LP_COMMIT=unknown ;;
+esac
+LP_BRANCH=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null) || LP_BRANCH=""
+case "$LP_BRANCH" in '' | HEAD) LP_BRANCH=local ;; esac
 sh "$SCRIPT_DIR/build-security-summary.sh" \
 	--raw-dir "$RAW_DIR" --output "$SUMMARY" \
 	--profile "$PROFILE" --target "$TARGET" \
 	--project-name "$(basename -- "$TARGET")" --project-type "$PROFILE" \
-	--commit local --branch local --workflow local-pipeline >/dev/null 2>&1 || BSS_RC=$?
+	--commit "$LP_COMMIT" --branch "$LP_BRANCH" --workflow local-pipeline >/dev/null 2>&1 || BSS_RC=$?
 case "$BSS_RC" in
 	0) record_stage build-security-summary ok 0 ;;
 	2) record_stage build-security-summary error 2; finish 2 "config-error" "build-security-summary: config/input error" ;;

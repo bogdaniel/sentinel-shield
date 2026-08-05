@@ -285,7 +285,7 @@ eh_build_and_gate() {
 	sh "$SCRIPT_DIR/build-security-summary.sh" \
 		--raw-dir "$_w/reports/raw" --output "$_w/reports/security-summary.json" \
 		--profile "$_p" --target "$_w" $(eh_override_arg "$_w") \
-		--project-name "e2e-$_p" --project-type "$_ty" --commit e2e --workflow e2e-harness \
+		--project-name "e2e-$_p" --project-type "$_ty" --commit unknown --workflow e2e-harness \
 		>/dev/null 2>&1 || { printf 'error'; return 4; }
 	sh "$SCRIPT_DIR/resolve-gates.sh" --profile "$PROFILE_YAML" --mode baseline \
 		--output-dir "$_w/reports" --format env >/dev/null 2>&1 \

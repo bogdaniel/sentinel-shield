@@ -8,9 +8,18 @@
   },
   "generated_at": "2026-01-01T00:00:00Z",
   "source": {
-    "commit": "unknown",
-    "branch": "master",
-    "workflow": "local"
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "branch": "main",
+    "workflow": "sentinel-shield",
+    "attestation_version": "1",
+    "repository": "example-org/example-repo",
+    "ref": "refs/heads/main",
+    "event": "push",
+    "run_id": "1234567890",
+    "run_attempt": "1",
+    "trust": "unverified",
+    "inputs_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diverged_claims": []
   },
   "summary": {
     "secrets": 0,
