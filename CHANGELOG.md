@@ -15,6 +15,34 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — governance input and report output integrity (#223, #228)
+
+- **Accepted-risk records are validated as executable policy (#223).** The file was only checked
+  for "is it JSON?" and then matched with ad-hoc jq, several filters followed by `|| true` — so a
+  jq error over a malformed record produced an **empty suppression set** rather than a
+  configuration failure, hiding governance corruption. Now rejected before any record is counted
+  or matched: impossible-but-orderable dates (`9999-99-99` sorts far into the future and
+  therefore never expires), month-13 and non-canonical dates, missing or duplicate IDs, missing
+  gates, unknown statuses and scopes, non-array or wrongly-typed `files`/`rule_ids`/`components`/
+  `fingerprints`, unsafe path patterns (absolute, traversing, globbed, control characters), and an
+  **active broad record conflicting with an active finding-scoped record for the same gate**. The
+  failure names the offending record.
+- **The enforcement report set is published atomically, validated and paired (#228).** Both
+  writers redirected straight to their final path: the JSON destination was truncated before
+  generation finished and validated only *after* it had replaced the previous report, the Markdown
+  was never validated, a symlinked destination redirected the write out of the reports directory,
+  and a failure between the two formats left a JSON and a Markdown describing different runs. Both
+  are now rendered into a staging directory inside the output directory, validated there (the JSON
+  against its result/mode/failed_gates contract, the Markdown for a non-empty verdict), have
+  **every** destination proven safe before **any** is replaced, and are published by atomic rename
+  with the staging directory removed on every exit path including signals.
+- **New `tests/prod/292-governance-io-integrity.sh`** — 17 invalid governance inputs, 7 valid ones
+  that must still be accepted (including the shipped template), and the report-publication matrix:
+  both formats published, JSON/Markdown verdict agreement, no staging leftovers, symlinked JSON and
+  Markdown destinations refused with nothing written through them, a directory in place of a
+  report refused, a previous report surviving a refused publication, and single-format runs
+  publishing only what was asked for.
+
 ### Fixed — gate-evaluation correctness (#229, #230, #231, #232, #233)
 
 Five evaluators turned untrusted or contradictory evidence into a pass:

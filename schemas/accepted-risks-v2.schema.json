@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel-shield/schemas/accepted-risks-v2.schema.json",
+  "title": "Sentinel Shield accepted risks (schema v2)",
+  "description": "Accepted risks are EXECUTABLE POLICY: each record can stop a gate from failing. v2 closes every object (additionalProperties:false) because an ignored unknown field is dangerous \u2014 a field meant to NARROW an exception (a misspelled `components`, say) that is silently dropped BROADENS the suppression. Deliberate additions live in `extensions` and are informational only. v2 also requires the authorisation dates the 90/30/365 validity policy needs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "risks"
+  ],
+  "properties": {
+    "version": {
+      "const": "2",
+      "description": "Schema version. Exactly \"2\"; consumers fail closed on anything else. Legacy \"1\"/\"1.1\" files are read only under the documented migration policy and are refused by strict/regulated."
+    },
+    "generated_at": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Optional provenance stamp written by the migration tool."
+    },
+    "migrated_from": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Written by `migrate-accepted-risks.sh`. Records what this file was produced from; never hand-authored.",
+      "required": [
+        "source_version",
+        "migrated_at",
+        "source_digest"
+      ],
+      "properties": {
+        "source_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "description": "The schema version of the legacy input."
+        },
+        "migrated_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "UTC timestamp of the migration run."
+        },
+        "source_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the legacy input, so the migration can be traced to exact bytes."
+        },
+        "tool": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Producer of the migration."
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "description": "Every accepted risk. Ids must be unique; duplicates fail closed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "gate",
+          "scope",
+          "owner",
+          "reason",
+          "status",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$",
+            "minLength": 3,
+            "maxLength": 64,
+            "description": "Stable unique identity. Reported wherever the record suppresses something, so an audit can name the approval."
+          },
+          "gate": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "The gate this record may suppress. Must be one the engine declares suppressible; a never-suppressible gate fails closed."
+          },
+          "scope": {
+            "enum": [
+              "finding",
+              "gate"
+            ],
+            "description": "`finding` (default, narrow) or `gate` (broad, loudly reported). No other value is a scope."
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "superseded"
+            ],
+            "description": "Lifecycle status. Only `approved` suppresses anything. Unknown statuses fail closed."
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Accountable owner for remediating the underlying risk."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "Why the risk is accepted. An empty justification is not a justification."
+          },
+          "mitigation": {
+            "type": "string",
+            "maxLength": 4000,
+            "description": "Compensating control in place while the risk is accepted."
+          },
+          "created_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "Real calendar date (UTC) the record was authored."
+          },
+          "approved_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "Real calendar date (UTC) the exception was AUTHORISED. The validity window is measured from here; a future date fails closed. Required for approved records and, once #227 lands, must match the verified approval attestation."
+          },
+          "expires_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "Real calendar date (UTC) the acceptance ends. The EFFECTIVE expiry is the earliest of this date, the configured tightening, the mode limit and the absolute ceiling."
+          },
+          "review_at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "description": "Optional interim review date."
+          },
+          "approval": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Who authorised this record and under what authority. Editable strings here are CLAIMS; #227 replaces them with a verified platform attestation.",
+            "required": [
+              "approved_by",
+              "authority"
+            ],
+            "properties": {
+              "approved_by": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "Approver identity. Must differ from `owner` \u2014 separation of duties."
+              },
+              "authority": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "The policy, team or role under which the approval was given."
+              },
+              "reference": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "Immutable reference for the approval (PR, review or ticket URL)."
+              }
+            }
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "description": "Severity of the accepted risk."
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Free-form grouping label."
+          },
+          "scanner": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "description": "Producer whose findings this record may match."
+          },
+          "rule_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Single rule identifier to match."
+          },
+          "rule_ids": {
+            "type": "array",
+            "description": "Rule identifiers to match. Every member must be a non-empty string.",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": ""
+            },
+            "maxItems": 1000
+          },
+          "files": {
+            "type": "array",
+            "description": "Repository-relative paths. Absolute paths, traversal, globs and control characters are refused; matching is exact.",
+            "items": {
+              "type": "string",
+              "pattern": "^([.]/)?[A-Za-z0-9][A-Za-z0-9._/+-]*$",
+              "minLength": 1,
+              "maxLength": 1000,
+              "description": ""
+            },
+            "maxItems": 1000
+          },
+          "components": {
+            "type": "array",
+            "description": "Package/component identifiers to match.",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": ""
+            },
+            "maxItems": 1000
+          },
+          "fingerprints": {
+            "type": "array",
+            "description": "Exact finding fingerprints (ss-fp/1|\u2026).",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "description": ""
+            },
+            "maxItems": 1000
+          },
+          "finding_id": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Producer-native finding identifier."
+          },
+          "issue": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Tracking issue or ticket for remediation."
+          },
+          "incident": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Incident reference, when the acceptance came from one."
+          },
+          "emergency": {
+            "type": "boolean",
+            "description": "True when accepted under an emergency process. Informational: it never widens what the record matches."
+          },
+          "supersedes": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$",
+            "minLength": 3,
+            "maxLength": 64,
+            "description": "Id of the older record this one replaces. Renewal creates a NEW record; it never edits the original expiry."
+          },
+          "extensions": {
+            "type": "object",
+            "description": "The ONLY place consumer or vendor metadata may live. Keys are namespaced `vendor.example/key`. Extension data is informational: it never alters matching, suppression, status, expiry, approval or gate behaviour.",
+            "propertyNames": {
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+            },
+            "additionalProperties": true
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OPTIONAL narrowing dimension: accept only findings reported by this producer. The same advisory for the same package is commonly reported by several scanners; without this, a components+rule_id record accepts every one of them. Conjunctive with every other declared dimension."
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "As `source`, for several producers. Any-match WITHIN the list; satisfied alongside every other declared dimension."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "approved"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "approved_at"
+              ],
+              "description": "An APPROVED record must say when it was authorised: the validity window is measured from approved_at."
+            }
+          }
+        ]
+      },
+      "maxItems": 10000
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Document-level consumer/vendor metadata. Informational only.",
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+      },
+      "additionalProperties": true
+    }
+  }
+}

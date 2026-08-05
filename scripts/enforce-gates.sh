@@ -555,6 +555,315 @@ AR_FINDING_DETAIL=""   # "gate|id|rule_id|files-csv" per finding-scope record
 
 if [ -f "$ACCEPTED_RISKS_FILE" ] && [ -s "$ACCEPTED_RISKS_FILE" ]; then
 	jq -e . "$ACCEPTED_RISKS_FILE" >/dev/null 2>&1 || die_cfg "accepted-risks file is not valid JSON: $ACCEPTED_RISKS_FILE"
+
+	# --- schema version + closed-object enforcement (v2) ---------------------------------
+	# An IGNORED unknown field is dangerous in executable policy: a field meant to NARROW an
+	# exception — a misspelled `components`, a `paths` that should have been `files` — is
+	# silently dropped, and the record then matches MORE than its author intended. v2 closes
+	# every object; deliberate additions live in `extensions` and are informational only.
+	AR_SCHEMA_VERSION=$(jq -r '(.version // "") | tostring' "$ACCEPTED_RISKS_FILE")
+	case "$AR_SCHEMA_VERSION" in
+		2) AR_IS_V2=1 ;;
+		1 | 1.1)
+			AR_IS_V2=0
+			case "$MODE" in
+				strict | regulated)
+					die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares legacy schema version \"$AR_SCHEMA_VERSION\". '$MODE' requires schema v2, which closes every object so an unknown field cannot silently broaden a suppression, and which carries the authorisation dates the validity policy needs. Migrate it: sh scripts/migrate-accepted-risks.sh --input '$ACCEPTED_RISKS_FILE' --output <new-file>" ;;
+				*)
+					log_warn "accepted-risks: DEPRECATED schema version \"$AR_SCHEMA_VERSION\" in '$ACCEPTED_RISKS_FILE'. Legacy records are read in '$MODE' only, and support ends in Sentinel Shield v3. Required target: version \"2\". Migrate with: sh scripts/migrate-accepted-risks.sh --input '$ACCEPTED_RISKS_FILE' --output <new-file>. strict and regulated refuse legacy files today." ;;
+			esac ;;
+		"") die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares no schema version. The version selects how the file is interpreted; it is never inferred." ;;
+		*) die_cfg "accepted-risks '$ACCEPTED_RISKS_FILE' declares unsupported schema version \"$AR_SCHEMA_VERSION\" (known: \"2\", and legacy \"1\"/\"1.1\" under the migration policy). An unknown version is never read as the newest one." ;;
+	esac
+
+	if [ "$AR_IS_V2" -eq 1 ]; then
+		# Closed objects, strict types, and the extension grammar. Reported all at once so a
+		# fix is one edit rather than a game of whack-a-mole.
+		_arv2=$(jq -r '
+			def extkey: test("^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*/[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+			def known_top: ["version","generated_at","migrated_from","risks","extensions"];
+			def known_risk: ["id","gate","scope","status","owner","reason","mitigation",
+				"created_at","approved_at","expires_at","review_at","approval","severity",
+				"category","scanner","rule_id","rule_ids","files","components","fingerprints",
+				"source","sources",
+				"finding_id","issue","incident","emergency","supersedes","extensions"];
+			def known_approval: ["approved_by","authority","reference"];
+			[
+			  ( keys[] | select(. as $k | known_top | index($k) | not)
+			    | "unknown top-level property \"\(.)\" (deliberate additions belong under `extensions`)" ),
+			  ( (.extensions // {}) | keys[] | select(extkey | not)
+			    | "malformed extension key \"\(.)\" (expected `vendor.example/key`)" ),
+			  ( (.risks // []) | to_entries[]
+			    | .key as $i | .value as $r
+			    | if ($r | type) != "object" then "record \($i): not an object"
+			      else empty end ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( keys[] | select(. as $k | known_risk | index($k) | not)
+			        | "record \($rid): unknown property \"\(.)\" — an ignored field that was meant to NARROW this record would BROADEN the suppression; put consumer metadata under `extensions`" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( ($r.extensions // {}) | keys[] | select(extkey | not)
+			        | "record \($rid): malformed extension key \"\(.)\"" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    # approved_at is required only for an APPROVED record: a pending record has
+			    # not been approved, so demanding its approval date is incoherent.
+			    | ( ( [ "id","gate","scope","status","owner","reason","created_at","expires_at" ]
+			          + (if ($r.status // "") == "approved" then [ "approved_at" ] else [] end) )
+			        | map(select(($r[.] // null) == null or ($r[.] == ""))) ) as $missing
+			    | select(($missing | length) > 0)
+			    | ($missing | join(" ")) as $ms
+			    | "record \($rid): missing required field(s): \($ms)" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "id","gate","scope","status","owner","reason","mitigation","created_at",
+			          "approved_at","expires_at","review_at","severity","category","scanner",
+			          "rule_id","finding_id","issue","incident","supersedes" ]
+			        | map(select(($r[.] // null) != null and (($r[.] | type) != "string"))) ) as $wrong
+			    | select(($wrong | length) > 0)
+			    | ($wrong | join(" ")) as $ws
+			    | "record \($rid): field(s) [\($ws)] must be strings — a bare yes/no/number is not a string, and coercing one would change what the record means" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "rule_ids","files","components","fingerprints" ]
+			        | map(select(($r[.] // null) != null and (($r[.] | type) != "array"))) ) as $wrong
+			    | select(($wrong | length) > 0)
+			    | ($wrong | join(" ")) as $ws
+			    | "record \($rid): field(s) [\($ws)] must be arrays" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( [ "rule_ids","files","components","fingerprints" ][]
+			        | . as $f | ($r[$f] // [])[]
+			        | select((type != "string") or (length == 0))
+			        | "record \($rid): every member of `\($f)` must be a non-empty string" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.emergency // null) != null and (($r.emergency | type) != "boolean"))
+			    | "record \($rid): `emergency` must be a boolean" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.id | type) == "string" and (($r.id | test("^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$")) | not))
+			    | "record \($rid): id does not match ^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.status | type) == "string" and (([ "pending","approved","rejected","expired","superseded" ] | index($r.status)) | not))
+			    | "record \($rid): unknown status \"\($r.status)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.scope | type) == "string" and (([ "finding","gate" ] | index($r.scope)) | not))
+			    | "record \($rid): unknown scope \"\($r.scope)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.severity // null) != null and (([ "low","medium","high","critical" ] | index($r.severity)) | not))
+			    | "record \($rid): unknown severity \"\($r.severity)\"" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.approval // null) != null and (($r.approval | type) != "object"))
+			    | "record \($rid): `approval` must be an object" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid | ($r.approval // {}) as $a
+			    | select(($r.approval // null) != null)
+			    | ( $a | keys[] | select(. as $k | known_approval | index($k) | not)
+			        | "record \($rid): unknown approval property \"\(.)\"" ) ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | select(($r.approval.approved_by // null) != null and ($r.approval.approved_by == $r.owner))
+			    | "record \($rid): approved_by == owner (self-approval)" ),
+			  ( [ (.risks // [])[] | select(type == "object") | .id ] as $ids
+			    | $ids | group_by(.) | map(select(length > 1)) | .[]
+			    | "duplicate record id \"\(.[0])\" — an approval must have exactly one identity" ),
+			  ( (.risks // [])[] | select(type == "object")
+			    | . as $r | (.id // "?") as $rid
+			    | ( ($r.files // [])[]
+			        | select((type == "string") and ((test("^([.]/)?[A-Za-z0-9][A-Za-z0-9._/+-]*$") | not) or test("[.][.]")))
+			        | "record \($rid): unsafe path \"\(.)\" (absolute, traversing, globbed or control characters)" ) )
+			] | join("\n")' "$ACCEPTED_RISKS_FILE" 2>/dev/null || printf 'accepted-risks v2 document could not be validated')
+		if [ -n "$_arv2" ]; then
+			printf '%s\n' "$_arv2" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "accepted-risks: $_l"; done
+			die_cfg "accepted-risk input changes release decisions; refusing to enforce against a document that does not satisfy schema v2 ($ACCEPTED_RISKS_FILE)"
+		fi
+	fi
+	# Accepted-risk input CHANGES RELEASE DECISIONS, so it is validated as executable policy
+	# before any record is counted or matched. Previously only "is it JSON?" was checked and the
+	# rest was ad-hoc jq with `|| true`, so a jq error over a malformed record produced an EMPTY
+	# suppression set rather than a clear configuration failure — safe by accident, but it hid
+	# governance corruption and made the loaded/invalid counts disagree with the file.
+	_ar_bad=$(jq -r --arg today "$TODAY" '
+		def isdate: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+		def realdate:
+			# Reject lexicographically-orderable impossibilities such as 9999-99-99, which sort
+			# far into the future and therefore never expire.
+			(.[5:7] | tonumber) as $m | (.[8:10] | tonumber) as $d
+			| ($m >= 1 and $m <= 12 and $d >= 1 and $d <= 31);
+		# A repository-relative path built from an explicit safe character set: this rejects
+		# absolute paths, traversal, control characters, whitespace, quotes and glob
+		# metacharacters in one rule rather than trying to enumerate what is dangerous.
+		def safepath:
+			type == "string" and (length > 0)
+			# A leading `./` is a legitimate spelling of the same repository-relative path and
+			# is normalised away before matching, so accept it here rather than rejecting a
+			# record for punctuation.
+			and test("^([.]/)?[A-Za-z0-9][A-Za-z0-9._/+-]*$")
+			and (test("[.][.]") | not);
+		[ (.risks // []) | to_entries[]
+		  | .key as $i | .value as $r
+		  | [
+			(if ($r | type) != "object" then "record \($i): not an object" else empty end),
+			(if ($r.id // "") == "" then "record \($i): missing id" else empty end),
+			(if ($r.gate // "") == "" then "record \($i) (\($r.id // "?")): missing gate" else empty end),
+			(if ($r.status // "") | IN("approved","pending","rejected","expired") | not
+				then "record \($r.id // $i): unknown status \"\($r.status // "")\"" else empty end),
+			(if ($r.scope // "finding") | IN("finding","gate") | not
+				then "record \($r.id // $i): unknown scope \"\($r.scope)\"" else empty end),
+			(if ($r.expires_at // "") | isdate | not
+				then "record \($r.id // $i): expires_at is not YYYY-MM-DD" else empty end),
+			(if (($r.expires_at // "") | isdate) and (($r.expires_at) | realdate | not)
+				then "record \($r.id // $i): expires_at \"\($r.expires_at)\" is not a real date" else empty end),
+			(if ($r.review_at // null) != null and (($r.review_at | isdate | not) or ($r.review_at | realdate | not))
+				then "record \($r.id // $i): review_at is not a real YYYY-MM-DD date" else empty end),
+			(if ($r.files // null) != null and (($r.files | type) != "array")
+				then "record \($r.id // $i): files must be an array" else empty end),
+			(if ($r.rule_ids // null) != null and (($r.rule_ids | type) != "array")
+				then "record \($r.id // $i): rule_ids must be an array" else empty end),
+			(if ($r.components // null) != null and (($r.components | type) != "array")
+				then "record \($r.id // $i): components must be an array" else empty end),
+			(if ($r.fingerprints // null) != null and (($r.fingerprints | type) != "array")
+				then "record \($r.id // $i): fingerprints must be an array" else empty end),
+			(($r.files // [])[] | select(safepath | not) | "record \($r.id // $i): unsafe file pattern \"\(.)\" (absolute, traversal, or control characters)"),
+			(($r.rule_ids // [])[] | select(type != "string") | "record \($r.id // $i): rule_ids must contain strings"),
+			(($r.components // [])[] | select(type != "string") | "record \($r.id // $i): components must contain strings"),
+			(($r.fingerprints // [])[] | select(type != "string") | "record \($r.id // $i): fingerprints must contain strings")
+		  ] | .[] ]
+		+ ( [ (.risks // [])[] | .id // "" ] | group_by(.) | map(select(length > 1)) | map("duplicate record id \"\(.[0])\"") )
+		+ ( [ (.risks // [])[] | select((.status // "") == "approved" and ((.expires_at // "") >= $today)) ]
+			| group_by(.gate)
+			| map(select((map(select((.scope // "finding") == "gate")) | length) > 0
+					and (map(select((.scope // "finding") == "finding")) | length) > 0)
+				| "gate \(.[0].gate): both a BROAD (scope:gate) and a finding-scoped record are active — conflicting suppression identity") )
+		| .[]' "$ACCEPTED_RISKS_FILE" 2>&1) || _ar_bad="accepted-risks file could not be evaluated (malformed structure)"
+	if [ -n "$_ar_bad" ]; then
+		log_error "accepted-risks file is INVALID: $ACCEPTED_RISKS_FILE"
+		printf '%s\n' "$_ar_bad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "  - $_l"; done
+		die_cfg "accepted-risk input changes release decisions; refusing to enforce against an invalid governance file"
+	fi
+	# REAL calendar dates. The jq pass above proves the shape and rejects an out-of-range
+	# month/day, but 2026-02-31, 2026-04-31 and non-leap 2025-02-29 all have the shape of a
+	# date without being one — and each sorts as unexpired. The canonical calendar check is
+	# cw__valid_date (the control-waiver validator, already sourced); it is reused here rather
+	# than approximated a second time in jq.
+	_ard=$(jq -r '(.risks // [])[] | "\(.id // "?")\t\(.expires_at // "")\t\(.review_at // "")"' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	_arrc=0
+	_artab="$(printf '\t')"
+	while IFS="$_artab" read -r _arid _arexp _arrev; do
+		[ -n "$_arid" ] || continue
+		if ! cw__valid_date "$_arexp"; then
+			log_error "accepted-risks: record $_arid: expires_at '$_arexp' is not a real calendar date"; _arrc=1
+		fi
+		if [ -n "$_arrev" ] && ! cw__valid_date "$_arrev"; then
+			log_error "accepted-risks: record $_arid: review_at '$_arrev' is not a real calendar date"; _arrc=1
+		fi
+	done <<EOF
+$_ard
+EOF
+	[ "$_arrc" -eq 0 ] || die_cfg "accepted-risk input changes release decisions; refusing to enforce against impossible dates in $ACCEPTED_RISKS_FILE"
+
+	# --- bounded lifetime (#223, same governance timing policy as control waivers) --------
+	# An accepted risk is a time-boxed exception. Without a ceiling, `expires_at: 9999-12-31`
+	# is a permanent suppression wearing a date. The policy mirrors CW_MAX_WAIVER_DAYS:
+	#   default 90 · strict 90 · regulated 30 · absolute ceiling 365
+	# Configuration may only TIGHTEN it, and an unusable setting is a configuration ERROR —
+	# never clamped, normalised or defaulted, because substituting a number enforces a policy
+	# nobody chose. Only an UNSET variable uses the documented default.
+	AR_MAX_DAYS_DEFAULT=90
+	AR_MAX_DAYS_CEILING=365
+	AR_MAX_DAYS_REGULATED=30
+	if [ "${SS_MAX_ACCEPTED_RISK_DAYS+set}" != "set" ]; then
+		_armax="$AR_MAX_DAYS_DEFAULT"
+	elif [ -z "$SS_MAX_ACCEPTED_RISK_DAYS" ]; then
+		die_cfg "SS_MAX_ACCEPTED_RISK_DAYS is set but empty. Unset it to use the ${AR_MAX_DAYS_DEFAULT}-day default, or give it a value — an empty policy is not a policy."
+	elif [ "${#SS_MAX_ACCEPTED_RISK_DAYS}" -gt 9 ]; then
+		die_cfg "SS_MAX_ACCEPTED_RISK_DAYS='$SS_MAX_ACCEPTED_RISK_DAYS' is out of range (the absolute ceiling is ${AR_MAX_DAYS_CEILING} days)."
+	else
+		case "$SS_MAX_ACCEPTED_RISK_DAYS" in
+			*[!0-9]*) die_cfg "SS_MAX_ACCEPTED_RISK_DAYS='$SS_MAX_ACCEPTED_RISK_DAYS' is not a whole number of days. A governance duration that cannot be read is a configuration error — it is never clamped or defaulted." ;;
+		esac
+		_armax=$(cw_decimal "$SS_MAX_ACCEPTED_RISK_DAYS")
+		[ "$_armax" -ge 1 ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$SS_MAX_ACCEPTED_RISK_DAYS is not a usable duration (must be >= 1)."
+		[ "$_armax" -le "$AR_MAX_DAYS_CEILING" ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$_armax exceeds the absolute ${AR_MAX_DAYS_CEILING}-day ceiling. Configuration may TIGHTEN this policy, never loosen it."
+		[ "$_armax" -le "$AR_MAX_DAYS_DEFAULT" ] || die_cfg "SS_MAX_ACCEPTED_RISK_DAYS=$_armax exceeds the ${AR_MAX_DAYS_DEFAULT}-day policy maximum. Configuration may TIGHTEN this policy, never loosen it."
+	fi
+	# regulated tightens to 30 days; strict keeps the 90-day default. A caller-supplied value
+	# is honoured only when it is STRICTER than the mode's own maximum.
+	case "$MODE" in
+		regulated) [ "$_armax" -le "$AR_MAX_DAYS_REGULATED" ] || _armax="$AR_MAX_DAYS_REGULATED" ;;
+	esac
+	AR_MAX_DAYS="$_armax"
+	log_info "accepted-risks: maximum validity window ${AR_MAX_DAYS} days (mode=$MODE, source=$( [ "${SS_MAX_ACCEPTED_RISK_DAYS+set}" = "set" ] && printf 'SS_MAX_ACCEPTED_RISK_DAYS' || printf 'policy default' ))"
+
+	# The window is measured from approved_at for an APPROVED record (that is when the
+	# exception was authorised), and from created_at otherwise. A record with neither cannot
+	# be bounded at all.
+	# Empty fields are emitted as "-": TAB is an IFS *whitespace* character, so `read` with
+	# IFS=tab COLLAPSES consecutive tabs and silently shifts every later field into the wrong
+	# variable. A placeholder keeps the columns aligned.
+	_arw=$(jq -r '(.risks // [])[]
+		| [ (.id // "?"), (.status // "-"), (.created_at // "-"), (.approved_at // "-"), (.expires_at // "-") ]
+		| map(if . == "" then "-" else . end) | join("\t")' "$ACCEPTED_RISKS_FILE" 2>/dev/null || true)
+	_arwrc=0
+	_artab2="$(printf '\t')"
+	_artoday=$(cw_today_utc) || die_cfg "no trusted UTC date is available to judge accepted-risk validity windows"
+	_artodayn=$(cw__days "$_artoday")
+	while IFS="$_artab2" read -r _wid _wst _wcre _wapp _wexp; do
+		[ -n "$_wid" ] || continue
+		# Only APPROVED records suppress anything, so only they are bounded here.
+		[ "$_wst" = "approved" ] || continue
+		[ "$_wapp" = "-" ] && _wapp=""
+		[ "$_wcre" = "-" ] && _wcre=""
+		[ "$_wexp" = "-" ] && _wexp=""
+		_wfrom="$_wapp"
+		[ -n "$_wfrom" ] || _wfrom="$_wcre"
+		if [ -z "$_wfrom" ] || [ -z "$_wexp" ]; then
+			# A LEGACY record (v1.1: no approved_at, no created_at) carries no authorisation
+			# date, so its window cannot be measured at all. The assurance modes refuse it —
+			# an unbounded exception is exactly what this policy exists to prevent — while the
+			# visibility modes report it as the migration debt it is (see the accepted-risk
+			# schema v2 migration policy in docs/).
+			case "$MODE" in
+				strict | regulated)
+					log_error "accepted-risks: record $_wid is approved but carries no approved_at or created_at, so its validity window cannot be bounded. '$MODE' requires a bounded exception — migrate the record to accepted-risk schema v2."
+					_arwrc=1 ;;
+				*)
+					log_warn "accepted-risks: DEPRECATED — record $_wid has no approved_at/created_at, so its ${AR_MAX_DAYS}-day validity window cannot be enforced. This is tolerated in '$MODE' only; strict and regulated refuse it. Migrate to accepted-risk schema v2." ;;
+			esac
+			continue
+		fi
+		if ! cw__valid_date "$_wfrom"; then
+			log_error "accepted-risks: record $_wid: '$_wfrom' is not a real calendar date"; _arwrc=1; continue
+		fi
+		_wfromn=$(cw__days "$_wfrom"); _wexpn=$(cw__days "$_wexp")
+		# A future authorisation date is a pre-positioned approval, not clock skew.
+		if [ "$_wfromn" -gt $((_artodayn + 1)) ]; then
+			_wlbl=created_at; [ -n "$_wapp" ] && _wlbl=approved_at
+			log_error "accepted-risks: record $_wid: $_wlbl '$_wfrom' is in the future (today is $_artoday UTC, clock-skew tolerance 1d)"
+			_arwrc=1; continue
+		fi
+		# An expiry BEFORE the authorisation date is not a short window, it is a contradiction:
+		# the record claims to have been approved after it stopped applying.
+		if [ "$_wexpn" -lt "$_wfromn" ]; then
+			_wlbl2=created_at; [ -n "$_wapp" ] && _wlbl2=approved_at
+			log_error "accepted-risks: record $_wid: expires_at '$_wexp' is BEFORE $_wlbl2 '$_wfrom'"
+			_arwrc=1; continue
+		fi
+		if [ $((_wexpn - _wfromn)) -gt "$AR_MAX_DAYS" ]; then
+			log_error "accepted-risks: record $_wid: validity window $_wfrom..$_wexp is $((_wexpn - _wfromn)) days, over the ${AR_MAX_DAYS}-day maximum for mode '$MODE'. Renew with a NEW record that supersedes this one — do not extend the original approval."
+			_arwrc=1
+		fi
+	done <<EOF
+$_arw
+EOF
+	[ "$_arwrc" -eq 0 ] || die_cfg "accepted-risk records exceed the governed validity window in $ACCEPTED_RISKS_FILE"
+
 	AR_LOADED=$(jq '(.risks // []) | length' "$ACCEPTED_RISKS_FILE")
 	AR_PENDING=$(jq '[(.risks // [])[] | select(.status != "approved")] | length' "$ACCEPTED_RISKS_FILE")
 	AR_EXPIRED=$(jq --arg today "$TODAY" '[(.risks // [])[] | select(.status == "approved" and ((.expires_at // "") < $today))] | length' "$ACCEPTED_RISKS_FILE")
@@ -1572,9 +1881,290 @@ json_finding_ids() {
 	done
 }
 
+# --- report publication (atomic, validated, paired) ---------------------------------------
+# The report set IS the release-decision evidence. Both writers used to redirect straight to
+# their final path: the JSON destination was truncated before generation finished and validated
+# only after it had already replaced the previous report, the Markdown was never validated at
+# all, a symlinked destination redirected the write out of the reports directory, and a failure
+# between the two left callers reading a JSON and a Markdown that described different runs.
+#
+# Everything is staged next to the destination, validated, and published together at the end.
+REPORT_TMPDIR=""
+# A failed or interrupted publisher removes only its own STAGING generation and its own lock.
+# A published generation is immutable and is never touched by cleanup, so the last valid
+# generation always survives.
+_report_cleanup() { _gen_cleanup; }
+trap '_report_cleanup' EXIT INT TERM HUP
+
+# report_dest_ok <path> — refuse a destination that is not a plain file we may replace.
+report_dest_ok() {
+	_rd=$(dirname -- "$1")
+	[ -d "$_rd" ] || die_cfg "report directory does not exist: $_rd"
+	[ -L "$_rd" ] && die_cfg "report directory is a symlink: $_rd"
+	if [ -e "$1" ] || [ -L "$1" ]; then
+		[ -L "$1" ] && die_cfg "refusing to write the enforcement report through a symlink: $1"
+		[ -d "$1" ] && die_cfg "enforcement report destination is a directory: $1"
+		[ -f "$1" ] || die_cfg "enforcement report destination is not a regular file (FIFO/device?): $1"
+	fi
+	return 0
+}
+
+# report_stage — create the staging directory inside OUTPUT_DIR so the final renames are atomic.
+report_stage() {
+	[ -n "$REPORT_TMPDIR" ] && return 0
+	ensure_dir "$OUTPUT_DIR"
+	# Artifacts are rendered directly into the STAGING GENERATION, so the generation is the
+	# thing that gets validated and published; the flat files beside it are a mirror written
+	# from the published generation afterwards.
+	gen_prepare
+	REPORT_TMPDIR="$GEN_STAGE"
+	return 0
+}
+
+# report_publish <staged> <final> — replace atomically after the destination is proven safe.
+# This publishes the COMPATIBILITY MIRROR only; the authoritative artifact set is the
+# generation published by report_publish_generation() below.
+report_publish() {
+	report_dest_ok "$2"
+	chmod 0644 "$1" 2>/dev/null || true
+	# `$2.tmp.$$` is PREDICTABLE: anyone able to write in that directory can pre-create it as
+	# a symlink, and `cp` follows the link — writing the report outside the report root before
+	# the rename ever happens. mktemp creates the file itself, exclusively, and the result is
+	# re-checked as a regular non-symlink file before anything is written into it.
+	_rp_tmp=$(mktemp "$2.tmp.XXXXXX") || die_cfg "could not stage the mirrored report at $2"
+	if [ -L "$_rp_tmp" ] || [ ! -f "$_rp_tmp" ]; then
+		rm -f -- "$_rp_tmp"
+		die_cfg "the staging path for $2 is not a regular file; refusing to publish through it"
+	fi
+	# The exact path is tracked so a signal between create and rename cannot leave it behind.
+	REPORT_TMP="$_rp_tmp"
+	cat -- "$1" > "$_rp_tmp" 2>/dev/null || { rm -f -- "$_rp_tmp"; REPORT_TMP=""; die_cfg "could not stage the mirrored report at $2"; }
+	chmod 0644 "$_rp_tmp" 2>/dev/null || true
+	mv -- "$_rp_tmp" "$2" || { rm -f -- "$_rp_tmp"; REPORT_TMP=""; die_cfg "could not publish the enforcement report at $2"; }
+	REPORT_TMP=""
+	log_info "wrote $2"
+	return 0
+}
+
+# --- generation-based publication ---------------------------------------------------------
+# Two sequential renames are NOT a transactional pair: a failure, a signal or a crash between
+# them leaves a new JSON beside an old Markdown, which is exactly the mismatch this code
+# claims to prevent. So the artifacts are published as ONE IMMUTABLE GENERATION and made
+# visible by a single atomic pointer switch:
+#
+#   <output-dir>/enforcement/
+#     <generation-id>/                 immutable once published; never mutated
+#       sentinel-shield-enforcement.json
+#       sentinel-shield-enforcement.md
+#       manifest.json                  what the generation contains, with digests
+#     current.json                     THE pointer: names the one complete generation
+#
+# A reader resolves current.json once and consumes that generation. Nothing else is evidence:
+# file existence alone never means "complete", because a generation directory can exist while
+# its manifest is still being written.
+ENFORCEMENT_ROOT=""
+GENERATION_ID=""
+GEN_STAGE=""
+# Exact staging paths for the mirror and the pointer (see _gen_cleanup).
+REPORT_TMP=""
+POINTER_TMP=""
+GEN_KEEP="${SENTINEL_SHIELD_REPORT_GENERATIONS:-5}"
+case "$GEN_KEEP" in '' | *[!0-9]*) GEN_KEEP=5 ;; esac
+[ "$GEN_KEEP" -ge 1 ] || GEN_KEEP=1
+
+_gen_cleanup() {
+	if [ -n "$GEN_STAGE" ] && [ -d "$GEN_STAGE" ]; then rm -rf -- "$GEN_STAGE" 2>/dev/null || true; fi
+	# The EXACT staging paths, tracked so a signal between create and rename cannot leave a
+	# mktemp file behind. A glob would be wrong here: it could delete another publisher's
+	# in-flight staging file.
+	if [ -n "${REPORT_TMP:-}" ] && [ -f "$REPORT_TMP" ]; then rm -f -- "$REPORT_TMP" 2>/dev/null || true; fi
+	if [ -n "${POINTER_TMP:-}" ] && [ -f "$POINTER_TMP" ]; then rm -f -- "$POINTER_TMP" 2>/dev/null || true; fi
+	if [ -n "$ENFORCEMENT_ROOT" ] && [ -d "$ENFORCEMENT_ROOT/.publish.lock" ]; then
+		# Only ever remove OUR lock: another publisher's lock is theirs to clear.
+		if [ -f "$ENFORCEMENT_ROOT/.publish.lock/owner" ] &&
+		   grep -q "pid=$$\b" "$ENFORCEMENT_ROOT/.publish.lock/owner" 2>/dev/null; then
+			rm -rf -- "$ENFORCEMENT_ROOT/.publish.lock" 2>/dev/null || true
+		fi
+	fi
+	return 0
+}
+
+# gen_lock — single publisher per report root. mkdir is atomic on POSIX, so it IS the lock;
+# the owner file makes a stale lock diagnosable rather than mysterious.
+gen_lock() {
+	_gl="$ENFORCEMENT_ROOT/.publish.lock"
+	if mkdir "$_gl" 2>/dev/null; then
+		printf 'pid=%s host=%s user=%s started=%s run=%s\n' \
+			"$$" "$(uname -n 2>/dev/null || printf unknown)" "$(id -un 2>/dev/null || printf unknown)" \
+			"$TS" "${GITHUB_RUN_ID:-local}" > "$_gl/owner" 2>/dev/null || true
+		return 0
+	fi
+	_owner=$(cat "$_gl/owner" 2>/dev/null || printf 'unknown holder')
+	die_cfg "another enforcement run is publishing into '$ENFORCEMENT_ROOT' ($_owner). Two publishers must not interleave. If that run is gone, remove the stale lock directory: rm -rf '$_gl'"
+}
+
+# gen_prepare — create the private staging generation.
+gen_prepare() {
+	ENFORCEMENT_ROOT="$OUTPUT_DIR/enforcement"
+	# The generation root must live INSIDE the verified report root and must not be reached
+	# through a symlink.
+	[ -L "$OUTPUT_DIR" ] && die_cfg "output directory is a symlink: $OUTPUT_DIR"
+	if [ -e "$ENFORCEMENT_ROOT" ] && [ ! -d "$ENFORCEMENT_ROOT" ]; then
+		die_cfg "'$ENFORCEMENT_ROOT' exists and is not a directory"
+	fi
+	[ -L "$ENFORCEMENT_ROOT" ] && die_cfg "enforcement generation root is a symlink: $ENFORCEMENT_ROOT"
+	ensure_dir "$ENFORCEMENT_ROOT"
+	gen_lock
+	# Unpredictable, exclusive, private: mktemp creates it, 0700 keeps it unreadable while it
+	# is incomplete, and the name cannot be guessed and pre-created.
+	GEN_STAGE=$(mktemp -d "$ENFORCEMENT_ROOT/.staging.XXXXXX") \
+		|| die_cfg "could not create a staging generation in $ENFORCEMENT_ROOT"
+	chmod 0700 "$GEN_STAGE" 2>/dev/null || true
+	GENERATION_ID="$(printf '%s' "$TS" | tr -c 'A-Za-z0-9' '-')-$(basename "$GEN_STAGE" | sed 's/^\.staging\.//')"
+	return 0
+}
+
+# gen_manifest — describe the generation, with a digest for every artifact.
+gen_manifest() {
+	_gm="$GEN_STAGE/manifest.json"
+	_files=""
+	for _a in sentinel-shield-enforcement.json sentinel-shield-enforcement.md; do
+		[ -f "$GEN_STAGE/$_a" ] || continue
+		_sz=$(wc -c < "$GEN_STAGE/$_a" | tr -d ' ')
+		_dg=$(ss_sha256_file "$GEN_STAGE/$_a" 2>/dev/null || printf '')
+		[ -n "$_dg" ] || die_cfg "could not hash generation artifact '$_a'"
+		_files="${_files}${_files:+,}$(printf '{"path":"%s","bytes":%s,"sha256":"%s"}' "$_a" "$_sz" "$_dg")"
+	done
+	[ -n "$_files" ] || die_cfg "the generation contains no artifacts"
+	printf '{\n' > "$_gm"
+	printf '  "schema_version": "1",\n' >> "$_gm"
+	printf '  "generation_id": "%s",\n' "$(json_escape "$GENERATION_ID")" >> "$_gm"
+	printf '  "created_at": "%s",\n' "$(json_escape "$TS")" >> "$_gm"
+	printf '  "producer": "enforce-gates.sh",\n' >> "$_gm"
+	printf '  "target_repository": %s,\n' "$(jqr '(.source.repository // "") | if . == "" then "null" else "\"" + . + "\"" end' 2>/dev/null || printf 'null')" >> "$_gm"
+	printf '  "target_commit": "%s",\n' "$(json_escape "$(jqr '.source.commit // "unknown"')")" >> "$_gm"
+	printf '  "profile": "%s",\n' "$(json_escape "$PROJ_TYPE")" >> "$_gm"
+	printf '  "mode": "%s",\n' "$(json_escape "$MODE")" >> "$_gm"
+	printf '  "result": "%s",\n' "$(json_escape "$RESULT")" >> "$_gm"
+	printf '  "expected_artifacts": [%s],\n' "$(printf '%s' "$_files" | sed 's/{"path":"\([^"]*\)"[^}]*}/"\1"/g')" >> "$_gm"
+	printf '  "artifacts": [%s],\n' "$_files" >> "$_gm"
+	printf '  "summary_schema_version": "%s",\n' "$(json_escape "$(jqr '.version // "unknown"')")" >> "$_gm"
+	printf '  "validation": "passed"\n' >> "$_gm"
+	printf '}\n' >> "$_gm"
+	jq -e . "$_gm" >/dev/null 2>&1 || die_cfg "the generation manifest is not valid JSON"
+	return 0
+}
+
+# gen_validate — every artifact readable, non-empty, and matching its recorded digest.
+gen_validate() {
+	_n=$(jq -r '.artifacts | length' "$GEN_STAGE/manifest.json")
+	[ "$_n" -ge 1 ] || die_cfg "the generation manifest lists no artifacts"
+	_i=0
+	while [ "$_i" -lt "$_n" ]; do
+		_p=$(jq -r --argjson i "$_i" '.artifacts[$i].path' "$GEN_STAGE/manifest.json")
+		_d=$(jq -r --argjson i "$_i" '.artifacts[$i].sha256' "$GEN_STAGE/manifest.json")
+		_i=$((_i + 1))
+		[ -f "$GEN_STAGE/$_p" ] || die_cfg "generation artifact missing before publication: $_p"
+		[ -s "$GEN_STAGE/$_p" ] || die_cfg "generation artifact is empty: $_p"
+		_a=$(ss_sha256_file "$GEN_STAGE/$_p" 2>/dev/null || printf '')
+		[ "$_a" = "$_d" ] || die_cfg "generation artifact '$_p' does not match its manifest digest (expected $_d, got ${_a:-unreadable})"
+		# A digest proves the bytes are the recorded ones; it does not prove they are USABLE.
+		# Every artifact is validated for its own content type, so a corrupt report can never
+		# become the current generation.
+		case "$_p" in
+			*.json)
+				jq -e . "$GEN_STAGE/$_p" >/dev/null 2>&1 \
+					|| die_cfg "generation artifact '$_p' is not valid JSON" ;;
+			*.md)
+				grep -q '[^[:space:]]' "$GEN_STAGE/$_p" \
+					|| die_cfg "generation artifact '$_p' has no content" ;;
+		esac
+	done
+	# Cross-artifact invariant: the JSON verdict and the Markdown must describe the SAME run.
+	if [ -f "$GEN_STAGE/sentinel-shield-enforcement.json" ] && [ -f "$GEN_STAGE/sentinel-shield-enforcement.md" ]; then
+		_jr=$(jq -r '(.result // "")' "$GEN_STAGE/sentinel-shield-enforcement.json" 2>/dev/null || printf '')
+		[ -n "$_jr" ] || die_cfg "the generation JSON declares no result"
+		grep -qi "$_jr" "$GEN_STAGE/sentinel-shield-enforcement.md" \
+			|| die_cfg "the generation Markdown does not carry the JSON verdict '$_jr' — the pair would describe different runs"
+	fi
+	return 0
+}
+
+# gen_commit — finalize durably, then make the generation visible with ONE atomic rename.
+gen_commit() {
+	_final="$ENFORCEMENT_ROOT/$GENERATION_ID"
+	[ -e "$_final" ] && die_cfg "generation '$GENERATION_ID' already exists — refusing to mutate a published generation"
+	chmod 0755 "$GEN_STAGE" 2>/dev/null || true
+	# Best-effort durability before the generation becomes reachable. POSIX sh has no fsync;
+	# `sync` is the portable approximation and its absence is not fatal.
+	command_exists sync && sync 2>/dev/null || true
+	mv -- "$GEN_STAGE" "$_final" || die_cfg "could not finalize the generation at $_final"
+	GEN_STAGE=""
+	# THE pointer switch: written to a temp file in the same directory and renamed, so a
+	# reader sees either the old pointer or the new one, never a half-written name.
+	# The pointer destination must be a regular file or absent — not a symlink, and not a
+	# directory or FIFO either. `mv` onto a directory does not replace it, and onto a FIFO it
+	# does not do what "switch the pointer" promises.
+	if [ -e "$ENFORCEMENT_ROOT/current.json" ] || [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+		if [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+			die_cfg "'$ENFORCEMENT_ROOT/current.json' is a symlink; refusing to publish through it"
+		fi
+		[ -f "$ENFORCEMENT_ROOT/current.json" ] \
+			|| die_cfg "'$ENFORCEMENT_ROOT/current.json' exists and is not a regular file; refusing to replace it"
+	fi
+	# Same reasoning as report_publish: a PID-derived name is predictable and can be
+	# pre-created as a symlink that the redirection below would write through.
+	_ptmp=$(mktemp "$ENFORCEMENT_ROOT/.current.XXXXXX") || die_cfg "could not stage the current-generation pointer"
+	if [ -L "$_ptmp" ] || [ ! -f "$_ptmp" ]; then
+		rm -f -- "$_ptmp"
+		die_cfg "the pointer staging path is not a regular file; refusing to publish through it"
+	fi
+	POINTER_TMP="$_ptmp"
+	printf '{ "schema_version": "1", "generation_id": "%s", "updated_at": "%s", "path": "enforcement/%s", "manifest": "enforcement/%s/manifest.json" }\n' \
+		"$(json_escape "$GENERATION_ID")" "$(json_escape "$TS")" \
+		"$(json_escape "$GENERATION_ID")" "$(json_escape "$GENERATION_ID")" > "$_ptmp" \
+		|| die_cfg "could not stage the current-generation pointer"
+	jq -e . "$_ptmp" >/dev/null 2>&1 || { rm -f -- "$_ptmp"; die_cfg "the staged pointer is not valid JSON"; }
+	command_exists sync && sync 2>/dev/null || true
+	# Re-check immediately before the switch: the destination may have been replaced since the
+	# check above.
+	if [ -L "$ENFORCEMENT_ROOT/current.json" ]; then
+		rm -f -- "$_ptmp"; POINTER_TMP=""
+		die_cfg "'$ENFORCEMENT_ROOT/current.json' is a symlink; refusing to publish through it"
+	fi
+	if [ -e "$ENFORCEMENT_ROOT/current.json" ] && [ ! -f "$ENFORCEMENT_ROOT/current.json" ]; then
+		rm -f -- "$_ptmp"; POINTER_TMP=""
+		die_cfg "'$ENFORCEMENT_ROOT/current.json' is not a regular file; refusing to replace it"
+	fi
+	mv -- "$_ptmp" "$ENFORCEMENT_ROOT/current.json" \
+		|| { rm -f -- "$_ptmp"; POINTER_TMP=""; die_cfg "could not switch the current-generation pointer"; }
+	POINTER_TMP=""
+	log_info "published enforcement generation $GENERATION_ID (pointer: $ENFORCEMENT_ROOT/current.json)"
+	return 0
+}
+
+# gen_gc — keep GEN_KEEP generations. The ACTIVE one is never a candidate.
+gen_gc() {
+	_active=$(jq -r '.generation_id // ""' "$ENFORCEMENT_ROOT/current.json" 2>/dev/null || printf '')
+	[ -n "$_active" ] || return 0
+	_all=$(ls -1 "$ENFORCEMENT_ROOT" 2>/dev/null | grep -v '^current\.json$' | grep -v '^\.' | sort || true)
+	_count=$(printf '%s\n' "$_all" | grep -c '[^[:space:]]' || true)
+	[ "$_count" -gt "$GEN_KEEP" ] || return 0
+	_drop=$((_count - GEN_KEEP))
+	printf '%s\n' "$_all" | while IFS= read -r _g; do
+		[ -n "$_g" ] || continue
+		[ "$_drop" -gt 0 ] || break
+		if [ "$_g" = "$_active" ]; then continue; fi
+		[ -d "$ENFORCEMENT_ROOT/$_g" ] || continue
+		rm -rf -- "$ENFORCEMENT_ROOT/$_g" 2>/dev/null && _drop=$((_drop - 1))
+	done
+	return 0
+}
+
 # write_json — write the json output report.
 write_json() {
-	_f="$OUTPUT_DIR/sentinel-shield-enforcement.json"
+	report_stage
+	_f="$REPORT_TMPDIR/sentinel-shield-enforcement.json"
 	{
 		printf '{\n'
 		printf '  "version": "1.0",\n'
@@ -1615,13 +2205,16 @@ write_json() {
 		printf '\n  ]\n'
 		printf '}\n'
 	} > "$_f"
-	jq -e . "$_f" >/dev/null 2>&1 || die_cfg "internal error: produced invalid enforcement JSON ($_f)"
-	log_info "wrote $_f"
+	# Validate the STAGED file: an invalid report must never have replaced a valid one.
+	jq -e . "$_f" >/dev/null 2>&1 || die_cfg "internal error: produced invalid enforcement JSON (staged at $_f)"
+	jq -e '(.result != null) and (.mode != null) and ((.failed_gates | type) == "array")' "$_f" >/dev/null 2>&1 \
+		|| die_cfg "internal error: staged enforcement JSON is missing its result/mode/failed_gates contract"
 }
 
 # write_markdown — write the markdown output report.
 write_markdown() {
-	_f="$OUTPUT_DIR/sentinel-shield-enforcement.md"
+	report_stage
+	_f="$REPORT_TMPDIR/sentinel-shield-enforcement.md"
 	_result_up=$(printf '%s' "$RESULT" | tr '[:lower:]' '[:upper:]')
 	{
 		printf '# Sentinel Shield — Gate Enforcement\n\n'
@@ -1829,14 +2422,47 @@ write_markdown() {
 			printf -- '2. Tighten the mode in .sentinel-shield/profile.yaml as the project matures.\n'
 		fi
 	} > "$_f"
-	log_info "wrote $_f"
+	# The Markdown was previously published unvalidated; at minimum it must be non-empty and
+	# carry the verdict, so a truncated render cannot masquerade as the decision record.
+	[ -s "$_f" ] || die_cfg "internal error: staged enforcement Markdown is empty ($_f)"
+	grep -q "^## Overall result: " "$_f" || die_cfg "internal error: staged enforcement Markdown carries no verdict ($_f)"
 }
 
+# Generate everything FIRST, then publish as one set: a failure while rendering the second
+# format can no longer leave a JSON and a Markdown describing different runs.
 case "$FORMAT" in
 	json) write_json ;;
 	markdown) write_markdown ;;
 	all) write_json; write_markdown ;;
 esac
+# Prove EVERY mirror destination is safe BEFORE anything is published, so a refusal cannot
+# leave the pair describing different runs.
+case "$FORMAT" in
+	json | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
+esac
+case "$FORMAT" in
+	markdown | all) report_dest_ok "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
+esac
+
+# ONE atomic commit: describe the generation, validate every artifact against its digest,
+# finalize it durably, then switch the pointer. Any failure before the pointer switch leaves
+# the previous current generation exactly as it was.
+gen_manifest
+gen_validate
+gen_commit
+
+# Compatibility mirror. The pointer is authoritative; these flat paths exist so consumers that
+# predate generations keep working, and they are copied FROM the published generation, so they
+# can never describe a run that was not published.
+_gen_dir="$ENFORCEMENT_ROOT/$GENERATION_ID"
+case "$FORMAT" in
+	json | all) report_publish "$_gen_dir/sentinel-shield-enforcement.json" "$OUTPUT_DIR/sentinel-shield-enforcement.json" ;;
+esac
+case "$FORMAT" in
+	markdown | all) report_publish "$_gen_dir/sentinel-shield-enforcement.md" "$OUTPUT_DIR/sentinel-shield-enforcement.md" ;;
+esac
+gen_gc
+_report_cleanup
 
 log_info "Enforcement complete (mode=$MODE, result=$RESULT, exit=$EXIT)."
 exit "$EXIT"
