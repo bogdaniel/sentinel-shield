@@ -82,6 +82,40 @@ config_present() {
 	return 1
 }
 
+# resolve_report_path <declared-report-path> — the artifact a PROFILE-declared report
+# resolves to, with its directory components PRESERVED (#236). The declared path used to
+# be reduced to `$RAW_DIR/$(basename …)`, which threw away every directory: two contexts
+# declaring `web/reports/raw/eslint.json` and `api/reports/raw/eslint.json` collided, a
+# missing report could be satisfied by an unrelated file with the same basename, and a
+# profile declaring an absolute or traversing path was never checked as such because only
+# its last component survived.
+#
+# The declared path is repository-relative and must live under the canonical raw-report
+# root `reports/raw/`; the remainder (directories included) is joined to the ACTUAL raw
+# directory, which the caller may relocate with --raw-dir (downloaded CI artifacts).
+# Anything else fails closed: an absolute path, traversal, a backslash separator, a
+# control or shell-unsafe character, an empty remainder, or a symlinked artifact.
+resolve_report_path() {
+	_rp="$1"
+	case "$_rp" in
+		/*) die_cfg "profile declares an ABSOLUTE report path '$_rp'; report paths must be repository-relative under reports/raw/" ;;
+		*..*) die_cfg "profile declares a traversing report path '$_rp'; report paths may not contain '..'" ;;
+		*\\*) die_cfg "profile declares a report path with a backslash separator '$_rp'; use '/'" ;;
+	esac
+	if printf '%s' "$_rp" | LC_ALL=C grep -q '[^A-Za-z0-9._/-]'; then
+		die_cfg "profile declares an unsafe report path '$_rp' (allowed: letters, digits, '.', '_', '-', '/')"
+	fi
+	case "$_rp" in
+		reports/raw/*) _rel=${_rp#reports/raw/} ;;
+		*) die_cfg "profile declares report path '$_rp' outside the canonical raw-report root reports/raw/" ;;
+	esac
+	[ -n "$_rel" ] || die_cfg "profile declares an empty report path under reports/raw/"
+	case "$_rel" in
+		*/) die_cfg "profile declares a directory as a report path '$_rp'" ;;
+	esac
+	printf '%s/%s' "$RAW_DIR" "$_rel"
+}
+
 # policy_message <status> — short human explanation for a derived per-tool status.
 policy_message() {
 	case "$1" in
@@ -279,6 +313,54 @@ REPORTS_DIR=$(dirname -- "$OUTPUT")
 ensure_dir "$REPORTS_DIR"
 TS=$(timestamp_utc)
 
+# --- publication safety (#238) -----------------------------------------------
+# The summary used to be written by redirecting jq straight at $OUTPUT: the previous
+# summary was TRUNCATED before generation began, the self-check ran on a file that had
+# already replaced it, a symlinked destination redirected the write, and two concurrent
+# builders raced with no interlock. The build now happens in a staging directory INSIDE
+# the reports directory (same filesystem, so the final rename is atomic), is validated
+# there, and is published only after its destination has been proven safe.
+#
+# OPERATION_ID identifies this build in the published artifact; INPUT_MANIFEST accumulates
+# `producer<TAB>path<TAB>sha256` for every raw report actually consumed, so the summary
+# states which bytes it was derived from.
+OPERATION_ID="${GITHUB_RUN_ID:-}"
+if [ -n "$OPERATION_ID" ]; then
+	OPERATION_ID="gh-${OPERATION_ID}-${GITHUB_RUN_ATTEMPT:-1}"
+else
+	OPERATION_ID="local-${TS}-$$"
+fi
+INPUT_MANIFEST=""
+
+# Single writer: mkdir is atomic on POSIX, so it is the lock. A stale lock is an explicit,
+# actionable failure — never something to break automatically, because the other builder
+# may still be running.
+SUMMARY_LOCK="$REPORTS_DIR/.security-summary.lock"
+STAGE_DIR=""
+publish_cleanup() {
+	if [ -n "$STAGE_DIR" ] && [ -d "$STAGE_DIR" ]; then rm -rf -- "$STAGE_DIR"; fi
+	if [ -d "$SUMMARY_LOCK" ]; then rmdir -- "$SUMMARY_LOCK" 2>/dev/null || true; fi
+	return 0
+}
+if ! mkdir "$SUMMARY_LOCK" 2>/dev/null; then
+	die_cfg "another security-summary build holds $SUMMARY_LOCK; refusing to race a second writer for $OUTPUT (remove the directory only if no build is running)"
+fi
+trap 'publish_cleanup' EXIT INT TERM HUP
+
+# summary_dest_ok <path> — the destination must be a real file in a real directory: no
+# symlink (which redirects the write), no directory, no FIFO/device, no missing parent.
+summary_dest_ok() {
+	_dd=$(dirname -- "$1")
+	[ -d "$_dd" ] || { log_error "output directory does not exist: $_dd"; return 1; }
+	[ -L "$_dd" ] && { log_error "output directory is a symlink: $_dd"; return 1; }
+	if [ -e "$1" ] || [ -L "$1" ]; then
+		[ -L "$1" ] && { log_error "refusing to publish through a symlinked destination: $1"; return 1; }
+		[ -d "$1" ] && { log_error "destination is a directory: $1"; return 1; }
+		[ -f "$1" ] || { log_error "destination exists and is not a regular file: $1"; return 1; }
+	fi
+	return 0
+}
+
 # --- run collectors ----------------------------------------------------------
 COLLECTED=""        # newline-delimited collector JSON objects
 MISSING_REQUIRED="" # space list of required-but-missing tool keys
@@ -318,6 +400,20 @@ for row in $TOOL_TABLE; do
 		log_error "collector failed for '$key' ($collector)"
 		exit 1
 	}
+	# Producer identity travels with the row (#235). `$emit` is the normalised CHANNEL
+	# (php_style), which several producers legitimately feed; `$key` is the PRODUCER
+	# (php-cs-fixer). Collapsing both into one object key is what let a later report
+	# silently overwrite an earlier one while its counts stayed in the aggregate.
+	_psha=""
+	if [ -f "$raw" ] && [ -s "$raw" ]; then _psha=$(ss_sha256_file "$raw" 2>/dev/null || printf '') ; fi
+	if [ -n "$_psha" ]; then
+		INPUT_MANIFEST="${INPUT_MANIFEST}${key}	${raw}	${_psha}
+"
+	fi
+	out=$(printf '%s' "$out" | jq -c --arg p "$key" --arg rp "$raw" --arg sha "$_psha" \
+		'. + {producer: $p, producer_report: $rp,
+		      producer_sha256: (if $sha == "" then null else $sha end)}') \
+		|| die_cfg "collector '$key' did not return a JSON object"
 	COLLECTED="${COLLECTED}${out}
 "
 done
@@ -384,7 +480,52 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 	)
 	| .coverage_regression = ([.coverage_regression, 1] | min)')
 
-TOOLSOBJ=$(printf '%s' "$ARR" | jq 'reduce .[] as $c ({}; .[$c.tool] = $c.tool_report)')
+# Channels with a REGISTERED deterministic merger. `php_style` is fed by php-style.sh and
+# by php-cs-fixer.json (symfony declares the latter, every other PHP profile the former);
+# both are the same normalised channel, so a merger is defined for it. Any OTHER duplicate
+# emit name is a configuration failure — an unregistered collision means two producers are
+# claiming one identity and nothing can say which report explains the aggregate counts.
+MERGEABLE_CHANNELS='["php_style"]'
+_dupes=$(printf '%s' "$ARR" | jq -r --argjson ok "$MERGEABLE_CHANNELS" '
+	[ .[] | {t: .tool, p: .producer} ]
+	| group_by(.t) | map(select(length > 1))
+	| map(select(. as $g | ($ok | index($g[0].t)) == null))
+	| .[] | "\(.[0].t) <- \(map(.p) | sort | join(", "))"' 2>/dev/null || true)
+if [ -n "$_dupes" ]; then
+	printf '%s\n' "$_dupes" | while IFS= read -r _l; do
+		[ -n "$_l" ] && log_error "duplicate collector emit name: $_l"
+	done
+	die_cfg "two or more producers emit the same tool name with no registered merger; the later report would overwrite the earlier evidence while both remain in the aggregate counts"
+fi
+# Assemble the channel view. Every contributing producer is preserved under `.producers`
+# (id, declared report, checksum, status), and the channel's own fields come from the
+# HIGHEST-SEVERITY contributor with ties broken by producer name — so registry order can
+# never change the result or the evidence.
+TOOLSOBJ=$(printf '%s' "$ARR" | jq '
+	def sevmap: {"execution-error":6, "not-configured":5, "unavailable":4,
+	             "fail":3, "findings":3, "warn":3, "pass":2, "disabled":1, "not-applicable":0};
+	def sev($s): (sevmap[$s] // 7);
+	group_by(.tool)
+	| map(
+		# A producer that left NO artifact contributes nothing to the channel. Several
+		# producers legitimately feed one channel while a given PROFILE declares only one of
+		# them (symfony declares php-cs-fixer, every other PHP profile php-style), so the
+		# absent producer must not outrank the real report from the applicable one with its
+		# "unavailable". When NOTHING was produced, the whole set decides — so a channel with no
+		# evidence is still unavailable, never a clean pass.
+		( [ .[] | select(.producer_sha256 != null) ] ) as $produced
+		| (if ($produced | length) > 0 then $produced else . end) as $deciding
+		| {
+			key: .[0].tool,
+			value: (
+				($deciding | sort_by([ -(sev(.tool_report.status // "")), .producer ])[0].tool_report)
+				# EVERY contributor is still listed, including the ones that produced nothing.
+				+ { producers: ( sort_by(.producer)
+					| map({ producer: .producer, report: .producer_report,
+					        sha256: .producer_sha256, status: (.tool_report.status // null) }) ) }
+			)
+		})
+	| from_entries')
 
 # --- effective-profile tool-policy overlay (optional --profile) --------------
 # Wire required-tool POLICY into the summary: for every required tool (and one-of
@@ -490,7 +631,14 @@ if [ -n "$PROFILE_NAME" ]; then
 
 		emit=$(emit_name_for "$tkey")
 		repfile=""
-		[ -n "$trep" ] && repfile="$RAW_DIR/$(basename -- "$trep")"
+		if [ -n "$trep" ]; then
+			repfile=$(resolve_report_path "$trep")
+			# A symlinked artifact can redirect the read outside the raw-report root; the
+			# builder consumes exactly the declared artifact or nothing.
+			if [ -L "$repfile" ]; then
+				die_cfg "declared report '$trep' resolves to a symlink ($repfile); refusing to read evidence through it"
+			fi
+		fi
 
 		# Architecture producers whose evidence is EXPECTED (v2.1.0). Optional producers stay
 		# opt-in (a project that never asked for PHPArkitect is not missing evidence), and a
@@ -912,7 +1060,18 @@ if [ -f "$EXC" ] && [ -s "$EXC" ]; then
 fi
 
 # --- assemble ----------------------------------------------------------------
+# Staging lives inside the reports directory so the publishing rename is atomic (a rename
+# across filesystems is a copy, which is exactly the partial-file window being closed).
+STAGE_DIR=$(mktemp -d "$REPORTS_DIR/.security-summary.stage.XXXXXX") \
+	|| die_cfg "could not create a staging directory under $REPORTS_DIR"
+STAGED="$STAGE_DIR/security-summary.json"
+INPUTS_JSON=$(printf '%s' "$INPUT_MANIFEST" | jq -R -s '
+	split("\n") | map(select(length > 0) | split("\t"))
+	| map({ producer: .[0], report: .[1], sha256: .[2] })')
+
 jq -n \
+	--arg opid "$OPERATION_ID" \
+	--argjson inputs "$INPUTS_JSON" \
 	--argjson counts "$COUNTS" \
 	--argjson tools "$TOOLSOBJ" \
 	--arg version "1.0" \
@@ -960,9 +1119,53 @@ jq -n \
 			sbom: { present: $sp, path: $sbom_path },
 			release_evidence: { present: $rp, path: $rel_path }
 		}
-	} + (if $havepol == 1 then { one_of_groups: $oneof } else {} end)' > "$OUTPUT"
+	} + (if $havepol == 1 then { one_of_groups: $oneof } else {} end)
+	  + { build: { operation_id: $opid, inputs: $inputs } }' > "$STAGED"
 
-# Final self-check: valid JSON and consistent evidence booleans.
+# --- validate the STAGED summary, before it is anyone's evidence -------------
+# Every check below runs on the staging file. Previously the only check ran on $OUTPUT —
+# after it had already replaced the previous summary — and covered three consistency
+# expressions, so a structurally broken summary became the current evidence and stayed
+# there.
+jq -e . "$STAGED" >/dev/null 2>&1 || die_cfg "assembled summary is not valid JSON ($STAGED)"
+_verr=$(jq -r '
+	def bad($m): $m;
+	[ (if (.version | type) != "string" then bad("version must be a string") else empty end),
+	  (if (.gate_contract_version | type) != "string" then bad("gate_contract_version must be a string") else empty end),
+	  (if (.generated_at | type) != "string" or (.generated_at | length) == 0 then bad("generated_at must be a non-empty string") else empty end),
+	  # `[…] | index(.stage)` indexes the ARRAY with a string: inside the pipe `.` is the
+	  # array, not the document. Only reachable when --stage was passed, which is why it
+	  # surfaced on staged e2e runs rather than the plain smoke build.
+	  (if (.stage != null) and ((.stage | IN("pr","main","scheduled")) | not) then bad("stage must be null or pr|main|scheduled") else empty end),
+	  (if (.project | type) != "object" then bad("project must be an object") else empty end),
+	  (if (.source | type) != "object" then bad("source must be an object") else empty end),
+	  (if (.summary | type) != "object" then bad("summary must be an object") else empty end),
+	  (if (.tools | type) != "object" then bad("tools must be an object") else empty end),
+	  (if (.exceptions | type) != "object" then bad("exceptions must be an object") else empty end),
+	  (if (.evidence | type) != "object" then bad("evidence must be an object") else empty end),
+	  (if (.build.operation_id | type) != "string" or (.build.operation_id | length) == 0 then bad("build.operation_id must be a non-empty string") else empty end),
+	  (if (.build.inputs | type) != "array" then bad("build.inputs must be an array") else empty end),
+	  ( .summary | to_entries[]
+	    | select((.value | type) != "number" and (.value | type) != "boolean")
+	    | bad("summary.\(.key) must be a number or a boolean, got \(.value | type)") ),
+	  ( .tools | to_entries[]
+	    | select((.value | type) != "object")
+	    | bad("tools.\(.key) must be an object, got \(.value | type)") ),
+	  (if .summary.missing_sbom != (.evidence.sbom.present | not) then bad("summary.missing_sbom disagrees with evidence.sbom.present") else empty end),
+	  (if .summary.missing_release_evidence != (.evidence.release_evidence.present | not) then bad("summary.missing_release_evidence disagrees with evidence.release_evidence.present") else empty end),
+	  # expired_exceptions aggregates the exceptions file AND any collector-reported
+	  # expiry, so it must be >= the file count — never equal-by-construction (v2.0.2).
+	  # The old `==` assertion is precisely what cemented the overwrite it was meant to
+	  # verify: it could only hold if collector-reported expiries were discarded.
+	  (if .summary.expired_exceptions < .exceptions.expired then bad("summary.expired_exceptions is below exceptions.expired") else empty end)
+	] | join("; ")' "$STAGED" 2>/dev/null || printf 'summary could not be validated')
+[ -z "$_verr" ] || die_cfg "assembled summary failed validation and was NOT published: $_verr"
+
+# Destination safety is proven BEFORE the previous summary is replaced.
+summary_dest_ok "$OUTPUT" || die_cfg "refusing to publish $OUTPUT"
+mv -- "$STAGED" "$OUTPUT" || die_cfg "could not publish the summary to $OUTPUT"
+
+# Belt-and-braces: the PUBLISHED file is the validated one.
 jq -e '
 	(.summary.missing_sbom == (.evidence.sbom.present | not))
 	and (.summary.missing_release_evidence == (.evidence.release_evidence.present | not))

@@ -4,7 +4,11 @@
   "title": "Sentinel Shield security summary",
   "description": "Normalized findings contract consumed by scripts/enforce-gates.sh. Scanner workflows populate this document; the enforcer maps SENTINEL_SHIELD_FAIL_ON_* flags onto summary keys.",
   "type": "object",
-  "required": ["version", "generated_at", "summary"],
+  "required": [
+    "version",
+    "generated_at",
+    "summary"
+  ],
   "additionalProperties": true,
   "properties": {
     "version": {
@@ -19,18 +23,30 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "name": { "type": "string" },
-        "type": { "type": "string" },
-        "criticality": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "criticality": {
+          "type": "string"
+        }
       }
     },
     "source": {
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "commit": { "type": "string" },
-        "branch": { "type": "string" },
-        "workflow": { "type": "string" }
+        "commit": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        }
       }
     },
     "summary": {
@@ -52,74 +68,333 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "secrets": { "type": "integer", "minimum": 0 },
-        "critical_vulnerabilities": { "type": "integer", "minimum": 0 },
-        "high_vulnerabilities": { "type": "integer", "minimum": 0 },
-        "medium_vulnerabilities": { "type": "integer", "minimum": 0 },
-        "architecture_violations": { "type": "integer", "minimum": 0, "description": "Architecture-boundary violations, summed across ALL architecture producers (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, custom architecture tests). Detects dependency-boundary breaches — it does not prove domain-modelling quality." },
-        "type_errors": { "type": "integer", "minimum": 0 },
-        "test_failures": { "type": "integer", "minimum": 0 },
-        "unsafe_docker": { "type": "integer", "minimum": 0 },
-        "unsafe_github_actions": { "type": "integer", "minimum": 0 },
-        "missing_sbom": { "type": "boolean" },
-        "missing_release_evidence": { "type": "boolean" },
-        "expired_exceptions": { "type": "integer", "minimum": 0 },
-        "third_party_suspicious_code": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party/supply-chain suspicious-code findings (separate channel from app SAST). Optional for backward compatibility." },
-        "third_party_install_script_risk": { "type": "integer", "minimum": 0, "description": "v0.1.5+ dependency install-script (pre/post/install) risk findings. Optional." },
-        "third_party_obfuscation": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party obfuscation indicators (decode→exec, packed blobs). Optional." },
-        "third_party_network_behavior": { "type": "integer", "minimum": 0, "description": "v0.1.5+ third-party env-read / outbound-network indicators. Optional." },
-        "style_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ code-style violations (Pint / PHP-CS-Fixer / PHPCS). Optional." },
-        "php_syntax_errors": { "type": "integer", "minimum": 0, "description": "v0.1.12+ PHP lint (php -l) syntax errors. Optional." },
-        "dependency_policy_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ dependency-policy breaches (license/version/allowlist). Reserved; no default emitter — OSV/Grype/Dependency-Check map to *_vulnerabilities. Optional." },
-        "iac_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ IaC misconfigurations (Checkov / Conftest / Terrascan). Optional." },
-        "dast_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ DAST findings (ZAP / Nuclei). Manual/controlled. Optional." },
-        "container_image_violations": { "type": "integer", "minimum": 0, "description": "v0.1.12+ built-image checks (Dockle), distinct from Dockerfile lint (unsafe_docker). Optional." },
-        "repository_health_warnings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ OpenSSF Scorecard low-scoring checks. Optional." },
-        "ai_review_findings": { "type": "integer", "minimum": 0, "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional." },
-        "required_tool_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Count of required-tool/control failures: required tools that are unavailable / not-configured / execution-error / disabled, plus unsatisfied one-of groups. Emitted only when build-security-summary.sh ran with --profile. NEVER folded into vulnerability counters." },
-        "tool_configuration_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is not-configured or disabled." },
-        "tool_execution_failures": { "type": "integer", "minimum": 0, "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is execution-error (executable present but no/invalid report)." },
-        "coverage_threshold_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of coverage thresholds breached (line/branch/method/class), summed across applicable stacks. Optional/additive; absent reads as 0. Separate channel from security counters." },
-        "coverage_regression": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. 1 when coverage decreased vs the recorded baseline for ANY applicable stack (0 otherwise). Optional/additive; absent reads as 0." },
-        "mutation_score_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of mutation-score minimums breached. Optional/additive; absent reads as 0." },
-        "complexity_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of complexity threshold violations. Optional/additive; absent reads as 0." },
-        "duplication_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of duplication threshold violations. Optional/additive; absent reads as 0." },
-        "dead_code_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of dead-code findings that breach policy. Optional/additive; absent reads as 0." },
-        "coverage_line_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Line coverage percent (aggregate = minimum across applicable stacks — the weakest stack drives the gate). Optional." },
-        "coverage_branch_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Branch coverage percent (aggregate = minimum across applicable stacks). Optional." },
-        "coverage_method_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Method/function coverage percent (aggregate = minimum across applicable stacks). Optional." },
-        "coverage_class_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Class coverage percent (aggregate = minimum across applicable stacks). Optional." },
-        "mutation_score_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Mutation score percent (aggregate = minimum across applicable stacks). Optional." },
-        "complexity_max": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Maximum complexity observed (aggregate = maximum across applicable stacks). Optional." },
-        "complexity_average": { "type": "number", "minimum": 0, "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional." },
-        "duplication_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Duplicated-code percent (aggregate = maximum across applicable stacks). Optional." },
-        "dead_code_count": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Count of dead-code items (summed across applicable stacks). Optional." },
-        "missing_coverage_evidence": { "type": "boolean", "description": "v2.1+ engineering-quality gate (boolean). True when an APPLICABLE coverage tool produced no valid report — so strict/regulated fail on ABSENT coverage, not only on bad coverage. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive." },
-        "changed_lines_coverage_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of stacks whose changed-lines (diff) coverage is below quality.coverage.changed_lines_min. Summed across stacks. Optional/additive; absent reads as 0." },
-        "changed_lines_coverage_percent": { "type": "number", "minimum": 0, "maximum": 100, "description": "v2.1+ informational. Changed-lines (diff) coverage percent (aggregate = minimum across applicable stacks). Optional." },
-        "missing_test_evidence": { "type": "boolean", "description": "v2.1+ engineering-quality gate (boolean). True when an APPLICABLE test stack produced no valid test report. Emitted only with --profile; absent reads as false. Optional/additive." },
-        "empty_test_suite": { "type": "boolean", "description": "v2.1+ engineering-quality gate (boolean). True when an applicable test report exists but reports zero tests. Emitted only with --profile; absent reads as false. Optional/additive." },
-        "test_count": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Total tests executed (summed across applicable stacks). Optional." },
-        "skipped_tests": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate + informational. Count of skipped tests (summed across stacks). Gated in regulated. Optional/additive; absent reads as 0." },
-        "focused_test_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of focused test markers (describe.only/it.only/->only()). Gated in all modes. Optional/additive; absent reads as 0." },
-        "skipped_test_marker_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of skip markers (markTestSkipped/markTestIncomplete/it.skip/xit). Gated in strict/regulated. Optional/additive; absent reads as 0." },
-        "debug_code_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of debug residue (dd/dump/var_dump/console.log/debugger/…). Gated in baseline+. Optional/additive; absent reads as 0." },
-        "large_file_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of files exceeding quality.maintainability.max_file_lines. Gated in strict/regulated. Optional/additive; absent reads as 0." },
-        "large_function_violations": { "type": "integer", "minimum": 0, "description": "v2.1+ engineering-quality gate. Count of functions exceeding quality.maintainability.max_function_lines (best-effort). Gated in strict/regulated. Optional/additive; absent reads as 0." },
-        "missing_architecture_evidence": { "type": "boolean", "description": "v2.1.0+ architecture-governance gate (boolean). True when an APPLICABLE architecture producer is expected by the profile/policy but produced no valid evidence — status unavailable / not-configured / execution-error / disabled, or no report at all. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive." },
-        "architecture_rule_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Number of architecture rules evaluated, summed across producers that expose it (0 when none do). Never a gate." },
-        "architecture_tool_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Number of architecture producers that produced VALID evidence (status pass or findings), summed across producers. Never a gate." },
-        "architecture_context_count": { "type": "integer", "minimum": 0, "description": "v2.1.0+ informational. Bounded contexts / modules / layers detected or declared. Aggregated as the MAXIMUM across producers (they describe the same codebase, so summing would double-count). Never a gate." },
-        "production_change_without_test_change": { "type": "integer", "minimum": 0, "description": "v2.2.0+ testing-discipline gate (TDD PROXY). Number of production-change groups where source/application behavior changed without any matching test/spec/feature/acceptance change. A proxy for test-first discipline, NOT proof of it — TDD is a workflow, and a final code snapshot does not record the order its lines were written. Optional/additive; absent reads as 0. Separate channel from security counters." },
-        "missing_test_change_evidence": { "type": "boolean", "description": "v2.2.0+ testing-discipline gate (boolean). True when Sentinel Shield could not compute changed-file evidence for a PR/diff where the profile expects it — no git work tree, no resolvable diff base, or an unreadable/errored report. \"We could not compute it\" must never read as \"no violation\". Optional/additive; absent reads as false." },
-        "behavior_spec_count": { "type": "integer", "minimum": 0, "description": "v2.2.0+ informational. Number of BDD behavior specs/scenarios detected or executed (spec_count + scenario_count, summed across producers). Counting scenarios says nothing about whether they describe the right behavior. Never a gate. Optional." },
-        "missing_behavior_specification": { "type": "boolean", "description": "v2.2.0+ testing-discipline gate (boolean). True when behavior-specification evidence is EXPECTED (testing_discipline.bdd.enabled + require_behavior_specs, or a required BDD producer in the profile) but absent/unavailable/errored, or a producer ran and declared zero specs and zero scenarios. Never expected by default — a library is not forced to carry BDD. Optional/additive; absent reads as false." },
-        "orphan_behavior_specifications": { "type": "integer", "minimum": 0, "description": "v2.2.0+ testing-discipline gate. Number of behavior specs/features with no matching implementation/test evidence, WHEN the producer can determine it (producers that cannot report 0, which is a truthful \"cannot determine\", not a clean result). Gated in regulated only. Optional/additive; absent reads as 0." },
-        "acceptance_test_count": { "type": "integer", "minimum": 0, "description": "v2.2.0+ informational. Number of acceptance-level tests/scenarios executed, summed across producers (Playwright, Cypress, Behat/Cucumber at acceptance level). Never a gate. Optional." },
-        "acceptance_test_failures": { "type": "integer", "minimum": 0, "description": "v2.2.0+ testing-discipline gate. Number of failing acceptance tests/scenarios, summed across producers. Fails whenever acceptance evidence EXISTS and tests fail (from baseline up). Optional/additive; absent reads as 0." },
-        "missing_acceptance_evidence": { "type": "boolean", "description": "v2.2.0+ testing-discipline gate (boolean). True when acceptance evidence is EXPECTED but absent/unavailable/errored, or a report exists with tests=0 (a suite that ran nothing proves nothing). Passing acceptance tests are not product-owner acceptance. Never expected by default. Optional/additive; absent reads as false." },
-        "max_file_lines": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Largest file line-count observed (aggregate = maximum across stacks). Optional." },
-        "max_function_lines": { "type": "integer", "minimum": 0, "description": "v2.1+ informational. Largest function line-count observed (aggregate = maximum across stacks). Optional." }
+        "secrets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical_vulnerabilities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_vulnerabilities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "medium_vulnerabilities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "architecture_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Architecture-boundary violations, summed across ALL architecture producers (Deptrac, PHPArkitect, dependency-cruiser, ESLint boundaries, custom architecture tests). Detects dependency-boundary breaches \u2014 it does not prove domain-modelling quality."
+        },
+        "type_errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "test_failures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsafe_docker": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsafe_github_actions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing_sbom": {
+          "type": "boolean"
+        },
+        "missing_release_evidence": {
+          "type": "boolean"
+        },
+        "expired_exceptions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "third_party_suspicious_code": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.5+ third-party/supply-chain suspicious-code findings (separate channel from app SAST). Optional for backward compatibility."
+        },
+        "third_party_install_script_risk": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.5+ dependency install-script (pre/post/install) risk findings. Optional."
+        },
+        "third_party_obfuscation": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.5+ third-party obfuscation indicators (decode\u2192exec, packed blobs). Optional."
+        },
+        "third_party_network_behavior": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.5+ third-party env-read / outbound-network indicators. Optional."
+        },
+        "style_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ code-style violations (Pint / PHP-CS-Fixer / PHPCS). Optional."
+        },
+        "php_syntax_errors": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ PHP lint (php -l) syntax errors. Optional."
+        },
+        "dependency_policy_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ dependency-policy breaches (license/version/allowlist). Reserved; no default emitter \u2014 OSV/Grype/Dependency-Check map to *_vulnerabilities. Optional."
+        },
+        "iac_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ IaC misconfigurations (Checkov / Conftest / Terrascan). Optional."
+        },
+        "dast_findings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ DAST findings (ZAP / Nuclei). Manual/controlled. Optional."
+        },
+        "container_image_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ built-image checks (Dockle), distinct from Dockerfile lint (unsafe_docker). Optional."
+        },
+        "repository_health_warnings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ OpenSSF Scorecard low-scoring checks. Optional."
+        },
+        "ai_review_findings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v0.1.12+ AI-assisted review findings (Claude Code Security Review / Kuzushi). Non-gating by default. Optional."
+        },
+        "required_tool_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v1.10+ tool-policy counter (additive). Count of required-tool/control failures: required tools that are unavailable / not-configured / execution-error / disabled, plus unsatisfied one-of groups. Emitted only when build-security-summary.sh ran with --profile. NEVER folded into vulnerability counters."
+        },
+        "tool_configuration_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is not-configured or disabled."
+        },
+        "tool_execution_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v1.10+ tool-policy counter (additive). Subset: required tools whose status is execution-error (executable present but no/invalid report)."
+        },
+        "coverage_threshold_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of coverage thresholds breached (line/branch/method/class), summed across applicable stacks. Optional/additive; absent reads as 0. Separate channel from security counters."
+        },
+        "coverage_regression": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. 1 when coverage decreased vs the recorded baseline for ANY applicable stack (0 otherwise). Optional/additive; absent reads as 0."
+        },
+        "mutation_score_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of mutation-score minimums breached. Optional/additive; absent reads as 0."
+        },
+        "complexity_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of complexity threshold violations. Optional/additive; absent reads as 0."
+        },
+        "duplication_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of duplication threshold violations. Optional/additive; absent reads as 0."
+        },
+        "dead_code_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of dead-code findings that breach policy. Optional/additive; absent reads as 0."
+        },
+        "coverage_line_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Line coverage percent (aggregate = minimum across applicable stacks \u2014 the weakest stack drives the gate). Optional."
+        },
+        "coverage_branch_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Branch coverage percent (aggregate = minimum across applicable stacks). Optional."
+        },
+        "coverage_method_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Method/function coverage percent (aggregate = minimum across applicable stacks). Optional."
+        },
+        "coverage_class_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Class coverage percent (aggregate = minimum across applicable stacks). Optional."
+        },
+        "mutation_score_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Mutation score percent (aggregate = minimum across applicable stacks). Optional."
+        },
+        "complexity_max": {
+          "type": "number",
+          "minimum": 0,
+          "description": "v2.1+ informational. Maximum complexity observed (aggregate = maximum across applicable stacks). Optional."
+        },
+        "complexity_average": {
+          "type": "number",
+          "minimum": 0,
+          "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional."
+        },
+        "duplication_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Duplicated-code percent (aggregate = maximum across applicable stacks). Optional."
+        },
+        "dead_code_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ informational. Count of dead-code items (summed across applicable stacks). Optional."
+        },
+        "missing_coverage_evidence": {
+          "type": "boolean",
+          "description": "v2.1+ engineering-quality gate (boolean). True when an APPLICABLE coverage tool produced no valid report \u2014 so strict/regulated fail on ABSENT coverage, not only on bad coverage. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive."
+        },
+        "changed_lines_coverage_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of stacks whose changed-lines (diff) coverage is below quality.coverage.changed_lines_min. Summed across stacks. Optional/additive; absent reads as 0."
+        },
+        "changed_lines_coverage_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "v2.1+ informational. Changed-lines (diff) coverage percent (aggregate = minimum across applicable stacks). Optional."
+        },
+        "missing_test_evidence": {
+          "type": "boolean",
+          "description": "v2.1+ engineering-quality gate (boolean). True when an APPLICABLE test stack produced no valid test report. Emitted only with --profile; absent reads as false. Optional/additive."
+        },
+        "empty_test_suite": {
+          "type": "boolean",
+          "description": "v2.1+ engineering-quality gate (boolean). True when an applicable test report exists but reports zero tests. Emitted only with --profile; absent reads as false. Optional/additive."
+        },
+        "test_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ informational. Total tests executed (summed across applicable stacks). Optional."
+        },
+        "skipped_tests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate + informational. Count of skipped tests (summed across stacks). Gated in regulated. Optional/additive; absent reads as 0."
+        },
+        "focused_test_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of focused test markers (describe.only/it.only/->only()). Gated in all modes. Optional/additive; absent reads as 0."
+        },
+        "skipped_test_marker_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of skip markers (markTestSkipped/markTestIncomplete/it.skip/xit). Gated in strict/regulated. Optional/additive; absent reads as 0."
+        },
+        "debug_code_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of debug residue (dd/dump/var_dump/console.log/debugger/\u2026). Gated in baseline+. Optional/additive; absent reads as 0."
+        },
+        "large_file_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of files exceeding quality.maintainability.max_file_lines. Gated in strict/regulated. Optional/additive; absent reads as 0."
+        },
+        "large_function_violations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ engineering-quality gate. Count of functions exceeding quality.maintainability.max_function_lines (best-effort). Gated in strict/regulated. Optional/additive; absent reads as 0."
+        },
+        "missing_architecture_evidence": {
+          "type": "boolean",
+          "description": "v2.1.0+ architecture-governance gate (boolean). True when an APPLICABLE architecture producer is expected by the profile/policy but produced no valid evidence \u2014 status unavailable / not-configured / execution-error / disabled, or no report at all. Emitted only when build-security-summary.sh ran with --profile; absent (older/non-profile summary) reads as false. Optional/additive."
+        },
+        "architecture_rule_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1.0+ informational. Number of architecture rules evaluated, summed across producers that expose it (0 when none do). Never a gate."
+        },
+        "architecture_tool_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1.0+ informational. Number of architecture producers that produced VALID evidence (status pass or findings), summed across producers. Never a gate."
+        },
+        "architecture_context_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1.0+ informational. Bounded contexts / modules / layers detected or declared. Aggregated as the MAXIMUM across producers (they describe the same codebase, so summing would double-count). Never a gate."
+        },
+        "production_change_without_test_change": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.2.0+ testing-discipline gate (TDD PROXY). Number of production-change groups where source/application behavior changed without any matching test/spec/feature/acceptance change. A proxy for test-first discipline, NOT proof of it \u2014 TDD is a workflow, and a final code snapshot does not record the order its lines were written. Optional/additive; absent reads as 0. Separate channel from security counters."
+        },
+        "missing_test_change_evidence": {
+          "type": "boolean",
+          "description": "v2.2.0+ testing-discipline gate (boolean). True when Sentinel Shield could not compute changed-file evidence for a PR/diff where the profile expects it \u2014 no git work tree, no resolvable diff base, or an unreadable/errored report. \"We could not compute it\" must never read as \"no violation\". Optional/additive; absent reads as false."
+        },
+        "behavior_spec_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.2.0+ informational. Number of BDD behavior specs/scenarios detected or executed (spec_count + scenario_count, summed across producers). Counting scenarios says nothing about whether they describe the right behavior. Never a gate. Optional."
+        },
+        "missing_behavior_specification": {
+          "type": "boolean",
+          "description": "v2.2.0+ testing-discipline gate (boolean). True when behavior-specification evidence is EXPECTED (testing_discipline.bdd.enabled + require_behavior_specs, or a required BDD producer in the profile) but absent/unavailable/errored, or a producer ran and declared zero specs and zero scenarios. Never expected by default \u2014 a library is not forced to carry BDD. Optional/additive; absent reads as false."
+        },
+        "orphan_behavior_specifications": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.2.0+ testing-discipline gate. Number of behavior specs/features with no matching implementation/test evidence, WHEN the producer can determine it (producers that cannot report 0, which is a truthful \"cannot determine\", not a clean result). Gated in regulated only. Optional/additive; absent reads as 0."
+        },
+        "acceptance_test_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.2.0+ informational. Number of acceptance-level tests/scenarios executed, summed across producers (Playwright, Cypress, Behat/Cucumber at acceptance level). Never a gate. Optional."
+        },
+        "acceptance_test_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.2.0+ testing-discipline gate. Number of failing acceptance tests/scenarios, summed across producers. Fails whenever acceptance evidence EXISTS and tests fail (from baseline up). Optional/additive; absent reads as 0."
+        },
+        "missing_acceptance_evidence": {
+          "type": "boolean",
+          "description": "v2.2.0+ testing-discipline gate (boolean). True when acceptance evidence is EXPECTED but absent/unavailable/errored, or a report exists with tests=0 (a suite that ran nothing proves nothing). Passing acceptance tests are not product-owner acceptance. Never expected by default. Optional/additive; absent reads as false."
+        },
+        "max_file_lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ informational. Largest file line-count observed (aggregate = maximum across stacks). Optional."
+        },
+        "max_function_lines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "v2.1+ informational. Largest function line-count observed (aggregate = maximum across stacks). Optional."
+        }
       }
     },
     "tools": {
@@ -130,27 +405,139 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["pass", "fail", "warn", "skipped", "unavailable", "findings", "not-configured", "not-applicable", "execution-error", "disabled"],
+            "enum": [
+              "pass",
+              "fail",
+              "warn",
+              "skipped",
+              "unavailable",
+              "findings",
+              "not-configured",
+              "not-applicable",
+              "execution-error",
+              "disabled"
+            ],
             "description": "Tool execution/result state. Legacy: pass/fail/warn/skipped/unavailable. v1.10+ tool-policy states: findings (ran, found issues), not-configured (no config file), not-applicable (stack absent), execution-error (crashed/invalid output), disabled (turned off by policy). Mapping per docs/profile-tool-policy.md: an unavailable/execution-error tool is NEVER rewritten as a clean 0."
           },
-          "findings": { "type": "integer", "minimum": 0 },
-          "critical": { "type": "integer", "minimum": 0 },
-          "high": { "type": "integer", "minimum": 0 },
-          "medium": { "type": "integer", "minimum": 0 },
-          "errors": { "type": "integer", "minimum": 0 },
-          "warnings": { "type": "integer", "minimum": 0 },
-          "security_errors": { "type": "integer", "minimum": 0 },
-          "violations": { "type": "integer", "minimum": 0 },
-          "failures": { "type": "integer", "minimum": 0 },
-          "tool": { "type": "string", "description": "v1.10+ tool-policy overlay. Effective-profile tool key this entry covers (build-security-summary.sh --profile)." },
-          "policy": { "type": "string", "enum": ["required", "recommended", "optional", "one-of", "disabled", "external"], "description": "v1.10+ effective-profile policy for this tool." },
-          "applicability": { "type": "string", "enum": ["applicable", "not-applicable", "unknown"], "description": "v1.10+ whether the tool's stack applies to the target." },
-          "installed": { "type": "boolean", "description": "v1.10+ a declared executable resolved (best-effort), or the report proves it ran." },
-          "configured": { "type": "boolean", "description": "v1.10+ false when a required config file (e.g. never-touch) is absent." },
-          "executed": { "type": "boolean", "description": "v1.10+ a present+valid report was produced." },
-          "gate_enforced": { "type": "boolean", "description": "v1.10+ true when this tool's status feeds the gate (required + applicable). one-of members / recommended / optional are emitted with false." },
-          "report": { "type": "string", "description": "v1.10+ expected raw report path for this tool." },
-          "message": { "type": "string", "description": "v1.10+ short human explanation of the derived status." }
+          "findings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "critical": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "medium": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "security_errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "violations": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tool": {
+            "type": "string",
+            "description": "v1.10+ tool-policy overlay. Effective-profile tool key this entry covers (build-security-summary.sh --profile)."
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "required",
+              "recommended",
+              "optional",
+              "one-of",
+              "disabled",
+              "external"
+            ],
+            "description": "v1.10+ effective-profile policy for this tool."
+          },
+          "applicability": {
+            "type": "string",
+            "enum": [
+              "applicable",
+              "not-applicable",
+              "unknown"
+            ],
+            "description": "v1.10+ whether the tool's stack applies to the target."
+          },
+          "installed": {
+            "type": "boolean",
+            "description": "v1.10+ a declared executable resolved (best-effort), or the report proves it ran."
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "v1.10+ false when a required config file (e.g. never-touch) is absent."
+          },
+          "executed": {
+            "type": "boolean",
+            "description": "v1.10+ a present+valid report was produced."
+          },
+          "gate_enforced": {
+            "type": "boolean",
+            "description": "v1.10+ true when this tool's status feeds the gate (required + applicable). one-of members / recommended / optional are emitted with false."
+          },
+          "report": {
+            "type": "string",
+            "description": "v1.10+ expected raw report path for this tool."
+          },
+          "message": {
+            "type": "string",
+            "description": "v1.10+ short human explanation of the derived status."
+          },
+          "producers": {
+            "type": "array",
+            "description": "Every producer contributing to this normalised channel (#235). Several producers may feed one channel (php-cs-fixer and php-style both emit php_style); each keeps its own identity, report path, checksum and status, and the channel's own fields come from the highest-severity contributor with ties broken by producer name.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "producer": {
+                  "type": "string",
+                  "description": "Producer (tool) identity, e.g. php-cs-fixer."
+                },
+                "report": {
+                  "type": "string",
+                  "description": "The raw report the producer was read from."
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "SHA-256 of that report, or null when the report was absent."
+                },
+                "status": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "producer",
+                "report"
+              ]
+            }
+          }
         },
         "additionalProperties": true
       }
@@ -162,8 +549,20 @@
         "type": "object",
         "additionalProperties": true,
         "properties": {
-          "status": { "type": "string", "enum": ["satisfied", "unsatisfied", "unknown"] },
-          "selected": { "type": ["string", "null"] }
+          "status": {
+            "type": "string",
+            "enum": [
+              "satisfied",
+              "unsatisfied",
+              "unknown"
+            ]
+          },
+          "selected": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
@@ -171,8 +570,14 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "active": { "type": "integer", "minimum": 0 },
-        "expired": { "type": "integer", "minimum": 0 }
+        "active": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expired": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "evidence": {
@@ -182,18 +587,30 @@
         "sbom": {
           "type": "object",
           "properties": {
-            "present": { "type": "boolean" },
-            "path": { "type": "string" }
+            "present": {
+              "type": "boolean"
+            },
+            "path": {
+              "type": "string"
+            }
           },
-          "required": ["present"]
+          "required": [
+            "present"
+          ]
         },
         "release_evidence": {
           "type": "object",
           "properties": {
-            "present": { "type": "boolean" },
-            "path": { "type": "string" }
+            "present": {
+              "type": "boolean"
+            },
+            "path": {
+              "type": "string"
+            }
           },
-          "required": ["present"]
+          "required": [
+            "present"
+          ]
         }
       }
     },
@@ -202,9 +619,18 @@
       "description": "v1.11+ (production-security-policy). Target-applicability + coverage for the security acceptance gate (scripts/enforce-security-policy.sh). expected = applicable scan targets; scanned = targets a required scanner actually parsed. A drop is a regression signal.",
       "additionalProperties": true,
       "properties": {
-        "expected": { "type": "integer", "minimum": 0 },
-        "scanned": { "type": "integer", "minimum": 0 },
-        "coverage_ratio": { "type": "number", "minimum": 0 }
+        "expected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverage_ratio": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "scanners": {
@@ -212,24 +638,70 @@
       "description": "v1.11+ (production-security-policy). Per-scanner EXECUTION record consumed by scripts/enforce-security-policy.sh: proves the scanner ran, its version, database freshness (age_days), target applicability, targets scanned, and the raw report digest. Produced by scripts/normalize-security-summary.sh. Optional for backward compatibility.",
       "items": {
         "type": "object",
-        "required": ["name", "category", "applicable", "status"],
+        "required": [
+          "name",
+          "category",
+          "applicable",
+          "status"
+        ],
         "additionalProperties": true,
         "properties": {
-          "name": { "type": "string", "minLength": 1 },
-          "category": { "type": "string", "minLength": 1 },
-          "applicable": { "type": "boolean" },
-          "status": { "enum": ["success", "error", "not-applicable"] },
-          "version": { "type": ["string", "null"] },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "applicable": {
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "success",
+              "error",
+              "not-applicable"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "database": {
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "timestamp": { "type": ["string", "null"] },
-              "age_days": { "type": ["integer", "null"], "minimum": 0 }
+              "timestamp": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "age_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
             }
           },
-          "targets_scanned": { "type": ["integer", "null"], "minimum": 0 },
-          "raw_report_digest": { "type": ["string", "null"] }
+          "targets_scanned": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "raw_report_digest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
@@ -238,18 +710,91 @@
       "description": "v1.11+ (production-security-policy). Normalized, per-finding records consumed by scripts/enforce-security-policy.sh for severity/fix/waiver evaluation. Produced by scripts/normalize-security-summary.sh. Optional for backward compatibility.",
       "items": {
         "type": "object",
-        "required": ["id", "scanner", "category", "severity"],
+        "required": [
+          "id",
+          "scanner",
+          "category",
+          "severity"
+        ],
         "additionalProperties": true,
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "scanner": { "type": "string", "minLength": 1 },
-          "category": { "type": "string", "minLength": 1 },
-          "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
-          "fix_available": { "type": "boolean" },
-          "target": { "type": ["string", "null"] },
-          "reference": { "type": ["string", "null"] }
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scanner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "fix_available": {
+            "type": "boolean"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
+    },
+    "build": {
+      "type": "object",
+      "description": "Publication provenance for THIS summary (#238). Written by scripts/build-security-summary.sh after the assembled summary passes validation, and published with it atomically.",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifies the build that produced this file (CI run id and attempt, or a local timestamp+pid)."
+        },
+        "inputs": {
+          "type": "array",
+          "description": "Every raw report actually consumed, with the SHA-256 of the bytes read.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "producer": {
+                "type": "string"
+              },
+              "report": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "producer",
+              "report",
+              "sha256"
+            ]
+          }
+        }
+      },
+      "required": [
+        "operation_id",
+        "inputs"
+      ]
     }
   }
 }
