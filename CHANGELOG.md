@@ -15,6 +15,37 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Added — trusted cross-workflow security-evidence handoff, opt-in (#88)
+
+- **Same-run `needs:` remains the recommended default and is unchanged.** A standalone release
+  gate previously had no supported way to consume evidence at all: `actions/download-artifact`
+  reads the current run, so the gate failed closed and every adopter with a split pipeline had to
+  design artifact discovery — and its trust rules — themselves.
+- **New `scripts/verify-evidence-handoff.sh`** consumes **explicit producer metadata** and fails
+  closed on repository, fork head, workflow allowlist, run id, status, conclusion, event, trusted
+  ref, exact commit, freshness, **ambiguity** (two equally valid runs is a rejection, never
+  "latest wins"), artifact identity, checksum manifest and the summary's **own** embedded
+  commit/branch/workflow metadata. `explain` prints the rule list from the implementation.
+- **New `scripts/build-evidence-manifest.sh`** binds the producer's evidence to its run: repository,
+  run id, commit, artifact name and a SHA-256 per file. Without it the handoff is rejected — an
+  artifact name proves nothing.
+- **New `templates/workflows/sentinel-shield-evidence-handoff.yml`**, shipping **disabled** (its
+  `workflow_run` trigger is commented out). It runs in default-branch context, never checks out or
+  executes the producer's head code, requests `contents: read` + `actions: read` and **no write
+  scope**, verifies before it enforces, and never falls back to the example summary.
+- **New [`docs/cross-workflow-evidence-handoff.md`](docs/cross-workflow-evidence-handoff.md)** —
+  the trust rules, the producer/consumer setup, the retention/replay/rerun/superseded-run policy
+  and a migration path for split pipelines. `product-contract.md` now says precisely what is and
+  is not supported: explicit bound handoff yes, artifact **discovery** never.
+- **New `tests/prod/287-cross-workflow-handoff.sh`** — adversarial matrix: wrong repository, fork
+  head, `pull_request`/`pull_request_target` events, non-allowlisted workflow, untrusted branch,
+  wrong commit, failed/cancelled/skipped/unfinished runs, wrong run id, stale and future
+  timestamps, unparseable timestamps, unreadable run metadata, ambiguous producers, substituted
+  artifact content, uncovered extra files, missing files, manifests from another run/commit/
+  repository, path traversal in a manifest, an empty manifest, a non-allowlisted artifact name,
+  and summaries bound to the wrong commit/branch/workflow — plus template least-privilege and
+  ordering assertions.
+
 ### Added — finding-scoped accepted risks beyond `unsafe_docker` (#89)
 
 - **A single medium vulnerability can now be accepted without accepting the rest of the gate.**

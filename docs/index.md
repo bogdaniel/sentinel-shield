@@ -57,6 +57,7 @@ Tag legend: **[stable]** depend on it · **[advanced]** opt-in/enterprise · **[
 - [`v2-migration-guide.md`](v2-migration-guide.md) — v1 → v2 profile tool-policy migration **[stable]**
 - [`tool-provisioning.md`](tool-provisioning.md) — `--tool-mode` config-only/require-existing/bootstrap-tools, rollback-safe install **[stable]**
 - [`workflow-execution-model.md`](workflow-execution-model.md) — policy → CI plan, required-tool enforcement **[reference]**
+- [`cross-workflow-evidence-handoff.md`](cross-workflow-evidence-handoff.md) — opt-in trusted handoff when the scanner and release workflows are separate (same-run `needs:` remains the default).
 
 ### Modes, gates & governance
 - [`gate-resolution.md`](gate-resolution.md) — mode → gate flags → enforce **[stable]**

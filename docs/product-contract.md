@@ -131,8 +131,13 @@ the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifes
 - **No digest pinning by default.** Tool images/actions ship as readable tags; the
   consumer must pin digests before production ([`pinned-tool-references.md`](pinned-tool-references.md),
   [`scanner-image-digest-pinning.md`](scanner-image-digest-pinning.md)).
-- **No cross-workflow artifact discovery.** The release gate consumes summaries produced
-  in the same run; cross-run handoff is deliberately not automated.
+- **No cross-workflow artifact DISCOVERY.** The release gate consumes summaries produced in the
+  same run. Reaching across runs is available only as an **opt-in, explicitly bound** handoff
+  ([`cross-workflow-evidence-handoff.md`](cross-workflow-evidence-handoff.md)): the consumer names
+  the producer run and Sentinel Shield verifies repository, workflow, run id, conclusion, event,
+  ref, commit, freshness, ambiguity and artifact checksums before the evidence is used. Searching
+  for "the latest successful artifact" is still not supported, and never will be — it is not a
+  trust rule.
 - **No `v1.0` / turnkey guarantee.** Adoption still requires a profile, pinned refs, and
   per-project risk decisions.
 

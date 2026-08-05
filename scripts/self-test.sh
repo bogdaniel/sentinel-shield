@@ -22,6 +22,20 @@ cd "$ROOT"
 
 command_exists jq || { log_error "jq is required for the self-test"; exit 2; }
 
+# st_evidence_overlay <summary.json>
+# The assurance modes refuse to certify a summary that carries no tool-policy overlay: an
+# evidence gate cannot judge applicability without it. Fixtures built WITHOUT `--profile`
+# have no overlay, so cases that are about WHICH GATE FIRES stamp a clean, neutral one here
+# rather than letting an unrelated input refusal mask the mapping under test.
+st_evidence_overlay() {
+	jq '.summary += {required_tool_failures:0, tool_configuration_failures:0,
+			tool_execution_failures:0, missing_coverage_evidence:false,
+			missing_test_evidence:false, empty_test_suite:false,
+			missing_architecture_evidence:false, missing_test_change_evidence:false,
+			missing_behavior_specification:false, missing_acceptance_evidence:false}' \
+		"$1" > "$1.overlay" && mv "$1.overlay" "$1"
+}
+
 SUB="${1:-all}"
 
 # --- syntax ------------------------------------------------------------------
@@ -450,6 +464,7 @@ run_third_party() {
 	cp templates/raw/third-party-semgrep.example.json "$_d/raw/third-party-semgrep.json"
 	sh scripts/build-security-summary.sh --raw-dir "$_d/raw" --output "$_d/security-summary.json" \
 		--project-name tp --commit c --workflow self-test >/dev/null 2>&1
+	st_evidence_overlay "$_d/security-summary.json"
 	tp_check "build -> summary carries third_party_install_script_risk" \
 		"$(jq -r '.summary.third_party_install_script_risk' "$_d/security-summary.json")" "1"
 
@@ -829,12 +844,21 @@ run_scanner_matrix() {
 	# --- enforcer: new gates across modes ---
 	mkdir -p "$_d/eraw"; echo '{"errors":2}' > "$_d/eraw/php-syntax.json"; echo '{"summary":{"failed":1}}' > "$_d/eraw/checkov.json"; echo '{"findings":[{"x":1}]}' > "$_d/eraw/ai-security-review.json"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/eraw" --output "$_d/sum.json" --project-name t >/dev/null 2>&1
+	st_evidence_overlay "$_d/sum.json"
 	for _m in baseline strict regulated; do
 		printf 'project:\n  name: t\ngates:\n  mode: %s\n' "$_m" > "$_d/p.yaml"
+		_E="$_d/sentinel-shield-enforcement.json"
+		# Delete the previous mode's report first: when enforcement REFUSES the input it
+		# writes nothing, and reading the leftover file silently reported the previous
+		# mode's verdict as this one's.
+		rm -f "$_E"
 		sh "$ROOT/scripts/resolve-gates.sh" --profile "$_d/p.yaml" --mode "$_m" --format env --output-dir "$_d" >/dev/null 2>&1
 		sh "$ROOT/scripts/enforce-gates.sh" --summary "$_d/sum.json" --gates-env "$_d/sentinel-shield-gates.env" --output-dir "$_d" --format json >/dev/null 2>&1 || true
-		_E="$_d/sentinel-shield-enforcement.json"
-		eval "_e_$(echo "$_m" | tr '-' '_')=\"$(jq -r '[.evaluated_gates[]|select(.key=="iac_violations")][0].result' "$_E")|$(jq -r '[.evaluated_gates[]|select(.key=="ai_review_findings")][0].result' "$_E")\""
+		if [ -f "$_E" ]; then
+			eval "_e_$(echo "$_m" | tr '-' '_')=\"$(jq -r '[.evaluated_gates[]|select(.key=="iac_violations")][0].result' "$_E")|$(jq -r '[.evaluated_gates[]|select(.key=="ai_review_findings")][0].result' "$_E")\""
+		else
+			eval "_e_$(echo "$_m" | tr '-' '_')=\"no-report|no-report\""
+		fi
 	done
 	sm_check "enforcer baseline iac skipped"   "$(echo "$_e_baseline"  | cut -d'|' -f1)" "skipped"
 	sm_check "enforcer strict iac fail"        "$(echo "$_e_strict"    | cut -d'|' -f1)" "fail"
@@ -1492,6 +1516,7 @@ run_v023_coverage() {
 	printf '{"SPDXID":"SPDXRef-DOCUMENT"}' > "$_d/r2/sbom.spdx.json"
 	printf 'release evidence\n' > "$_d/r2/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/r2/raw" --output "$_d/r2/sum2.json" --project-name t >/dev/null 2>&1
+	st_evidence_overlay "$_d/r2/sum2.json"
 	cv_check "strict PASSES dast-only finding" "$(enforce_mode strict "$_d/r2/sum2.json")" "pass"
 	cv_check "regulated FAILS dast finding" "$(enforce_mode regulated "$_d/r2/sum2.json")" "fail"
 
@@ -1656,6 +1681,7 @@ run_v024_coverage() {
 	rm -rf "$_d/cl"; mkdir -p "$_d/cl/raw"; cp "$F/modes-v024/clean/gitleaks.json" "$_d/cl/raw/gitleaks.json"
 	cp "$F/modes-v024/clean/sbom.spdx.json" "$_d/cl/sbom.spdx.json"; cp "$F/modes-v024/clean/release-evidence.md" "$_d/cl/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/cl/raw" --output "$_d/cl/sum.json" --project-name t >/dev/null 2>&1
+	st_evidence_overlay "$_d/cl/sum.json"
 	vc_check "modes-v024 clean: report-only PASS" "$(enforce_mode report-only "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: strict PASS" "$(enforce_mode strict "$_d/cl/sum.json")" "pass"
 	vc_check "modes-v024 clean: regulated PASS" "$(enforce_mode regulated "$_d/cl/sum.json")" "pass"
@@ -1663,6 +1689,7 @@ run_v024_coverage() {
 	rm -rf "$_d/da"; mkdir -p "$_d/da/raw"; cp "$F/modes-v024/dast-finding/zap.json" "$_d/da/raw/zap.json"
 	printf '{"SPDXID":"x"}' > "$_d/da/sbom.spdx.json"; printf 'rel\n' > "$_d/da/release-evidence.md"
 	sh "$ROOT/scripts/build-security-summary.sh" --raw-dir "$_d/da/raw" --output "$_d/da/sum.json" --project-name t >/dev/null 2>&1
+	st_evidence_overlay "$_d/da/sum.json"
 	vc_check "modes-v024 dast: strict PASS" "$(enforce_mode strict "$_d/da/sum.json")" "pass"
 	vc_check "modes-v024 dast: regulated FAIL" "$(enforce_mode regulated "$_d/da/sum.json")" "fail"
 	# repo-health scorecard fixture maps to repository_health_warnings.
@@ -1691,8 +1718,12 @@ run_v024_coverage() {
 		# SECOND zero: the variable becomes "0\n0" and `[ "0 0" -le "0" ]` raises
 		# "integer expression expected", firing the || branch as a FALSE FAILURE. Latent
 		# today only because every shipped template has an upload; a trap for the next one.
-		_ups=$(grep -c 'uses: actions/upload-artifact' "$_wf" 2>/dev/null || true)
-		_alw=$(grep -c 'if: always()' "$_wf" 2>/dev/null || true)
+		# Templates carry commented-out EXAMPLE producer steps. A commented `uses:` line is
+		# documentation, not a step, so only executable lines are counted — otherwise a
+		# documented example upload reads as an unguarded step and fails a clean template.
+		_exec=$(grep -v '^[[:space:]]*#' "$_wf" 2>/dev/null || true)
+		_ups=$(printf '%s\n' "$_exec" | grep -c 'uses: actions/upload-artifact' || true)
+		_alw=$(printf '%s\n' "$_exec" | grep -c 'if: always()' || true)
 		case "$_ups" in '' | *[!0-9]*) _ups=0 ;; esac
 		case "$_alw" in '' | *[!0-9]*) _alw=0 ;; esac
 		[ "$_ups" -le "$_alw" ] || { log_error "  $(basename "$_wf"): $_ups uploads but only $_alw if:always()"; _unguarded=$((_unguarded + 1)); }
@@ -3661,7 +3692,11 @@ v3_maturity_glob() {
 v3_summary_numeric() {
 	_t=$(mktemp -d); mkdir -p "$_t"
 	sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$_t" --format env >/dev/null 2>&1
-	printf '{"version":"1.0","generated_at":"t","summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"expired_exceptions":0,"missing_sbom":false,"missing_release_evidence":false,"required_tool_failures":1},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"exceptions":{"active":0,"expired":0}}' > "$_t/s.json"
+	# Derived from the SHIPPED example so the fixture carries the current evidence
+	# contract (source/evidence/tool statuses); the case under test is the summary-only
+	# required-tool count with NO per-tool policy records.
+	jq 'del(.tools) | .summary.required_tool_failures = 1' \
+		"$ROOT/templates/security-summary.example.json" > "$_t/s.json"
 	if sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_t/sentinel-shield-gates.env" --summary "$_t/s.json" --output-dir "$_t" --format all >/dev/null 2>&1; then _r=0; else _r=$?; fi
 	v3_check "(6) summary-only required_tool_failures=1 -> gate fail (exit 1, no arith error)" "$_r" "1"
 	v3_check "(6) enforcement JSON valid" "$(jq -e . "$_t/sentinel-shield-enforcement.json" >/dev/null 2>&1 && echo ok || echo bad)" "ok"
