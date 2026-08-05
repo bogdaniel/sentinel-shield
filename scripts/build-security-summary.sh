@@ -20,6 +20,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# Date validation and the trusted-UTC-date rule live in ONE place (#226); exception records
+# are classified with the same clock and the same calendar rules as control waivers.
+# shellcheck source=scripts/lib/control-waivers.sh
+. "$SCRIPT_DIR/lib/control-waivers.sh"
 
 die_cfg() { log_error "$*"; exit 2; }
 
@@ -225,6 +229,10 @@ acceptance-tests|acceptance-tests.json|acceptance-tests.sh|acceptance_tests'
 # --- defaults / CLI ----------------------------------------------------------
 RAW_DIR="reports/raw"
 OUTPUT="reports/security-summary.json"
+# Require evidence to be BOUND to this run by a producer manifest (#237). Off by default so
+# a project without the cross-workflow handoff still gets content validation; on, an
+# unattributed artifact is not evidence.
+REQUIRE_EV_PROVENANCE=0
 PNAME="unknown"
 PTYPE="unknown"
 CRIT="medium"
@@ -260,6 +268,9 @@ Options:
                           stage-blind behaviour.
   --strict-tools          Fail (exit 1) if ANY expected raw artifact is missing
   --require-tool <tool>   Fail (exit 1) if this tool's artifact is missing (repeatable)
+  --require-evidence-provenance
+                          Treat SBOM/release evidence that no producer manifest binds to
+                          this repository/run/commit as MISSING, not merely unattributed.
   --profile <name>        Overlay the effective-profile tool policy onto summary.tools.
                           For every required tool and one-of group member emits a
                           per-tool policy object (status pass|findings|unavailable|
@@ -281,6 +292,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--raw-dir) RAW_DIR="${2:?--raw-dir requires a value}"; shift 2 ;;
 		--output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+		--require-evidence-provenance) REQUIRE_EV_PROVENANCE=1; shift ;;
 		--project-name) PNAME="${2:?--project-name requires a value}"; shift 2 ;;
 		--project-type) PTYPE="${2:?--project-type requires a value}"; shift 2 ;;
 		--criticality) CRIT="${2:?--criticality requires a value}"; shift 2 ;;
@@ -1038,24 +1050,196 @@ EOF
 	TOOLSOBJ=$(jq -n --argjson base "$TOOLSOBJ" --argjson pol "$POLICY_TOOLS" '$base * $pol')
 fi
 
-# --- evidence ----------------------------------------------------------------
+# --- evidence (#237) ---------------------------------------------------------
+# `present` used to mean `test -f`: touching two filenames cleared two non-suppressible
+# missing-evidence gates, an empty or malformed file was indistinguishable from verified
+# evidence, and a previous run's artifacts authorised the current commit. `present` now
+# means VALIDATED, and the reason it is not present travels with it.
 SBOM_PATH="$REPORTS_DIR/sbom.spdx.json"
 RELEASE_PATH="$REPORTS_DIR/release-evidence.md"
-if [ -f "$SBOM_PATH" ]; then SP=true; MS=false; else SP=false; MS=true; fi
-if [ -f "$RELEASE_PATH" ]; then RP=true; MR=false; else RP=false; MR=true; fi
+# The producer-side manifest (scripts/build-evidence-manifest.sh) is the canonical binding
+# of an artifact to a repository, run and commit. It is REUSED here, never re-implemented.
+EVIDENCE_MANIFEST="$REPORTS_DIR/sentinel-shield-artifact-manifest.json"
 
-# --- exceptions --------------------------------------------------------------
+# ev_file_state <path> — "ok", or why the path is not usable as evidence at all.
+ev_file_state() {
+	if [ -L "$1" ]; then printf 'symlink'; return 0; fi
+	if [ ! -e "$1" ]; then printf 'absent'; return 0; fi
+	if [ ! -f "$1" ]; then printf 'not-a-regular-file'; return 0; fi
+	if [ ! -r "$1" ]; then printf 'unreadable'; return 0; fi
+	if [ ! -s "$1" ]; then printf 'empty'; return 0; fi
+	printf 'ok'
+}
+
+# ev_provenance <path> — bind the artifact to this run using the producer manifest:
+#   verified          the manifest covers this file, its digest matches, and (when the
+#                     caller passed a real commit) the manifest is for THAT commit
+#   unbound           no manifest was produced — the artifact is unattributed
+#   commit-mismatch   the manifest attests a different commit (replayed evidence)
+#   digest-mismatch   the file on disk is not the file the producer recorded
+#   not-in-manifest   the manifest covers this run but not this artifact
+ev_provenance() {
+	if [ ! -f "$EVIDENCE_MANIFEST" ]; then printf 'unbound'; return 0; fi
+	if ! jq -e . "$EVIDENCE_MANIFEST" >/dev/null 2>&1; then printf 'manifest-malformed'; return 0; fi
+	_mc=$(jq -r '(.commit // "")' "$EVIDENCE_MANIFEST" 2>/dev/null | tr 'A-F' 'a-f')
+	_cc=$(printf '%s' "$COMMIT" | tr 'A-F' 'a-f')
+	if printf '%s' "$_cc" | grep -Eq '^[0-9a-f]{40}$'; then
+		if [ "$_mc" != "$_cc" ]; then printf 'commit-mismatch'; return 0; fi
+	fi
+	_rel=${1#"$REPORTS_DIR/"}
+	_exp=$(jq -r --arg p "$_rel" '(.files // [])[] | select(.path == $p) | .sha256' "$EVIDENCE_MANIFEST" 2>/dev/null | head -1)
+	if [ -z "$_exp" ]; then printf 'not-in-manifest'; return 0; fi
+	_act=$(ss_sha256_file "$1" 2>/dev/null || printf '')
+	if [ -z "$_act" ]; then printf 'unhashable'; return 0; fi
+	if [ "$_act" != "$_exp" ]; then printf 'digest-mismatch'; return 0; fi
+	printf 'verified'
+}
+
+# ev_sbom_content <path> — "ok" or the reason this is not a usable SPDX document. An SBOM
+# with no packages is not a shorter SBOM; it is an SBOM that documents nothing.
+ev_sbom_content() {
+	if ! jq -e . "$1" >/dev/null 2>&1; then printf 'malformed-json'; return 0; fi
+	jq -r '
+		if ((.spdxVersion // "") | test("^SPDX-2\\.[0-9]+$") | not) then "not-spdx"
+		elif ((.SPDXID // "") != "SPDXRef-DOCUMENT") then "not-spdx-document"
+		elif (((.name // "") | type) != "string" or ((.name // "") | length) == 0) then "no-document-name"
+		elif ((.creationInfo.created // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T") | not) then "no-creation-time"
+		elif (((.creationInfo.creators // []) | length) == 0) then "no-producer"
+		elif (((.packages // []) | type) != "array") then "no-packages"
+		elif (((.packages // []) | length) == 0) then "no-packages"
+		elif ([ (.packages // [])[] | select(((.name // "") | length) == 0 or ((.SPDXID // "") | length) == 0) ] | length) > 0 then "incomplete-packages"
+		else "ok" end' "$1" 2>/dev/null || printf 'malformed-json'
+}
+
+# ev_release_content <path> — "ok" or why this Markdown is not release evidence. A file
+# with a title and nothing under it is a touched filename, not an attestation.
+ev_release_content() {
+	if ! grep -q '^#' "$1" 2>/dev/null; then printf 'no-heading'; return 0; fi
+	_lines=$(grep -c '[^[:space:]]' "$1" 2>/dev/null || printf '0')
+	if [ "$_lines" -lt 3 ]; then printf 'no-content'; return 0; fi
+	printf 'ok'
+}
+
+# ev_evaluate <path> <kind> — set EV_PRESENT / EV_REASON / EV_PROV / EV_SHA for one artifact.
+ev_evaluate() {
+	EV_PRESENT=false; EV_PROV="none"; EV_SHA=""
+	EV_REASON=$(ev_file_state "$1")
+	if [ "$EV_REASON" != "ok" ]; then return 0; fi
+	case "$2" in
+		sbom) EV_REASON=$(ev_sbom_content "$1") ;;
+		release) EV_REASON=$(ev_release_content "$1") ;;
+	esac
+	if [ "$EV_REASON" != "ok" ]; then return 0; fi
+	EV_SHA=$(ss_sha256_file "$1" 2>/dev/null || printf '')
+	EV_PROV=$(ev_provenance "$1")
+	case "$EV_PROV" in
+		verified) EV_REASON="verified"; EV_PRESENT=true ;;
+		unbound)
+			# No producer manifest: the content is valid but nothing binds it to this run.
+			# Callers that require attributable evidence pass --require-evidence-provenance.
+			if [ "$REQUIRE_EV_PROVENANCE" -eq 1 ]; then
+				EV_REASON="unattributed"
+			else
+				EV_REASON="verified-content-unattributed"; EV_PRESENT=true
+			fi ;;
+		*) EV_REASON="$EV_PROV" ;;
+	esac
+}
+
+ev_evaluate "$SBOM_PATH" sbom
+SP="$EV_PRESENT"; SBOM_REASON="$EV_REASON"; SBOM_PROV="$EV_PROV"; SBOM_SHA="$EV_SHA"
+if [ "$SP" = "true" ]; then MS=false; else MS=true; fi
+ev_evaluate "$RELEASE_PATH" release
+RP="$EV_PRESENT"; REL_REASON="$EV_REASON"; REL_PROV="$EV_PROV"; REL_SHA="$EV_SHA"
+if [ "$RP" = "true" ]; then MR=false; else MR=true; fi
+if [ "$SP" != "true" ]; then log_warn "SBOM evidence not accepted ($SBOM_PATH): $SBOM_REASON"; fi
+if [ "$RP" != "true" ]; then log_warn "release evidence not accepted ($RELEASE_PATH): $REL_REASON"; fi
+
+# --- exceptions (#242) -------------------------------------------------------
+# `.active`/`.expired` were two unauthenticated integers: `{}` meant "no exceptions" and a
+# forged zero hid every expired one. A PRESENT file must now be a versioned record set, and
+# the counts are DERIVED from the records rather than trusted. An ABSENT file still means
+# "this project has no exceptions" — that is the honest default, not an assertion.
 EXC="$REPORTS_DIR/exceptions.json"
 EA=0
 EE=0
+EP=0
+EXC_RECORDS='[]'
 if [ -f "$EXC" ] && [ -s "$EXC" ]; then
-	if jq -e . "$EXC" >/dev/null 2>&1; then
-		EA=$(jq '(.active // 0)' "$EXC")
-		EE=$(jq '(.expired // 0)' "$EXC")
-		case "$EA" in '' | *[!0-9]*) die_cfg "exceptions.active must be a non-negative integer in $EXC" ;; esac
-		case "$EE" in '' | *[!0-9]*) die_cfg "exceptions.expired must be a non-negative integer in $EXC" ;; esac
-	else
-		die_cfg "invalid JSON in $EXC"
+	if [ -L "$EXC" ]; then die_cfg "exceptions file is a symlink: $EXC"; fi
+	jq -e . "$EXC" >/dev/null 2>&1 || die_cfg "invalid JSON in $EXC"
+	if ! jq -e '(.version | type == "string") and ((.exceptions // null) | type == "array")' "$EXC" >/dev/null 2>&1; then
+		die_cfg "exceptions evidence must be a versioned record set { \"version\": \"1\", \"exceptions\": [ … ] } (schemas/exceptions.schema.json): $EXC. A count-only object asserts governance through two unauthenticated integers — a forged zero hides every expired exception — so it is no longer accepted. An ABSENT file still means 'no exceptions'."
+	fi
+	_ev=$(jq -r '.version' "$EXC")
+	[ "$_ev" = "1" ] || die_cfg "unsupported exceptions version '$_ev' (expected \"1\"): $EXC"
+	_today=$(cw_today_utc) || die_cfg "no trusted UTC date is available to classify exceptions"
+	_ebad=$(jq -r --arg today "$_today" '
+		def realdate:
+			type == "string" and test("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+		def ids: [ .exceptions[]? | (.id? // "") ];
+		ids as $ids
+		| .exceptions | to_entries[]
+		| .key as $i | .value as $e
+		| ( [ "id","type","scope","owner","approved_by","created_at","expires_at","reason","source" ] ) as $req
+		| ( [ $req[] | select((($e[.]?) // "") | (type != "string") or (length == 0)) ] ) as $missing
+		| if ($e | type != "object") then "record \($i): not an object"
+		  elif ($missing | length) > 0 then "record \($i): missing/empty \($missing | join(","))"
+		  elif ($e.id | test("^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$") | not) then "record \($i): id \($e.id|tojson) is not a stable token"
+		  elif ([ $ids[] | select(. == $e.id) ] | length) > 1 then "exception \($e.id): duplicate id — a governed exception must have exactly one identity"
+		  elif ([ "accepted-risk","control-waiver","manual" ] | index($e.source) | not) then "exception \($e.id): unknown source \($e.source|tojson) (accepted-risk|control-waiver|manual)"
+		  elif ($e.created_at | realdate | not) then "exception \($e.id): created_at \($e.created_at|tojson) is not a real calendar date"
+		  elif ($e.expires_at | realdate | not) then "exception \($e.id): expires_at \($e.expires_at|tojson) is not a real calendar date"
+		  elif ($e.created_at > $e.expires_at) then "exception \($e.id): created_at is after expires_at"
+		  elif ($e.owner == $e.approved_by) then "exception \($e.id): owner == approved_by (self-approval)"
+		  elif (($e.status? // null) != null)
+		    and ($e.status != (if $e.expires_at < $today then "expired" else "active" end))
+		    then "exception \($e.id): declared status \($e.status|tojson) contradicts its dates (expires_at \($e.expires_at), today \($today))"
+		  else empty end' "$EXC" 2>/dev/null || printf 'exceptions could not be validated')
+	if [ -n "$_ebad" ]; then
+		printf '%s\n' "$_ebad" | while IFS= read -r _l; do [ -n "$_l" ] && log_error "exceptions: $_l"; done
+		die_cfg "invalid exception records in $EXC"
+	fi
+	# REAL calendar dates: the jq pass above proves the shape, but 2026-02-31 has the shape
+	# of a date and is not one. The canonical calendar check is cw__valid_date (the control
+	# waiver validator) — reused here, never re-implemented.
+	_edates=$(jq -r '.exceptions[] | "\(.id)\t\(.created_at)\t\(.expires_at)"' "$EXC" 2>/dev/null || true)
+	_erc=0
+	_etab="$(printf '\t')"
+	while IFS="$_etab" read -r _eid _ecre _eexp; do
+		[ -n "$_eid" ] || continue
+		cw__valid_date "$_ecre" || { log_error "exceptions: exception $_eid: created_at '$_ecre' is not a real calendar date"; _erc=2; }
+		cw__valid_date "$_eexp" || { log_error "exceptions: exception $_eid: expires_at '$_eexp' is not a real calendar date"; _erc=2; }
+	done <<EOF
+$_edates
+EOF
+	[ "$_erc" -eq 0 ] || die_cfg "invalid exception dates in $EXC"
+	# Counts are DERIVED, never read: an aggregate that disagrees with the records is a
+	# forged aggregate.
+	# An exception is ACTIVE only inside its own window: created_at <= today <= expires_at.
+	# Classifying on expiry alone counted a record dated NEXT MONTH as active today — a
+	# pre-positioned exception suppressing findings before anyone authored it.
+	EA=$(jq --arg today "$_today" '[ .exceptions[] | select(.created_at <= $today and .expires_at >= $today) ] | length' "$EXC")
+	EE=$(jq --arg today "$_today" '[ .exceptions[] | select(.expires_at <  $today) ] | length' "$EXC")
+	EP=$(jq --arg today "$_today" '[ .exceptions[] | select(.created_at >  $today) ] | length' "$EXC")
+	# A declared aggregate is allowed, but only as a CHECK on the records.
+	for _k in active expired not_yet_effective; do
+		_decl=$(jq -r --arg k "$_k" '(.[$k] // "") | tostring' "$EXC")
+		[ -n "$_decl" ] || continue
+		case "$_k" in
+			active) _der="$EA" ;;
+			expired) _der="$EE" ;;
+			*) _der="$EP" ;;
+		esac
+		[ "$_decl" = "$_der" ] || die_cfg "exceptions.$_k declares $_decl but the records classify $_der — the aggregate does not match the evidence: $EXC"
+	done
+	EXC_RECORDS=$(jq --arg today "$_today" '[ .exceptions[]
+		| { id, type, scope, source, owner, approved_by, created_at, expires_at,
+		    status: (if .expires_at < $today then "expired"
+		              elif .created_at > $today then "not-yet-effective"
+		              else "active" end) } ]' "$EXC")
+	if [ "${EP:-0}" -gt 0 ]; then
+		log_warn "exceptions: $EP record(s) are dated in the FUTURE and are reported as not-yet-effective, not active — an exception cannot suppress a finding before the date it was authored."
 	fi
 fi
 
@@ -1083,6 +1267,10 @@ jq -n \
 	--argjson ms "$MS" --argjson mr "$MR" \
 	--argjson sp "$SP" --argjson rp "$RP" \
 	--arg sbom_path "$SBOM_PATH" --arg rel_path "$RELEASE_PATH" \
+	--arg sbom_reason "$SBOM_REASON" --arg sbom_prov "$SBOM_PROV" --arg sbom_sha "$SBOM_SHA" \
+	--arg rel_reason "$REL_REASON" --arg rel_prov "$REL_PROV" --arg rel_sha "$REL_SHA" \
+	--argjson exc_records "$EXC_RECORDS" \
+	--argjson ep "${EP:-0}" \
 	--argjson ea "$EA" --argjson ee "$EE" \
 	--argjson havepol "$HAVE_POLICY" --argjson oneof "$ONEOF_ECHO" \
 	--argjson reqf "$REQ_FAIL" --argjson cfgf "$CFG_FAIL" --argjson exef "$EXE_FAIL" \
@@ -1114,10 +1302,37 @@ jq -n \
 			+ { expired_exceptions: (($counts.expired_exceptions // 0) + $ee) }
 			+ (if $havepol == 1 then { required_tool_failures: $reqf, tool_configuration_failures: $cfgf, tool_execution_failures: $exef, missing_coverage_evidence: $misscov, missing_test_evidence: $misstest, empty_test_suite: $emptysuite, missing_architecture_evidence: $missarch, missing_test_change_evidence: $misstce, missing_behavior_specification: $missbdd, missing_acceptance_evidence: $missatdd } else {} end)),
 		tools: $tools,
-		exceptions: { active: $ea, expired: $ee },
+		exceptions: {
+			# `active` counts only records inside their own window. A record dated in the
+			# future is NOT-YET-EFFECTIVE and is reported separately, so a pre-positioned
+			# exception cannot suppress anything before the date it was authored.
+			active: $ea, expired: $ee, not_yet_effective: $ep,
+			# The RECORDS the counts were derived from, and the per-source split so one
+			# exception cannot be counted twice through two channels (#242).
+			records: $exc_records,
+			by_source: ($exc_records | group_by(.source) | map({ key: .[0].source, value: length }) | from_entries)
+		},
 		evidence: {
-			sbom: { present: $sp, path: $sbom_path },
-			release_evidence: { present: $rp, path: $rel_path }
+			# `present` is a VERIFIED state, not `test -f` (#237). `verification` says how it
+			# was decided, so a consumer can tell "no SBOM" from "an SBOM we refused".
+			sbom: { present: $sp, path: $sbom_path,
+				# CONTENT and PROVENANCE are separate facts. Calling an artifact
+				# "verified" when nothing binds it to this run overstated what was
+				# checked: the bytes parsed, that is all. `content-verified-unattributed`
+				# says exactly that, and the enforcing modes treat it as not-evidence.
+				verification: { status: (if ($sp | not) then "rejected"
+					elif $sbom_prov == "verified" then "verified"
+					else "content-verified-unattributed" end),
+					reason: $sbom_reason, provenance: $sbom_prov,
+					sha256: (if $sbom_sha == "" then null else $sbom_sha end),
+					validator: "build-security-summary/2.2" } },
+			release_evidence: { present: $rp, path: $rel_path,
+				verification: { status: (if ($rp | not) then "rejected"
+					elif $rel_prov == "verified" then "verified"
+					else "content-verified-unattributed" end),
+					reason: $rel_reason, provenance: $rel_prov,
+					sha256: (if $rel_sha == "" then null else $rel_sha end),
+					validator: "build-security-summary/2.2" } }
 		}
 	} + (if $havepol == 1 then { one_of_groups: $oneof } else {} end)
 	  + { build: { operation_id: $opid, inputs: $inputs } }' > "$STAGED"

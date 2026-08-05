@@ -50,7 +50,23 @@ cstat() {
 # cannot be what fails — the ONLY thing under test is "no scanner ran".
 E="$WORK/empty"; mkdir -p "$E/raw" "$E/rep"
 sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
-: > "$E/rep/sbom.spdx.json"; : > "$E/rep/release-evidence.md"
+# Evidence is VALIDATED now (#237), so staging empty files no longer stages evidence —
+# write a real SPDX document and a real attestation, otherwise the two gates under
+# exclusion would be exactly what fails.
+jq -n '{spdxVersion:"SPDX-2.3", SPDXID:"SPDXRef-DOCUMENT", name:"prod-test",
+	creationInfo:{created:"2026-01-01T00:00:00Z", creators:["Tool: prod-test-1.0"]},
+	packages:[{name:"pkg", SPDXID:"SPDXRef-pkg"}]}' > "$E/rep/sbom.spdx.json"
+printf '# Release evidence\n\nProduced by the 266 fixture.\nScope: engine self-test.\n' \
+	> "$E/rep/release-evidence.md"
+# Valid CONTENT is no longer sufficient in an enforcing mode: an artifact nothing binds to
+# this run is unattributed, and unattributed content is not evidence. Write the producer
+# manifest a real handoff would produce, so the artifacts are attributed as well as valid.
+_msha() { ss_sha256_file "$1" 2>/dev/null || printf ''; }
+. "$ROOT/scripts/lib/sentinel-shield-common.sh" 2>/dev/null || true
+jq -n --arg s "$(_msha "$E/rep/sbom.spdx.json")" --arg r "$(_msha "$E/rep/release-evidence.md")" \
+	'{version:"1", files:[{path:"sbom.spdx.json", sha256:$s},
+	                      {path:"release-evidence.md", sha256:$r}]}' \
+	> "$E/rep/sentinel-shield-artifact-manifest.json"
 sh "$BUILD" --raw-dir "$E/raw" --output "$E/rep/s.json" --project-name t >/dev/null 2>&1
 check_ne "zero scanners: regulated does NOT pass"        "$(gate "$E/rep/s.json" regulated)" "0"
 check_ne "zero scanners: strict does NOT pass"           "$(gate "$E/rep/s.json" strict)" "0"
@@ -208,7 +224,11 @@ check "one-of: an honest 'unavailable' does not satisfy it"          "$(oneof_st
 # the summary, silently discarding the finding.
 X="$WORK/exc"; mkdir -p "$X/raw"
 printf '%s' '{"tool":"test-change-evidence","status":"findings","production_change_without_test_change":0,"expired_waivers":0}' > "$X/raw/probe.json"
-printf '%s' '{"active":0,"expired":3}' > "$X/exceptions.json"
+# Exception evidence is a RECORD set now (#242): three expired records, not a forged 3.
+jq -n '{version:"1", exceptions: [ range(3) | {
+		id: ("EX-\(.)"), type: "vulnerability", scope: "repo", owner: "plat",
+		approved_by: "sec", created_at: "2000-01-01", expires_at: "2000-02-01",
+		reason: "self-test", source: "manual" } ]}' > "$X/exceptions.json"
 mkdir -p "$X/out"; cp "$X/exceptions.json" "$X/out/exceptions.json"
 sh "$BUILD" --raw-dir "$X/raw" --output "$X/out/s.json" --project-name t >/dev/null 2>&1
 check "expired exceptions from the exceptions file survive the merge" \

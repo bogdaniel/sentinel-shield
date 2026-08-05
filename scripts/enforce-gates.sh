@@ -1393,6 +1393,30 @@ eval_missing_gate() {
 	_trig=false
 	if [ "$_missing" = "true" ]; then _trig=true; fi
 	if [ "$_present" = "false" ]; then _trig=true; fi
+	# UNATTRIBUTED CONTENT IS NOT EVIDENCE in an enforcing mode. The builder can only decide
+	# that bytes parse; whether anything BINDS them to this run is a policy question, and it
+	# used to depend on the caller remembering `--require-evidence-provenance`. A summary that
+	# forgot the flag presented unbound content as present, so assurance rested on an optional
+	# producer-side argument. baseline/strict/regulated decide it here instead.
+	_prov=$(jqr ".$(printf '%s' "$_evpath" | sed 's/\.present$/.verification.provenance/')")
+	case "$MODE" in
+		baseline | strict | regulated)
+			# `present: true` MEANS `provenance: "verified"` here. The earlier form exempted a
+			# missing/null value, which reintroduced the bypass through OMISSION: a summary
+			# that simply left out the verification object — `{"sbom":{"present":true}}` —
+			# read as attributed evidence, because jq returned null and null was excluded.
+			# Absent, empty and unknown are all "not verified"; only the literal `verified`
+			# satisfies an evidence gate in an enforcing mode.
+			if [ "$_present" = "true" ] && [ "$_prov" != "verified" ]; then
+				_trig=true
+				case "$_prov" in
+					null | '')
+						log_warn "$_key: the summary claims the artifact is present but records NO verification provenance. Absence is not attribution — in '$MODE' unattributed content does not count as evidence." ;;
+					*)
+						log_warn "$_key: the artifact content is valid but its provenance is '$_prov' — nothing binds it to this run, so in '$MODE' it does not count as evidence. Produce it through the evidence handoff, or run an assurance mode that permits unattributed content." ;;
+				esac
+			fi ;;
+	esac
 	if [ "$_flag" = "true" ]; then
 		if [ "$_trig" = "true" ]; then add_eval "$_key" true "$_trig" fail; else add_eval "$_key" true "$_trig" pass; fi
 	else

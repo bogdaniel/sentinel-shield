@@ -15,6 +15,43 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — evidence and exception governance are validated, not assumed (#237, #242) **[breaking: `reports/exceptions.json` must be a record set]**
+
+- **`present` is a verified state, not `test -f` (#237).** The builder set the SBOM and
+  release-evidence flags from file existence, so touching two filenames cleared two
+  non-suppressible missing-evidence gates, and an empty, malformed, symlinked or unrelated
+  file was indistinguishable from verified evidence. An artifact must now be a non-empty
+  regular file (not a symlink) whose content validates — SPDX version/document id/producer
+  and at least one complete package for the SBOM, a heading plus actual content for the
+  release Markdown — and, when `scripts/build-evidence-manifest.sh` produced a manifest, be
+  covered by it with a matching SHA-256 **for this commit**. Replayed evidence
+  (`commit-mismatch`) and post-manifest tampering (`digest-mismatch`) are refused. Each
+  entry now carries `verification: { status, reason, provenance, sha256, validator }`, so
+  "no SBOM" and "an SBOM we refused" are distinguishable. New
+  `--require-evidence-provenance` treats an artifact no manifest binds to this run as
+  missing rather than merely unattributed.
+- **Exception counts are derived from validated records (#242).** `reports/exceptions.json`
+  was two unauthenticated integers: `{}` asserted clean governance and a forged `expired: 0`
+  hid every expired exception. A present file must now be
+  `{ "version": "1", "exceptions": [ … ] }` (`schemas/exceptions.schema.json`) with unique
+  stable ids, type, scope, owner, a **different** approver, real calendar dates (validated by
+  the same code as control waivers) and a `source` of `accepted-risk`/`control-waiver`/
+  `manual`. `active`/`expired` are computed from the records; a declared aggregate is kept
+  only as a check and a disagreement fails the build. The summary carries
+  `exceptions.records` and `exceptions.by_source` so one exception cannot be counted twice
+  through two channels. An **absent** file still means "no exceptions".
+- **New `tests/prod/295-evidence-and-exception-validation.sh`** — touch-only evidence, six
+  SBOM content classes, a symlinked artifact, heading-only and heading-less release files,
+  manifest-verified evidence, a commit replay, post-manifest tampering, the
+  `--require-evidence-provenance` switch, derived counts with per-source split, a forged
+  aggregate, three count-only files, an absent file, and eight record-level defects
+  (duplicate id, month-31 February, `9999-99-99`, reversed dates, self-approval, unknown
+  source, a declared status contradicting the calendar, an unsafe id).
+- **Migration:** a count-only `reports/exceptions.json` fails with the record shape named in
+  the error. Projects that never wrote the file are unaffected. Evidence that was previously
+  "present" because the file existed will now be reported as missing with the exact reason —
+  which is the defect being fixed, not a regression.
+
 ### Fixed — security-summary build integrity (#235, #236, #238)
 
 - **No collector report is silently overwritten (#235).** `.tools` was built with
