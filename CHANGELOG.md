@@ -15,6 +15,36 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — summary publication and evidence-contract negotiation (#216, #219)
+
+- **The report-only fallback is no longer staged with a bare `cp` (#216).** The destination was
+  never checked, so a symlinked summary path redirected the write outside `reports/`; an existing
+  valid summary was truncated before a complete copy was guaranteed; readers could observe a
+  partial file; a concurrent real builder could be overwritten; and the staged file was
+  byte-identical to the example, carrying nothing that said it is not evidence. Staging now
+  validates the source, refuses a symlink / directory / FIFO / device destination and a symlinked
+  parent, writes a destination-local temporary file cleaned on every signal, **marks the result**
+  `.fallback.non_production = true`, validates it before publishing, publishes by atomic rename,
+  and **abandons the fallback if a real summary appeared while it was staging**. The marker is
+  recognised on later runs (a fallback never counts as real evidence) and `enforce-gates.sh`
+  refuses it in every enforcing mode.
+- **Evidence-contract negotiation (#219).** An ENABLED gate whose summary counter was ABSENT read
+  as a clean zero, so a v1/v2.0 summary could be replayed under a newer, stricter gate set.
+  `build-security-summary.sh` now emits `gate_contract_version`, and the enforcer negotiates: a
+  summary that **declares** a contract must carry every field its enabled gates need (a missing
+  counter is a build defect); a summary that declares nothing is **refused by strict/regulated**
+  with a migration message and tolerated — loudly — by the visibility modes. `unsafe_docker`
+  negotiates the same way.
+- The shipped `templates/security-summary.example.json` was regenerated to the current contract
+  (49 summary keys + the contract marker) so it is a valid current-contract summary rather than a
+  25-key subset.
+- **`resolve-gates.sh` no longer leaves stale sibling artifacts.** `--format env` used to leave a
+  previous run's `sentinel-shield-gates.json` in place; since the enforcer now reconciles the two,
+  a leftover artifact from a different mode made them disagree. Any artifact a run does not
+  regenerate is removed, so the output directory always describes ONE resolution.
+- **New `tests/prod/289-summary-publication-contract.sh`**; `tests/prod/266`, `269`, `270`, `280`
+  and `290` migrated to current-contract fixtures derived from the shipped example.
+
 ### Fixed — the enforcement input contract (#217, #218, #220, #221, #222)
 
 `enforce-gates.sh` decides the release verdict, so everything it reads is policy input. Five

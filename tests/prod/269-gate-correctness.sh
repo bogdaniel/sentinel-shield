@@ -61,7 +61,10 @@ _schema=$(jq -r '.properties.tools.additionalProperties.properties.status.enum |
 	"$ROOT/schemas/security-summary.schema.json")
 for _st in findings not-configured not-applicable execution-error disabled; do
 	printf '{"version":"1.0","generated_at":"2026-07-20T00:00:00Z","source":{},"evidence":{"sbom":{"present":true},"release_evidence":{"present":true}},"summary":{"secrets":0,"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0,"architecture_violations":0,"type_errors":0,"test_failures":0,"unsafe_docker":0,"unsafe_github_actions":0,"missing_sbom":false,"missing_release_evidence":false,"expired_exceptions":0},"tools":{"coverage":{"status":"%s"},"tests":{"status":"pass"}}}\n' "$_st" > "$WORK/sum.json"
-	sh "$ROOT/scripts/resolve-gates.sh" --mode strict --output-dir "$WORK" --format env >/dev/null 2>&1
+	# baseline, not strict: this loop isolates the status ENUM. Complete structural validation
+	# is mandatory in baseline too, while strict additionally refuses a legacy hand-built
+	# summary (no gate_contract_version) — which is a different rule, covered by 288/290.
+	sh "$ROOT/scripts/resolve-gates.sh" --mode baseline --output-dir "$WORK" --format env >/dev/null 2>&1
 	sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$WORK/sentinel-shield-gates.env" \
 		--summary "$WORK/sum.json" --output-dir "$WORK" --format json --strict-summary >/dev/null 2>&1 && _rc=0 || _rc=$?
 	check "--strict-summary accepts the schema status '$_st'" "$([ "$_rc" = "2" ] && echo rejected || echo accepted)" "accepted"

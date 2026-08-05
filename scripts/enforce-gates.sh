@@ -256,6 +256,19 @@ case "$MODE" in
 	*) die_cfg "gates env declares SENTINEL_SHIELD_MODE='$MODE', which is not one of the canonical modes report-only|baseline|strict|regulated. An unknown mode is a configuration error, never a weaker custom state ($GATES_ENV_FILE)" ;;
 esac
 
+# The GATE/EVIDENCE contract the summary declares (issue #219). Compatibility between policy
+# and evidence is NEGOTIATED, never assumed:
+#   * a summary that DECLARES a contract must carry every field its enabled gates need — a
+#     missing counter is a build defect, not a clean zero;
+#   * a summary that declares NOTHING is legacy: the assurance modes refuse it rather than
+#     reading absent fields as evidence, and the visibility modes keep the documented
+#     tolerance, loudly.
+SUMMARY_CONTRACT=""
+if [ -f "$SUMMARY" ] && jq -e . "$SUMMARY" >/dev/null 2>&1; then
+	SUMMARY_CONTRACT=$(jq -r '(.gate_contract_version // "") | tostring' "$SUMMARY" 2>/dev/null || printf '')
+	[ "$SUMMARY_CONTRACT" = "null" ] && SUMMARY_CONTRACT=""
+fi
+
 # The env file and the resolver's JSON artifact must agree. A hand-edited env claiming
 # report-only next to a strict resolution (or vice versa) is contradictory policy.
 _gates_json="$(dirname "$GATES_ENV_FILE")/sentinel-shield-gates.json"
@@ -420,6 +433,20 @@ done
 # exactly the state strict/regulated must refuse. An external pipeline that produces its own
 # evidence declares it positively — the tools object lists what ran — rather than by leaving
 # the object empty.
+# The report-only fallback is explicitly NON-PRODUCTION evidence. select-security-summary.sh
+# marks it, and every enforcing mode refuses it here as well — so a marked fallback left in
+# reports/ from an earlier report-only run cannot be enforced against later.
+case "$MODE" in
+	baseline | strict | regulated)
+		if jq -e '(.fallback.non_production // false) == true' "$SUMMARY" >/dev/null 2>&1; then
+			log_error "'$SUMMARY' carries the NON-PRODUCTION fallback marker (.fallback.non_production=true)."
+			log_error "  It is the all-zero example staged by select-security-summary.sh in report-only mode,"
+			log_error "  not evidence. Produce a real summary with scripts/build-security-summary.sh."
+			die_cfg "refusing to enforce '$MODE' against a non-production fallback summary"
+		fi
+		;;
+esac
+
 case "$MODE" in
 	strict | regulated)
 		_evi=$(jq -r '
@@ -624,11 +651,21 @@ eval_count_gate() {
 	# builder SUMS across collectors — one negative can cancel another scanner's real
 	# findings to zero.
 	if [ "$_val" = "null" ]; then
-		# NOTE: an ENABLED gate whose summary key is ABSENT is still read as 0 here. That is
-		# issue #219 (evidence-contract negotiation) and is NOT fixed in this change: closing
-		# it requires the engine's own fixtures and the shipped example to be migrated to the
-		# current gate contract first, which is a separate, larger change. It is called out
-		# rather than silently left behind.
+		# An ENABLED gate whose summary key is ABSENT is an evidence-contract mismatch, not a
+		# clean zero: it is how a v1/v2.0 summary could be replayed under a newer, stricter
+		# gate set. Backward compatibility for an older summary is safe only while the gate is
+		# DISABLED.
+		if [ "$_flag" = "true" ]; then
+			if [ -n "$SUMMARY_CONTRACT" ]; then
+				die_cfg "gate '$_key' is ENABLED and the summary declares gate contract '$SUMMARY_CONTRACT', but carries no '$_key' field. A declared contract must be complete — rebuild with scripts/build-security-summary.sh."
+			fi
+			case "$MODE" in
+				strict | regulated)
+					die_cfg "gate '$_key' is ENABLED but the summary carries no '$_key' field and declares no gate_contract_version. Refusing to certify '$MODE' from a legacy summary under a newer gate set — rebuild it with scripts/build-security-summary.sh from this engine version (docs/security-summary-schema.md)." ;;
+				*)
+					log_warn "gate '$_key' is enabled but the summary carries no '$_key' field (legacy summary: no gate_contract_version). Reading it as 0 is DOCUMENTED LEGACY TOLERANCE for $MODE only — strict/regulated refuse it. Rebuild the summary to close this." ;;
+			esac
+		fi
 		_val=0
 	else
 		case "$_val" in
@@ -667,6 +704,16 @@ eval_unsafe_docker() {
 	# evaluator had already closed.
 	_val=$(jqr ".summary.$_key")
 	if [ "$_val" = "null" ]; then
+		if [ "$_flag" = "true" ]; then
+			if [ -n "$SUMMARY_CONTRACT" ]; then
+				die_cfg "gate 'unsafe_docker' is ENABLED and the summary declares gate contract '$SUMMARY_CONTRACT' but carries no 'unsafe_docker' field. A declared contract must be complete."
+			fi
+			case "$MODE" in
+				strict | regulated)
+					die_cfg "gate 'unsafe_docker' is ENABLED but the summary carries no 'unsafe_docker' field and declares no gate_contract_version. Refusing to certify '$MODE' from a legacy summary." ;;
+				*) log_warn "gate 'unsafe_docker' is enabled but the summary carries no 'unsafe_docker' field (legacy summary). Documented legacy tolerance for $MODE only." ;;
+			esac
+		fi
 		_val=0
 	else
 		case "$_val" in

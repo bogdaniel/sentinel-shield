@@ -10,10 +10,19 @@
 #                            copied in as a clearly-marked NON-PRODUCTION fallback.
 #   baseline/strict/regulated : a real summary MUST be present, else fail (exit 1).
 #
-# "Real" = the summary file exists, is valid JSON, and is NOT byte-identical (after
-# canonicalization) to templates/security-summary.example.json. A real builder run
-# always differs (generated_at/source/evidence), so the only way to look like the
-# example is to literally use the example — which is exactly what we reject.
+# "Real" = the summary file exists, is valid JSON, is NOT byte-identical (after
+# canonicalization) to templates/security-summary.example.json, and does NOT carry the
+# non-production fallback marker this script writes. A real builder run always differs
+# (generated_at/source/evidence), so the only way to look like the example is to literally
+# use the example — which is exactly what we reject.
+#
+# STAGING THE FALLBACK IS STILL A WRITE TO A SECURITY-SENSITIVE EVIDENCE PATH. It used to be
+# a bare `cp`: the destination was never checked for symlink/FIFO/device/directory conditions
+# (so a symlinked summary path redirected the write), an existing valid summary was destroyed
+# before a complete copy was guaranteed, readers could observe a half-written file, and a
+# concurrent real builder could be overwritten. The fallback is now validated, staged in a
+# destination-local temporary file, marked as non-production, and published by atomic rename —
+# and it refuses to overwrite a real summary that appeared while it was staging.
 #
 # Exit codes: 0 proceed, 1 missing-real-summary in a strict-enough mode, 2 config.
 set -eu
@@ -80,16 +89,89 @@ _ok=0
 for _m in $VALID_MODES; do [ "$_m" = "$MODE" ] && _ok=1; done
 [ "$_ok" -eq 1 ] || die_cfg "invalid mode '$MODE' (expected one of: $VALID_MODES)"
 
+# is_real_summary <path> — true when the file is a REAL summary: a regular file, valid JSON,
+# not the example, and not a previously staged non-production fallback. Symlinks are refused
+# here too: evidence that arrives through a symlink is not evidence about this run.
+is_real_summary() {
+	[ -e "$1" ] || return 1
+	if [ -L "$1" ]; then
+		log_warn "summary path '$1' is a symlink; refusing to treat it as real evidence"
+		return 1
+	fi
+	[ -f "$1" ] || return 1
+	jq -e . "$1" >/dev/null 2>&1 || return 1
+	if jq -e '(.fallback.non_production // false) == true' "$1" >/dev/null 2>&1; then
+		log_warn "summary at '$1' carries the NON-PRODUCTION fallback marker (treated as NOT real)"
+		return 1
+	fi
+	if [ -f "$EXAMPLE" ] && [ "$(jq -S -c . "$1")" = "$(jq -S -c . "$EXAMPLE")" ]; then
+		log_warn "provided summary is byte-identical to the example template (treated as NOT real)"
+		return 1
+	fi
+	return 0
+}
+
+# stage_fallback — publish the example as an explicitly non-production summary, atomically.
+stage_fallback() {
+	_dest="$SUMMARY"
+	_dir=$(dirname -- "$_dest")
+
+	# (1) source must be a readable, regular, valid-JSON example.
+	[ -f "$EXAMPLE" ] && [ ! -L "$EXAMPLE" ] || die_cfg "fallback source is not a regular file: $EXAMPLE"
+	jq -e . "$EXAMPLE" >/dev/null 2>&1 || die_cfg "fallback source is not valid JSON: $EXAMPLE"
+
+	# (2) destination must be a safe place to write. A symlink, FIFO, device or directory at
+	#     the destination redirects or corrupts the write instead of replacing a file.
+	ensure_dir "$_dir"
+	[ -d "$_dir" ] || die_cfg "fallback destination directory does not exist: $_dir"
+	[ -L "$_dir" ] && die_cfg "fallback destination directory is a symlink: $_dir"
+	if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+		[ -L "$_dest" ] && die_cfg "refusing to write the fallback through a symlink: $_dest"
+		[ -d "$_dest" ] && die_cfg "fallback destination is a directory: $_dest"
+		[ -f "$_dest" ] || die_cfg "fallback destination is not a regular file (FIFO/device?): $_dest"
+	fi
+
+	# (3) stage destination-local, so the rename below is atomic (same filesystem) and a
+	#     failure never destroys an existing summary.
+	_tmp=$(mktemp "$_dir/.sentinel-shield-fallback.XXXXXX") || die_cfg "could not create a staging file in $_dir"
+	# Clean the staging file on every exit path, including signals.
+	trap 'rm -f -- "$_tmp" 2>/dev/null || true' EXIT INT TERM HUP
+	chmod 0644 "$_tmp" 2>/dev/null || true
+	if ! jq --arg mode "$MODE" --arg ts "$(timestamp_utc)" --arg src "$EXAMPLE" '
+		. + { fallback: { non_production: true, reason: "no real security-summary was produced",
+		                  mode: $mode, staged_at: $ts, source: $src,
+		                  generator: "select-security-summary" } }' "$EXAMPLE" > "$_tmp"; then
+		rm -f -- "$_tmp"
+		die_cfg "could not stage the fallback summary in $_dir"
+	fi
+	# (4) validate what will be published, before it replaces anything.
+	jq -e '(.version != null) and (.summary | type == "object") and (.fallback.non_production == true)' \
+		"$_tmp" >/dev/null 2>&1 || { rm -f -- "$_tmp"; die_cfg "staged fallback failed validation; leaving $_dest untouched"; }
+
+	# (5) COMMIT BY CREATE-EXCLUSIVE, not check-then-rename. `is_real_summary` followed by
+	#     `mv` is two operations: a real builder can publish in the gap and the fallback then
+	#     overwrites real evidence. `ln` fails atomically when the destination already exists,
+	#     so the fallback can only ever CREATE the file, never replace one. There is no window
+	#     to lose, and no second stat to race.
+	if ln -- "$_tmp" "$_dest" 2>/dev/null; then
+		rm -f -- "$_tmp"
+	else
+		if [ -e "$_dest" ] || [ -L "$_dest" ]; then
+			rm -f -- "$_tmp"
+			log_warn "a summary appeared at $_dest while the fallback was staging; keeping it and discarding the fallback (the fallback never replaces an existing summary)"
+			return 0
+		fi
+		rm -f -- "$_tmp"
+		die_cfg "could not publish the fallback summary at $_dest"
+	fi
+	trap - EXIT INT TERM HUP
+	log_warn "staged a NON-PRODUCTION fallback summary at $_dest (marked .fallback.non_production=true)"
+	return 0
+}
+
 # Determine whether a REAL summary is present.
 real=false
-if [ -f "$SUMMARY" ] && jq -e . "$SUMMARY" >/dev/null 2>&1; then
-	if [ -f "$EXAMPLE" ] && [ "$(jq -S -c . "$SUMMARY")" = "$(jq -S -c . "$EXAMPLE")" ]; then
-		real=false
-		log_warn "provided summary is byte-identical to the example template (treated as NOT real)"
-	else
-		real=true
-	fi
-fi
+if is_real_summary "$SUMMARY"; then real=true; fi
 
 case "$MODE" in
 	report-only)
@@ -98,8 +180,7 @@ case "$MODE" in
 		else
 			log_warn "NON-PRODUCTION FALLBACK: no real security-summary found."
 			log_warn "report-only mode: using the all-zero EXAMPLE. This is NOT evidence."
-			ensure_dir "$(dirname -- "$SUMMARY")"
-			cp "$EXAMPLE" "$SUMMARY" || die_cfg "could not stage example summary at $SUMMARY"
+			stage_fallback
 		fi
 		exit 0
 		;;

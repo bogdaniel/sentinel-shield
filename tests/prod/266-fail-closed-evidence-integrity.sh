@@ -137,9 +137,20 @@ jq '.summary.iac_violations = "nan"'    "$S/base.json" > "$S/string.json"
 check "enforcer: float count fails closed"    "$(gate "$S/float.json" regulated)" "2"
 check "enforcer: negative count fails closed" "$(gate "$S/negative.json" regulated)" "2"
 check "enforcer: string count fails closed"   "$(gate "$S/string.json" regulated)" "2"
-# An ABSENT optional key legitimately reads as 0 — back-compat with older summaries.
+# An ABSENT key is back-compat ONLY while the gate is disabled, and only for a summary that
+# declares no gate contract. Reading it as 0 for an ENABLED gate is how a v1/v2.0 summary was
+# replayed under a newer, stricter gate set.
 jq 'del(.summary.iac_violations)' "$S/base.json" > "$S/absent.json"
-check "enforcer: absent optional key still reads as 0" "$(gate "$S/absent.json" regulated)" "0"
+check "enforcer: an absent ENABLED-gate key is refused in regulated" "$(gate "$S/absent.json" regulated)" "2"
+check "enforcer: an absent ENABLED-gate key is refused in strict" "$(gate "$S/absent.json" strict)" "2"
+# ...and the visibility modes keep the documented tolerance so a migration is not bricked.
+check "enforcer: an absent key still reads as 0 in baseline (legacy tolerance)" "$(gate "$S/absent.json" baseline)" "0"
+# A summary that DECLARES the current contract gets no tolerance anywhere: the omission is a
+# build defect rather than an older evidence contract.
+# high_vulnerabilities is enabled from baseline upward, so this isolates "declared contract
+# must be complete" from "which gates a mode enables".
+jq '.gate_contract_version = "2.2" | del(.summary.high_vulnerabilities)' "$S/base.json" > "$S/absent-declared.json"
+check "enforcer: a DECLARED contract must be complete (baseline too)" "$(gate "$S/absent-declared.json" baseline)" "2"
 
 # --- (4) gate-flag parsing ---------------------------------------------------
 # A flag that cannot be read is a configuration error, never a disabled gate.

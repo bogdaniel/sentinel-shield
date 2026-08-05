@@ -1,5 +1,6 @@
 {
   "version": "1.0",
+  "gate_contract_version": "2.2",
   "project": {
     "name": "proxyflux",
     "type": "laravel",
@@ -35,7 +36,32 @@
     "dast_findings": 0,
     "container_image_violations": 0,
     "repository_health_warnings": 0,
-    "ai_review_findings": 0
+    "ai_review_findings": 0,
+    "coverage_threshold_violations": 0,
+    "coverage_regression": 0,
+    "mutation_score_violations": 0,
+    "complexity_violations": 0,
+    "duplication_violations": 0,
+    "dead_code_violations": 0,
+    "changed_lines_coverage_violations": 0,
+    "skipped_tests": 0,
+    "test_count": 0,
+    "focused_test_violations": 0,
+    "skipped_test_marker_violations": 0,
+    "debug_code_violations": 0,
+    "large_file_violations": 0,
+    "large_function_violations": 0,
+    "architecture_rule_count": 0,
+    "architecture_tool_count": 0,
+    "architecture_context_count": 0,
+    "production_change_without_test_change": 0,
+    "behavior_spec_count": 0,
+    "orphan_behavior_specifications": 0,
+    "acceptance_test_count": 0,
+    "acceptance_test_failures": 0,
+    "missing_test_change_evidence": false,
+    "missing_behavior_specification": false,
+    "missing_acceptance_evidence": false
   },
   "tools": {
     "gitleaks": {
