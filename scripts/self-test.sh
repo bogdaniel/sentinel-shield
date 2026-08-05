@@ -3254,12 +3254,21 @@ vr_mksum() {
 		  evidence:{ sbom:{present:true,path:"x"}, release_evidence:{present:true,path:"y"} } }' > "$1"
 }
 
-# vr_waiver_json <out> <tool> <expires_at> [approved_by] — write a schema-conformant
-# control-waivers file. approved_by defaults to a DISTINCT approver (no self-approval).
+# vr_date_offset <+/-days> — a UTC date relative to today (GNU date, then BSD date).
+# Waiver windows are now bounded (#226), so fixtures cannot hard-code the year 2999.
+vr_date_offset() {
+	date -u -d "$1 days" +%Y-%m-%d 2>/dev/null || date -u -v"$1"d +%Y-%m-%d
+}
+
+# vr_waiver_json <out> <tool> <expires_at> [approved_by] [created_at] [id] — write a
+# schema-conformant control-waivers file (schema v2: every record carries a unique id).
+# approved_by defaults to a DISTINCT approver (no self-approval); created_at defaults to
+# today so the record is effective now and inside the maximum validity window.
 vr_waiver_json() {
-	jq -n --arg t "$2" --arg exp "$3" --arg ap "${4:-bob}" '
-		{version:"1", waivers:[{tool:$t, justification:"self-test", owner:"alice",
-		 approved_by:$ap, created_at:"2000-01-01", expires_at:$exp, tracking_issue:"ISSUE-1"}]}' > "$1"
+	jq -n --arg t "$2" --arg exp "$3" --arg ap "${4:-bob}" \
+		--arg cre "${5:-$(date -u +%Y-%m-%d)}" --arg id "${6:-WVR-SELFTEST-1}" '
+		{version:"2", waivers:[{id:$id, tool:$t, justification:"self-test", owner:"alice",
+		 approved_by:$ap, created_at:$cre, expires_at:$exp, tracking_issue:"ISSUE-1"}]}' > "$1"
 }
 
 # --- (D) project tool-policy override: weaken/strengthen/keys/policy/waiver ----
@@ -3297,9 +3306,9 @@ vr_override() {
 	vr_run 2 "(D) override entry non-object -> exit 2"   sh "$_R" --profile laravel --override "$_d/pol-nonobject.json" --format json
 
 	# weakening WITH a valid waiver => exit 0; with self-approved / expired / invalid-date => still exit 2.
-	vr_waiver_json "$_d/w-valid.json"   phpstan 2999-12-31
-	vr_waiver_json "$_d/w-self.json"    phpstan 2999-12-31 alice          # owner==approved_by
-	vr_waiver_json "$_d/w-expired.json" phpstan 2000-01-02
+	vr_waiver_json "$_d/w-valid.json"   phpstan "$(vr_date_offset +30)"
+	vr_waiver_json "$_d/w-self.json"    phpstan "$(vr_date_offset +30)" alice   # owner==approved_by
+	vr_waiver_json "$_d/w-expired.json" phpstan 2000-01-02 bob 2000-01-01
 	vr_waiver_json "$_d/w-baddate.json" phpstan 2026-99-99
 	vr_run 0 "(D) weaken required WITH valid waiver -> exit 0"       sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-valid.json" --format json
 	vr_run 2 "(D) weaken required + self-approved waiver -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-self.json" --format json
@@ -3340,7 +3349,7 @@ vr_waivers() {
 	_wt=$(cw_today_utc)
 	_wd=$(mktemp -d)
 	# valid future + valid today -> validate OK and the key is APPLIED (appears in cw_valid_keys).
-	vr_waiver_json "$_wd/future.json" larastan 2999-12-31
+	vr_waiver_json "$_wd/future.json" larastan "$(vr_date_offset +30)"
 	vr_waiver_json "$_wd/today.json"  larastan "$_wt"
 	vr_run 0 "(D) waiver valid future -> cw_validate_file rc 0"  cw_validate_file "$_wd/future.json"
 	vr_check "(D) valid future waiver is APPLIED (key listed)" \
@@ -3349,15 +3358,15 @@ vr_waivers() {
 	vr_check "(D) today waiver is APPLIED (valid through end of UTC day)" \
 		"$(cw_valid_keys "$_wd/today.json" "$_wt" 2>/dev/null | grep -c '^larastan$')" "1"
 	# expired -> structurally valid but NOT applied (absent from cw_valid_keys).
-	vr_waiver_json "$_wd/expired.json" larastan 2000-01-02
+	vr_waiver_json "$_wd/expired.json" larastan 2000-01-02 bob 2000-01-01
 	vr_run 0 "(D) expired waiver -> still structurally valid (rc 0)" cw_validate_file "$_wd/expired.json"
 	vr_check "(D) expired waiver is NOT applied (key absent)" \
 		"$(cw_valid_keys "$_wd/expired.json" 2>/dev/null | grep -c '^larastan$')" "0"
 	# self-approved -> invalid (owner==approved_by).
-	vr_waiver_json "$_wd/self.json" larastan 2999-12-31 alice
+	vr_waiver_json "$_wd/self.json" larastan "$(vr_date_offset +30)" alice
 	vr_run 2 "(D) self-approved waiver -> invalid (rc 2)" cw_validate_file "$_wd/self.json"
 	# missing approved_by -> invalid.
-	jq -n '{version:"1",waivers:[{tool:"larastan",justification:"x",owner:"alice",created_at:"2020-01-01",expires_at:"2999-12-31",tracking_issue:"I"}]}' > "$_wd/missing-approver.json"
+	jq -n --arg exp "$(vr_date_offset +30)" --arg cre "$_wt" '{version:"2",waivers:[{id:"WVR-1",tool:"larastan",justification:"x",owner:"alice",created_at:$cre,expires_at:$exp,tracking_issue:"I"}]}' > "$_wd/missing-approver.json"
 	vr_run 2 "(D) missing approved_by -> invalid (rc 2)" cw_validate_file "$_wd/missing-approver.json"
 	# bad dates: invalid month / feb-31 / non-date text / empty expires_at -> invalid.
 	vr_waiver_json "$_wd/badmonth.json" larastan 2026-99-99
@@ -3382,7 +3391,7 @@ vr_bootstrap() {
 	vr_run 3 "(D) bootstrap required-disabled, no waiver -> exit 3" sh "$_B" --profile laravel --target "$_dt" --apply
 	vr_check "(D) bootstrap fails BEFORE mutation (composer.json unchanged)" "$(cat "$_dt/composer.json")" "$_before"
 	# WITH a valid control-waiver => reported WAIVED (exit 0).
-	vr_waiver_json "$_dt/.sentinel-shield/control-waivers.json" phpstan 2999-12-31
+	vr_waiver_json "$_dt/.sentinel-shield/control-waivers.json" phpstan "$(vr_date_offset +30)"
 	_out=$(sh "$_B" --profile laravel --target "$_dt" --dry-run 2>&1); _r=$?
 	vr_check "(D) bootstrap required-disabled WITH valid waiver -> exit 0" "$_r" "0"
 	vr_contains "(D) bootstrap reports the disabled-required tool as waived" "$_out" "waived"
@@ -3554,7 +3563,7 @@ vr_waiver_visibility() {
 	_FX="$ROOT/tests/fixtures/v2"
 	# doctor: a valid waiver for the unsatisfied one-of GROUP surfaces a WAIVED line and
 	# downgrades exit to 0, but the group is still reported as a one-of control (not flipped).
-	_e=$(mktemp -d); vr_waiver_json "$_e/cw.json" tests 2999-12-31
+	_e=$(mktemp -d); vr_waiver_json "$_e/cw.json" tests "$(vr_date_offset +30)"
 	_out=$(EP_REPO_ROOT="$_FX" sh "$ROOT/scripts/doctor.sh" --target "$_e" --profile oneof-only \
 		--tool-mode require-existing --control-waivers "$_e/cw.json" 2>&1); _r=$?
 	vr_check "(C2) doctor with valid waiver -> exit 0" "$_r" "0"
@@ -3567,7 +3576,7 @@ vr_waiver_visibility() {
 	# tool's policy as required (never rewritten to pass/optional).
 	_d=$(mktemp -d); vr_gate_env "$_d"; _genv="$_d/sentinel-shield-gates.env"
 	vr_mksum "$_d/p.json" '{"phpstan":{"tool":"phpstan","policy":"required","status":"unavailable","gate_enforced":true}}' '{}'
-	vr_waiver_json "$_d/cw.json" phpstan 2999-12-31
+	vr_waiver_json "$_d/cw.json" phpstan "$(vr_date_offset +30)"
 	vr_run 0 "(C2) enforce with valid waiver -> exit 0 (downgraded)" \
 		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/p.json" --control-waivers "$_d/cw.json" --output-dir "$_d" --format all
 	vr_check "(C2) enforce JSON records the tool as waived" \
@@ -3586,7 +3595,7 @@ vr_findings_not_suppressed() {
 	# semgrep RAN and reported findings (high_vulnerabilities=1); a control-waiver exists
 	# for semgrep (availability channel) — it must NOT suppress the finding gate.
 	vr_mksum "$_d/f.json" '{"semgrep":{"tool":"semgrep","policy":"required","status":"findings","gate_enforced":true}}' '{"high_vulnerabilities":1}'
-	vr_waiver_json "$_d/cw.json" semgrep 2999-12-31
+	vr_waiver_json "$_d/cw.json" semgrep "$(vr_date_offset +30)"
 	vr_run 1 "(C3) waiver does NOT suppress findings: high_vulnerabilities still fails" \
 		sh "$ROOT/scripts/enforce-gates.sh" --gates-env "$_genv" --summary "$_d/f.json" --control-waivers "$_d/cw.json" --output-dir "$_d" --format json
 	vr_contains "(C3) the finding gate (high_vulnerabilities) is the failure" \
@@ -3618,30 +3627,34 @@ v3_rc() { _exp="$1"; _desc="$2"; shift 2; if "$@" >/dev/null 2>&1; then _g=0; el
 # Issue 1/2/3: waiver validation portability + version + safe keys (validator run via /bin/sh).
 v3_waivers() {
 	_w=$(mktemp -d)
-	_b='{"version":"1","waivers":[{"tool":"%s","justification":"x","owner":"a","approved_by":"b","created_at":"%s","expires_at":"%s","tracking_issue":"#1"}]}'
-	printf "$_b" phpstan 2026-08-09 2026-09-08 > "$_w/p0809.json"
-	printf "$_b" phpstan 2028-02-01 2028-02-29 > "$_w/leap.json"
+	# Windows are PAST and inside the maximum waiver duration (#226), so these fixtures
+	# stay deterministic as the calendar moves: a past record is never "pre-positioned".
+	_b='{"version":"2","waivers":[{"id":"WVR-1","tool":"%s","justification":"x","owner":"a","approved_by":"b","created_at":"%s","expires_at":"%s","tracking_issue":"#1"}]}'
+	printf "$_b" phpstan 2020-08-09 2020-09-08 > "$_w/p0809.json"
+	printf "$_b" phpstan 2020-02-01 2020-02-29 > "$_w/leap.json"
 	printf "$_b" phpstan 2026-01-01 2026-02-29 > "$_w/nonleap.json"
 	printf "$_b" phpstan 2026-01-01 2026-04-31 > "$_w/apr31.json"
 	printf "$_b" phpstan 0000-01-01 2026-01-01 > "$_w/yr0.json"
-	echo '{"waivers":[]}' > "$_w/nover.json"; echo '{"version":"2","waivers":[]}' > "$_w/v2.json"
+	echo '{"waivers":[]}' > "$_w/nover.json"; echo '{"version":"3","waivers":[]}' > "$_w/v3.json"
 	echo '{"version":"1","waivers":[]}' > "$_w/v1.json"
-	printf "$_b" 'phpstan semgrep' 2026-01-01 2099-01-01 > "$_w/space.json"
-	printf "$_b" '../phpstan' 2026-01-01 2099-01-01 > "$_w/trav.json"
-	printf 'phpstan\tsemgrep' > "$_w/tk"; printf "$_b" "$(cat "$_w/tk")" 2026-01-01 2099-01-01 > "$_w/tab.json"
+	echo '{"version":"2","waivers":[]}' > "$_w/v2.json"
+	printf "$_b" 'phpstan semgrep' 2020-01-01 2020-02-01 > "$_w/space.json"
+	printf "$_b" '../phpstan' 2020-01-01 2020-02-01 > "$_w/trav.json"
+	printf 'phpstan\tsemgrep' > "$_w/tk"; printf "$_b" "$(cat "$_w/tk")" 2020-01-01 2020-02-01 > "$_w/tab.json"
 	# run EXACTLY as the prompt specifies — via /bin/sh, sourcing the lib standalone —
 	# but cwd-independent ($ROOT subshell) so the probe (and the lib's relative
 	# common-lib lookup) work regardless of where self-test was launched from. `if` so
 	# a non-zero exit does not trip the harness's set -e before we print it.
 	V(){ if ( cd "$ROOT" && sh -c '. scripts/lib/control-waivers.sh; cw_validate_file "$1"' sh "$1" ) >/dev/null 2>&1; then echo 0; else echo $?; fi; }
-	v3_check "(1) /bin/sh validates 2026-08-09/2026-09-08 (no \$((10#..)))" "$(V "$_w/p0809.json")" "0"
-	v3_check "(1) /bin/sh accepts leap 2028-02-29" "$(V "$_w/leap.json")" "0"
+	v3_check "(1) /bin/sh validates 2020-08-09/2020-09-08 (no \$((10#..)))" "$(V "$_w/p0809.json")" "0"
+	v3_check "(1) /bin/sh accepts leap 2020-02-29" "$(V "$_w/leap.json")" "0"
 	v3_check "(1) /bin/sh rejects 2026-02-29" "$(V "$_w/nonleap.json")" "2"
 	v3_check "(1) /bin/sh rejects 2026-04-31" "$(V "$_w/apr31.json")" "2"
 	v3_check "(1) /bin/sh rejects year 0000" "$(V "$_w/yr0.json")" "2"
 	v3_check "(2) missing version -> exit 2" "$(V "$_w/nover.json")" "2"
-	v3_check "(2) unsupported version 2 -> exit 2" "$(V "$_w/v2.json")" "2"
-	v3_check "(2) version 1 -> valid" "$(V "$_w/v1.json")" "0"
+	v3_check "(2) unsupported version 3 -> exit 2" "$(V "$_w/v3.json")" "2"
+	v3_check "(2) superseded version 1 -> exit 2 (no id, no identity)" "$(V "$_w/v1.json")" "2"
+	v3_check "(2) version 2 -> valid" "$(V "$_w/v2.json")" "0"
 	v3_check "(3) tool key with space -> exit 2" "$(V "$_w/space.json")" "2"
 	v3_check "(3) tool key traversal ../ -> exit 2" "$(V "$_w/trav.json")" "2"
 	v3_check "(3) tool key with TAB -> exit 2" "$(V "$_w/tab.json")" "2"
@@ -3651,7 +3664,7 @@ v3_waivers() {
 # Issue 4/5: doctor + maturity validate a malformed waiver fail-closed even without jq on PATH.
 v3_nojq_failclosed() {
 	_t=$(mktemp -d); mkdir -p "$_t/.sentinel-shield"
-	printf '{"version":"1","waivers":[{"tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"  # malformed (unsafe key + missing fields)
+	printf '{"version":"2","waivers":[{"id":"WVR-1","tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"  # malformed (unsafe key + missing fields)
 	# shim PATH with no jq (keep sh/printf/etc. from a minimal busybox-like set: easiest is to
 	# point PATH at an empty dir + the real coreutils EXCEPT jq — we hide jq via a wrapper dir).
 	_bin=$(mktemp -d)
@@ -3661,7 +3674,7 @@ v3_nojq_failclosed() {
 	v3_rc 2 "(5) maturity: malformed waiver + no jq -> exit 2" env PATH="$_bin" sh "$ROOT/scripts/maturity-report.sh" --target "$_t" --profile laravel
 	# valid waiver file + jq present => doctor does not fail FOR THE WAIVER (may still exit 3 for
 	# missing required tools, which is separate); malformed + jq present => exit 2.
-	printf '{"version":"1","waivers":[{"tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"
+	printf '{"version":"2","waivers":[{"id":"WVR-1","tool":"x x"}]}' > "$_t/.sentinel-shield/control-waivers.json"
 	v3_rc 2 "(4) doctor: malformed waiver + jq present -> exit 2" sh "$ROOT/scripts/doctor.sh" --target "$_t" --profile laravel
 	rm -rf "$_t" "$_bin"
 }

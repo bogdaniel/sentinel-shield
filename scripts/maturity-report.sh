@@ -84,7 +84,9 @@ WAIVED_KEYS=""
 # Validate UNCONDITIONALLY (Issue 5) — same fail-closed decision as doctor/gate even
 # when jq is absent. Key extraction (needs jq) stays conditional below.
 cw_validate_file "$WAIVERS_FILE" || { log_error "maturity-report: control-waivers file invalid: $WAIVERS_FILE (see errors above)"; exit 2; }
+WAIVER_RECS=""
 if command_exists jq; then
+  WAIVER_RECS=$(cw_applied_records "$WAIVERS_FILE" 2>/dev/null || true)
   WAIVED_KEYS=$(cw_valid_keys "$WAIVERS_FILE" 2>/dev/null || true)
 fi
 # mr_is_waived <key> — 0 if <key> has a valid, unexpired control-waiver.
@@ -135,14 +137,17 @@ if command_exists jq; then
   fi
 fi
 
-# resolve_activation <key> — echo 8 TAB-separated, always-non-empty fields:
+# resolve_activation <key> — echo 9 TAB-separated fields (only waiver_id may be empty):
 #   profile_policy installed configured executed gate_enforced last_result report waived
+#   waiver_id
 # `waived` reflects a valid control-waiver for this tool key; it is informational and does
 # NOT change the tool's policy/last_result (the tool stays required, not pass/optional).
 resolve_activation() {
   _pol="not-declared"; _inst="unknown"; _cfg="unknown"; _exe="unknown"
   _ge="unknown"; _lr="none"; _rep="reports/raw/$1.json"
-  if mr_is_waived "$1"; then _wv="yes"; else _wv="no"; fi
+  # `waived` says whether a waiver applies; `waiver_id` says WHICH approval it is, so a
+  # maturity report can be audited back to a named, dated, owner-bound record (#225).
+  if mr_is_waived "$1"; then _wv="yes"; _wid=$(cw_record_for "$WAIVER_RECS" "$1" | cut -f1); else _wv="no"; _wid=""; fi
   if [ "$RESOLVE" = 1 ]; then
     if jq -e --arg k "$1" '.tools | has($k)' "$TMPM" >/dev/null 2>&1 \
        && [ "$(jq -r --arg k "$1" '.tools | has($k)' "$TMPM")" = "true" ]; then
@@ -166,7 +171,7 @@ resolve_activation() {
       _pol="not-declared"; _inst="-"; _cfg="-"; _exe="-"; _ge="no"
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$_pol" "$_inst" "$_cfg" "$_exe" "$_ge" "$_lr" "$_rep" "$_wv"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$_pol" "$_inst" "$_cfg" "$_exe" "$_ge" "$_lr" "$_rep" "$_wv" "$_wid"
 }
 
 # --- LIVE-VALIDATION evidence (fail-closed, REAL evidence only) -------------------------------
@@ -232,13 +237,13 @@ if [ "$FORMAT" = "json" ]; then
     act=$(resolve_activation "$key")
     # (Issue 9) Tab-aware unpack with NO word-splitting/glob expansion (set -- $act
     # would expand * ? in a field against the CWD). Here-doc keeps it in this shell.
-    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
+    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv wid <<EOF
 $act
 EOF
     lv=$(live_validated_of "$m"); eci=$(executed_ci_of "$g" "$d")
     [ "$first" = 1 ] || printf ','; first=0
-    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","executed_local":"%s","executed_ci":"%s","gate_enforced":"%s","live_validated":"%s","evidence_run_id":"%s","last_evidence_date":"%s","last_result":"%s","report":"%s","waived":"%s"}' \
-      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$exe" "$eci" "$ge" "$lv" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE" "$lr" "$rep" "$wv"
+    printf '{"tool":"%s","key":"%s","category":"%s","maturity":"%s","evidence_run":"%s","artifact":"%s","caveat":"%s","default":"%s","gating":"%s","product_support":"%s","profile_policy":"%s","installed":"%s","configured":"%s","executed":"%s","executed_local":"%s","executed_ci":"%s","gate_enforced":"%s","live_validated":"%s","evidence_run_id":"%s","last_evidence_date":"%s","last_result":"%s","report":"%s","waived":"%s","waiver_id":"%s"}' \
+      "$t" "$key" "$c" "$m" "$r" "$a" "$v" "$d" "$g" "$m" "$pol" "$inst" "$cfg" "$exe" "$exe" "$eci" "$ge" "$lv" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE" "$lr" "$rep" "$wv" "$wid"
   done
   printf ']}\n'
 else
@@ -258,9 +263,12 @@ else
   printf '%s\n' "$ROWS" | while IFS='|' read -r key t c m r a v d g; do
     act=$(resolve_activation "$key")
     # (Issue 9) Tab-aware unpack; no word-splitting/glob expansion.
-    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv <<EOF
+    IFS="$TAB" read -r pol inst cfg exe ge lr rep wv wid <<EOF
 $act
 EOF
+    # the waived cell names the approval, so a reader never has to guess which record
+    # authorised it (#225).
+    if [ -n "$wid" ]; then wv="$wv ($wid)"; fi
     lv=$(live_validated_of "$m"); eci=$(executed_ci_of "$g" "$d")
     printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
       "$t" "$c" "$m" "$r" "$v" "$d" "$g" "$pol" "$inst" "$cfg" "$exe" "$eci" "$ge" "$lv" "$EVIDENCE_RUN_ID" "$EVIDENCE_DATE" "$lr" "$wv"

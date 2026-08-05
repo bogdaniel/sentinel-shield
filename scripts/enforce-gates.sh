@@ -1513,12 +1513,24 @@ if [ "$HAS_POLICY" = "1" ]; then
 	# Load valid (unexpired) control-waiver tool keys via the SHARED validator
 	# (B1/B10/A4): full schema validation, real calendar-date check, self-approval
 	# rejection. A malformed waivers file is a configuration failure (fail closed).
-	cw_validate_file "$CONTROL_WAIVERS_FILE" || die_cfg "control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)"
+	# regulated assurance tightens the maximum waiver duration (#226) BEFORE anything is
+	# validated, so an over-long window is a configuration failure in that mode rather
+	# than a waiver that quietly outlives the assurance it was granted under.
+	if [ "$MODE" = "regulated" ]; then CW_MAX_WAIVER_DAYS="$CW_MAX_WAIVER_DAYS_REGULATED"; fi
+	cw_validate_file "$CONTROL_WAIVERS_FILE" "" "$TODAY" || die_cfg "control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)"
+	# The APPLIED records, not just the tool keys: every output has to name the approval
+	# that waived the control (#225), so the identity is carried from here, never
+	# re-derived by a consumer.
+	WAIVER_RECS=$(cw_applied_records "$CONTROL_WAIVERS_FILE" "$TODAY") \
+		|| die_cfg "control-waivers file invalid: $CONTROL_WAIVERS_FILE (see errors above)"
 	WAIVED_TOOLS=" "
-	for _wt in $(cw_valid_keys "$CONTROL_WAIVERS_FILE" "$TODAY" 2>/dev/null); do
+	for _wt in $(printf '%s\n' "$WAIVER_RECS" | cut -f2); do
 		WAIVED_TOOLS="${WAIVED_TOOLS}${_wt} "
 	done
 	is_waived() { case "$WAIVED_TOOLS" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+	# waiver_fields <tool> — "id|owner|approved_by|created_at|expires_at|tracking_issue"
+	# for the applied waiver, so a waived record carries its authorisation into the report.
+	waiver_fields() { cw_record_for "$WAIVER_RECS" "$1" | cut -f1,3,4,5,6,7 | tr '\t' '|'; }
 
 	# --- THE TRUSTED EXECUTION PLAN ------------------------------------------------------
 	# Every exemption below used to be read from the SAME summary being judged: the summary
@@ -1695,16 +1707,16 @@ if [ "$HAS_POLICY" = "1" ]; then
 				fi
 				case "$_st" in
 					unavailable)
-						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}|$(waiver_fields "$_tkey")
 "; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
 "; fi ;;
 					execution-error)
-						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}|$(waiver_fields "$_tkey")
 "; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
 "; EXEF_REC="${EXEF_REC}${_emit}|${_tkey}|${_st}
 "; fi ;;
 					not-configured | disabled)
-						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st}|$(waiver_fields "$_tkey")
 "; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st}
 "; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|${_st}
 "; fi ;;
@@ -1726,7 +1738,7 @@ if [ "$HAS_POLICY" = "1" ]; then
 						# failure, so a producer could avoid enforcement with any string the
 						# enforcer did not recognise. An unrecognised status is untrusted
 						# evidence about a REQUIRED control.
-						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st:-unknown}
+						if is_waived "$_tkey"; then WAIVED_REC="${WAIVED_REC}${_emit}|${_tkey}|${_st:-unknown}|$(waiver_fields "$_tkey")
 "; else REQF_REC="${REQF_REC}${_emit}|${_tkey}|${_st:-unknown}
 "; CFGF_REC="${CFGF_REC}${_emit}|${_tkey}|${_st:-unknown}
 "; fi ;;
@@ -1814,19 +1826,23 @@ if [ "$HAS_POLICY" = "1" ]; then
 		printf '%s' "$ONEOF_REC" | while IFS='|' read -r _g _s; do [ -n "$_g" ] && log_info "ONE-OF GROUP UNSATISFIED: $_g status=$_s"; done
 	fi
 	if [ -n "$WAIVED_REC" ]; then
-		printf '%s' "$WAIVED_REC" | while IFS='|' read -r _e _t _s; do [ -n "$_e" ] && log_warn "CONTROL-WAIVER applied (required tool NOT failing): $_t ($_e) status=$_s"; done
+		printf '%s' "$WAIVED_REC" | while IFS='|' read -r _e _t _s _wid _wo _wa _wc _wx _wtr; do
+			[ -n "$_e" ] && log_warn "CONTROL-WAIVER applied (required tool NOT failing): $_t ($_e) status=$_s waiver=$_wid owner=$_wo approved_by=$_wa created=$_wc expires=$_wx tracking=$_wtr"
+		done
 	fi
 fi
 
 # recs_to_json — convert newline records "a|b|c" into a JSON array. The field names
 # are supplied as the trailing args (3 for tool records, 2 for one-of records).
 recs_to_json() {
-	# usage: printf '%s' "$REC" | recs_to_json <name1> <name2> [name3]
-	jq -R -s --arg n1 "$1" --arg n2 "$2" --arg n3 "${3:-}" '
-		split("\n") | map(select(length > 0) | split("|"))
-		| map( if ($n3 | length) > 0
-		       then { ($n1): .[0], ($n2): .[1], ($n3): .[2] }
-		       else { ($n1): .[0], ($n2): .[1] } end )'
+	# usage: printf '%s' "$REC" | recs_to_json <name1> <name2> [name3 ...]
+	# Variadic: a waived record carries its authorising waiver id/owner/approver/dates/
+	# tracking reference alongside the tool, and every field named here is emitted.
+	jq -R -s --args '
+		[ $ARGS.positional[] ] as $names
+		| split("\n") | map(select(length > 0) | split("|"))
+		| map( . as $f
+		       | reduce range(0; $names | length) as $i ({}; .[$names[$i]] = ($f[$i] // null)) )' "$@"
 }
 
 # --- writers -----------------------------------------------------------------
@@ -2196,7 +2212,7 @@ write_json() {
 		printf '    "tool_configuration_failures": %s,\n' "$(printf '%s' "$CFGF_REC" | recs_to_json emit tool status)"
 		printf '    "tool_execution_failures": %s,\n' "$(printf '%s' "$EXEF_REC" | recs_to_json emit tool status)"
 		printf '    "one_of_unsatisfied": %s,\n' "$(printf '%s' "$ONEOF_REC" | recs_to_json group status)"
-		printf '    "waived": %s,\n' "$(printf '%s' "$WAIVED_REC" | recs_to_json emit tool status)"
+		printf '    "waived": %s,\n' "$(printf '%s' "$WAIVED_REC" | recs_to_json emit tool status waiver_id owner approved_by created_at expires_at tracking_issue)"
 		printf '    "recommended_warnings": %s,\n' "$(printf '%s' "$WARN_REC" | recs_to_json emit tool status)"
 		printf '    "optional_info": %s\n' "$(printf '%s' "$INFO_REC" | recs_to_json emit tool status)"
 		printf '  },\n'
@@ -2333,7 +2349,12 @@ write_markdown() {
 			_mdrows "$CFGF_REC" "configuration-failure"
 			_mdrows "$EXEF_REC" "execution-failure"
 			printf '%s' "$ONEOF_REC" | while IFS='|' read -r _g _s; do [ -n "$_g" ] || continue; printf -- '| one-of-group-unsatisfied | %s | %s |\n' "$_g" "$_s"; done
-			_mdrows "$WAIVED_REC" "waived (NOT failing)"
+			# waived rows carry the authorising approval, not just the tool and status.
+			printf '%s' "$WAIVED_REC" | while IFS='|' read -r _e _t _s _wid _wo _wa _wc _wx _wtr; do
+				[ -n "$_e" ] || continue
+				printf -- '| waived (NOT failing) | %s | %s (waiver %s, owner %s, approved_by %s, %s..%s, tracking %s) |\n' \
+					"$_t" "$_s" "$_wid" "$_wo" "$_wa" "$_wc" "$_wx" "$_wtr"
+			done
 			_mdrows "$WARN_REC" "recommended-warning"
 			_mdrows "$INFO_REC" "optional-info"
 			if [ -z "$REQF_REC$CFGF_REC$EXEF_REC$ONEOF_REC$WAIVED_REC$WARN_REC$INFO_REC" ]; then
