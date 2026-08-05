@@ -293,7 +293,7 @@ fi
 # could not learn that it installs a `.semgrepignore`. Assert the set of documented
 # profiles equals the set of manifests, and that each documented row names a target the
 # manifest actually declares.
-_invmiss=""
+_invmiss=""; _invmode=""
 for _pm in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combinations/*.manifest.json; do
 	[ -f "$_pm" ] || continue
 	case "$_pm" in
@@ -310,13 +310,29 @@ for _pm in "$ROOT"/profiles/*/profile.manifest.json "$ROOT"/profiles/combination
 		inb { print }' "$ROOT/docs/managed-file-inventory.md")
 	for _tgt in $(jq -r '(.files // [])[].target' "$_pm" 2>/dev/null); do
 		printf '%s\n' "$_sec" | grep -q -- "\`$_tgt\`" \
-			|| _invmiss="$_invmiss ${_pname}:${_tgt}"
+			|| { _invmiss="$_invmiss ${_pname}:${_tgt}"; continue; }
+		# Listing the row is not enough: the row states a MODE, and a mode that disagrees with
+		# the manifest is worse than an absent row because it reads as authoritative. Five
+		# profiles moved .semgrepignore to `merge-required-lines` while every documented row
+		# still said `create-if-missing`, and the presence check above was satisfied by both.
+		_mmode=$(jq -r --arg t "$_tgt" '(.files // [])[] | select(.target==$t) | .mode' "$_pm" 2>/dev/null | head -n1)
+		[ -n "$_mmode" ] || continue
+		_dmode=$(printf '%s\n' "$_sec" | awk -F'|' -v t="\`$_tgt\`" '
+			{ c2=$2; gsub(/^[ \t]+|[ \t]+$/, "", c2) }
+			c2 == t { c4=$4; gsub(/^[ \t]+|[ \t]+$/, "", c4); print c4; exit }')
+		[ "$_dmode" = "$_mmode" ] \
+			|| _invmode="$_invmode ${_pname}:${_tgt}(doc='${_dmode:-none}',manifest='$_mmode')"
 	done
 done
 if [ -n "$_invmiss" ]; then
 	fail "managed-file inventory is missing:$_invmiss"
 else
 	pass "every profile manifest and managed target is documented in the managed-file inventory"
+fi
+if [ -n "$_invmode" ]; then
+	fail "managed-file inventory states a mode the manifest contradicts:$_invmode"
+else
+	pass "every documented managed-file mode matches its profile manifest"
 fi
 
 # --- "off by default" must not be claimed for the v2.2 gate families ---------
