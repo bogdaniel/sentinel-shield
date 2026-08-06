@@ -1,0 +1,3539 @@
+{
+  "schema_version": 1,
+  "generated_for_master": "30c89498ae9fa7b47a164cd05c15cc981a0ab39e",
+  "milestones": [
+    {
+      "key": "M0",
+      "title": "M0 \u2014 CI Enablement",
+      "epic": 286
+    },
+    {
+      "key": "M1",
+      "title": "M1 \u2014 Evidence Trust Foundation",
+      "epic": 287
+    },
+    {
+      "key": "M2",
+      "title": "M2 \u2014 Mutation and Transaction Safety",
+      "epic": 288
+    },
+    {
+      "key": "M3",
+      "title": "M3 \u2014 Policy and Resolution Engine",
+      "epic": 289
+    },
+    {
+      "key": "M4",
+      "title": "M4 \u2014 Producer Chain Correctness",
+      "epic": 290
+    },
+    {
+      "key": "M5",
+      "title": "M5 \u2014 Documentation and External Validation",
+      "epic": 38
+    }
+  ],
+  "issues": [
+    {
+      "issue": 19,
+      "primary_domain": "external-validation",
+      "milestone": "M5",
+      "milestone_title": "M5 \u2014 Documentation and External Validation",
+      "priority": "p1",
+      "type": "validation",
+      "status": "blocked",
+      "parent_epic": 38,
+      "blocked_by": [
+        290
+      ],
+      "blocks": [],
+      "implementation_group": "framework-consumer-validation",
+      "closure_evidence": [
+        "live-consumer-run-artifact",
+        "captured-evidence-bundle",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 20,
+      "primary_domain": "external-validation",
+      "milestone": "M5",
+      "milestone_title": "M5 \u2014 Documentation and External Validation",
+      "priority": "p1",
+      "type": "validation",
+      "status": "blocked",
+      "parent_epic": 38,
+      "blocked_by": [
+        290
+      ],
+      "blocks": [],
+      "implementation_group": "framework-consumer-validation",
+      "closure_evidence": [
+        "live-consumer-run-artifact",
+        "captured-evidence-bundle",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 21,
+      "primary_domain": "external-validation",
+      "milestone": "M5",
+      "milestone_title": "M5 \u2014 Documentation and External Validation",
+      "priority": "p1",
+      "type": "validation",
+      "status": "blocked",
+      "parent_epic": 38,
+      "blocked_by": [
+        272,
+        290
+      ],
+      "blocks": [],
+      "implementation_group": "adopter-usability-validation",
+      "closure_evidence": [
+        "live-consumer-run-artifact",
+        "captured-evidence-bundle",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 38,
+      "primary_domain": "external-validation",
+      "milestone": "M5",
+      "milestone_title": "M5 \u2014 Documentation and External Validation",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [
+        290
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m5",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 91,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 92,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 93,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 94,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 95,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 96,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 97,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 98,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 99,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 100,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 101,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 102,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 103,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 104,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 294,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "scanner-execution-wrappers",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 105,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 106,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 107,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 108,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 109,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 110,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        147
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 111,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 112,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 113,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 114,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 115,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 116,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 117,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p2",
+      "type": "documentation",
+      "status": "ready",
+      "parent_epic": 291,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "doc-contract-review",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 118,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 119,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 120,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 121,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 122,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 292,
+      "blocked_by": [
+        146,
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-coverage-evidence",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 123,
+      "primary_domain": "policy",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 293,
+      "blocked_by": [
+        259
+      ],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 124,
+      "primary_domain": "policy",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 293,
+      "blocked_by": [
+        259
+      ],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 125,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 291,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "test-acceptance-adapters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 126,
+      "primary_domain": "policy",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 127,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 128,
+      "primary_domain": "policy",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 293,
+      "blocked_by": [
+        259
+      ],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 129,
+      "primary_domain": "evidence",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 293,
+      "blocked_by": [
+        147
+      ],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 130,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 131,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 132,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 133,
+      "primary_domain": "governance",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 293,
+      "blocked_by": [
+        227
+      ],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 134,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 293,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "testing-discipline-tdd",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 135,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 136,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 137,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 138,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 139,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 140,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 141,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 142,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 144,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "json-document-contract",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 145,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [
+        182,
+        204
+      ],
+      "implementation_group": "collector-status-vocabulary",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 146,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [
+        106,
+        107,
+        108,
+        112,
+        119,
+        120,
+        121,
+        122
+      ],
+      "implementation_group": "numeric-validation",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 147,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [
+        110,
+        129,
+        159,
+        163,
+        288
+      ],
+      "implementation_group": "atomic-publication",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 148,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "json-serialization",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 149,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "verified-tool-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 150,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "verified-tool-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 151,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "source-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 152,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "source-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 153,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "source-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 154,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "source-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 155,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "source-acquisition",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 156,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "install-planning",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 157,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "install-planning",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 158,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "ownership-containment",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 159,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 288,
+      "blocked_by": [
+        147
+      ],
+      "blocks": [],
+      "implementation_group": "atomic-writes",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 160,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "install-planning",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 161,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "install-planning",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 162,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "install-planning",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 163,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 288,
+      "blocked_by": [
+        147
+      ],
+      "blocks": [
+        171
+      ],
+      "implementation_group": "atomic-writes",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 164,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "journal",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 165,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "journal",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 166,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "journal",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 167,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "durability",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 168,
+      "primary_domain": "sync",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "sync-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 169,
+      "primary_domain": "sync",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "sync-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 170,
+      "primary_domain": "sync",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "sync-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 171,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 288,
+      "blocked_by": [
+        163
+      ],
+      "blocks": [],
+      "implementation_group": "metadata-schema",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 172,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "metadata-schema",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 173,
+      "primary_domain": "installer",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "metadata-schema",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 174,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 175,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 176,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 177,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 178,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 179,
+      "primary_domain": "migration",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "migration-preconditions",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 180,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "recovery",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 181,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 288,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "recovery",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 182,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        145
+      ],
+      "blocks": [
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        118,
+        119,
+        120,
+        121,
+        122,
+        125,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        243,
+        244,
+        245,
+        246,
+        247
+      ],
+      "implementation_group": "producer-envelope",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 183,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 184,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 185,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 186,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 187,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 188,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 295,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "dependency-vulnerability-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 189,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 190,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 192,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 296,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "secrets-sast-ci-collectors",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 193,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 194,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 195,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 196,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 197,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 198,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 199,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 200,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 201,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 202,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 203,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 297,
+      "blocked_by": [
+        182
+      ],
+      "blocks": [],
+      "implementation_group": "docker-iac-architecture",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 204,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        145,
+        182
+      ],
+      "blocks": [
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        243,
+        244,
+        245,
+        246,
+        247
+      ],
+      "implementation_group": "producer-envelope",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 205,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 206,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 207,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 208,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 209,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 210,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 211,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 212,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 213,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 214,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 298,
+      "blocked_by": [
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "engineering-quality-linters",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 215,
+      "primary_domain": "evidence",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "architecture",
+      "status": "blocked",
+      "parent_epic": 299,
+      "blocked_by": [
+        204,
+        234
+      ],
+      "blocks": [],
+      "implementation_group": "summary-selection-aggregation",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 227,
+      "primary_domain": "governance",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [
+        133
+      ],
+      "implementation_group": "waiver-authentication",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 234,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "architecture",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        253,
+        254
+      ],
+      "blocks": [
+        215
+      ],
+      "implementation_group": "plan-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 239,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        253
+      ],
+      "blocks": [],
+      "implementation_group": "plan-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 240,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "executable-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 243,
+      "primary_domain": "policy",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        182,
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "required-tool-semantics",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 244,
+      "primary_domain": "policy",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        182,
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "required-tool-semantics",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 245,
+      "primary_domain": "policy",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        182,
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "required-tool-semantics",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 246,
+      "primary_domain": "policy",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        182,
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "required-tool-semantics",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 247,
+      "primary_domain": "policy",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 287,
+      "blocked_by": [
+        182,
+        204
+      ],
+      "blocks": [],
+      "implementation_group": "required-tool-semantics",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 248,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "architecture",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        259,
+        260,
+        264
+      ],
+      "blocks": [
+        249,
+        250,
+        253,
+        254,
+        265
+      ],
+      "implementation_group": "profile-schema",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 249,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        248
+      ],
+      "blocks": [],
+      "implementation_group": "profile-inheritance",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 250,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        248
+      ],
+      "blocks": [],
+      "implementation_group": "profile-inheritance",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 251,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [
+        252
+      ],
+      "implementation_group": "profile-schema",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 252,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        251
+      ],
+      "blocks": [
+        255
+      ],
+      "implementation_group": "profile-provenance",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 253,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "architecture",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        248
+      ],
+      "blocks": [
+        234,
+        239
+      ],
+      "implementation_group": "applicability",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 254,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        248
+      ],
+      "blocks": [
+        234
+      ],
+      "implementation_group": "one-of-graph",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 255,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        252
+      ],
+      "blocks": [],
+      "implementation_group": "profile-provenance",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 256,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        258
+      ],
+      "blocks": [],
+      "implementation_group": "override-engine",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 257,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        258
+      ],
+      "blocks": [],
+      "implementation_group": "override-engine",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 258,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "architecture",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [
+        256,
+        257,
+        266
+      ],
+      "implementation_group": "override-engine",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 259,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [
+        123,
+        124,
+        128,
+        248
+      ],
+      "implementation_group": "yaml-parser-parity",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 260,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [
+        248
+      ],
+      "implementation_group": "yaml-parser-parity",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 261,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fail-closed-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 262,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fail-closed-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 263,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fail-closed-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 264,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [
+        248
+      ],
+      "implementation_group": "yaml-parser-parity",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 265,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        248
+      ],
+      "blocks": [],
+      "implementation_group": "plan-resolution",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 266,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "security",
+      "status": "blocked",
+      "parent_epic": 289,
+      "blocked_by": [
+        258
+      ],
+      "blocks": [],
+      "implementation_group": "override-engine",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 272,
+      "primary_domain": "documentation",
+      "milestone": "M5",
+      "milestone_title": "M5 \u2014 Documentation and External Validation",
+      "priority": "p1",
+      "type": "documentation",
+      "status": "ready",
+      "parent_epic": 38,
+      "blocked_by": [],
+      "blocks": [
+        21
+      ],
+      "implementation_group": "readme-rewrite",
+      "closure_evidence": [
+        "implementation",
+        "doc-contract-review",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 284,
+      "primary_domain": "ci",
+      "milestone": "M0",
+      "milestone_title": "M0 \u2014 CI Enablement",
+      "priority": "p0",
+      "type": "ci",
+      "status": "ready",
+      "parent_epic": 286,
+      "blocked_by": [],
+      "blocks": [
+        285
+      ],
+      "implementation_group": "ci-topology",
+      "closure_evidence": [
+        "implementation",
+        "static-topology-proof",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 285,
+      "primary_domain": "ci",
+      "milestone": "M0",
+      "milestone_title": "M0 \u2014 CI Enablement",
+      "priority": "p0",
+      "type": "ci",
+      "status": "blocked",
+      "parent_epic": 286,
+      "blocked_by": [
+        284
+      ],
+      "blocks": [],
+      "implementation_group": "merge-evidence-oracle",
+      "closure_evidence": [
+        "implementation",
+        "seven-defect-regression-fixtures",
+        "proof-manifest",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 286,
+      "primary_domain": "ci",
+      "milestone": "M0",
+      "milestone_title": "M0 \u2014 CI Enablement",
+      "priority": "p0",
+      "type": "epic",
+      "status": "ready",
+      "parent_epic": null,
+      "blocked_by": [],
+      "blocks": [
+        287,
+        288,
+        289
+      ],
+      "implementation_group": "epic-m0",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 287,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p0",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [
+        286
+      ],
+      "blocks": [
+        290,
+        291,
+        292,
+        293,
+        294,
+        295,
+        296,
+        297,
+        298,
+        299
+      ],
+      "implementation_group": "epic-m1",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 288,
+      "primary_domain": "transactions",
+      "milestone": "M2",
+      "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
+      "priority": "p0",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [
+        147,
+        286
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m2",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 289,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 \u2014 Policy and Resolution Engine",
+      "priority": "p0",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [
+        286
+      ],
+      "blocks": [
+        290,
+        299
+      ],
+      "implementation_group": "epic-m3",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 290,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [
+        287,
+        289
+      ],
+      "blocks": [
+        19,
+        20,
+        21,
+        38
+      ],
+      "implementation_group": "epic-m4",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 291,
+      "primary_domain": "adapters",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 292,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 293,
+      "primary_domain": "policy",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 294,
+      "primary_domain": "scanners",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 295,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 296,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 297,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 298,
+      "primary_domain": "collectors",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p1",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 299,
+      "primary_domain": "evidence",
+      "milestone": "M4",
+      "milestone_title": "M4 \u2014 Producer Chain Correctness",
+      "priority": "p0",
+      "type": "epic",
+      "status": "blocked",
+      "parent_epic": 290,
+      "blocked_by": [
+        287,
+        289
+      ],
+      "blocks": [],
+      "implementation_group": "epic-m4-sub",
+      "closure_evidence": [
+        "all-children-closed",
+        "milestone-exit-criteria-met"
+      ]
+    }
+  ]
+}
