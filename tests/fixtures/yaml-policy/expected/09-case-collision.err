@@ -1,0 +1,1 @@
+sentinel-shield-yaml: YAML_AMBIGUOUS_KEY_CASE key=tools.grype first=2:3 second=4:3

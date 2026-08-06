@@ -6,8 +6,9 @@
 #
 # Design goals: strict, boring, explicit, predictable.
 #   - POSIX sh only (no Bash arrays / [[ ]] / local).
-#   - No hard dependency on jq/yq/Python. Uses mikefarah `yq` v4 if present,
-#     otherwise a limited awk/sed parser for the CANONICAL profile format only.
+#   - ONE parser: scripts/lib/yaml-policy.sh reads the canonical YAML subset
+#     (docs/yaml-policy-contract.md). `yq` is never consulted, so installing or
+#     removing it cannot change which gates this resolver produces (#264).
 #   - Resolution order: built-in mode defaults -> profile overrides.
 #   - Invalid mode or invalid boolean values fail with a clear error.
 #
@@ -17,6 +18,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/yaml-policy.sh
+. "$SCRIPT_DIR/lib/yaml-policy.sh"
 
 # die_cfg <message...> — configuration/input/parsing error -> exit 2 (the STABLE engine convention,
 # matching enforce-gates.sh / build-security-summary.sh / select-security-summary.sh). v1.0.0-rc.1
@@ -94,90 +97,43 @@ else
 	log_warn "profile '$PROFILE' not found; using report-only defaults"
 fi
 
-# Prefer mikefarah yq v4 only. Other 'yq' implementations differ; use the fallback.
-USE_YQ=0
-if [ "$PROFILE_EXISTS" -eq 1 ] && command_exists yq; then
-	if yq --version 2>/dev/null | grep -Eq 'mikefarah|version v4'; then
-		USE_YQ=1
-	fi
-fi
-
-FLATTENED=""
-if [ "$PROFILE_EXISTS" -eq 1 ] && [ "$USE_YQ" -eq 0 ]; then
-	# Fallback mode: detect unsupported YAML features before trusting the parser.
-	# Scan non-comment lines for anchors, aliases, flow collections, block scalars,
-	# and quoted booleans. If found, mikefarah yq v4 is required.
-	if grep -v '^[[:space:]]*#' "$PROFILE" \
-		| grep -Eq '(^|[[:space:]])&[A-Za-z0-9_]|:[[:space:]]*\*[A-Za-z0-9_]|:[[:space:]]*[{[]|:[[:space:]]*[|>]([[:space:]]|$)|:[[:space:]]*["'"'"'](true|false|yes|no|on|off)["'"'"']'; then
-		die_cfg "profile uses advanced YAML (anchors/aliases/inline collections/block scalars/quoted booleans). Install mikefarah yq v4 to parse it, or simplify to the canonical format (see templates/profile.yaml)."
-	fi
-
-	# Flatten the canonical YAML to dotted path=value lines (and parent.[]=value for
-	# list items). awk arrays are fine; the POSIX-sh constraint applies to the shell.
-	FLATTENED=$(awk '
-		function joinpath(last,    i, p) {
-			p = ""
-			for (i = 0; i <= last; i++) {
-				if (stack[i] == "") continue
-				p = (p == "") ? stack[i] : p "." stack[i]
-			}
-			return p
-		}
-		{
-			line = $0
-			if (line ~ /^[[:space:]]*#/) next
-			if (line ~ /^[[:space:]]*$/) next
-			match(line, /^ */); indent = RLENGTH; depth = int(indent / 2)
-			content = substr(line, indent + 1)
-			if (substr(content, 1, 2) == "- ") {
-				val = substr(content, 3)
-				sub(/[[:space:]]+#.*$/, "", val)
-				gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-				print joinpath(depth - 1) ".[]=" val
-				next
-			}
-			ci = index(content, ":")
-			if (ci == 0) next
-			key = substr(content, 1, ci - 1)
-			val = substr(content, ci + 1)
-			gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
-			sub(/[[:space:]]+#.*$/, "", val)
-			gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
-			for (k = depth; k <= 50; k++) stack[k] = ""
-			stack[depth] = key
-			if (val != "") print joinpath(depth) "=" val
-		}
-	' "$PROFILE")
+# --- canonical parse ---------------------------------------------------------
+# #264: the profile used to be read by whichever of two parsers was available —
+# mikefarah yq v4, or the awk flatten that used to live here. They disagreed about
+# quoting (the flatten never stripped surrounding quotes, so `mode: "strict"` was a
+# valid mode WITH yq and an invalid one without it), about comments inside quoted
+# scalars, and about duplicate keys (yq last-wins, `get_scalar`'s `print;exit`
+# first-wins). The same profile could resolve to different GATES on two machines.
+#
+# There is now one frontend (scripts/lib/yaml-policy.sh) and one interpretation.
+# Duplicate `gates.mode`, duplicate `fail_on` keys, repeated sections, and alias or
+# merge-key attempts are rejected DURING tokenization, before any value can reach
+# gate resolution. `yq` is no longer consulted for meaning at all.
+PROFILE_JSON=""
+if [ "$PROFILE_EXISTS" -eq 1 ]; then
+	command_exists jq || die_cfg "jq is required to read a profile."
+	PROFILE_JSON=$(yp_normalize "$PROFILE") || die_cfg "profile does not satisfy the canonical YAML policy contract: $PROFILE (see docs/yaml-policy-contract.md)"
 fi
 
 # --- value accessors ---------------------------------------------------------
 # get_scalar <dotted.path> — echo the scalar value, or empty string if absent.
 get_scalar() {
-	if [ "$PROFILE_EXISTS" -eq 0 ]; then
-		return 0
-	fi
-	if [ "$USE_YQ" -eq 1 ]; then
-		# NOTE: do not use yq's `// ""` alternative operator — it treats a boolean
-		# `false` as empty and would drop legitimate `false` gate values. Read the
-		# path directly and map the literal `null` (missing key) to empty.
-		_v=$(yq e ".$1" "$PROFILE" 2>/dev/null || true)
-		[ "$_v" = "null" ] && _v=""
-		printf '%s' "$_v"
-	else
-		printf '%s\n' "$FLATTENED" | awk -F= -v k="$1" '$1==k{sub(/^[^=]*=/,"");print;exit}'
-	fi
+	[ "$PROFILE_EXISTS" -eq 1 ] || return 0
+	# A missing key and an explicit null both read as empty; `false` must NOT, which
+	# is why this cannot use jq's `//` alternative operator.
+	printf '%s' "$PROFILE_JSON" | jq -r --arg p "$1" '
+		getpath($p | split(".")) as $v
+		| if $v == null then "" else ($v | tostring) end
+	' 2>/dev/null || true
 }
 
 # get_list <dotted.path> — echo list items (one per line), or nothing if absent.
 get_list() {
-	if [ "$PROFILE_EXISTS" -eq 0 ]; then
-		return 0
-	fi
-	if [ "$USE_YQ" -eq 1 ]; then
-		yq e ".$1[]?" "$PROFILE" 2>/dev/null || true
-	else
-		printf '%s\n' "$FLATTENED" | awk -F= -v k="$1.[]" '$1==k{sub(/^[^=]*=/,"");print}'
-	fi
+	[ "$PROFILE_EXISTS" -eq 1 ] || return 0
+	printf '%s' "$PROFILE_JSON" | jq -r --arg p "$1" '
+		getpath($p | split(".")) as $v
+		| if ($v | type) == "array" then $v[] | tostring else empty end
+	' 2>/dev/null || true
 }
 
 # --- mode resolution ---------------------------------------------------------
@@ -369,7 +325,7 @@ ensure_dir "$OUTPUT_DIR"
 
 # --- human summary to stderr (overrides are never hidden) --------------------
 log_info "Mode: $MODE"
-log_info "Profile: $PROFILE (exists=$PROFILE_EXISTS, yq=$USE_YQ)"
+log_info "Profile: $PROFILE (exists=$PROFILE_EXISTS, parser=$YP_CONTRACT)"
 if [ -n "$OVERRIDES" ]; then
 	printf '%s' "$OVERRIDES" | while IFS='|' read -r k v d; do
 		[ -n "$k" ] || continue
@@ -460,7 +416,7 @@ write_markdown() {
 		printf -- '- Generated: %s\n' "$TS"
 		printf -- '- Mode: **%s**\n' "$MODE"
 		printf -- '- Mode description: %s\n' "$(mode_description "$MODE")"
-		printf -- '- Profile: `%s` (present: %s, yq: %s)\n\n' "$PROFILE" "$PROFILE_EXISTS" "$USE_YQ"
+		printf -- '- Profile: `%s` (present: %s, parser: `%s`)\n\n' "$PROFILE" "$PROFILE_EXISTS" "$YP_CONTRACT"
 
 		printf '## Project\n\n'
 		printf -- '| Field | Value |\n| --- | --- |\n'

@@ -1,0 +1,6 @@
+# leading comment
+gates:
+  mode: strict          # trailing comment
+  # interior comment
+  fail_on:
+    secrets: true       # another

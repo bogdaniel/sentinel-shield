@@ -242,10 +242,13 @@ eh_required_report() {
 }
 
 # eh_override_arg <workdir> — echo "--override <path>" when the fixture carries a committed
-# project tool-policy override (.sentinel-shield/tool-policy.json), else "".
+# project tool-policy override (.sentinel-shield/tool-policy.yaml), else "".
+# YAML, not JSON: overrides go through the canonical YAML frontend
+# (docs/yaml-policy-contract.md), which does not accept JSON (#260). No fixture ships one
+# today, so this only fixes the extension a future fixture would otherwise get wrong.
 eh_override_arg() {
-	if [ -f "$1/.sentinel-shield/tool-policy.json" ]; then
-		printf -- '--override %s/.sentinel-shield/tool-policy.json' "$1"
+	if [ -f "$1/.sentinel-shield/tool-policy.yaml" ]; then
+		printf -- '--override %s/.sentinel-shield/tool-policy.yaml' "$1"
 	fi
 }
 

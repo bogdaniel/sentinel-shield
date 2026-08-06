@@ -1,0 +1,9 @@
+gates:
+
+  mode: strict
+
+
+  fail_on:
+
+    secrets: true
+

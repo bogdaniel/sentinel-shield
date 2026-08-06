@@ -4,10 +4,10 @@
 # scripts/resolve-gates.sh reads this file and resolves it into concrete,
 # machine-readable gate thresholds that CI enforces. See docs/gate-resolution.md.
 #
-# This is the CANONICAL format. The shell fallback parser supports exactly this
-# structure (2-space indentation, simple scalars, and the profiles list). Advanced
-# YAML (anchors, aliases, inline {}/[] collections, block scalars, quoted booleans)
-# requires mikefarah `yq` v4 to be installed.
+# This is the CANONICAL format: 2-space indentation, simple scalars, and the
+# profiles list. Advanced YAML (anchors, aliases, flow collections, block scalars,
+# merge keys, multiple documents) is REJECTED, and so is any duplicate key — with
+# or without `yq` installed. See docs/yaml-policy-contract.md.
 
 project:
   name: PROJECT_NAME_HERE

@@ -1,0 +1,12 @@
+{
+  "profiles": [
+    "laravel",
+    "react"
+  ],
+  "reports": {
+    "format": [
+      "markdown",
+      "json"
+    ]
+  }
+}

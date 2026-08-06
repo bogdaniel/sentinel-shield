@@ -239,9 +239,10 @@ the override explicitly (it never hides them):
 [sentinel-shield] Override: medium_vulnerabilities=false (default true)
 ```
 
-The resolver prefers `yq` v4 if installed and otherwise uses a limited built-in
-parser for the canonical profile format — no `jq`/`yq`/Python required for the
-resolver path.
+The resolver reads the profile with **one** parser — the canonical YAML subset
+defined in [docs/yaml-policy-contract.md](docs/yaml-policy-contract.md). `yq` is
+never consulted, so installing or removing it cannot change which gates you get.
+Requires `jq` (already a mandatory engine tool); no `yq`/Python needed.
 
 ---
 

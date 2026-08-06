@@ -1,0 +1,3 @@
+tools:
+  grype: { policy: optional }
+  semgrep: { policy: required }

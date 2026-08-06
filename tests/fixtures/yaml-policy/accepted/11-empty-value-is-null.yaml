@@ -1,0 +1,4 @@
+quality:
+  coverage:
+    line_min:
+    enabled: true

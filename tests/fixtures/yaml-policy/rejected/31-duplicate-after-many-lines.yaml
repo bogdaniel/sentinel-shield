@@ -1,0 +1,18 @@
+gates:
+  mode: strict
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    high_vulnerabilities: true
+    medium_vulnerabilities: false
+    architecture_violations: true
+    type_errors: true
+    test_failures: true
+    unsafe_docker: true
+    missing_sbom: false
+    expired_exceptions: true
+    php_syntax_errors: true
+    style_violations: false
+    iac_violations: false
+    dast_findings: false
+  mode: regulated

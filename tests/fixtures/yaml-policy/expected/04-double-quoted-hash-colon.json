@@ -1,0 +1,6 @@
+{
+  "project": {
+    "name": "a # not a comment",
+    "owner": "k: v"
+  }
+}

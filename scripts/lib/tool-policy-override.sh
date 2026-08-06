@@ -58,6 +58,20 @@ if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
 	fi
 fi
 
+# The canonical YAML frontend (#259/#260). Sourced the same way as the common lib so
+# this file keeps working both as a CLI and when sourced from a scripts/ wrapper.
+if [ "${__SENTINEL_SHIELD_YP_LOADED:-}" != "1" ]; then
+	_tpo_d=${_tpo_d:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
+	if [ -f "$_tpo_d/yaml-policy.sh" ]; then
+		. "$_tpo_d/yaml-policy.sh"
+	elif [ -f "$_tpo_d/lib/yaml-policy.sh" ]; then
+		. "$_tpo_d/lib/yaml-policy.sh"
+	else
+		printf '%s\n' "[sentinel-shield][error] tool-policy-override: cannot locate yaml-policy.sh." >&2
+		exit 2
+	fi
+fi
+
 TPO_TAB=$(printf '\t')
 
 # The policy enum (schemas/tool-policy.schema.json#/$defs/policy).
@@ -71,82 +85,34 @@ TPO_NONSUPPRESSIBLE_KEYS=' gitleaks trufflehog '
 # die_cfg <message...> — configuration/input error -> exit 2 (engine convention).
 tpo__die_cfg() { log_error "$*"; exit 2; }
 
-# tpo__yq_v4 — true if a usable mikefarah yq v4 is on PATH.
-tpo__yq_v4() {
-	command_exists yq || return 1
-	yq --version 2>/dev/null | grep -Eq 'mikefarah|version v4'
-}
-
 # tpo__to_json <override.yaml> — print the override file as a faithful JSON document
-# ({"tools":{...}}) on stdout. Prefers mikefarah yq v4; otherwise a focused POSIX-safe
-# parser for the canonical 2-space shape (block OR inline `{ policy: x }`).
-# ponytail: the awk fallback understands ONLY the documented shape (a single `tools`
-# map of toolKey -> fields). Any other top-level key, or non-2-space indentation, is
-# rejected with a request to install yq v4 — safe (reject) rather than silently wrong.
+# ({"tools":{...}}) on stdout.
+#
+# #259 / #260: this used to be TWO parsers — mikefarah yq v4 when installed, and an
+# awk approximation otherwise. They disagreed about comments inside quotes, about
+# escaping, about malformed lines, and about which of two duplicate keys wins (yq
+# last-wins; the `jq reduce` below it also last-wins; the profile readers first-wins).
+# The same override file could therefore apply DIFFERENT tool policy depending only
+# on whether yq was on PATH.
+#
+# There is now one frontend (scripts/lib/yaml-policy.sh). Duplicate tool keys and
+# duplicate policy fields are rejected there, DURING tokenization — by the time a
+# JSON object exists, the losing value is already unrecoverable.
 tpo__to_json() {
 	command_exists jq || tpo__die_cfg "tool-policy-override: jq is required."
 	[ -f "$1" ] || tpo__die_cfg "tool-policy-override: file not found: $1"
-	if tpo__yq_v4; then
-		_j=$(yq -o=json e '.' "$1" 2>/dev/null) || tpo__die_cfg "tool-policy-override: yq failed to parse $1"
-		[ -n "$_j" ] && [ "$_j" != "null" ] || { log_error "tool-policy-override: $1 is empty (a 'tools:' mapping is required)."; return 3; }
-		printf '%s' "$_j"
-		return 0
+	# A JSON override used to work by accident: yq parses JSON as YAML. It cannot be
+	# supported any more, and the reason is the point of #260 — `jq` collapses
+	# duplicate JSON keys last-wins with no way to observe the conflict, so accepting
+	# JSON would reopen exactly the hole this batch closes. Say so precisely instead
+	# of letting the YAML tokenizer report a baffling `YAML_INVALID_KEY key={"tools"`.
+	if [ "$(sed -n '/^[[:space:]]*$/d; /^[[:space:]]*#/d; s/^[[:space:]]*//; p; q' "$1" | cut -c1)" = "{" ]; then
+		log_error "tool-policy-override: $1 looks like JSON. Overrides must be YAML in the canonical subset (docs/yaml-policy-contract.md); JSON is not accepted because duplicate keys cannot be detected in it. Rewrite as e.g.:  tools:\\n  <tool>:\\n    policy: <policy>"
+		return 3
 	fi
-	# Fallback parser.
-	_rows=$(awk '
-		function trim(s){ gsub(/^[[:space:]]+|[[:space:]]+$/,"",s); return s }
-		function unq(s){ gsub(/^["\047]|["\047]$/,"",s); return s }
-		BEGIN{ in_tools=0; cur="" }
-		{
-			line=$0
-			if (line ~ /^[[:space:]]*#/) next
-			if (line ~ /^[[:space:]]*$/) next
-			sub(/[[:space:]]+#.*$/,"",line)
-			match(line,/^ */); indent=RLENGTH
-			content=substr(line,indent+1)
-			if (indent==0) {
-				ci=index(content,":")
-				if (ci==0) { print "ERR\tunsupported top-level line" > "/dev/stderr"; exit 3 }
-				key=trim(substr(content,1,ci-1))
-				if (key!="tools") { print "ERR\tunsupported top-level key: " key > "/dev/stderr"; exit 3 }
-				# `tools:` must introduce a MAP, not a scalar. Reject `tools: something`
-				# (anything non-empty after the colon that is not an inline `{}`) so a
-				# malformed override fails fast instead of becoming a silent empty map.
-				topval=trim(substr(content,ci+1))
-				if (topval!="" && topval !~ /^\{/) { print "ERR\ttools must be a mapping, got scalar: " topval > "/dev/stderr"; exit 3 }
-				in_tools=1; cur=""; next
-			}
-			if (!in_tools) next
-			ci=index(content,":")
-			if (ci==0) next
-			key=trim(substr(content,1,ci-1))
-			rest=trim(substr(content,ci+1))
-			if (indent<=2) {
-				cur=key
-				if (rest ~ /^\{/) {
-					gsub(/[{}]/,"",rest)
-					n=split(rest,parts,",")
-					for(i=1;i<=n;i++){
-						p=parts[i]; pi=index(p,":")
-						if(pi>0){ fk=trim(substr(p,1,pi-1)); fv=unq(trim(substr(p,pi+1))); if(fk!="") print cur "\t" fk "\t" fv }
-					}
-					cur=""
-				} else if (rest!="") {
-					# scalar directly on the tool key (e.g. "scorecard: optional") — not the
-					# documented {policy: x} shape; surface it so validation rejects it.
-					print cur "\t__bare__\t" unq(rest); cur=""
-				}
-				next
-			}
-			if (cur!="" && rest!="") print cur "\t" key "\t" unq(rest)
-		}
-		END{ if (!in_tools) { print "ERR\tmissing required top-level tools mapping" > "/dev/stderr"; exit 3 } }
-	' "$1") || return 3
-	printf '%s\n' "$_rows" | jq -Rn '
-		[ inputs | select(length>0) | split("\t") ]
-		| reduce .[] as $r ({}; .[$r[0]][$r[1]] = $r[2])
-		| { tools: . }
-	'
+	_j=$(yp_normalize "$1") || return 3
+	[ -n "$_j" ] && [ "$_j" != "null" ] || { log_error "tool-policy-override: $1 is empty (a 'tools:' mapping is required)."; return 3; }
+	printf '%s' "$_j"
 }
 
 # tpo__validate_json <doc-json> — validate the override document against the schema's

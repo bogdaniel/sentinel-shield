@@ -1,0 +1,4 @@
+gates:
+  fail_on:
+    secrets: true
+    missing_sbom: false

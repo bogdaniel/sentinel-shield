@@ -1,0 +1,8 @@
+{
+  "gates": {
+    "fail_on": {
+      "missing_sbom": false,
+      "secrets": true
+    }
+  }
+}

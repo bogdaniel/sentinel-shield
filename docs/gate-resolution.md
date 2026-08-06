@@ -377,27 +377,35 @@ two modes — `baseline` (medium not gated → **pass**) and `strict` (medium ga
 **fail**). Same input, different mode, opposite outcome: evidence that resolution
 actually changes enforcement.
 
-## Fallback parser limitations
+## Parser limitations
 
-The resolver prefers **mikefarah `yq` v4** when it is installed. Otherwise it uses a
-limited awk/sed parser that understands **only the canonical profile structure**:
+The resolver is **not** a general YAML parser, and it has exactly **one** parser. It
+reads the canonical YAML subset defined in
+[docs/yaml-policy-contract.md](yaml-policy-contract.md) — the full accepted/rejected
+tables live there. In short, the profile must use:
 
-- 2-space indentation.
-- `key: value` scalars under `project:`, `gates:`, `gates.fail_on:`, `reports:`.
+- 2-space indentation;
+- `key: value` scalars under `project:`, `gates:`, `gates.fail_on:`, `reports:`;
 - a simple `profiles:` list of `- value` items.
 
-It does **not** support, and will refuse (asking for `yq`) when it detects:
+The following are **rejected**, each with a stable error code and a `line:column`:
 
 ```txt
-anchors (&) and aliases (*)
-inline/flow collections: { ... } or [ ... ]
-block scalars: | or >
-quoted booleans: "true" / 'false'
-nested complex values beyond the canonical format
+anchors (&) and aliases (*)          duplicate keys, at any level
+merge keys (<<:)                     duplicate list items
+tags (!!str)                         keys differing only by case
+inline/flow collections: [ ... ]     non-ASCII keys
+block scalars: | or >                tabs, CRLF, malformed UTF-8
+multiple YAML documents (---)        lines with no `:`
 ```
 
-This is deliberate: the resolver is not a general YAML parser. Keep the profile
-canonical, or install `yq`.
+> **Changed in this release.** These constructs used to be accepted *if* mikefarah
+> `yq` v4 happened to be installed. That was the defect: installing a convenience
+> binary changed enforced policy with no policy diff. They are now rejected
+> **uniformly**, with or without `yq`. `yq` is no longer consulted at all.
+
+A single-level inline mapping (`grype: { policy: optional }`) **is** supported — it is
+the documented tool-policy override spelling.
 
 ---
 
@@ -407,7 +415,8 @@ canonical, or install `yq`.
 | --- | --- | --- |
 | `invalid mode '<x>'` | `gates.mode` / `--mode` not one of the four modes | Use a valid mode |
 | `invalid boolean for gates.fail_on.<k>` | Override value is not true/false | Use `true` or `false` |
-| `profile uses advanced YAML…` | Fallback parser hit an unsupported feature | Install `yq` v4 or simplify the profile |
+| `sentinel-shield-yaml: YAML_UNSUPPORTED_*` | The profile uses YAML outside the canonical subset | Simplify to the canonical format — installing `yq` no longer changes this |
+| `sentinel-shield-yaml: YAML_DUPLICATE_KEY key=… first=… second=…` | The same key is declared twice | Delete one of the two declarations at the reported lines |
 | `profile not found … --require-profile` | No profile and `--require-profile` set | Create the profile or drop the flag |
 | All gates `false` except secrets | No profile present → report-only defaults | Add `.sentinel-shield/profile.yaml` |
 

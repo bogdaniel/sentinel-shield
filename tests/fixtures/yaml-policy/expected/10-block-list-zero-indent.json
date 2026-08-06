@@ -1,0 +1,6 @@
+{
+  "profiles": [
+    "laravel",
+    "react"
+  ]
+}

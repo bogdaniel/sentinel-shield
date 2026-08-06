@@ -1,0 +1,14 @@
+gates:
+  mode: strict
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+project:
+  name: demo
+exceptions:
+  allowed: true
+
+# Re-opening a section that was already declared far above reads as new
+# configuration to a reviewer, but collapses into the first one.
+gates:
+  mode: regulated
