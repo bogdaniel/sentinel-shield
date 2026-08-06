@@ -15,6 +15,58 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Changed — a tag name is no longer treated as an immutable source identity (#151, #152)
+
+- **The old claim.** `acquire-sentinel-shield.sh` described any tag as an "immutable ref".
+  A git tag can be deleted and recreated, or force-moved. The default path resolved the tag,
+  cloned it again **by name**, and checked the clone's HEAD against the value resolved a moment
+  earlier — internal consistency of one command, not identity across time, and not authenticity
+  of whoever published the tag. The same documented version could install different code at
+  different times and nothing noticed.
+- **Three values, not one.** The acquisition record (`schema_version: 2`) now separates the
+  **requested ref**, the **resolved commit**, and the **resolved tree**, and states its trust
+  anchor explicitly: `requested-commit` (the caller named a 40-hex SHA), `expected-tree` (a
+  supplied tree id matched), or `signed-tag` (a signature accepted under an explicit
+  trusted-signer policy). With none of them the record says so —
+  `trust.level: "resolved-ref"`, `trust.anchored: false` — and nothing calls it immutable.
+  `--require-trust anchored` (env: `SENTINEL_SHIELD_REQUIRE_TRUST`) makes an unanchored
+  acquisition fail closed with the new **exit 5**; production and release paths should set it.
+- **Moved tags are an incident, not an update.** Re-acquiring a tag that previously resolved to
+  a different commit at the same destination fails closed and reports a moved-tag incident.
+  There is no suppression flag, because a flag is how it would get suppressed: review the
+  change, then pin `--ref <new SHA>` or discard the checkout with a standalone `--cleanup`.
+- **The resolution/fetch race is closed.** The fetched `refs/tags/<ref>` is re-resolved locally
+  and compared against the object resolved before the fetch, and the working tree is checked out
+  **by object id**, never by name. A tag that moves inside that window is detected (exit 5).
+- **Signer policy.** `--trusted-signers` / `--revoked-signers` accept OpenSSH allowed-signers
+  files and GPG fingerprint lists; revocation is evaluated first, so a revoked key in a stale
+  allow list still fails. Rotation and revocation are ordinary edits to those two files —
+  Sentinel Shield stores no key material. A good signature under *ambient* git trust is recorded
+  honestly (`signer_policy: "ambient-git-trust"`) but is **not** an anchor: it proves someone
+  signed the tag, not who. An unreadable policy file is refused at invocation rather than
+  degraded to ambient trust.
+- **BREAKING — `--no-verify` removed.** It made the HEAD/commit assertion optional, which turned
+  the race above from *detected* into *installed and recorded as the requested version*. Passing
+  it is now a hard invocation error (exit 2) with a migration message; silently ignoring it would
+  leave callers believing verification was off while it was on. No unsafe development mode
+  replaces it, so no record can describe an unverified checkout and there is nothing for
+  `doctor`/release/strict/regulated paths to exclude. **Migration: drop the flag.** `--verify`
+  remains accepted and is the permanent default. No documentation, prompt, or installer path
+  used `--no-verify`.
+- **BREAKING — `jq` is now required by `acquire-sentinel-shield.sh`** (exit 3 when absent). The
+  record is serialized by `jq` from typed arguments instead of assembled by string
+  concatenation, which cannot round-trip a value containing a quote, backslash, or control
+  character. Every reader of the record (`doctor.sh`, `install-baseline.sh`) already required jq.
+- **Version-1 records are never reinterpreted.** A record without `schema_version` carries no
+  evidence about anchoring, so `doctor` reports it as a *pre-trust-model* record — consistent,
+  not proven immutable — and leaves it `ok`; a version-2 record with `anchored: false` is a
+  warning. Re-acquisition is the only thing that produces an anchor.
+- Coverage: `tests/prod/13-source-trust.sh` (offline; moved lightweight and replaced annotated
+  tags with mutation proofs, a real resolution/fetch race driven by a `git` shim, trusted /
+  untrusted / revoked SSH signers, schema conformance, and `doctor`'s reporting of all three
+  record generations). Transactional acquisition, reuse verification, and ownership-aware
+  destructive cleanup remain open and are explicitly not claimed here.
+
 ### Changed — the summary carries a source attestation, and the assurance modes require it (#241)
 
 - **`source` was three free-form labels.** `--commit`, `--branch` and `--workflow` were

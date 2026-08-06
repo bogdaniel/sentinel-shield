@@ -78,6 +78,56 @@
       "type": "string",
       "pattern": "^[0-9a-f]{40}$",
       "description": "The COMMIT the verified signed tag peels to (refs/tags/<ref>^{commit}); it must equal resolved_commit (identity is never bypassed by a good signature)."
+    },
+    "schema_version": {
+      "type": "integer",
+      "enum": [2],
+      "description": "Record contract version. ABSENT means a version-1 record written before the trust-anchor model existed: such a record states which ref was requested and which commit it resolved to, but carries NO evidence about whether that mapping was anchored. A reader MUST treat an absent schema_version as 'trust unknown' and MUST NOT infer an anchor from ref_kind alone — a v1 record cannot be upgraded in place, only superseded by re-acquisition."
+    },
+    "resolved_tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The git TREE object id of the acquired checkout's HEAD (git rev-parse HEAD^{tree}) — the content identity, recorded independently of the commit identity and of the requested ref name. Always present in a version-2 record. Recording it is not a comparison: only verification_method=tree-checksum compares it to a caller expectation."
+    },
+    "trust": {
+      "type": "object",
+      "description": "The EXPLICIT trust statement for this acquisition (schema_version 2). A ref NAME is a request, not an identity: a tag can be deleted and recreated or force-moved, so resolving one proves only what the name meant at verified_at. An ANCHOR is a binding that exists outside the mutable ref namespace, and only an anchored acquisition may be described as immutable.",
+      "required": ["level", "anchored", "anchors", "verified_at"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["resolved-ref", "requested-commit", "expected-tree", "signed-tag"],
+          "description": "The STRONGEST anchor established, or 'resolved-ref' when none was. 'requested-commit': the caller named a full 40-hex SHA, so the request itself pins the content. 'expected-tree': a caller-supplied tree id matched exactly. 'signed-tag': an annotated tag signature was accepted under an EXPLICIT trusted-signer policy. 'resolved-ref': a point-in-time resolution of a movable name — NOT immutable."
+        },
+        "anchored": {
+          "type": "boolean",
+          "description": "True iff at least one anchor was established. False is a first-class, honest outcome — not an error — and is what distinguishes a recorded resolution from a proven identity."
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["requested-commit", "expected-tree", "signed-tag"]
+          },
+          "uniqueItems": true,
+          "description": "Every anchor actually established, not just the strongest. Empty for an unanchored acquisition."
+        },
+        "signer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable, NON-SECRET signer identity for signature modes: 'gpg:<fingerprint>', 'gpg:<key-id>', 'ssh:<principal>', or 'ssh-key:SHA256:<hash>'. Public key identities are not secrets; local key FILE PATHS are, and are never recorded."
+        },
+        "signer_policy": {
+          "type": "string",
+          "enum": ["trusted-signers-file", "ambient-git-trust"],
+          "description": "How the signer was judged. 'trusted-signers-file': the caller named the identities it trusts, so the signature is an anchor. 'ambient-git-trust': git accepted whatever key it happened to have, which proves someone signed the tag but not WHO — recorded honestly and deliberately NOT counted as an anchor."
+        },
+        "verified_at": {
+          "type": "string",
+          "description": "RFC3339 UTC timestamp at which this trust statement was established. For an unanchored acquisition this is the whole of its meaning: what the ref resolved to at this instant."
+        }
+      }
     }
   }
 }

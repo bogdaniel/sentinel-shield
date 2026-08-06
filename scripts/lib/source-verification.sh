@@ -94,13 +94,121 @@ sv_tag_peeled_commit() {
 	git -C "$1" rev-parse --verify --quiet "refs/tags/$2^{commit}" 2>/dev/null || true
 }
 
+# --- trusted-signer policy ---------------------------------------------------
+# A good signature answers "was this tag signed by a key git accepts?". It does NOT answer "was
+# it signed by the identity that publishes this project?" — the question that actually matters
+# when a tag can be force-moved (#151). The difference is a POLICY: an explicit list of signers
+# the caller trusts, and an explicit list it has revoked. Two globals carry it (globals, not
+# positional arguments, so the existing sv_verify/sv_verify_signature call signatures are
+# unchanged for every current caller):
+#   SV_TRUSTED_SIGNERS  path to an OpenSSH allowed-signers file and/or a list of accepted GPG
+#                       fingerprints/key ids (one per line, '#' comments, blank lines ignored).
+#   SV_REVOKED_SIGNERS  path to a revocation list in the same formats.
+# For SSH signatures both files are ALSO handed to git itself (gpg.ssh.allowedSignersFile /
+# gpg.ssh.revocationFile) because git is the component that can actually check an SSH signature
+# against a principal. For GPG signatures git has no allowlist concept, so the fingerprint is
+# extracted from the verification status output and matched here. Rotation and revocation are
+# therefore ordinary edits to these two files — no key material is ever stored by Sentinel Shield.
+#
+# _sv_cfg_env / _sv_cfg_clear — inject the policy into git via GIT_CONFIG_COUNT/KEY/VALUE (git
+# >= 2.31) rather than command-line arrays, which POSIX sh cannot build, and clear it afterwards
+# so no later git call in this process inherits a verification-only configuration.
+#
+# When NEITHER policy file is set the environment is left completely untouched: a caller whose
+# own git configuration already names an allowed-signers file must keep working exactly as
+# before. When a policy IS set it deliberately takes over the GIT_CONFIG_* environment for the
+# duration of the check — a policy the caller named must not be merged with, or overridden by,
+# an ambient one it did not.
+_sv_cfg_env() {
+	_SV_CFG_SET=0
+	{ [ -n "${SV_TRUSTED_SIGNERS:-}" ] || [ -n "${SV_REVOKED_SIGNERS:-}" ]; } || return 0
+	_SV_CFG_SET=1
+	_sv_cn=0
+	if [ -n "${SV_TRUSTED_SIGNERS:-}" ]; then
+		GIT_CONFIG_KEY_0=gpg.ssh.allowedSignersFile; GIT_CONFIG_VALUE_0=$SV_TRUSTED_SIGNERS
+		export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+		_sv_cn=1
+	fi
+	if [ -n "${SV_REVOKED_SIGNERS:-}" ]; then
+		if [ "$_sv_cn" = 0 ]; then
+			GIT_CONFIG_KEY_0=gpg.ssh.revocationFile; GIT_CONFIG_VALUE_0=$SV_REVOKED_SIGNERS
+			export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+		else
+			GIT_CONFIG_KEY_1=gpg.ssh.revocationFile; GIT_CONFIG_VALUE_1=$SV_REVOKED_SIGNERS
+			export GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
+		fi
+		_sv_cn=$((_sv_cn + 1))
+	fi
+	GIT_CONFIG_COUNT=$_sv_cn
+	export GIT_CONFIG_COUNT
+}
+_sv_cfg_clear() {
+	[ "${_SV_CFG_SET:-0}" = "1" ] || return 0
+	unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 2>/dev/null || true
+	_SV_CFG_SET=0
+}
+
+# _sv_verify_raw <repo_dir> <ref> — `git verify-tag --raw` output (status lines on stderr are
+# merged in), under the trusted-signer policy. Returned to CALLERS ONLY for classification and
+# identity extraction; it is never echoed to a log or a record.
+_sv_verify_raw() {
+	_sv_cfg_env
+	git -C "$1" verify-tag --raw "$2" 2>&1 || true
+	_sv_cfg_clear
+}
+
+# sv_signer_identity <repo_dir> <ref> — print a STABLE, NON-SECRET signer identity for the tag's
+# signature, or nothing when it cannot be determined. Public key material and principals are not
+# secrets; local key FILE PATHS are, and are never emitted. Shapes, in preference order:
+#   gpg:<fingerprint>       from a [GNUPG:] VALIDSIG status line (the strongest GPG identity)
+#   gpg:<key-id>            from a [GNUPG:] GOODSIG status line (fallback)
+#   ssh:<principal>         from git's `Good "git" signature for <principal>` line
+#   ssh-key:SHA256:<hash>   the SSH key fingerprint, when no principal was named
+sv_signer_identity() {
+	command_exists git || return 0
+	_sv_sraw=$(_sv_verify_raw "$1" "$2")
+	_sv_sid=$(printf '%s\n' "$_sv_sraw" | awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { print "gpg:" $3; exit }')
+	[ -n "$_sv_sid" ] || _sv_sid=$(printf '%s\n' "$_sv_sraw" | awk '$1 == "[GNUPG:]" && $2 == "GOODSIG" { print "gpg:" $3; exit }')
+	[ -n "$_sv_sid" ] || _sv_sid=$(printf '%s\n' "$_sv_sraw" | sed -n 's/.*[Gg]ood "git" signature for \([^ ][^ ]*\) with .*/ssh:\1/p' | head -n 1)
+	[ -n "$_sv_sid" ] || _sv_sid=$(printf '%s\n' "$_sv_sraw" | sed -n 's/.*key \(SHA256:[A-Za-z0-9+/=][A-Za-z0-9+/=]*\).*/ssh-key:\1/p' | head -n 1)
+	printf '%s' "$_sv_sid"
+	unset _sv_sraw _sv_sid 2>/dev/null || true
+}
+
+# _sv_policy_match <signer-id> <policy-file> — return 0 iff the identity appears in the policy
+# file. The bare identity (the part after the gpg:/ssh:/ssh-key: prefix) must equal either a whole
+# non-comment line, or one of the comma-separated principals in the line's FIRST field. That one
+# rule reads both formats this accepts: an OpenSSH allowed-signers line
+# (`alice@example.com namespaces="git" ssh-ed25519 AAAA…`) and a bare fingerprint list.
+# Matching is case-insensitive so a fingerprint written in either case still matches.
+# An unreadable or empty policy file matches NOTHING — a policy that cannot be read is not in
+# force, and silently matching would turn a missing file into universal trust.
+_sv_policy_match() {
+	_sv_bare=${1#*:}
+	[ -n "$_sv_bare" ] || { unset _sv_bare; return 1; }
+	[ -f "${2:-}" ] && [ -r "$2" ] || { unset _sv_bare; return 1; }
+	awk -v want="$_sv_bare" '
+		BEGIN { want = tolower(want); found = 0 }
+		/^[[:space:]]*#/ { next }
+		/^[[:space:]]*$/ { next }
+		{
+			if (tolower($0) == want) { found = 1; exit }
+			n = split(tolower($1), parts, ",")
+			for (i = 1; i <= n; i++) if (parts[i] == want) { found = 1; exit }
+		}
+		END { exit(found ? 0 : 1) }' "$2"
+	_sv_pm=$?
+	unset _sv_bare
+	return $_sv_pm
+}
+
 # sv_signature_mechanism <repo_dir> <ref> — best-effort classification of the signature
 # mechanism git used to verify the tag: 'gpg', 'ssh', or 'unknown'. Derived from the STATUS
 # lines of `git verify-tag --raw` (GPG emits [GNUPG:] GOODSIG/VALIDSIG). The raw output is
 # classified only — it is NEVER echoed — so no signer identity or local key path can leak.
 sv_signature_mechanism() {
 	command_exists git || { printf 'unknown'; return 0; }
-	_sv_raw=$(git -C "$1" verify-tag --raw "$2" 2>&1 || true)
+	_sv_raw=$(_sv_verify_raw "$1" "$2")
 	case "$_sv_raw" in
 		*GNUPG:* | *GOODSIG* | *VALIDSIG* | *EXPKEYSIG* | *BADSIG*) printf 'gpg' ;;
 		*'Good "'* | *ssh* | *SSH*) printf 'ssh' ;;
@@ -128,6 +236,7 @@ sv_verify_signature() {
 	# `git verify-tag` hang forever, stalling acquire/verify. Cap it via the git-verify category
 	# (a timeout is non-zero rc -> treated as no-good-signature, i.e. fail closed). When the
 	# bounded-process lib is not sourced, fall back to a direct call (contract unchanged).
+	_sv_cfg_env
 	if command -v bp_run >/dev/null 2>&1; then
 		_sv_vto=$(bp_timeout git-verify 2>/dev/null) || _sv_vto=60
 		_sv_vout=$(mktemp); _sv_verr=$(mktemp)
@@ -139,12 +248,38 @@ sv_verify_signature() {
 		git -C "$1" verify-tag "$2" >/dev/null 2>&1
 		_sv_vrc=$?
 	fi
+	_sv_cfg_clear
 	if [ "$_sv_vrc" -ne 0 ]; then
 		log_error "sv_verify_signature: no good signature for annotated tag '$2' (unsigned, bad signature, unverifiable, or verification timed out) [tag_object=${_sv_tagobj:-unknown} peeled_commit=${_sv_peeled:-unknown}]"
 		unset _sv_vrc
 		return 1
 	fi
 	unset _sv_vrc
+	# --- signer policy: WHOSE signature is it? ------------------------------
+	# `git verify-tag` succeeded, which means SOME key git accepts signed this tag. When the
+	# caller supplied a policy, that is not enough: the identity must be one it named, and must
+	# not be one it revoked. Revocation is evaluated FIRST — a revoked key that also appears in a
+	# stale allow list must still fail. An identity that cannot be determined at all fails closed
+	# whenever a policy is in force: an unattributable signature cannot satisfy an allowlist.
+	if [ -n "${SV_TRUSTED_SIGNERS:-}" ] || [ -n "${SV_REVOKED_SIGNERS:-}" ]; then
+		_sv_who=$(sv_signer_identity "$1" "$2")
+		if [ -z "$_sv_who" ]; then
+			log_error "sv_verify_signature: a signer policy is in force but the signer identity of tag '$2' could not be determined — fail closed"
+			unset _sv_who
+			return 1
+		fi
+		if [ -n "${SV_REVOKED_SIGNERS:-}" ] && _sv_policy_match "$_sv_who" "$SV_REVOKED_SIGNERS"; then
+			log_error "sv_verify_signature: tag '$2' is signed by a REVOKED signer ($_sv_who) — fail closed"
+			unset _sv_who
+			return 1
+		fi
+		if [ -n "${SV_TRUSTED_SIGNERS:-}" ] && ! _sv_policy_match "$_sv_who" "$SV_TRUSTED_SIGNERS"; then
+			log_error "sv_verify_signature: tag '$2' carries a good signature from $_sv_who, which is NOT in the trusted-signer policy — fail closed"
+			unset _sv_who
+			return 1
+		fi
+		unset _sv_who
+	fi
 	# The signature is good; it MUST also target the expected commit (identity is never bypassed).
 	if [ -n "${3:-}" ]; then
 		if ! sv_is_hex40 "$3"; then
