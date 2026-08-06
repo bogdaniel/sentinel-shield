@@ -1,6 +1,8 @@
 # Remediation roadmap
 
-**Baseline:** `master` = `30c89498ae9fa7b47a164cd05c15cc981a0ab39e` · 12/12 blocking workflows completed successfully at that exact SHA, event `push`, attempt 1 · 0 open pull requests · 172 open issues (158 audit findings + 14 epics created to organise them).
+**Current baseline:** `master` = `e49b9064d4e988e9797a905100a9c26d1a7e1b7a` · 12 blocking workflows expected on `push` · **171 open issues** = **156 remaining audit findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+
+**Original audit baseline:** `8f146d11`, 158 findings, all open. **#284 is the only one closed so far** (PR #301, 2026-08-06) — see the acceptance-evidence comment on the issue.
 
 **Machine-readable source of truth:** [`config/remediation-plan.json`](../config/remediation-plan.json).
 **Validated by:** `tests/prod/112-remediation-plan.sh`.
@@ -14,7 +16,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. 158 audit findings remain open, 130 of them P0.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **156 audit findings remain open, 129 of them P0.**
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -24,7 +26,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
-| M0 — CI Enablement | #286 | 2 | 2 | Make validation cheap and merge evidence reproducible |
+| M0 — CI Enablement | #286 | 1 (of 2) | 1 | Make validation cheap and merge evidence reproducible — #284 done, #285 next |
 | M1 — Evidence Trust Foundation | #287 | 15 | 15 | The shared trust primitives everything else consumes |
 | M2 — Mutation and Transaction Safety | #288 | 31 | 31 | Do not damage consumer repositories |
 | M3 — Policy and Resolution Engine | #289 | 22 | 19 | Resolve the plan before acting on it |
@@ -39,7 +41,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 
 Two issues, and neither is a product fix:
 
-- **#284** — `ci-self-test` and `ci-production-readiness` both execute the ~40-minute production suite. That is duplicate execution, not independent validation: same implementation, same oracle, so a defect in the suite is missed twice at double the cost. Removing the duplication removes an *accidental* coverage guarantee, so coverage becomes an asserted static property: `ci-core ∪ production-readiness = all`, `ci-core ∩ production-readiness = ∅`.
+- **#284 — DONE** (PR #301). `ci-self-test` and `ci-production-readiness` both executed the ~40-minute production suite. That is duplicate execution, not independent validation: same implementation, same oracle, so a defect in the suite is missed twice at double the cost. Removing the duplication removes an *accidental* coverage guarantee, so coverage is now an asserted static property — `ci-core ∪ production-readiness = all`, `ci-core ∩ production-readiness = ∅` — proven by `tests/prod/113-suite-topology.sh`. Measured on the `full-self-test` job: **28m 47s → 9m 59s**. The 90/75 timeout floors stay until three exact-head `ci-core` samples exist; one so far.
 - **#285** — the merge-evidence oracle. Every remaining wave will be validated by CI, so what counts as "green" has to be settled first.
 
 #285 exists because the stack collapse surfaced seven defects in how merge evidence was read. The through-line is that **every field reachable as "evidence" turned out to be a live view rather than a record.** Only run ID and `created_at` never moved. Most dangerous was `run.pull_requests[].base.sha`: it is rewritten retroactively on old runs, so runs from the previous day — never re-executed — began reporting the *new* base. Any guard resting on it would have accepted runs that tested a superseded tree.
