@@ -33,22 +33,34 @@ concurrency:
 
 jobs:
   # --------------------------------------------------------------------------
-  # BLOCKING comprehensive gate (v0.1.13): runs the entire self-test matrix,
-  # including collector fixtures (scanner-matrix), install/sync, fixture consumer
-  # projects, and workflow-sanity. This job MUST pass before a release tag.
+  # BLOCKING comprehensive gate (v0.1.13): runs the entire self-test matrix EXCEPT the
+  # standalone production sweep — collector fixtures (scanner-matrix), install/sync, fixture
+  # consumer projects, workflow-sanity and the rest. The production sweep is owned by
+  # ci-production-readiness; the two together cover `self-test.sh all` exactly once.
+  # This job MUST pass before a release tag.
   full-self-test:
     runs-on: ubuntu-latest
     # 20 minutes was under the suite's actual runtime, so this job was killed at the budget on
     # EVERY branch — and GitHub reports a timeout kill as `cancelled`, which is why six
     # consecutive runs looked like concurrency cancellation rather than a job that never had
     # long enough. No amount of waiting for the stack to settle could have produced evidence.
-    # This job owns the COMPLETE suite; ci-production-readiness runs the focused sweep only.
+    # This job owns `ci-core`; ci-production-readiness is the sole owner of the production
+    # sweep. It previously ran `all`, which INCLUDES that sweep — so the ~40-minute suite ran
+    # in both workflows. That was duplicate execution, not independent validation: same
+    # implementation, same oracle, so a defect in the sweep was missed twice at double the
+    # runner cost (#284). Coverage is no longer emergent from the overlap; it is asserted by
+    # tests/prod/113-suite-topology.sh.
     #
     # 90 is a CURRENT SAFETY FLOOR, not a target and not an optimum. It is derived from an
     # observed local runtime of 3589s (59.8 min) for `self-test.sh all`, plus headroom for
     # checkout, dependency setup, cleanup, the workflow-sanity and fixture steps this job also
-    # runs, and runner variance. If the suite gets faster this number should come DOWN; if it
-    # keeps growing this number is not the fix — sharding is. Re-measure before changing it.
+    # runs, and runner variance.
+    #
+    # `ci-core` is expected to land well under this once the production sweep is no longer
+    # inside it, but the floor stays at 90 until at least THREE exact-head runtime samples of
+    # `ci-core` exist. Lowering it from an estimate is how a job gets killed at its budget and
+    # reported as `cancelled` — which is the failure this floor was introduced to end. If the
+    # suite keeps growing, this number is not the fix; sharding is.
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -62,8 +74,8 @@ jobs:
           for f in scripts/*.sh scripts/lib/*.sh scripts/collectors/*.sh scripts/runners/*.sh scripts/audits/*.sh; do
             sh -n "$f" || exit 1
           done
-      - name: self-test.sh all (BLOCKING)
-        run: sh scripts/self-test.sh all
+      - name: self-test.sh ci-core (BLOCKING — every suite except the production sweep)
+        run: sh scripts/self-test.sh ci-core
       - name: Workflow sanity (BLOCKING — no PRT, perms, DAST allowlist, AI non-gating)
         run: sh scripts/self-test.sh workflow-sanity
       - name: Fixture consumer projects (BLOCKING)

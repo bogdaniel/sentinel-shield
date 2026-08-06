@@ -9,7 +9,12 @@
 #   syntax     sh -n over all scripts + jq-validate templates/ and schemas/ JSON
 #   lifecycle  build -> resolve -> select -> enforce -> generate-report (clean run)
 #   fallback   assert the fallback policy exit codes (fail-closed outside report-only)
-#   all        run all of the above (default)
+#   ci-core    every registered suite EXCEPT the standalone production sweep
+#   all        ci-core + production-readiness (default; the exhaustive local umbrella)
+#
+# CI ownership: ci-self-test runs `ci-core`; ci-production-readiness runs
+# `production-readiness`. Together they cover `all` exactly once — asserted by
+# tests/prod/113-suite-topology.sh.
 #
 # POSIX sh, set -eu, jq required. Exits non-zero on any failure.
 set -eu
@@ -3998,6 +4003,74 @@ run_production_readiness() {
 	log_info "production-readiness: OK ($_prr_total/$_prr_total suites passed)"
 }
 
+# --- ci-core: every registered suite EXCEPT the standalone production sweep ---
+#
+# `ci-self-test` and `ci-production-readiness` both used to execute the ~40-minute
+# production sweep — `ci-self-test` via `all`, `ci-production-readiness` directly. That is
+# duplicate EXECUTION, not independent validation: both invoke the same implementation and
+# compare against the same oracle, so a defect in the sweep is not caught twice, it is
+# missed twice at double the runner cost.
+#
+# `all` is unchanged in meaning and remains the exhaustive local umbrella. It is now
+# COMPOSED from this function plus the production sweep, rather than listing every suite a
+# second time. Two hand-maintained lists of 48 suites would drift the first time somebody
+# added a suite to one of them — with composition, `ci-core ∪ production-readiness = all`
+# and `ci-core ∩ production-readiness = ∅` hold by construction.
+#
+# tests/prod/113-suite-topology.sh asserts them anyway. The reason the duplication was safe
+# to rely on is that it accidentally guaranteed coverage; removing it removes that
+# guarantee, so coverage has to become an asserted property instead of an emergent one.
+run_ci_core() {
+	run_syntax
+	run_lifecycle
+	run_fallback
+	run_negative
+	run_suppression
+	run_finding_scope
+	run_third_party
+	run_hadolint
+	run_adapters
+	run_phpstan_runner
+	run_ud_multisource
+	run_install_sync
+	run_scanner_matrix
+	run_fixtures
+	run_workflow_sanity
+	run_feature_completion
+	run_main_gate_harness
+	run_main_gate_evidence
+	run_main_gate_exec
+	run_install_matrix
+	run_mode_readiness
+	run_v022_fixtures
+	run_v023_coverage
+	run_v023_regression
+	run_v024_collectors
+	run_v024_coverage
+	run_v024_docs
+	run_v025_live
+	run_v026_dependency_check
+	run_v027_consumer_evidence
+	run_v028_strict_ci_and_breadth
+	run_v029_clean_strict_ci
+	run_v030_dc_ci_cache
+	run_v100rc_soak
+	run_v110_postga
+	run_v120_docs
+	run_v130_evidence
+	run_v140_iac
+	run_v150_evidence
+	run_v160_iac
+	run_v170_platform
+	run_v180_completion
+	run_v190_ai_install
+	run_v2_toolpolicy
+	run_v2_enforcement
+	run_v2_review
+	run_v2_review_round3
+	run_e2e
+}
+
 case "$SUB" in
 	syntax) run_syntax ;;
 	lifecycle) run_lifecycle ;;
@@ -4048,63 +4121,17 @@ case "$SUB" in
 	v2-review-round3) run_v2_review_round3 ;;
 	e2e) run_e2e ;;
 	production-readiness) run_production_readiness ;;
+	ci-core) run_ci_core ;;
 	all)
-		run_syntax
-		run_lifecycle
-		run_fallback
-		run_negative
-		run_suppression
-		run_finding_scope
-		run_third_party
-		run_hadolint
-		run_adapters
-		run_phpstan_runner
-		run_ud_multisource
-		run_install_sync
-		run_scanner_matrix
-		run_fixtures
-		run_workflow_sanity
-		run_feature_completion
-		run_main_gate_harness
-		run_main_gate_evidence
-		run_main_gate_exec
-		run_install_matrix
-		run_mode_readiness
-		run_v022_fixtures
-		run_v023_coverage
-		run_v023_regression
-		run_v024_collectors
-		run_v024_coverage
-		run_v024_docs
-		run_v025_live
-		run_v026_dependency_check
-		run_v027_consumer_evidence
-		run_v028_strict_ci_and_breadth
-		run_v029_clean_strict_ci
-		run_v030_dc_ci_cache
-		run_v100rc_soak
-		run_v110_postga
-		run_v120_docs
-		run_v130_evidence
-		run_v140_iac
-		run_v150_evidence
-		run_v160_iac
-		run_v170_platform
-		run_v180_completion
-		run_v190_ai_install
-		run_v2_toolpolicy
-		run_v2_enforcement
-		run_v2_review
-		run_v2_review_round3
-		run_e2e
+		run_ci_core
 		run_production_readiness
 		;;
 	-h | --help)
-		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|all]"
+		echo "Usage: self-test.sh [syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|ci-core|all]"
 		exit 0
 		;;
 	*)
-		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|all)"
+		log_error "unknown subcommand: $SUB (expected syntax|lifecycle|fallback|negative|suppression|finding-scope|third-party|hadolint|adapters|phpstan-runner|ud-multisource|install-sync|scanner-matrix|fixtures|workflow-sanity|feature-completion|main-gate-harness|main-gate-evidence|main-gate-exec|install-matrix|mode-readiness|v022-fixtures|v023-coverage|v023-regression|v024-collectors|v024-coverage|v024-docs|v025-live|v026-live|v027-live|v028-live|v029-live|v030-live|rc1-soak|v110-postga|v120-docs|v130-evidence|v140-iac|v150-evidence|v160-iac|v170-platform|v180-completion|v190-ai-install|v2-toolpolicy|v2-enforcement|v2-review|v2-review-round3|e2e|production-readiness|ci-core|all)"
 		exit 2
 		;;
 esac

@@ -12,6 +12,8 @@
 # to EXEMPT below with a comment — silent gaps are not allowed.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+# shellcheck source=tests/lib/workflow-invocation.sh
+. "$ROOT/tests/lib/workflow-invocation.sh"
 
 # Space-separated "file-basename:job" exemptions (documented, none currently).
 EXEMPT=""
@@ -75,36 +77,44 @@ fi
 # that never had long enough, and why no amount of waiting for the stack to settle produced
 # exact-head evidence on any branch.
 #
-# The division is now: ci-self-test owns the COMPLETE suite; ci-production-readiness owns the
-# focused independent sweep. This asserts that division, because it is the kind of thing a
-# later edit restores by accident.
+# The division WAS: ci-self-test owns the COMPLETE suite (`all`); ci-production-readiness owns
+# the focused independent sweep. That fixed the timeout, but left `all` — which INCLUDES the
+# production sweep — running in ci-self-test while ci-production-readiness ran the same sweep
+# again. Duplicate execution, not independent validation (#284).
+#
+# The division is now: ci-self-test owns `ci-core` (every registered suite EXCEPT the
+# production sweep); ci-production-readiness remains the sole owner of `production-readiness`.
+# `all` is unchanged in meaning and remains the exhaustive local umbrella, but no longer runs
+# in CI as a single job. This asserts that division, because it is the kind of thing a later
+# edit restores by accident.
+#
+# Set coverage (`ci-core ∪ production-readiness = all`, `∩ = ∅`) is proven separately, against
+# scripts/self-test.sh itself, by tests/prod/113-suite-topology.sh.
 ST=".github/workflows/ci-self-test.yml"
 PR=".github/workflows/ci-production-readiness.yml"
-# run_count <file> <arg> — how many `run:` lines invoke self-test.sh with exactly <arg>.
-run_count() {
-	# Match the INVOCATION, not one spelling of it. The first version required
-	# `run: sh scripts/self-test.sh <arg>` on a single line, so `./scripts/self-test.sh all`,
-	# `bash scripts/self-test.sh all`, or the same command inside a multiline `run: |` block all
-	# counted as zero — and ci-production-readiness could restore the complete suite, and its
-	# timeout risk, while still passing this check. A contract enforced against one spelling is
-	# not enforced.
-	#
-	# So: any line that invokes the script with that argument, however it is spelled, and
-	# whether or not `run:` is on the same line. Comments are excluded so prose mentioning a
-	# command is not counted as running it.
-	grep -vE '^[[:space:]]*#' "$ROOT/$1" 2>/dev/null \
-		| grep -cE "(^|[[:space:]]|/)(sh|bash|dash)?[[:space:]]*\.?/?scripts/self-test\.sh[[:space:]]+$2([[:space:]]|\$)" \
-		|| true
-}
-_n=$(run_count "$ST" all); case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
-[ "$_n" -eq 1 ] && pass "ci-self-test invokes self-test.sh all exactly once" \
-	|| fail "ci-self-test invokes self-test.sh all $_n time(s); expected exactly 1"
-_n=$(run_count "$PR" all); case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
+# run_count <repo-relative-file> <arg> — how many lines invoke self-test.sh with exactly <arg>.
+# The matcher lives in tests/lib/workflow-invocation.sh so 113 uses the same one; see there for
+# why it matches invocations rather than one spelling of them.
+run_count() { wf_run_count_int "$ROOT/$1" "$2"; }
+
+_n=$(run_count "$ST" ci-core)
+[ "$_n" -eq 1 ] && pass "ci-self-test invokes self-test.sh ci-core exactly once" \
+	|| fail "ci-self-test invokes self-test.sh ci-core $_n time(s); expected exactly 1"
+_n=$(run_count "$ST" all)
+[ "$_n" -eq 0 ] && pass "ci-self-test does not invoke self-test.sh all" \
+	|| fail "ci-self-test invokes self-test.sh all $_n time(s); \`all\` includes the production sweep that ci-production-readiness already owns, so this restores the duplicate ~40-minute execution #284 removed"
+_n=$(run_count "$PR" all)
 [ "$_n" -eq 0 ] && pass "ci-production-readiness does not invoke self-test.sh all" \
-	|| fail "ci-production-readiness invokes self-test.sh all $_n time(s); the complete suite belongs to ci-self-test, and running it twice is what exhausted this job's budget"
-_n=$(run_count "$PR" production-readiness); case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
+	|| fail "ci-production-readiness invokes self-test.sh all $_n time(s); the core suite belongs to ci-self-test, and running it twice is what exhausted this job's budget"
+_n=$(run_count "$PR" ci-core)
+[ "$_n" -eq 0 ] && pass "ci-production-readiness does not invoke self-test.sh ci-core" \
+	|| fail "ci-production-readiness invokes self-test.sh ci-core $_n time(s); ci-core belongs to ci-self-test"
+_n=$(run_count "$PR" production-readiness)
 [ "$_n" -eq 1 ] && pass "ci-production-readiness invokes self-test.sh production-readiness exactly once" \
 	|| fail "ci-production-readiness invokes self-test.sh production-readiness $_n time(s); expected exactly 1"
+_n=$(run_count "$ST" production-readiness)
+[ "$_n" -eq 0 ] && pass "ci-self-test does not invoke self-test.sh production-readiness" \
+	|| fail "ci-self-test invokes self-test.sh production-readiness $_n time(s); ci-production-readiness is its sole owner"
 
 # Budgets. A number is asserted, not merely the key's presence: the whole defect was a job
 # whose timeout was smaller than the work it was given.
@@ -135,25 +145,10 @@ _t=$(job_timeout "$ST" full-self-test); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
 [ "$_t" -ge 90 ] && pass "ci-self-test/full-self-test budget is $_t min (>= 90)" \
 	|| fail "ci-self-test/full-self-test budget is $_t min, below the current safety floor of 90. \`self-test.sh all\` was measured at 59.8 min, before checkout, dependency setup and this job's extra workflow-sanity and fixture steps — at $_t min the job is killed at the budget and GitHub reports it as 'cancelled'. The floor is derived from that observation, not from an ideal runtime; lower it only with a fresh measurement."
 # The matcher must see every spelling, or the contract is enforceable only against the one
-# form we happen to ship today. Fixtures for each: direct `./scripts/...`, `bash scripts/...`,
-# and the command inside a multiline `run: |` block — the three ways ci-production-readiness
-# could quietly regain the complete suite while this check still reported zero.
-_rcf=$(mktemp -d)
-printf 'jobs:\n  a:\n    steps:\n      - run: ./scripts/self-test.sh all\n' > "$_rcf/direct.yml"
-printf 'jobs:\n  a:\n    steps:\n      - run: bash scripts/self-test.sh all\n' > "$_rcf/bash.yml"
-printf 'jobs:\n  a:\n    steps:\n      - run: |\n          set -eu\n          sh scripts/self-test.sh all\n' > "$_rcf/multiline.yml"
-printf 'jobs:\n  a:\n    steps:\n      # sh scripts/self-test.sh all  (documentation, not an invocation)\n      - run: echo hi\n' > "$_rcf/comment.yml"
-_saved_root="$ROOT"; ROOT="$_rcf"
-for _form in direct bash multiline; do
-	_n=$(run_count "$_form.yml" all); case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
-	[ "$_n" -eq 1 ] && pass "run_count detects the $_form invocation form" \
-		|| fail "run_count missed the $_form invocation form ($_n) — the suite could be restored without this check noticing"
-done
-_n=$(run_count "comment.yml" all); case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
-[ "$_n" -eq 0 ] && pass "run_count does not count a commented-out invocation" \
-	|| fail "run_count counted a comment as an invocation ($_n)"
-ROOT="$_saved_root"
-rm -rf "$_rcf"
+# form we happen to ship today. The fixtures now live with the matcher in
+# tests/lib/workflow-invocation.sh, so both this suite and 113-suite-topology.sh prove the
+# same parser rather than each trusting it.
+wf_run_count_selfcheck pass fail
 
 _t=$(job_timeout "$PR" self-tests); case "$_t" in ''|*[!0-9]*) _t=0 ;; esac
 [ "$_t" -ge 75 ] && pass "ci-production-readiness/self-tests budget is $_t min (>= 75)" \
