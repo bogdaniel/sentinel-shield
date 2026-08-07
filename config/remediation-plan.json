@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "e49b9064d4e988e9797a905100a9c26d1a7e1b7a",
+  "generated_for_master": "6135a2687a886d015c82e783278bdadc62e8238c",
   "milestones": [
     {
       "key": "M0",
@@ -3204,25 +3204,6 @@
       ]
     },
     {
-      "issue": 285,
-      "primary_domain": "ci",
-      "milestone": "M0",
-      "milestone_title": "M0 — CI Enablement",
-      "priority": "p0",
-      "type": "ci",
-      "status": "ready",
-      "parent_epic": 286,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "merge-evidence-oracle",
-      "closure_evidence": [
-        "implementation",
-        "seven-defect-regression-fixtures",
-        "proof-manifest",
-        "exact-head-ci"
-      ]
-    },
-    {
       "issue": 286,
       "primary_domain": "ci",
       "milestone": "M0",
@@ -3510,6 +3491,24 @@
       "closure_evidence": [
         "all-children-closed",
         "milestone-exit-criteria-met"
+      ]
+    },
+    {
+      "issue": 306,
+      "primary_domain": "ci",
+      "milestone": "M0",
+      "milestone_title": "M0 — CI Enablement",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 286,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "compat-gate-determinism",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
       ]
     }
   ]
