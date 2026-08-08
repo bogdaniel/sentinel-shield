@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "78d13a958aa1232880073e69f4f3cb39e921a79d",
+  "generated_for_master": "f3c7ed8a4f596a2123d4cad06719dbed984048d8",
   "milestones": [
     {
       "key": "M0",
@@ -121,11 +121,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -141,11 +139,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -161,11 +157,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -181,11 +175,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -201,11 +193,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -221,11 +211,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -241,11 +229,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -261,11 +247,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -281,11 +265,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -301,11 +283,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -321,11 +301,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -341,11 +319,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -361,11 +337,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -381,11 +355,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 294,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "scanner-execution-wrappers",
       "closure_evidence": [
@@ -401,11 +373,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -424,8 +394,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -445,8 +414,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -466,8 +434,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -484,11 +451,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -524,11 +489,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -547,8 +510,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -565,11 +527,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -585,11 +545,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -605,11 +563,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -625,11 +581,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -663,11 +617,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -686,8 +638,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -707,8 +658,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -728,8 +678,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -749,8 +698,7 @@
       "status": "blocked",
       "parent_epic": 292,
       "blocked_by": [
-        146,
-        182
+        146
       ],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
@@ -803,11 +751,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -989,11 +935,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1009,11 +953,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1029,11 +971,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1049,11 +989,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1069,11 +1007,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1089,11 +1025,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1109,11 +1043,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -1129,11 +1061,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -1171,7 +1101,6 @@
       "parent_epic": 287,
       "blocked_by": [],
       "blocks": [
-        182,
         204
       ],
       "implementation_group": "collector-status-vocabulary",
@@ -1835,103 +1764,15 @@
       ]
     },
     {
-      "issue": 182,
-      "primary_domain": "evidence",
-      "milestone": "M1",
-      "milestone_title": "M1 — Evidence Trust Foundation",
-      "priority": "p0",
-      "type": "security",
-      "status": "blocked",
-      "parent_epic": 287,
-      "blocked_by": [
-        145
-      ],
-      "blocks": [
-        91,
-        92,
-        93,
-        94,
-        95,
-        96,
-        97,
-        98,
-        99,
-        100,
-        101,
-        102,
-        103,
-        104,
-        105,
-        106,
-        107,
-        108,
-        109,
-        111,
-        112,
-        113,
-        114,
-        115,
-        116,
-        118,
-        119,
-        120,
-        121,
-        122,
-        125,
-        135,
-        136,
-        137,
-        138,
-        139,
-        140,
-        141,
-        142,
-        183,
-        184,
-        185,
-        186,
-        187,
-        188,
-        189,
-        190,
-        192,
-        193,
-        194,
-        195,
-        196,
-        197,
-        198,
-        199,
-        200,
-        201,
-        202,
-        203,
-        204,
-        243,
-        244,
-        245,
-        246,
-        247
-      ],
-      "implementation_group": "producer-envelope",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
       "issue": 183,
       "primary_domain": "collectors",
       "milestone": "M4",
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -1947,11 +1788,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1967,11 +1806,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -1987,11 +1824,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -2007,11 +1842,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -2027,11 +1860,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 295,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "dependency-vulnerability-collectors",
       "closure_evidence": [
@@ -2047,11 +1878,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -2067,11 +1896,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -2087,11 +1914,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 296,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "secrets-sast-ci-collectors",
       "closure_evidence": [
@@ -2107,11 +1932,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2127,11 +1950,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2147,11 +1968,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2167,11 +1986,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2187,11 +2004,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "security",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2207,11 +2022,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2227,11 +2040,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2247,11 +2058,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2267,11 +2076,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2287,11 +2094,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2307,11 +2112,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 297,
-      "blocked_by": [
-        182
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "docker-iac-architecture",
       "closure_evidence": [
@@ -2330,8 +2133,7 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        145,
-        182
+        145
       ],
       "blocks": [
         205,
@@ -2670,7 +2472,6 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        182,
         204
       ],
       "blocks": [],
@@ -2691,7 +2492,6 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        182,
         204
       ],
       "blocks": [],
@@ -2712,7 +2512,6 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        182,
         204
       ],
       "blocks": [],
@@ -2733,7 +2532,6 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        182,
         204
       ],
       "blocks": [],
@@ -2754,7 +2552,6 @@
       "status": "blocked",
       "parent_epic": 287,
       "blocked_by": [
-        182,
         204
       ],
       "blocks": [],
@@ -3414,6 +3211,24 @@
       "blocked_by": [],
       "blocks": [],
       "implementation_group": "compat-gate-determinism",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 310,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p1",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "producer-envelope",
       "closure_evidence": [
         "implementation",
         "negative-regression",

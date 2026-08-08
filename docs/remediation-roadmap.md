@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `78d13a958aa1232880073e69f4f3cb39e921a79d` · 12 blocking workflows expected on `push` · **167 open issues** = **152 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `f3c7ed8a4f596a2123d4cad06719dbed984048d8` · 12 blocking workflows expected on `push` · **167 open issues** = **152 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open. **#284** (PR #301) and **#285** (PR #303) are closed on full acceptance evidence — see the closure comment on each. **#306** was opened 2026-08-07 from a real CI failure found while accounting master, so the finding count is unchanged at 156.
 
@@ -16,7 +16,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **152 findings remain open, 124 of them P0.**
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **152 findings remain open, 123 of them P0.**
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -54,12 +54,12 @@ This is the single most important sequencing decision in the programme, and the 
 
 | Blocker | Blocks | What it is |
 | --- | --- | --- |
-| **#182** | **65** | trusted producer identity for pre-normalized collector count objects |
+| ~~#182~~ ✓ | ~~65~~ | trusted producer identity — **DONE**, PR #309. M4 ready work went from **10 to 61** the moment it landed |
 | **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence |
 | #146 | 8 | bounded safe-integer limits for all collector counts |
 | #147 | 5 | atomic, symlink-safe publication primitive |
 
-#182 alone gates 65 of the 83 M4 issues. Repairing collectors first means writing 65 producer-identity checks that each have to be revisited when the real contract lands — and, in the interim, ten subtly different implementations of the same trust boundary, which is how the current state was reached.
+#182 alone gated 65 of the 83 M4 issues — **and closing it moved M4 from 10 ready to 61 ready in one step**, which is the sequencing argument settled by measurement rather than assertion. Repairing collectors first means writing 65 producer-identity checks that each have to be revisited when the real contract lands — and, in the interim, ten subtly different implementations of the same trust boundary, which is how the current state was reached.
 
 The shared-primitive rule applies concretely here. Before implementing similar fixes, they belong in one primitive: JSON parsing and duplicate-key detection, numeric validation, safe atomic publication, path containment, producer-envelope validation, status vocabulary, provenance and digest binding, profile schema validation, YAML normalisation, executable resolution, and transaction/journal handling.
 
