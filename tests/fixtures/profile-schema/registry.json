@@ -405,6 +405,10 @@
       "path": "tests/fixtures/profile-schema/accepted/02-full-featured.json",
       "role": "install",
       "must_resolve": true
+    },
+    {
+      "path": "tests/fixtures/profile-schema/accepted/03-nested-report.json",
+      "role": "install"
     }
   ]
 }

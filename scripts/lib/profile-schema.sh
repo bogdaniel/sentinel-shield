@@ -430,10 +430,14 @@ ps__enums_json() {
 		'{policy:$policy, missing_behavior:$mb, classification:$cls, mode:$mode, scope:$scope, selection:$sel}'
 }
 
-# The canonical normalized-report path grammar. Tighter than the published
-# `^reports/raw/[^/]+\.json$`, which admits spaces, `$`, backticks and a leading
-# dot — every one of which reaches a shell path probe.
-PS_REPORT_PATTERN='^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*\.json$'
+# The canonical normalized-report path grammar. Tighter than the old
+# `^reports/raw/[^/]+\.json$` on what a segment may contain — that form admitted
+# spaces, `$`, backticks, a leading dot and `..`, every one of which reaches a
+# shell path probe — and LOOSER on depth, because build-security-summary.sh
+# preserves directories under reports/raw/ (#236): `reports/raw/api/gitleaks.json`
+# is a supported declaration and must not be rejected. Every segment must start
+# with an alphanumeric, so no segment can be `.` or `..`.
+PS_REPORT_PATTERN='^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*\.json$'
 
 # ps_manifest_errors <manifest> [role] — print every violation, one per line, on
 # stdout. Returns 0 when the manifest is clean, 1 when it is not, 2 when the file

@@ -148,8 +148,8 @@
         },
         "report": {
           "type": "string",
-          "pattern": "^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$",
-          "description": "Normalized JSON report path under reports/raw/, e.g. 'reports/raw/phpstan.json'. Tighter than [^/]+ on purpose: the loose form admitted spaces, '$', backticks and a leading dot, all of which reach a shell path probe."
+          "pattern": "^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*\\.json$",
+          "description": "Normalized JSON report path under reports/raw/, e.g. 'reports/raw/phpstan.json'. Nested paths are supported (build-security-summary.sh preserves directories under reports/raw/, #236). Every segment must start with an alphanumeric, so no segment can be '.' or '..'; the old [^/]+ form admitted spaces, '$', backticks and a leading dot, all of which reach a shell path probe."
         },
         "audit": {
           "allOf": [
