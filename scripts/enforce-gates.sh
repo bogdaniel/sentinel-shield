@@ -467,6 +467,36 @@ case "$MODE" in
 		;;
 esac
 
+# #310: an UNOBSERVED execution is weaker evidence than an observed one. The collector infers
+# completion from a parseable report when no execution record exists; that is recorded
+# honestly as `execution.observed: false` rather than as a confident success, and an operator
+# who needs the stronger form can require it here.
+#
+# OPT-IN, not default-on, and deliberately so: CodeQL's SARIF is produced by GitHub's CodeQL
+# action, so there is no local process to observe and no execution record to write. Turning
+# this on by default would fail every repository that runs CodeQL, which is a correctness
+# claim the engine cannot yet honour. Making it the default is tracked as follow-up work.
+if [ "${SENTINEL_SHIELD_REQUIRE_OBSERVED_EXECUTION:-0}" = "1" ]; then
+	case "$MODE" in
+		strict | regulated)
+			_unobs=$(jq -r '[(.tools // {}) | to_entries[]
+				| select(.value | (type == "object")
+					and ((.evidence.execution.observed // true) == false))
+				| .key] | join(", ")' "$SUMMARY" 2>/dev/null || printf 'unreadable')
+			if [ "$_unobs" = "unreadable" ]; then
+				die_cfg "'$SUMMARY' could not be read for the observed-execution check; an unparseable summary is untrusted evidence in '$MODE'"
+			fi
+			if [ -n "$_unobs" ]; then
+				log_error "'$SUMMARY' carries tool evidence with UNOBSERVED execution: $_unobs"
+				log_error "  SENTINEL_SHIELD_REQUIRE_OBSERVED_EXECUTION=1 demands a recorded"
+				log_error "  scanner exit status bound to the report digest. A parseable report"
+				log_error "  is not a completed scan."
+				die_cfg "refusing to enforce '$MODE' against evidence with unobserved execution"
+			fi
+			;;
+	esac
+fi
+
 # #182: the same principle one level DOWN. A collector may emit fixture evidence — explicitly
 # invoked, explicitly labelled `trust.type=fixture`, and only outside a release context — and
 # it stamps `non_production: true` on that tool's report. Every enforcing mode refuses it here.

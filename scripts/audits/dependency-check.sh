@@ -19,6 +19,11 @@
 #   enabled + tool exits w/o JSON    -> unavailable with reason; remove any partial/empty/invalid
 #                                       file so the collector reports `unavailable` (NEVER fake-clean).
 set -eu
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=scripts/lib/sentinel-shield-common.sh
+. "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 OUT="${1:-reports/raw/dependency-check.json}"
 mkdir -p "$(dirname "$OUT")"
 MODE="${SENTINEL_SHIELD_DEPENDENCY_CHECK_MODE:-disabled}"
@@ -210,7 +215,12 @@ fi
 
 # Decide: keep valid JSON (even on non-zero exit), else discard partial and report unavailable.
 if valid_json "$OUT"; then
-	[ "$rc" -eq 0 ] || echo "[sentinel-shield] dependency-check exited $rc but produced valid JSON — kept for the collector/gate to decide." >&2
+	[ "$rc" -eq 0 ] || echo "[sentinel-shield] dependency-check exited $rc but produced valid JSON — kept, and the exit code is recorded so the collector can actually decide (#310)." >&2
+	# #310: the exit code now travels with the report. Previously this branch deferred the
+	# decision to "the collector/gate" while discarding the one fact needed to make it, so a
+	# non-zero exit with valid JSON was normalized as a clean, complete scan.
+	ne_execution_write_rc "dependency-check" "$OUT" "$rc" \
+		|| echo "[sentinel-shield] dependency-check: could not write the execution record" >&2
 	echo "[sentinel-shield] dependency-check: report written -> $OUT" >&2
 	exit 0
 fi

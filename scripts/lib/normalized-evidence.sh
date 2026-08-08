@@ -94,10 +94,180 @@ ne_target_json() {
 		  commit:     (if $c == "" then null else ($c | ascii_downcase) end)}'
 }
 
+# --- execution provenance (#310) -------------------------------------------
+#
+# THE INVARIANT: a parseable report is NOT a completed scan.
+#
+# #182 shipped `execution: { completed: true, exit_code: 0 }` as a CONSTANT. The collector
+# concluded the scanner had completed because it was handed a parseable report, and never
+# observed the process. A scanner that exits non-zero — or times out, or is killed — while
+# leaving syntactically valid JSON was recorded as a clean, complete execution over a report
+# describing less than the full target.
+#
+# The invoker already knows the truth and used to throw it away:
+#
+#     bp_run scanner-run "$to" ... -- $EXEC dir:. -o json --file "$OUT" || true
+#     ...
+#     exit 0
+#
+# `bp_run` returns the real status and sets BP_STATUS / BP_EXIT_CODE / BP_SIGNAL /
+# BP_DURATION_SECONDS. `|| true` discarded it. So this is not new information — it is
+# information that was being deliberately dropped one layer below where it was needed.
+#
+# THE BINDING is the other half. A process record on its own says "some scan succeeded"; it
+# does not say "THIS report is that scan's output". So the record carries the sha256 of the
+# output AS WRITTEN, plus the target identity. That is what makes stale output detectable: a
+# successful run from an hour ago paired with today's failed one has a digest that no longer
+# matches the file on disk.
+#
+# NOT EVERY PRODUCER HAS AN INVOKER. CodeQL's SARIF is produced by GitHub's CodeQL action;
+# there is no local process to observe. That is recorded honestly as `observed: false` with
+# `completed: null` — never as a confident success — and enforcing modes can require the
+# observed form.
+
+NE_EXEC_CONTRACT="sentinel-shield/execution-record@1"
+
+# The unobserved default, as a NAMED CONSTANT rather than inlined in a `${VAR:-...}` default.
+# Inlining it there silently truncates: the `}}` closing the JSON also closes the parameter
+# expansion, so jq received malformed text and the collector emitted nothing at all.
+NE_EXEC_UNOBSERVED='{"observed":false,"completed":null,"status":"unobserved","exit_code":null}'
+
+# ne_execution_record_path <report-path> — the sidecar path for a given report.
+ne_execution_record_path() { printf '%s.execution.json' "${1%.json}"; }
+
+# ne_execution_write <tool> <output-path> [record-path]
+#
+# Called by the INVOKER immediately after bp_run, while the BP_* globals still describe that
+# run. Writes the execution record bound to the output as it exists right now.
+ne_execution_write() {
+	_nx_tool=$1
+	_nx_out=$2
+	_nx_rec=${3:-}
+	[ -n "$_nx_rec" ] || _nx_rec=$(ne_execution_record_path "$_nx_out")
+	jq -n \
+		--arg contract "$NE_EXEC_CONTRACT" \
+		--arg tool "$_nx_tool" \
+		--arg status "${BP_STATUS:-unknown}" \
+		--arg exit_code "${BP_EXIT_CODE:-}" \
+		--arg signal "${BP_SIGNAL:-}" \
+		--arg duration "${BP_DURATION_SECONDS:-0}" \
+		--arg timed_out "${BP_TIMED_OUT:-0}" \
+		--arg out "$_nx_out" \
+		--arg digest "$(ne_sha256 "$_nx_out")" \
+		--arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		--argjson target "$(ne_target_json)" '
+		{
+			record: $contract,
+			producer: { tool: $tool },
+			execution: {
+				observed: true,
+				status: $status,
+				completed: ($status == "success"),
+				exit_code: (if $exit_code == "" then null else ($exit_code | tonumber) end),
+				signal:    (if $signal == "" then null else ($signal | tonumber) end),
+				timed_out: ($timed_out == "1"),
+				duration_seconds: ($duration | tonumber? // 0),
+				recorded_at: $at
+			},
+			output: { path: $out, sha256: (if $digest == "" then null else $digest end) },
+			target: $target
+		}' > "$_nx_rec" 2>/dev/null || return 1
+}
+
+# ne_execution_write_rc <tool> <output-path> <exit-code> [record-path]
+#
+# For invokers that capture the exit status themselves rather than through bp_run — e.g.
+# scripts/audits/dependency-check.sh, which runs the scanner in the foreground so the step
+# timeout applies and collects `|| rc=$?`.
+#
+# That script contains the clearest statement of the problem this issue exists to fix:
+#
+#     [ "$rc" -eq 0 ] || echo "dependency-check exited $rc but produced valid JSON \
+#         — kept for the collector/gate to decide."
+#
+# It deferred the decision to the collector, and then discarded the only fact the collector
+# needed to make it. Now the exit code travels with the report.
+ne_execution_write_rc() {
+	_nr_tool=$1
+	_nr_out=$2
+	_nr_rc=${3:-0}
+	BP_STATUS=$([ "$_nr_rc" -eq 0 ] && printf 'success' || printf 'failed')
+	BP_EXIT_CODE="$_nr_rc"
+	BP_SIGNAL=""
+	BP_TIMED_OUT=0
+	BP_DURATION_SECONDS=${BP_DURATION_SECONDS:-0}
+	ne_execution_write "$_nr_tool" "$_nr_out" "${4:-}"
+}
+
+# ne_execution_verify <tool> <input> [record-path]
+#
+# Called by the COLLECTOR. Sets NE_EXEC_JSON to the execution object to embed, and
+# NE_EXEC_REASON when it refuses. Returns 0 to accept, 1 to reject.
+#
+# When no record exists the result is UNOBSERVED, not successful: `completed: null`. That is a
+# weaker form of evidence, and enforcing modes may refuse it — but it is never silently
+# promoted to a clean scan.
+ne_execution_verify() {
+	_nv_tool=$1
+	_nv_in=$2
+	_nv_rec=${3:-$(ne_execution_record_path "$_nv_in")}
+	NE_EXEC_REASON=""
+
+	if [ ! -f "$_nv_rec" ]; then
+		NE_EXEC_JSON="$NE_EXEC_UNOBSERVED"
+		return 0
+	fi
+	if ! jq -e --arg c "$NE_EXEC_CONTRACT" '(type=="object") and (.record? == $c)' "$_nv_rec" >/dev/null 2>&1; then
+		NE_EXEC_REASON="execution record '$_nv_rec' is not a $NE_EXEC_CONTRACT document"
+		return 1
+	fi
+
+	# Identity: the record must be about THIS tool.
+	_nv_rt=$(jq -r '.producer.tool // ""' "$_nv_rec" 2>/dev/null)
+	if [ "$_nv_rt" != "$_nv_tool" ]; then
+		NE_EXEC_REASON="execution record names tool '$_nv_rt', not '$_nv_tool'"
+		return 1
+	fi
+
+	# Completion: anything other than a clean success is refused. This is the whole point —
+	# `failed`, `timed-out`, `signalled` and `unavailable` all leave reports behind sometimes.
+	_nv_st=$(jq -r '.execution.status // ""' "$_nv_rec" 2>/dev/null)
+	if [ "$_nv_st" != "success" ]; then
+		NE_EXEC_REASON="scanner did not complete successfully (status=${_nv_st:-unknown}, exit_code=$(jq -r '.execution.exit_code // "null"' "$_nv_rec" 2>/dev/null), timed_out=$(jq -r '.execution.timed_out // false' "$_nv_rec" 2>/dev/null)); a parseable report is not a completed scan"
+		return 1
+	fi
+
+	# Binding: the record must describe the bytes actually being normalized. This is what
+	# catches STALE OUTPUT — a successful run from earlier paired with a later failure — and a
+	# report edited after the run.
+	_nv_rd=$(jq -r '.output.sha256 // ""' "$_nv_rec" 2>/dev/null)
+	_nv_ad=$(ne_sha256 "$_nv_in")
+	if [ -z "$_nv_rd" ] || [ "$_nv_rd" != "$_nv_ad" ]; then
+		NE_EXEC_REASON="execution record digest does not match the report being normalized (record=${_nv_rd:-none} actual=${_nv_ad:-none}); the report is stale or was modified after the run"
+		return 1
+	fi
+
+	# Target: a record produced against a different commit describes a different scan.
+	_nv_rc=$(jq -r '.target.commit // ""' "$_nv_rec" 2>/dev/null)
+	_nv_ac=$(ne_target_json | jq -r '.commit // ""')
+	if [ -n "$_nv_rc" ] && [ -n "$_nv_ac" ] && [ "$_nv_rc" != "$_nv_ac" ]; then
+		NE_EXEC_REASON="execution record was produced for commit $_nv_rc, not $_nv_ac"
+		return 1
+	fi
+
+	NE_EXEC_JSON=$(jq -c '.execution' "$_nv_rec" 2>/dev/null)
+	return 0
+}
+
 # ne_envelope <tool> <source-path> <source-format> <trust-type> <payload-json>
 #
 # Build the envelope. The trust type is supplied by the CALLER — and the only caller that may
 # pass NE_TRUST_NATIVE is a collector that has just parsed native source itself.
+#
+# `execution` comes from NE_EXEC_JSON, set by ne_execution_verify. It is NO LONGER a constant:
+# #182 stamped `{completed:true, exit_code:0}` unconditionally, which asserted a clean process
+# the collector had never observed. When no record exists the default is explicitly
+# UNOBSERVED — `completed: null` — never a confident success.
 ne_envelope() {
 	_ne_tool=$1
 	_ne_src=$2
@@ -114,6 +284,7 @@ ne_envelope() {
 		--arg digest "$(ne_sha256 "$_ne_src")" \
 		--argjson target "$(ne_target_json)" \
 		--arg trust "$_ne_trust" \
+		--argjson execution "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}" \
 		--argjson payload "$_ne_payload" '
 		{
 			envelope: $contract,
@@ -121,7 +292,7 @@ ne_envelope() {
 			source:   { format: $fmt, path: $path,
 			            sha256: (if $digest == "" then null else $digest end) },
 			target:   $target,
-			execution: { completed: true, exit_code: 0 },
+			execution: $execution,
 			trust:    { type: $trust }
 		} + $payload'
 }

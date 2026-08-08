@@ -22,6 +22,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
 # shellcheck source=scripts/lib/bounded-process.sh
 . "$SCRIPT_DIR/../lib/bounded-process.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 
 BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
 trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
@@ -87,6 +89,11 @@ case "$MODE" in
 		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
 		# shellcheck disable=SC2086
 		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC sbom:"$SBOM" -o json --file "$OUT" || true
+		# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
+		# describe this run. `bp_run ... || true` used to discard it, and the collector then
+		# assumed a clean process from a parseable report. Written after the scan so the digest
+		# binds to the output as actually left on disk.
+		ne_execution_write "grype" "$OUT" || log_warn "grype: could not write the execution record"
 		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: SBOM scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
 		;;
 	fs)
@@ -94,6 +101,11 @@ case "$MODE" in
 		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
 		# shellcheck disable=SC2086
 		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC dir:. -o json --file "$OUT" || true
+		# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
+		# describe this run. `bp_run ... || true` used to discard it, and the collector then
+		# assumed a clean process from a parseable report. Written after the scan so the digest
+		# binds to the output as actually left on disk.
+		ne_execution_write "grype" "$OUT" || log_warn "grype: could not write the execution record"
 		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: filesystem scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
 		;;
 	*) unavailable "invalid SENTINEL_SHIELD_GRYPE_MODE='$MODE' (use sbom|fs)" ;;
