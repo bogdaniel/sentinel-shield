@@ -116,15 +116,17 @@ jobs:
               print(f"valid xml: {path}")
           PY
 
-      - name: Validate all YAML (Ruby, best-effort)
-        run: |
-          if command -v ruby >/dev/null 2>&1; then
-            # shellcheck disable=SC2046 # intentional: split find output into per-file ruby args
-            ruby -ryaml -e 'ARGV.each { |f| YAML.load_stream(File.read(f)); puts "valid yaml: #{f}" }' \
-              $(find . -name "*.yml" -o -name "*.yaml")
-          else
-            echo "::warning::ruby not available; YAML parser validation skipped"
-          fi
+      # Repository-wide YAML sanity, with the deliberately-invalid parser corpus registered in
+      # config/intentionally-invalid-yaml.json and enforced in BOTH directions (unregistered
+      # failure = error, registered file that parses = error). The previous inline version
+      # globbed every *.yml/*.yaml with no exemption at all, so it could not coexist with a
+      # negative corpus — and the tempting fix, skipping tests/fixtures/, would have blinded it
+      # to a genuinely malformed workflow or profile.
+      #
+      # No longer "best-effort": it used to print a warning and pass when ruby was absent,
+      # which is a YAML check that reports success without checking any YAML.
+      - name: Validate all YAML (registered negative corpus, enforced both ways)
+        run: sh scripts/audits/yaml-corpus-audit.sh
 
   # --------------------------------------------------------------------------
   lifecycle:

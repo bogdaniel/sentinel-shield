@@ -192,6 +192,12 @@ run_syntax() {
 		grep -q 'semgrep/app' "$f" \
 			|| { log_error "$f missing app scan config (semgrep/app)"; return 1; }
 	done
+	# Repository-wide YAML sanity with the registered negative corpus. This lived only in
+	# ci-self-test.yml, so a malformed YAML file could not be caught before pushing — and the
+	# deliberately-invalid parser corpus made the old unexempted version fail outright.
+	log_info "syntax: YAML sanity + registered intentionally-invalid corpus"
+	sh "$ROOT/scripts/audits/yaml-corpus-audit.sh" --quiet \
+		|| { log_error "syntax: YAML corpus audit failed"; return 1; }
 	log_info "syntax: OK"
 }
 
