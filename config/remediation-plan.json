@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "6135a2687a886d015c82e783278bdadc62e8238c",
+  "generated_for_master": "78d13a958aa1232880073e69f4f3cb39e921a79d",
   "milestones": [
     {
       "key": "M0",
@@ -767,11 +767,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 293,
-      "blocked_by": [
-        259
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "testing-discipline-tdd",
       "closure_evidence": [
@@ -787,11 +785,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 293,
-      "blocked_by": [
-        259
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "testing-discipline-tdd",
       "closure_evidence": [
@@ -863,11 +859,9 @@
       "milestone_title": "M4 — Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 293,
-      "blocked_by": [
-        259
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "testing-discipline-tdd",
       "closure_evidence": [
@@ -1293,31 +1287,13 @@
       ]
     },
     {
-      "issue": 151,
-      "primary_domain": "installer",
-      "milestone": "M2",
-      "milestone_title": "M2 — Mutation and Transaction Safety",
-      "priority": "p0",
-      "type": "security",
-      "status": "ready",
-      "parent_epic": 288,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "source-acquisition",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
       "issue": 152,
       "primary_domain": "installer",
       "milestone": "M2",
       "milestone_title": "M2 — Mutation and Transaction Safety",
       "priority": "p0",
       "type": "security",
-      "status": "ready",
+      "status": "partial",
       "parent_epic": 288,
       "blocked_by": [],
       "blocks": [],
@@ -2796,13 +2772,9 @@
       "milestone_title": "M3 — Policy and Resolution Engine",
       "priority": "p0",
       "type": "architecture",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 289,
-      "blocked_by": [
-        259,
-        260,
-        264
-      ],
+      "blocked_by": [],
       "blocks": [
         249,
         250,
@@ -3027,49 +2999,6 @@
       ]
     },
     {
-      "issue": 259,
-      "primary_domain": "policy",
-      "milestone": "M3",
-      "milestone_title": "M3 — Policy and Resolution Engine",
-      "priority": "p0",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 289,
-      "blocked_by": [],
-      "blocks": [
-        123,
-        124,
-        128,
-        248
-      ],
-      "implementation_group": "yaml-parser-parity",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 260,
-      "primary_domain": "policy",
-      "milestone": "M3",
-      "milestone_title": "M3 — Policy and Resolution Engine",
-      "priority": "p0",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 289,
-      "blocked_by": [],
-      "blocks": [
-        248
-      ],
-      "implementation_group": "yaml-parser-parity",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
       "issue": 261,
       "primary_domain": "policy",
       "milestone": "M3",
@@ -3117,26 +3046,6 @@
       "blocked_by": [],
       "blocks": [],
       "implementation_group": "fail-closed-resolution",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 264,
-      "primary_domain": "policy",
-      "milestone": "M3",
-      "milestone_title": "M3 — Policy and Resolution Engine",
-      "priority": "p0",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 289,
-      "blocked_by": [],
-      "blocks": [
-        248
-      ],
-      "implementation_group": "yaml-parser-parity",
       "closure_evidence": [
         "implementation",
         "negative-regression",
