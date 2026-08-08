@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "f3c7ed8a4f596a2123d4cad06719dbed984048d8",
+  "generated_for_master": "b17a3bb4dee1879591d9981ebb5f990ec43c8413",
   "milestones": [
     {
       "key": "M0",
@@ -3218,7 +3218,7 @@
       ]
     },
     {
-      "issue": 310,
+      "issue": 315,
       "primary_domain": "evidence",
       "milestone": "M1",
       "milestone_title": "M1 — Evidence Trust Foundation",
@@ -3228,10 +3228,64 @@
       "parent_epic": 287,
       "blocked_by": [],
       "blocks": [],
-      "implementation_group": "producer-envelope",
+      "implementation_group": "json-document-contract",
       "closure_evidence": [
         "implementation",
         "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 316,
+      "primary_domain": "governance",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p1",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "release-digest-integrity",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 317,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 — Policy and Resolution Engine",
+      "priority": "p2",
+      "type": "architecture",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "override-engine",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 318,
+      "primary_domain": "profiles",
+      "milestone": "M3",
+      "milestone_title": "M3 — Policy and Resolution Engine",
+      "priority": "p2",
+      "type": "documentation",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "profile-schema",
+      "closure_evidence": [
+        "implementation",
+        "doc-contract-review",
         "exact-head-ci"
       ]
     }

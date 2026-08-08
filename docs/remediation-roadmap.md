@@ -1,8 +1,8 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `f3c7ed8a4f596a2123d4cad06719dbed984048d8` · 12 blocking workflows expected on `push` · **167 open issues** = **152 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `b17a3bb4dee1879591d9981ebb5f990ec43c8413` · 12 blocking workflows expected on `push` · **170 open issues** = **155 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
-**Original audit baseline:** `8f146d11`, 158 findings, all open. **#284** (PR #301) and **#285** (PR #303) are closed on full acceptance evidence — see the closure comment on each. **#306** was opened 2026-08-07 from a real CI failure found while accounting master, so the finding count is unchanged at 156.
+**Original audit baseline:** `8f146d11`, 158 findings, all open. **Closed on full acceptance evidence:** #284, #285, #151, #259, #260, #264, #182, #310 — see the closure comment on each. **Newly filed from findings surfaced BY the work:** #306, #310 (now closed), #315, #316, #317, #318. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
 **Machine-readable source of truth:** [`config/remediation-plan.json`](../config/remediation-plan.json).
 **Validated by:** `tests/prod/112-remediation-plan.sh`.
@@ -16,7 +16,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **152 findings remain open, 123 of them P0.**
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **155 findings remain open, 123 of them P0.** Four were opened on 2026-08-08 from findings surfaced *by* remediation work (#315–#318); the count rising is the programme working, not regressing.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -27,10 +27,10 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | 1 | 0 | #284 and #285 **done**; #306 (compat-gate determinism) remains |
-| M1 — Evidence Trust Foundation | #287 | 15 | 15 | The shared trust primitives everything else consumes |
+| M1 — Evidence Trust Foundation | #287 | 16 | 15 | The shared trust primitives everything else consumes — #182 and #310 **done**; **#204 is the last M4 blocker** |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
-| M3 — Policy and Resolution Engine | #289 | 19 | 16 | Resolve the plan before acting on it — parser parity (#259/#260/#264) **done** |
-| M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness, on the M1/M3 foundations |
+| M3 — Policy and Resolution Engine | #289 | 21 | 17 | Resolve the plan before acting on it — parser parity **done**; #248 **partial** (manifest schema landed, AC2 outstanding) |
+| M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
 | M5 — Documentation and External Validation | #38 | 4 | 0 | Say what it does; prove it against real consumers |
 
 ---
@@ -55,7 +55,7 @@ This is the single most important sequencing decision in the programme, and the 
 | Blocker | Blocks | What it is |
 | --- | --- | --- |
 | ~~#182~~ ✓ | ~~65~~ | trusted producer identity — **DONE**, PR #309. M4 ready work went from **10 to 61** the moment it landed |
-| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence |
+| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one |
 | #146 | 8 | bounded safe-integer limits for all collector counts |
 | #147 | 5 | atomic, symlink-safe publication primitive |
 
@@ -88,7 +88,7 @@ Internal order within M3:
 ```
 yaml-parser-parity (#259, #260, #264)   ✓ DONE — PR #305, master 23129f56
         ↓
-profile-schema (#248, #251) ──→ profile-provenance (#252, #255)   ← #248 now UNBLOCKED
+profile-schema (#248 PARTIAL, #251) ──→ profile-provenance (#252, #255)
         ↓
 profile-inheritance (#249, #250) · applicability (#253) · one-of-graph (#254)
         ↓
