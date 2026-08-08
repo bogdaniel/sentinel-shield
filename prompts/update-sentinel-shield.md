@@ -34,7 +34,9 @@ report on any failure.**
   dedicated tools dir. It validates the destination and **refuses** (exit 2, nothing deleted) `.`,
   `..`, `/`, `$HOME`, the repo root, an ancestor, or a symlink that escapes the tools dir.
 - Do **not** set `SENTINEL_SHIELD_REF` to a moving branch (`main`, `master`, `HEAD`, `latest`) or to
-  an unreleased / placeholder GA tag. Only an immutable tag or full SHA that already exists upstream.
+  an unreleased / placeholder GA tag. Only a tag or full SHA that already exists upstream — and
+  prefer the full SHA: a tag name can be force-moved, so it is a request, not an identity.
+- Do **not** pass `--no-verify`. It no longer exists (exit 2); the HEAD/commit check is mandatory.
 - Do **not** rewrite git history, mutate/move tags, or force-push.
 - Do **not** commit secrets, `.env`, `.claude/`, `vendor/`, `node_modules/`, the acquired
   `${SENTINEL_SHIELD_PATH}` tree, or raw scanner artifacts.
@@ -56,7 +58,14 @@ this succeeds:
 sh acquire-sentinel-shield.sh --repository bogdaniel/sentinel-shield --ref "${SENTINEL_SHIELD_REF}" --destination "${SENTINEL_SHIELD_PATH}" --verify
 ```
 
-`--verify` confirms the ref is immutable and the checkout matches it. Then independently confirm the
+`--verify` confirms the checkout's HEAD equals the commit the ref resolved to. It does **not** make
+a tag immutable: a tag can be force-moved or recreated, so a bare tag is recorded as
+`trust.anchored: false` and must not be described as an immutable identity. For a
+production/release update, anchor it and let acquisition fail closed when it cannot:
+`--require-trust anchored` plus one of `--ref <full 40-hex SHA>`, `--verify-source tree-checksum
+--expected-tree <40-hex>`, or `--verify-source signature --trusted-signers <file>`. If a tag you
+already installed now resolves to a **different** commit, acquisition stops with a moved-tag
+incident (exit 5) — report it, do not work around it. Then independently confirm the
 checkout, ref, and resolved commit before trusting it:
 
 ```sh

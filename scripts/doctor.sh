@@ -289,10 +289,30 @@ if [ -f "$REF_FILE" ]; then
       # Name-spelling heuristics can never PROVE a name is a tag rather than a
       # moving branch (e.g. 'release','stable'), so anything unproven fails closed.
       _rkind=$(jq -r '.ref_kind // ""' "$REF_FILE")
-      if [ "$_rkind" = "tag" ]; then
-        ok "immutable ref configured: tag '$_ref' -> commit $_rcommit"
-      else
+      if [ "$_rkind" != "tag" ]; then
         cfgfail "source-ref '$_ref' is not provably immutable (acquisition recorded no ref_kind=tag) — refusing as a possible moving branch"
+      else
+        # A tag is proven to BE a tag; that is not the same as being immutable (#151). A tag can
+        # be deleted and recreated or force-moved, so only an acquisition that recorded a TRUST
+        # ANCHOR — a requested commit SHA, a matched expected tree, or a signature accepted under
+        # an explicit trusted-signer policy — may be reported as an immutable identity.
+        _sver=$(jq -r '.schema_version // ""' "$REF_FILE")
+        _anch=$(jq -r '.trust.anchored // ""' "$REF_FILE")
+        _tlevel=$(jq -r '.trust.level // ""' "$REF_FILE")
+        if [ "$_anch" = "true" ]; then
+          ok "immutable source identity: tag '$_ref' -> commit $_rcommit (trust anchor: ${_tlevel:-unknown})"
+        elif [ -n "$_sver" ]; then
+          # A v2 record that says anchored=false is a correct, complete record of an UNANCHORED
+          # acquisition. Degraded, not a config failure: the install is internally consistent, it
+          # simply cannot prove the tag still means what it meant.
+          warn "source-ref tag '$_ref' -> commit $_rcommit is NOT anchored (trust level: ${_tlevel:-resolved-ref}) — a tag can be moved, so this records what the name meant at acquisition time, not an immutable identity. Re-acquire with --require-trust anchored (pin --ref <40-hex SHA>, or add --verify-source tree-checksum / signature with --trusted-signers)"
+        else
+          # A pre-trust-model (version-1) record. It never captured an anchor, so it cannot be
+          # read as one — but it also cannot be retroactively downgraded into a failure or a
+          # warning for an install that was valid under the contract it was written to. Report
+          # exactly what it proves and no more; re-acquisition is what upgrades it.
+          ok "source-ref recorded: tag '$_ref' -> commit $_rcommit (pre-trust-model record — consistent, but NOT proven immutable: no trust anchor was captured; re-acquire to obtain one)"
+        fi
       fi
     fi
   fi

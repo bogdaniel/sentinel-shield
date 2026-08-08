@@ -615,6 +615,14 @@ v2 hardens the install/upgrade and release-promotion paths to **fail closed**:
   symlink that would escape the tools dir; only a dedicated tools directory is allowed.
   Its `.sentinel-shield-ref` record is normalized and **never stores a local/home path**
   (local sources record `repository_kind:"local"`, `repository:null`).
+- **A tag name is not an identity.** A git tag can be force-moved or recreated, so acquisition
+  records the requested ref, the resolved commit, and the resolved tree separately, plus an
+  explicit **trust anchor** — a requested commit SHA, a matched expected tree, or a signature
+  accepted under a named trusted-signer policy. Without one, the record says
+  `trust.anchored: false` and nothing calls it immutable; `--require-trust anchored` fails closed
+  (exit 5) instead. A tag that resolves to a new commit, or moves between resolution and fetch,
+  is a reported incident rather than a silent upgrade — and `--no-verify` no longer exists
+  ([`docs/source-verification.md`](docs/source-verification.md)).
 - **Recovery never lies.** If a transactional install/sync/migration cannot complete its
   own rollback, it **exits 4**, retains the operation lock + snapshots
   (`state:"rollback-incomplete"`), and prints manual recovery steps — it never claims

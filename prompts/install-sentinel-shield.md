@@ -70,7 +70,7 @@ copy yet: read it from the engine repository at the ref you intend to pin
 re-check `$SENTINEL_SHIELD_PATH/config/release-status.json` once step 4 has run and correct the pin
 if they disagree.
 
-**4. Acquire an immutable checkout.** Fetch Sentinel Shield at the pinned ref into
+**4. Acquire the checkout.** Fetch Sentinel Shield at the pinned ref into
 `$SENTINEL_SHIELD_PATH` using the acquire bootstrap (the one script you obtain from the Sentinel
 Shield repo at the pinned ref; it is the only Sentinel command not run from the checkout, because it
 *creates* the checkout). Run with `--verify` so the resolved commit is checked:
@@ -93,6 +93,18 @@ tools dir, never at your repo root. The acquisition record
 (`$SENTINEL_SHIELD_PATH/.sentinel-shield-ref`) is normalized and **never stores a
 local or home path** (a local source records `repository_kind:"local"`,
 `repository:null`).
+
+**A tag name is not an immutable identity.** A git tag can be force-moved or recreated, so
+`--verify` proves only that the checkout matches what the ref resolved to *at that moment*.
+Acquisition records the requested ref, the resolved commit, and the resolved tree separately,
+plus an explicit **trust anchor**: a requested 40-hex commit SHA, a matched `--expected-tree`,
+or a signature accepted under `--trusted-signers`. With none of them the record carries
+`trust.anchored: false` — report that honestly and never call the install immutable. For a
+production or regulated adoption, pin `SENTINEL_SHIELD_REF` to a **full 40-hex SHA** (or supply a
+tree/signature anchor) and add `--require-trust anchored`, which fails closed (exit 5) rather
+than accepting an unanchored tag. Never pass `--no-verify`: it has been removed and now exits 2.
+If a tag you previously installed resolves to a different commit, acquisition stops with a
+moved-tag incident (exit 5) — report it, do not work around it.
 
 **5. Verify the resolved commit SHA.** Record the exact commit the checkout resolved to and confirm
 it matches your intended immutable ref (the acquire `--verify` output, or
