@@ -51,7 +51,7 @@ is stable.
 | `scripts/select-security-summary.sh` CLI | Fail-closed summary selection (example never accepted outside `report-only`). |
 | `scripts/install-baseline.sh` / `scripts/sync-baseline.sh` CLIs | Dry-run-by-default install/sync; `--apply`, `--force`, `--mode`, `--profile`, `--target` flags; hard protections on project-local files. |
 | `reports/security-summary.json` schema | [`schemas/security-summary.schema.json`](../schemas/security-summary.schema.json) — additive (see §2). |
-| Profile manifest schema | [`profiles/profile.manifest.schema.json`](../profiles/profile.manifest.schema.json) — additive (see §3). |
+| Profile manifest schema | [`profiles/profile.manifest.schema.json`](../profiles/profile.manifest.schema.json) — **closed** since #248: unknown fields are rejected, and the schema is enforced at runtime by [`scripts/lib/profile-schema.sh`](../scripts/lib/profile-schema.sh) (see §3). |
 | Accepted-risk schema | [`schemas/accepted-risks.schema.json`](../schemas/accepted-risks.schema.json) — additive; never-suppressible gates stay never-suppressible. |
 | `SENTINEL_SHIELD_*` env var names | The resolver/enforcer contract vars (e.g. `SENTINEL_SHIELD_MODE`, `SENTINEL_SHIELD_FAIL_ON_*`, `SENTINEL_SHIELD_PATH`, `SENTINEL_SHIELD_REF`) keep their names and meaning; new ones are added, existing ones are not silently repurposed. |
 | Exit-code conventions | `0` pass / `1` gate fail / `2` config-or-input error, across the engine scripts. |
@@ -102,11 +102,26 @@ Authoritative reference: [`raw-report-contract.md`](raw-report-contract.md).
 Authoritative reference: [`profile-driven-adoption.md`](profile-driven-adoption.md) and
 the schema [`profiles/profile.manifest.schema.json`](../profiles/profile.manifest.schema.json).
 
-- **The schema is additive.** It sets `additionalProperties: true` at the top level, so
-  new manifest fields can be introduced without breaking existing manifests or consumers.
-- **The four file modes are stable:** `create-if-missing`, `overwrite-if-force`,
-  `sync-managed-block` (reserved; treated like `manual` today), and `manual`. Their
-  meanings do not change before `v1.0`.
+- **The schema is CLOSED, and enforced at runtime (changed in #248).** It sets
+  `additionalProperties: false` at the top level and on every tool object, and
+  [`scripts/lib/profile-schema.sh`](../scripts/lib/profile-schema.sh) runs it — the resolver,
+  installer, sync, upgrade planner, migration, bootstrapper, release packaging and the
+  repository audit all validate a manifest before reading any field of it. Previously the
+  schema promised `additionalProperties: true` and nothing ran it at all, so an unknown field
+  was accepted by a document that no code consulted. An unknown field is now an error, because
+  it is either a typo that silently does nothing or a field a newer engine understands and this
+  one does not. There is deliberately no `x-` extension escape hatch.
+- **`tool_policy_version` is required whenever a manifest declares `tools` or `extends`,** and
+  must be the integer `2`. A manifest that participates in tool-policy resolution must state the
+  version it was written against; a lower value fails with a pointer to `scripts/migrate-v1.sh`,
+  a higher value fails because this engine cannot execute a newer tool policy.
+- **Migration for out-of-tree manifests:** run
+  `sh scripts/validate-profile-manifest.sh <manifest>`. It prints one machine-readable line per
+  violation. The full contract is in
+  [`profile-manifest-validation.md`](profile-manifest-validation.md).
+- **The five file modes are stable:** `create-if-missing`, `merge-required-lines`,
+  `overwrite-if-force`, `sync-managed-block` (reserved; treated like `manual` today), and
+  `manual`. Their meanings do not change before `v1.0`.
 - **The `never_touch` list is honored** by both install and sync. Project-local files
   (e.g. `.sentinel-shield/accepted-risks.json`, `phpstan-baseline.neon`, `phpstan.neon`)
   are **never** created or overwritten — regardless of `--force`.

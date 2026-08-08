@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-fixture",
+  "description": "Negative fixture for tests/prod/300-profile-manifest-schema.sh.",
+  "tool_policy_version": 2,
+  "files": [],
+  "tools": {
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "runner": "scripts/runners/actionlint.sh",
+      "report": "reports/raw/phpstan.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "tests": {
+      "policy": "one-of",
+      "alternatives": [
+        "pest",
+        "pest"
+      ]
+    },
+    "pest": {
+      "policy": "one-of",
+      "alternatives": [
+        "tests"
+      ]
+    }
+  }
+}

@@ -3927,19 +3927,34 @@ v3_test_split() {
 # fail-closed, combination manifest resolution, runner read-only flags.
 v3_batch4() {
 	_R="$ROOT/scripts/resolve-effective-profile.sh"
-	# schema: policy=one-of REQUIRES a non-empty alternatives array (if check-jsonschema present).
+	# (#248) Manifest schema guards. These used to run ONLY when check-jsonschema
+	# happened to be installed — it never is in CI, so the branch logged "SKIPPING"
+	# and the schema validated nothing. They now run against the canonical
+	# validator, which is a hard dependency of the resolver and always present.
+	_V="$ROOT/scripts/validate-profile-manifest.sh"
+	_sd=$(mktemp -d)
+	# POSITIVE CONTROL FIRST: a validator that rejects everything proves nothing.
+	printf '{"profile":"x","tool_policy_version":2,"files":[],"tools":{"t":{"policy":"required","execution":{"main":true}}}}' > "$_sd/good.json"
+	sh "$_V" --quiet "$_sd/good.json" >/dev/null 2>&1 && _r=0 || _r=1
+	v3_check "(schema) positive control: a well-formed manifest is ACCEPTED" "$_r" "0"
+	printf '{"profile":"x","tool_policy_version":2,"files":[],"tools":{"t":{"policy":"one-of","execution":{"main":true}}}}' > "$_sd/bad.json"
+	sh "$_V" --quiet "$_sd/bad.json" >/dev/null 2>&1 && _r=0 || _r=1
+	v3_check "(schema) one-of without alternatives -> rejected" "$_r" "1"
+	printf '{"profile":"x","tool_policy_version":9,"files":[]}' > "$_sd/badv.json"
+	sh "$_V" --quiet "$_sd/badv.json" >/dev/null 2>&1 && _r=0 || _r=1
+	v3_check "(schema) tool_policy_version 9 -> rejected (const 2)" "$_r" "1"
+	printf '{"profile":"x","tool_policy_version":2,"files":[],"tools":{"t":{"policy":"required","execution":{"main":true},"reprot":"reports/raw/t.json"}}}' > "$_sd/badf.json"
+	sh "$_V" --quiet "$_sd/badf.json" >/dev/null 2>&1 && _r=0 || _r=1
+	v3_check "(schema) unknown tool field -> rejected" "$_r" "1"
+	# The published JSON Schema is the same contract; if check-jsonschema IS present,
+	# it must agree with the shell validator on these cases rather than diverge.
 	if command_exists check-jsonschema; then
-		_sd=$(mktemp -d)
-		printf '{"profile":"x","tool_policy_version":2,"files":[],"tools":{"t":{"policy":"one-of"}}}' > "$_sd/bad.json"
+		check-jsonschema --schemafile "$ROOT/profiles/profile.manifest.schema.json" "$_sd/good.json" >/dev/null 2>&1 && _r=0 || _r=1
+		v3_check "(schema) check-jsonschema agrees: well-formed manifest ACCEPTED" "$_r" "0"
 		check-jsonschema --schemafile "$ROOT/profiles/profile.manifest.schema.json" "$_sd/bad.json" >/dev/null 2>&1 && _r=0 || _r=1
-		v3_check "(schema) one-of without alternatives -> rejected" "$_r" "1"
-		printf '{"profile":"x","tool_policy_version":9,"files":[]}' > "$_sd/badv.json"
-		check-jsonschema --schemafile "$ROOT/profiles/profile.manifest.schema.json" "$_sd/badv.json" >/dev/null 2>&1 && _r=0 || _r=1
-		v3_check "(schema) tool_policy_version 9 -> rejected (const 2)" "$_r" "1"
-		rm -rf "$_sd"
-	else
-		log_warn "(schema) check-jsonschema absent; SKIPPING schema-guard cases (jq-validity only)"
+		v3_check "(schema) check-jsonschema agrees: one-of without alternatives rejected" "$_r" "1"
 	fi
+	rm -rf "$_sd"
 	# compat-resolver: cr_manifest_path resolves a combination profile.
 	v3_check "(compat) cr_manifest_path resolves combination" \
 		"$( ( cd "$ROOT" && sh -c '. scripts/lib/sentinel-shield-common.sh; . scripts/lib/compat-resolver.sh; cr_manifest_path "$(pwd)" laravel-react-docker' ) 2>/dev/null | grep -c 'combinations/laravel-react-docker.manifest.json')" "1"

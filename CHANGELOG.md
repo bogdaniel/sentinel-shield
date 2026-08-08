@@ -15,6 +15,54 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Changed — profile manifests are schema-validated before inheritance and composition (#248)
+
+- **The old gate.** A profile manifest reached the resolver on two facts: `jq -e .` said it was
+  JSON, and every `tools[*].policy` string was in the enum. Nothing else was checked anywhere at
+  runtime — not `extends` identifiers, tool field types, execution booleans, report/runner/
+  config/executable paths, packages, alternatives, fallback order, the tool-policy version, or
+  unknown fields. Those values went straight into shell `for` loops, jq merge logic, path probes
+  and the installer plan.
+- **The schema that never ran.** `profiles/profile.manifest.schema.json` existed, but it was
+  applied only inside an `if command_exists check-jsonschema` branch of `self-test.sh`. That
+  tool is not a dependency of this engine and is not installed in CI, so the branch logged
+  "SKIPPING" and the schema validated nothing. It had also drifted from the manifests it
+  describes: shipped profiles use `tools[*].audit` and `notes`, and four top-level
+  `recommended_*_tools` keys, none of which the schema declared — and `toolPolicy` is
+  `additionalProperties: false`, so every shipped profile would have FAILED its own schema had
+  anything ever run it.
+- **One validator, mandatory.** `scripts/lib/profile-schema.sh` is now the runtime authority and
+  is run by the resolver (every manifest in the inheritance DAG, and the arbitrary-manifest
+  entry point), `install-baseline`, `sync-baseline`, `plan-upgrade`, `migrate-v1`,
+  `bootstrap-profile-tools`, release packaging, and the repository audit — always **before** any
+  field of the manifest is read or merged. `scripts/validate-profile-manifest.sh` is its CLI.
+  The resolver fails closed if the library is absent rather than reverting to the old behaviour.
+- **Cross-manifest semantics.** `alternatives`/`requires` may name a tool a *parent* declares, so
+  reference integrity and the one-of group graph are validated once on the merged inheritance
+  result. This closes a silent hole: one-of groups are DERIVED as "a one-of tool nobody lists as
+  an alternative", so a mutually-referencing set derived **zero** groups and the whole
+  requirement disappeared without an error.
+- **BREAKING — the manifest schema is now closed.** `additionalProperties: false` at the top
+  level and on every tool object; there is no `x-` extension escape hatch. `tool_policy_version`
+  (integer `2`) is **required** whenever a manifest declares `tools` or `extends`. Four shipped
+  manifests gained the declaration (`docker`, `hardened-enterprise`, and both combinations), and
+  the `note`/`notes` spelling drift in `laravel`/`symfony` was normalised to `notes`.
+  `docs/product-contract.md` §3 previously promised `additionalProperties: true`; that promise is
+  replaced and the change is called out there.
+- **Tightened paths.** `report` must match `^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*\.json$` (the
+  old `[^/]+` admitted spaces, `$`, backticks and a leading dot); `executable[]`, `runner`,
+  `audit`, `config.path` and entry-list `source`/`target` must contain no whitespace, glob
+  characters, control characters, leading dash or `.`/`..` segment. `ep__exe_present` iterates
+  `executable[]` **unquoted**, so a glob there changed which binary was probed. A declared
+  `runner`/`audit` must also exist in the engine.
+- **A gating control must run.** `policy` `required`/`recommended`/`one-of` with no execution
+  stage set to `true` is now rejected: a gate that can never fire.
+- **Regression evidence.** `tests/prod/300-profile-manifest-schema.sh` carries 49 per-manifest
+  and 6 composed negative fixtures plus positive controls, asserts schema/validator parity, and
+  re-runs every real entry point against seven mutations of a real shipped manifest in a
+  synthetic tree. It recomputes the pre-#248 gate's verdict live: **47 of the 49 manifests this
+  validator rejects were accepted by the old one.**
+
 ### Changed — a tag name is no longer treated as an immutable source identity (#151, #152)
 
 - **The old claim.** `acquire-sentinel-shield.sh` described any tag as an "immutable ref".

@@ -6,6 +6,7 @@
     "node",
     "react"
   ],
+  "tool_policy_version": 2,
   "extends": [
     "node",
     "react"

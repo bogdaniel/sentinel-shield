@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-composed",
+  "description": "Composed-semantics negative fixture:\u6bcf manifest is individually valid; the defect only exists after inheritance is merged.",
+  "tool_policy_version": 2,
+  "files": [],
+  "tools": {
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "requires": [
+        "psalm"
+      ],
+      "report": "reports/raw/phpstan.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    }
+  }
+}

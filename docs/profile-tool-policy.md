@@ -10,8 +10,11 @@ Machine schemas:
 
 - `schemas/tool-policy.schema.json` — the per-tool policy object and the profile-level
   `tools` map (`$defs.toolPolicy`, `$defs.toolsMap`).
-- `profiles/profile.manifest.schema.json` — adds optional `tools`, `extends`,
-  `tool_policy_version` to a profile manifest.
+- `profiles/profile.manifest.schema.json` — the profile manifest, including `tools`,
+  `extends` and `tool_policy_version`. **Enforced at runtime** by
+  `scripts/lib/profile-schema.sh` before inheritance or composition runs — see
+  [`profile-manifest-validation.md`](profile-manifest-validation.md). `tool_policy_version`
+  is required (integer `2`) whenever a manifest declares `tools` or `extends`.
 - `schemas/installation.schema.json` — `.sentinel-shield/installation.json`.
 - `schemas/tool-policy-override.schema.json` — project `.sentinel-shield/tool-policy.yaml`.
 - `schemas/security-summary.schema.json` — per-tool `status` enum (the result states).

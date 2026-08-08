@@ -43,7 +43,8 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Package identifier, e.g. 'larastan/larastan' or 'eslint'."
+          "description": "Package identifier, e.g. 'larastan/larastan' or 'eslint'.",
+          "pattern": "^[A-Za-z0-9._@/-]+$"
         },
         "scope": {
           "type": "string",
@@ -57,7 +58,8 @@
         "compatibility": {
           "type": "string",
           "default": "auto",
-          "description": "'auto' to let the installer pick a version compatible with the project's language/framework runtime, or an explicit version constraint string (e.g. '^2.0', '>=1.10 <2')."
+          "description": "'auto' to let the installer pick a version compatible with the project's language/framework runtime, or an explicit version constraint string (e.g. '^2.0', '>=1.10 <2').",
+          "minLength": 1
         }
       }
     },
@@ -86,8 +88,7 @@
       "description": "The tool's project-local configuration file and how Sentinel Shield treats it.",
       "properties": {
         "path": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "#/$defs/safeRelativePath",
           "description": "Project-relative config path, e.g. 'phpstan.neon'."
         },
         "classification": {
@@ -115,8 +116,8 @@
           "$ref": "#/$defs/policy"
         },
         "category": {
-          "type": "string",
-          "description": "Grouping label for reporting, e.g. 'static-analysis', 'secrets', 'sca', 'tests', 'architecture', 'iac', 'container', 'dast', 'supply-chain'."
+          "$ref": "#/$defs/toolKey",
+          "description": "Grouping label for reporting, e.g. 'static-analysis', 'secrets', 'sca', 'tests', 'architecture', 'iac', 'container', 'dast', 'supply-chain'. Same safe-identifier grammar as a tool key."
         },
         "packages": {
           "type": "array",
@@ -127,47 +128,91 @@
         },
         "executable": {
           "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/safeExecutablePath"
           },
           "description": "Ordered candidate executables; the runner picks the first that exists, e.g. ['vendor/bin/phpstan','phpstan']."
         },
         "runner": {
-          "type": "string",
-          "description": "Path to the runner script that produces the normalized report, e.g. 'scripts/runners/laravel-phpstan.sh'."
+          "allOf": [
+            {
+              "$ref": "#/$defs/safeRelativePath"
+            },
+            {
+              "pattern": "\\.sh$"
+            }
+          ],
+          "description": "Repo-relative path to the runner script that produces the normalized report, e.g. 'scripts/runners/laravel-phpstan.sh'. Must exist in the engine."
         },
         "report": {
           "type": "string",
-          "pattern": "^reports/raw/[^/]+\\.json$",
-          "description": "Normalized JSON report path under reports/raw/, e.g. 'reports/raw/phpstan.json'."
+          "pattern": "^reports/raw/[A-Za-z0-9][A-Za-z0-9._-]*\\.json$",
+          "description": "Normalized JSON report path under reports/raw/, e.g. 'reports/raw/phpstan.json'. Tighter than [^/]+ on purpose: the loose form admitted spaces, '$', backticks and a leading dot, all of which reach a shell path probe."
+        },
+        "audit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/safeRelativePath"
+            },
+            {
+              "pattern": "\\.sh$"
+            }
+          ],
+          "description": "Repo-relative path to an audit script this tool is implemented by, e.g. 'scripts/audits/dockle.sh'. Must exist in the engine."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Free-text maintainer note. Informational only; never consulted for a policy decision."
         },
         "missing_behavior": {
           "$ref": "#/$defs/missingBehavior"
         },
         "requires": {
           "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/toolKey"
           },
-          "description": "Other tool keys that must be present for this tool to be meaningful (hard prerequisites)."
+          "description": "Other tool keys that must be present for this tool to be meaningful (hard prerequisites). Each must resolve to a tool declared somewhere in the inheritance DAG."
         },
         "alternatives": {
           "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/toolKey"
           },
-          "description": "For policy=one-of: the sibling tool keys that together satisfy a single requirement (e.g. tests: alternatives [pest, phpunit])."
+          "description": "For policy=one-of ONLY: the sibling tool keys that together satisfy a single requirement (e.g. php-tests: alternatives [pest, phpunit]). Ignored by the resolver on any other policy, so declaring it elsewhere is rejected."
         },
         "execution": {
           "$ref": "#/$defs/execution"
         },
         "config": {
           "$ref": "#/$defs/config"
+        },
+        "selection": {
+          "type": "string",
+          "enum": [
+            "prefer-existing"
+          ],
+          "description": "For policy=one-of ONLY: how a member is chosen. Only 'prefer-existing' is implemented; any other value would be emitted and then silently ignored."
+        },
+        "fallback_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/toolKey"
+          },
+          "description": "For policy=one-of ONLY: the order in which members are preferred. fallback_order[0] is what bootstrap-profile-tools.sh INSTALLS when the group is unsatisfied, so it must be a permutation of 'alternatives'."
         }
       },
       "allOf": [
         {
+          "$comment": "policy=one-of must offer at least one alternative, or the requirement can never be satisfied.",
           "if": {
             "properties": {
               "policy": {
@@ -181,12 +226,28 @@
           "then": {
             "required": [
               "alternatives"
-            ],
+            ]
+          }
+        },
+        {
+          "$comment": "alternatives / fallback_order / selection are one-of vocabulary; the resolver ignores them on any other policy, so declaring them there is a silent no-op.",
+          "if": {
             "properties": {
-              "alternatives": {
-                "type": "array",
-                "minItems": 1
+              "policy": {
+                "not": {
+                  "const": "one-of"
+                }
               }
+            },
+            "required": [
+              "policy"
+            ]
+          },
+          "then": {
+            "properties": {
+              "alternatives": false,
+              "fallback_order": false,
+              "selection": false
             }
           }
         }
@@ -201,6 +262,40 @@
       "additionalProperties": {
         "$ref": "#/$defs/toolPolicy"
       }
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          },
+          {
+            "pattern": "(^|/)\\.(/|$)"
+          }
+        ]
+      },
+      "description": "A repo/project-relative path with no whitespace, glob characters, control characters, leading dash, '.' or '..' segment. These values reach shell path probes and unquoted `for` loops."
+    },
+    "safeExecutablePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          },
+          {
+            "pattern": "(^|/)\\.(/|$)"
+          }
+        ]
+      },
+      "description": "A bare command name, or a relative/absolute path, restricted to the same safe character set. ep__exe_present iterates these UNQUOTED, so whitespace or a glob character would change which executable is probed."
     }
   }
 }

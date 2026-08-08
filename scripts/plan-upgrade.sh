@@ -33,6 +33,8 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
 . "$SCRIPT_DIR/lib/installation-metadata.sh"
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 # Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
 # Sourced defensively (optional add-on). NOTE: `--output <path>` still writes the
 # report to <path>; ONLY the exact token `--output json` selects the envelope
@@ -79,7 +81,8 @@ for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PR
 	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
 done
 [ -n "$MANIFEST" ] || { log_error "no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)"; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { log_error "manifest not valid JSON: $MANIFEST"; exit 2; }
+# (#248) FULL schema + semantic validation before any manifest field is read.
+ps_validate_manifest "$MANIFEST" install "plan-upgrade --profile $PROFILE"
 
 # Installed side (optional): read profile_schema + enabled_tools from the record.
 INSTALLED_SCHEMA="null"

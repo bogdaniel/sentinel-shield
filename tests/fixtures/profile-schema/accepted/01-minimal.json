@@ -1,0 +1,6 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-minimal",
+  "description": "POSITIVE CONTROL: the smallest manifest the validator must ACCEPT. A validator that rejects everything is indistinguishable from one that works; this fixture is what proves the negative corpus means something.",
+  "files": []
+}

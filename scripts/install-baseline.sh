@@ -39,6 +39,8 @@ ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 # shellcheck source=scripts/lib/source-config.sh
 . "$SCRIPT_DIR/lib/source-config.sh"
 # shellcheck source=scripts/lib/installation-metadata.sh
@@ -171,7 +173,9 @@ for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PR
 	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
 done
 [ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)" >&2; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { echo "error: manifest is not valid JSON: $MANIFEST" >&2; exit 2; }
+# (#248) FULL schema + semantic validation before any manifest field is read.
+# role=install additionally requires the install/sync surface (`files`).
+ps_validate_manifest "$MANIFEST" install "install-baseline --profile $PROFILE"
 
 # Installation-metadata inputs (schema_version "2"). profile_schema = the manifest's
 # tool_policy_version. repository/resolved_commit are recorded only when known and carry

@@ -82,6 +82,7 @@
     "trivy-fs.json",
     "zizmor.json"
   ],
+  "tool_policy_version": 2,
   "tools": {
     "hadolint": {
       "policy": "required",

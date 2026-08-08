@@ -37,6 +37,8 @@ fi
 
 # shellcheck source=scripts/lib/source-config.sh
 . "$SCRIPT_DIR/lib/source-config.sh"
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 
 TARGET=""; APPLY=0; FORCE=0; PROFILE="laravel-react-docker"; EMIT_PLAN=""; EMIT_INSTALL_PLAN=""; NONINTERACTIVE=0; RECOVER=0
 # Engine source configuration (SENTINEL_SHIELD_REPOSITORY/REF) is CONSUMER-OWNED: a managed
@@ -158,7 +160,8 @@ for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PR
 	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
 done
 [ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE'" >&2; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { echo "error: manifest not valid JSON: $MANIFEST" >&2; exit 2; }
+# (#248) FULL schema + semantic validation before any manifest field is read.
+ps_validate_manifest "$MANIFEST" install "sync-baseline --profile $PROFILE"
 
 # --emit-plan: write the read-only resolver plan (JSON) via resolve-tool-plan.sh, which now
 # resolves the COMPOSED effective profile (named OR combinations/<name>).

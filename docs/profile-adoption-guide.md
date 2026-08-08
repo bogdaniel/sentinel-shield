@@ -14,57 +14,29 @@ stack-compatibility matrix in [`profile-compatibility.md`](profile-compatibility
 
 ---
 
-## 1. Manifest validation summary (tasks 61–64)
+## 1. Manifest validation (#248)
 
-Every shipped profile manifest validates against the manifest JSON Schema
-([`profiles/profile.manifest.schema.json`](../profiles/profile.manifest.schema.json)): required
-`profile` + `files`; each `files`/`workflows`/`docs` entry has exactly `source`, `target`,
-`mode` (no extra keys); `mode` is one of `create-if-missing | overwrite-if-force |
-sync-managed-block | manual`; `never_touch` / `required_scripts` / `recommended_raw_reports`
-are string arrays. The repository self-test also asserts this (see `scripts/self-test.sh`
-`v023-regression`, check "all profile manifests valid").
+Every profile manifest is validated by **one** validator,
+[`scripts/lib/profile-schema.sh`](../scripts/lib/profile-schema.sh), before any consumer
+reads a field of it. Its published JSON-Schema face is
+[`profiles/profile.manifest.schema.json`](../profiles/profile.manifest.schema.json), and the
+two are asserted equal on every enum, allowlist and pattern by
+`tests/prod/300-profile-manifest-schema.sh`.
 
-### 61–62 — Schema validation, actually run
-
-Run from a Sentinel Shield checkout root:
+This section used to carry a hand-rolled `jq` re-implementation of the schema. That was a
+second interpretation of the same contract, and it had already drifted — it omitted the
+`merge-required-lines` file mode, and it checked none of the tool objects. It is replaced by
+the canonical CLI:
 
 ```sh
-SCHEMA=profiles/profile.manifest.schema.json
-for m in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json; do
-  jq -e '
-    def isentry: (type=="object")
-      and (has("source") and (.source|type=="string") and (.source|length>0))
-      and (has("target") and (.target|type=="string") and (.target|length>0))
-      and (has("mode")   and (.mode|test("^(create-if-missing|overwrite-if-force|sync-managed-block|manual)$")))
-      and (keys - ["source","target","mode"] | length == 0);
-    def entrylist: (type=="array") and (all(.[]; isentry));
-    [ (if (has("profile") and (.profile|type=="string") and (.profile|length>0)) then empty else "bad profile" end),
-      (if (has("files") and (.files|entrylist)) then empty else "bad files[]" end),
-      (if (has("workflows")|not) or (.workflows|entrylist) then empty else "bad workflows[]" end),
-      (if (has("docs")|not) or (.docs|entrylist) then empty else "bad docs[]" end),
-      (if (has("never_touch")|not) or ((.never_touch|type=="array") and all(.never_touch[];type=="string")) then empty else "bad never_touch[]" end),
-      (if (has("required_scripts")|not) or ((.required_scripts|type=="array") and all(.required_scripts[];type=="string")) then empty else "bad required_scripts[]" end),
-      (if (has("recommended_raw_reports")|not) or ((.recommended_raw_reports|type=="array") and all(.recommended_raw_reports[];type=="string")) then empty else "bad recommended_raw_reports[]" end)
-    ] | if length==0 then "PASS \($m)" else "FAIL \($m): \(join("; "))" end
-  ' -r "$m"
-done
+sh scripts/validate-profile-manifest.sh --all            # every shipped manifest, role=install
+sh scripts/validate-profile-manifest.sh path/to/x.json   # one manifest, role=policy
 ```
 
-**Result (actually run, v0.1.24 sprint, 2026-06-10):**
-
-```
-PASS  profiles/docker/profile.manifest.json
-PASS  profiles/laravel/profile.manifest.json
-PASS  profiles/node/profile.manifest.json
-PASS  profiles/php-library/profile.manifest.json
-PASS  profiles/react/profile.manifest.json
-PASS  profiles/symfony/profile.manifest.json
-PASS  profiles/combinations/laravel-react-docker.manifest.json
-PASS  profiles/combinations/node-react.manifest.json
-```
-
-8 / 8 manifests valid; exit 0. (No `ajv`/`check-jsonschema`/python-`jsonschema` is required —
-the check encodes the schema's constraints in `jq`, matching what `self-test.sh` enforces in CI.)
+Exit `0` when every manifest is valid, `2` otherwise, with one machine-readable
+`CODE field=... reason=...` line per violation. The full rule set — identifier grammar, safe
+paths, version handling, one-of graph semantics — is documented in
+[`profile-manifest-validation.md`](profile-manifest-validation.md).
 
 ### 63 — Existing docs this guide points to
 
