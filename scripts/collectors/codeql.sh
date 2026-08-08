@@ -6,12 +6,16 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="codeql"
+FIXTURE=0
 INPUT="reports/raw/codeql.json"
 while [ $# -gt 0 ]; do case "$1" in
   --input) INPUT="${2:?--input requires a value}"; shift 2 ;;
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: codeql.sh [--input <path>] [--tool-name <name>]"; exit 0 ;;
+  --fixture-evidence) FIXTURE=1; shift ;;
+  -h|--help) echo "Usage: codeql.sh [--input <path>] [--tool-name <name>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"
@@ -20,7 +24,11 @@ ss_collector_guard "$TOOL" "$INPUT"
 # {critical,high,medium} object the extraction below already falls back to — an
 # earlier revision only matched the native form, turning that supported input into a
 # hard execution-error.
-ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.runs? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# #182: the bare `{critical,high,medium}` alternative is GONE — it let any writer of this
+# path assert clean counts with a positive health signal. NOT in a command substitution:
+# ne_gate_input must run in THIS shell so its refusal can stop the collector.
+ne_gate_input "$TOOL" "$INPUT" '(type == "object") and ((.runs? | type) == "array")' \
+	'{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}' "$FIXTURE" || exit 0
 # Resolve each result's effective SARIF level, then map security-severity to a bucket (#52).
 #
 # Two defects fixed. (1) critical_vulnerabilities was hardcoded 0, so CodeQL alone could
@@ -53,11 +61,20 @@ OV=$(jq '
 		   high_vulnerabilities:     ([$b[]|select(.=="high")]|length),
 		   medium_vulnerabilities:   ([$b[]|select(.=="medium")]|length)}
 	else
-		{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0)}
+		# Reachable only on the fixture path — the production gate above guarantees `.runs`.
+		# These counts are read from the ENVELOPE payload, never from bare top-level keys.
+		{critical_vulnerabilities:(.counts.critical//0), high_vulnerabilities:(.counts.high//0), medium_vulnerabilities:(.counts.medium//0)}
 	end' "$INPUT")
 # Fail closed on negative/float/non-numeric counts (v2.0.2, #51); the builder SUMS these.
 ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
-REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status:$s, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}')
+# The envelope is STAMPED HERE, after this collector parsed the native report itself.
+if [ "$NE_KIND" = fixture ]; then NE_TRUST_TYPE="$NE_TRUST_FIXTURE"; else NE_TRUST_TYPE="$NE_TRUST_NATIVE"; fi
+ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "sarif-json" "$NE_TRUST_TYPE" \
+	"$(printf '%s' "$OV" | jq '{counts:{critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}}')")
+REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --argjson e "$ENVELOPE" \
+	--argjson np "$([ "$NE_KIND" = fixture ] && echo true || echo false)" \
+	'{status:$s, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, evidence:$e}
+	 + (if $np then {non_production:true} else {} end)')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

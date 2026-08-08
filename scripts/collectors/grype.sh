@@ -17,14 +17,18 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="grype"
 INPUT="reports/raw/grype.json"
 PROVENANCE=""
+FIXTURE=0
 while [ $# -gt 0 ]; do case "$1" in
   --input) INPUT="${2:?--input requires a value}"; shift 2 ;;
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--provenance <path>]"; exit 0 ;;
+  --fixture-evidence) FIXTURE=1; shift ;;
+  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq
@@ -57,16 +61,25 @@ PROV=$(ss_provenance_object "$PROVENANCE" "$NV" "$NDB")
 # extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
 # valid non-negative integers, and an unreadable report produced a clean PASS — the
 # exact fail-open this hotfix exists to close.
-ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.matches? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# #182: the bare `{critical,high,medium}` alternative is GONE. It let any process that could
+# write this path assert clean counts with health=ok — a positive claim that the scanner ran.
+# Production evidence is now a native Grype report that Sentinel normalizes itself, or nothing.
+# NOT in a command substitution: ne_gate_input must run in THIS shell so its refusal can
+# stop the collector. See the note on the function.
+ne_gate_input "$TOOL" "$INPUT" '(type == "object") and ((.matches? | type) == "array")' \
+	'{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}' "$FIXTURE" || exit 0
 
-OV=$(jq 'if has("matches") then
-			([.matches[]?.vulnerability.severity // empty | ascii_upcase]) as $s
+# Counts are DERIVED here from the native matches array — never read from the input as
+# pre-computed totals. That is what makes them reconcile with the source report by
+# construction rather than by assertion.
+if [ "$NE_KIND" = fixture ]; then
+	OV=$(jq '{critical_vulnerabilities:(.counts.critical//0), high_vulnerabilities:(.counts.high//0), medium_vulnerabilities:(.counts.medium//0), _native:false}' "$INPUT")
+else
+	OV=$(jq '([.matches[]?.vulnerability.severity // empty | ascii_upcase]) as $s
 			| {critical_vulnerabilities:([$s[]|select(.=="CRITICAL")]|length),
 			   high_vulnerabilities:([$s[]|select(.=="HIGH")]|length),
-			   medium_vulnerabilities:([$s[]|select(.=="MEDIUM")]|length), _native:true}
-		 else
-			{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0), _native:false}
-		 end' "$INPUT")
+			   medium_vulnerabilities:([$s[]|select(.=="MEDIUM")]|length), _native:true}' "$INPUT")
+fi
 # Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
 ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities,.high_vulnerabilities,.medium_vulnerabilities]|add // 0')
@@ -80,7 +93,18 @@ else
 	STATUS="pass"; HEALTH="ok"
 fi
 
+# The evidence envelope is STAMPED HERE, after this collector parsed the native report
+# itself. `trust.type` is produced internally; it is never echoed from the input.
+if [ "$NE_KIND" = fixture ]; then
+	NE_TRUST_TYPE="$NE_TRUST_FIXTURE"
+else
+	NE_TRUST_TYPE="$NE_TRUST_NATIVE"
+fi
+ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "grype-json" "$NE_TRUST_TYPE" \
+	"$(printf '%s' "$OV" | jq '{counts:{critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}}')")
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --arg h "$HEALTH" --argjson p "$PROV" \
-	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, provenance:$p}')
+	--argjson e "$ENVELOPE" --argjson np "$([ "$NE_KIND" = fixture ] && echo true || echo false)" \
+	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, provenance:$p, evidence:$e}
+	 + (if $np then {non_production:true} else {} end)')
 OVCOUNTS=$(printf '%s' "$OV" | jq '{critical_vulnerabilities,high_vulnerabilities,medium_vulnerabilities}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OVCOUNTS"

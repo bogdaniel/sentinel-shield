@@ -17,14 +17,18 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="osv-scanner"
+FIXTURE=0
 INPUT="reports/raw/osv-scanner.json"
 PROVENANCE=""
 while [ $# -gt 0 ]; do case "$1" in
   --input) INPUT="${2:?--input requires a value}"; shift 2 ;;
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: osv-scanner.sh [--input <path>] [--tool-name <name>] [--provenance <path>]"; exit 0 ;;
+  --fixture-evidence) FIXTURE=1; shift ;;
+  -h|--help) echo "Usage: osv-scanner.sh [--input <path>] [--tool-name <name>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq
@@ -51,7 +55,11 @@ fi
 # extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
 # valid non-negative integers, and an unreadable report produced a clean PASS — the
 # exact fail-open this hotfix exists to close.
-ss_shape_or_fail "$TOOL" "$INPUT" '(type == "object") and (((.results? | type) == "array") or ((.critical? | type) == "number"))' '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+# #182: the bare `{critical,high,medium}` alternative is GONE — it let any writer of this
+# path assert clean counts with a positive health signal. NOT in a command substitution:
+# ne_gate_input must run in THIS shell so its refusal can stop the collector.
+ne_gate_input "$TOOL" "$INPUT" '(type == "object") and ((.results? | type) == "array")' \
+	'{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}' "$FIXTURE" || exit 0
 # Bucket by the vulnerability's OWN severity instead of collapsing everything into high (#52).
 #
 # Previously every OSV finding — regardless of severity — became high_vulnerabilities with
@@ -99,7 +107,9 @@ OV=$(jq 'if has("results") then
 			   medium_vulnerabilities:([$b[]|select(.=="medium")]|length),
 			   _results:([.results[]?]|length), _native:true}
 		 else
-			{critical_vulnerabilities:(.critical//0), high_vulnerabilities:(.high//0), medium_vulnerabilities:(.medium//0),
+			# Reachable only on the fixture path — the production gate guarantees `.results`.
+			# Counts come from the ENVELOPE payload, never from bare top-level keys.
+			{critical_vulnerabilities:(.counts.critical//0), high_vulnerabilities:(.counts.high//0), medium_vulnerabilities:(.counts.medium//0),
 			 _results:null, _native:false}
 		 end' "$INPUT")
 # Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
@@ -117,7 +127,13 @@ else
 	STATUS="pass"; HEALTH="ok"
 fi
 
+# The envelope is STAMPED HERE, after this collector parsed the native report itself.
+if [ "$NE_KIND" = fixture ]; then NE_TRUST_TYPE="$NE_TRUST_FIXTURE"; else NE_TRUST_TYPE="$NE_TRUST_NATIVE"; fi
+ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "osv-scanner-json" "$NE_TRUST_TYPE" \
+	"$(printf '%s' "$OV" | jq '{counts:{critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}}')")
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --arg h "$HEALTH" --argjson p "$PROV" \
-	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, provenance:$p}')
+	--argjson e "$ENVELOPE" --argjson np "$([ "$NE_KIND" = fixture ] && echo true || echo false)" \
+	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, provenance:$p, evidence:$e}
+	 + (if $np then {non_production:true} else {} end)')
 OVCOUNTS=$(printf '%s' "$OV" | jq '{critical_vulnerabilities,high_vulnerabilities,medium_vulnerabilities}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OVCOUNTS"
