@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `6135a2687a886d015c82e783278bdadc62e8238c` · 12 blocking workflows expected on `push` · **171 open issues** = **156 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `78d13a958aa1232880073e69f4f3cb39e921a79d` · 12 blocking workflows expected on `push` · **167 open issues** = **152 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open. **#284** (PR #301) and **#285** (PR #303) are closed on full acceptance evidence — see the closure comment on each. **#306** was opened 2026-08-07 from a real CI failure found while accounting master, so the finding count is unchanged at 156.
 
@@ -16,7 +16,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **156 findings remain open, 129 of them P0.**
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **152 findings remain open, 124 of them P0.**
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -28,8 +28,8 @@ No framework-validated or full-platform production-readiness claim may be made u
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | 1 | 0 | #284 and #285 **done**; #306 (compat-gate determinism) remains |
 | M1 — Evidence Trust Foundation | #287 | 15 | 15 | The shared trust primitives everything else consumes |
-| M2 — Mutation and Transaction Safety | #288 | 31 | 31 | Do not damage consumer repositories |
-| M3 — Policy and Resolution Engine | #289 | 22 | 19 | Resolve the plan before acting on it |
+| M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
+| M3 — Policy and Resolution Engine | #289 | 19 | 16 | Resolve the plan before acting on it — parser parity (#259/#260/#264) **done** |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness, on the M1/M3 foundations |
 | M5 — Documentation and External Validation | #38 | 4 | 0 | Say what it does; prove it against real consumers |
 
@@ -86,9 +86,9 @@ Fixing per-producer correctness while the wrong producer set is being aggregated
 Internal order within M3:
 
 ```
-yaml-parser-parity (#259, #260, #264)
+yaml-parser-parity (#259, #260, #264)   ✓ DONE — PR #305, master 23129f56
         ↓
-profile-schema (#248, #251) ──→ profile-provenance (#252, #255)
+profile-schema (#248, #251) ──→ profile-provenance (#252, #255)   ← #248 now UNBLOCKED
         ↓
 profile-inheritance (#249, #250) · applicability (#253) · one-of-graph (#254)
         ↓
@@ -99,7 +99,7 @@ fail-closed-resolution (#261, #262, #263)      [independent]
 executable-resolution (#240)                   [independent]
 ```
 
-Parser parity comes first because schema validation performed by an untrusted parser validates nothing. #258 (eliminate the conflicting override engines) precedes #256/#257/#266 for the same reason: hardening two engines that disagree hardens neither.
+Parser parity comes first because schema validation performed by an untrusted parser validates nothing. **That foundation now exists**: one tokenizing frontend for the policy/profile surface, `yq` never consulted for meaning, duplicate detection at tokenization. #248 is unblocked and is the next M3 lane. Note the scope boundary — three other policy families (`architecture-policy`, `quality-policy`, `testing-discipline-policy`) still parse with `yq` and retain last-wins duplicate semantics; that divergence class is **not** eliminated repository-wide. #258 (eliminate the conflicting override engines) precedes #256/#257/#266 for the same reason: hardening two engines that disagree hardens neither.
 
 ### M4 grouped by contract and channel, not one PR per issue
 
