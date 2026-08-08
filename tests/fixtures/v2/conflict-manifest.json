@@ -9,14 +9,16 @@
       "category": "static-analysis",
       "packages": [{ "name": "phpstan/phpstan", "scope": "dev", "compatibility": "1.11.0" }],
       "executable": ["vendor/bin/phpstan", "phpstan"],
-      "missing_behavior": "fail"
+      "missing_behavior": "fail",
+      "execution": { "pr": true, "main": true, "scheduled": false }
     },
     "deptrac": {
       "policy": "recommended",
       "category": "architecture",
       "packages": [{ "name": "qossmic/deptrac-shim", "scope": "dev", "compatibility": "1.0.2" }],
       "executable": ["vendor/bin/deptrac", "deptrac"],
-      "missing_behavior": "warn"
+      "missing_behavior": "warn",
+      "execution": { "pr": true, "main": true, "scheduled": false }
     }
   }
 }

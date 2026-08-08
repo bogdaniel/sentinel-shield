@@ -34,6 +34,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 # shellcheck source=scripts/lib/control-waivers.sh
 . "$SCRIPT_DIR/lib/control-waivers.sh"
 # Opt-in machine-readable envelope (a no-op unless `--output json` is passed).
@@ -90,7 +92,8 @@ for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PR
 	[ -f "$REPO_ROOT/$cand" ] && { MANIFEST="$REPO_ROOT/$cand"; break; }
 done
 [ -n "$MANIFEST" ] || { log_error "no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)"; exit 2; }
-jq -e . "$MANIFEST" >/dev/null 2>&1 || { log_error "invalid JSON in manifest: $MANIFEST"; exit 2; }
+# (#248) FULL schema + semantic validation before any manifest field is read.
+ps_validate_manifest "$MANIFEST" install "bootstrap-profile-tools --profile $PROFILE"
 
 # Consume the COMPOSED effective profile (Blocker 4) — NOT the raw manifest. For a
 # combination profile (laravel-react-docker) this yields the full composed php+node

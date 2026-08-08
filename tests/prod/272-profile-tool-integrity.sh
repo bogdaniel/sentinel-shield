@@ -72,7 +72,10 @@ fi
 # ...but a genuine PRECONDITION tool must still be accepted: deps-install is
 # `category: setup` with `executable: [npm,pnpm,yarn]`, and its contract is executable
 # presence, not evidence. Over-tightening check 3 rejected it and broke node/react.
-jq '.tools["ss-fake-setup"] = {"policy":"required","category":"setup","executable":["npm"]}' "$_bak" > "$_victim"
+# The injected tool mirrors the real deps-install entry exactly, INCLUDING its
+# execution stages: since #248 the audit also runs the manifest validator, and a
+# gating control that runs at no stage is rejected there (GATING_TOOL_NEVER_RUNS).
+jq '.tools["ss-fake-setup"] = {"policy":"required","category":"setup","executable":["npm"],"missing_behavior":"fail","execution":{"pr":true,"main":true,"scheduled":true}}' "$_bak" > "$_victim"
 if sh "$AUDIT" >/dev/null 2>&1; then
 	pass "audit accepts a category:setup precondition tool declaring an executable"
 else

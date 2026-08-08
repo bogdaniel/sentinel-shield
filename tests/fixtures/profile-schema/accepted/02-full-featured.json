@@ -1,0 +1,147 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-full",
+  "description": "POSITIVE CONTROL: exercises every optional field of the contract at once \u2014 entry lists in all three sections, every string list, tool_notes, packages, executable, runner, audit, report, config, execution, requires, and a well-formed one-of group with an explicit selection and fallback_order. It must ACCEPT, and it must RESOLVE.",
+  "stacks": [
+    "fixture"
+  ],
+  "tool_policy_version": 2,
+  "files": [
+    {
+      "source": "templates/profile.yaml",
+      "target": ".sentinel-shield/profile.yaml",
+      "mode": "create-if-missing"
+    }
+  ],
+  "workflows": [
+    {
+      "source": ".github/workflows/sentinel-shield-pr-fast.yml",
+      "target": ".github/workflows/sentinel-shield-pr-fast.yml",
+      "mode": "overwrite-if-force"
+    }
+  ],
+  "docs": [
+    {
+      "source": "docs/profile-tool-policy.md",
+      "target": "docs/sentinel-shield/profile-tool-policy.md",
+      "mode": "manual"
+    }
+  ],
+  "never_touch": [
+    ".sentinel-shield/accepted-risks.json"
+  ],
+  "required_scripts": [
+    "scripts/build-security-summary.sh"
+  ],
+  "recommended_raw_reports": [
+    "phpstan.json"
+  ],
+  "recommended_pr_fast_tools": [
+    "phpstan"
+  ],
+  "recommended_main_gate_tools": [
+    "phpstan",
+    "gitleaks"
+  ],
+  "recommended_scheduled_tools": [
+    "gitleaks"
+  ],
+  "tool_notes": {
+    "phpstan": "exercised by the positive control"
+  },
+  "tools": {
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "packages": [
+        {
+          "name": "phpstan/phpstan",
+          "scope": "dev",
+          "compatibility": "auto"
+        }
+      ],
+      "executable": [
+        "vendor/bin/phpstan",
+        "phpstan"
+      ],
+      "runner": "scripts/runners/actionlint.sh",
+      "audit": "scripts/audits/checkov.sh",
+      "report": "reports/raw/phpstan.json",
+      "notes": "informational only",
+      "missing_behavior": "fail",
+      "requires": [
+        "gitleaks"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      },
+      "config": {
+        "path": "phpstan.neon",
+        "classification": "create-if-missing"
+      }
+    },
+    "gitleaks": {
+      "policy": "required",
+      "category": "secrets",
+      "report": "reports/raw/gitleaks.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": true
+      }
+    },
+    "php-tests": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": [
+        "pest",
+        "phpunit"
+      ],
+      "selection": "prefer-existing",
+      "fallback_order": [
+        "phpunit",
+        "pest"
+      ],
+      "report": "reports/raw/tests.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "pest": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": [
+        "phpunit"
+      ],
+      "executable": [
+        "vendor/bin/pest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "phpunit": {
+      "policy": "one-of",
+      "category": "tests",
+      "alternatives": [
+        "pest"
+      ],
+      "executable": [
+        "vendor/bin/phpunit"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    }
+  }
+}

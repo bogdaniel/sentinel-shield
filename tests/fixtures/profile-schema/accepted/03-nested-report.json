@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-nested-report",
+  "description": "POSITIVE CONTROL (#236): build-security-summary.sh PRESERVES directories under reports/raw/, so a nested declared report is a supported declaration. This fixture exists so the report-path grammar can never be tightened back into rejecting it.",
+  "tool_policy_version": 2,
+  "files": [],
+  "tools": {
+    "phpstan": {
+      "policy": "required",
+      "category": "static-analysis",
+      "runner": "scripts/runners/actionlint.sh",
+      "report": "reports/raw/api/phpstan.json",
+      "missing_behavior": "fail",
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    }
+  }
+}

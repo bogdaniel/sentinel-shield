@@ -86,9 +86,19 @@ workflow_runs() {
 	return 1
 }
 
+# (#248) Before any per-tool assertion below reads a manifest field, the manifest
+# must satisfy the full published schema. Everything after this point assumes
+# typed, bounded values; without this the audit was reading untyped JSON.
+if _psv=$(sh scripts/validate-profile-manifest.sh --all --quiet 2>&1); then
+	pass "every shipped profile manifest satisfies profile.manifest.schema.json (role=install)"
+else
+	fail "a shipped profile manifest failed schema validation"
+	printf '%s\n' "$_psv"
+fi
+
 for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json; do
 	[ -f "$f" ] || continue
-	prof=$(jq -r '.profile // "?"' "$f")
+	prof=$(jq -r '.profile' "$f")
 
 	# 1. Every DECLARED tool's report must be collected by TOOL_TABLE. This is the check
 	#    that catches evidence written and never read.

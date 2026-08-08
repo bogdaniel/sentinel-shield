@@ -8,6 +8,7 @@
     "node",
     "docker"
   ],
+  "tool_policy_version": 2,
   "extends": [
     "laravel",
     "node",

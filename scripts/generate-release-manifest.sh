@@ -163,6 +163,15 @@ digest_paths() { # digest_paths <newline-separated relative paths>
 	done | jq -sc 'sort_by(.path)'
 }
 
+# (#248) Release packaging must not digest a manifest it has not validated: a
+# digest of a malformed manifest is a provenance record of a broken artefact.
+# The SAME validator the resolver runs, at role=install (the full published
+# schema), over every shipped manifest.
+if [ -d "$ROOTDIR/profiles" ]; then
+	PS_REPO_ROOT="$ROOTDIR" sh "$SCRIPT_DIR/validate-profile-manifest.sh" --all --quiet \
+		|| { log_error "release manifest: a shipped profile manifest failed validation; refusing to package"; exit 2; }
+fi
+
 # profile-policy digests: every shipped profile.manifest.json.
 _profile_rel=$(
 	if [ -d "$ROOTDIR/profiles" ]; then

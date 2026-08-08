@@ -2,26 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sentinel-shield/schemas/profile.manifest.schema.json",
   "title": "Sentinel Shield profile manifest",
-  "description": "Declares the files a profile installs/syncs into a consuming project. Consumed by scripts/install-baseline.sh and scripts/sync-baseline.sh (v0.1.11+).",
+  "description": "The published JSON-Schema face of the profile manifest contract. The RUNTIME authority is scripts/lib/profile-schema.sh, which every consumer (resolver, installer, sync, upgrade, migrate, bootstrap, release packaging, repository audit) runs before reading any manifest field; tests/prod/300-profile-manifest-schema.sh asserts the two agree on every enum, allowlist, pattern and supported version. This document describes role=install (the full surface, including the files a profile installs/syncs). role=policy is the same contract minus the 'files' requirement, for manifests that only participate in tool-policy composition.",
   "type": "object",
   "required": [
     "profile",
     "files"
   ],
-  "additionalProperties": true,
+  "additionalProperties": false,
   "properties": {
-    "profile": {
+    "$schema": {
       "type": "string",
-      "minLength": 1
+      "description": "Must reference this schema (basename profile.manifest.schema.json). A manifest claiming a different schema is rejected rather than validated against the wrong contract."
+    },
+    "profile": {
+      "$ref": "#/$defs/identifier",
+      "description": "The profile identifier. Becomes a filesystem path and a shell-set member, so it must be a safe identifier."
     },
     "description": {
       "type": "string"
     },
     "stacks": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "$ref": "#/$defs/stringList"
     },
     "files": {
       "$ref": "#/$defs/entryList"
@@ -33,45 +34,110 @@
       "$ref": "#/$defs/entryList"
     },
     "never_touch": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "$ref": "#/$defs/stringList",
       "description": "Project-local paths the installer/sync MUST never create or overwrite (e.g. accepted-risks.json, phpstan-baseline.neon)."
     },
     "required_scripts": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
+      "$ref": "#/$defs/stringList",
       "description": "Upstream Sentinel Shield scripts the installed workflow calls (informational; they live in Sentinel Shield, not copied)."
     },
     "recommended_raw_reports": {
-      "type": "array",
-      "items": {
+      "$ref": "#/$defs/stringList"
+    },
+    "recommended_pr_fast_tools": {
+      "$ref": "#/$defs/stringList",
+      "description": "Informational: tool keys the profile expects at the PR/fast-feedback stage."
+    },
+    "recommended_main_gate_tools": {
+      "$ref": "#/$defs/stringList",
+      "description": "Informational: tool keys the profile expects at the main/protected-branch gate."
+    },
+    "recommended_scheduled_tools": {
+      "$ref": "#/$defs/stringList",
+      "description": "Informational: tool keys the profile expects on scheduled/nightly scans."
+    },
+    "tool_notes": {
+      "type": "object",
+      "description": "Free-text maintainer notes keyed by tool identifier. Informational only; never consulted for a policy decision.",
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
         "type": "string"
       }
     },
     "tool_policy_version": {
       "type": "integer",
       "const": 2,
-      "description": "Supported tool-policy schema version. Only 2 is supported in this rollout; other values fail validation."
+      "description": "Supported tool-policy schema version. Only 2 is supported in this rollout; other values fail validation with migration guidance. REQUIRED whenever the manifest declares 'tools' or 'extends' — a manifest that participates in tool-policy resolution must state the version it was written against."
     },
     "extends": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9][a-z0-9-]*$",
-        "description": "A safe profile identifier (lowercase, digits, hyphens) \u2014 no whitespace, path separators, or traversal."
+        "$ref": "#/$defs/identifier"
       },
-      "description": "Base profile names whose tool policies this profile composes (resolved by the canonical resolver)."
+      "description": "Base profile names whose tool policies this profile composes (resolved by the canonical resolver). Each name becomes a filesystem path, so it must be a safe identifier; duplicates and self-reference are rejected."
     },
     "tools": {
       "$ref": "../schemas/tool-policy.schema.json#/$defs/toolsMap",
       "description": "Per-tool policy declarations (key = TOOL_TABLE key). See schemas/tool-policy.schema.json and docs/profile-tool-policy.md."
     }
   },
+  "allOf": [
+    {
+      "$comment": "A manifest that declares tools or extends participates in tool-policy resolution and must declare the version it was written against.",
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "tools"
+            ]
+          },
+          {
+            "required": [
+              "extends"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "tool_policy_version"
+        ]
+      }
+    }
+  ],
   "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "maxLength": 64,
+      "description": "A safe identifier (lowercase, digits, hyphens) — no whitespace, glob characters, path separators, traversal or leading dash."
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          },
+          {
+            "pattern": "(^|/)\\.(/|$)"
+          }
+        ]
+      },
+      "description": "A relative path with no whitespace, glob characters, control characters, leading dash, '.' or '..' segment. These values reach shell path probes and unquoted loops."
+    },
     "entryList": {
       "type": "array",
       "items": {
@@ -84,11 +150,11 @@
         "additionalProperties": false,
         "properties": {
           "source": {
-            "type": "string",
+            "$ref": "#/$defs/safeRelativePath",
             "description": "Path relative to the Sentinel Shield repo root."
           },
           "target": {
-            "type": "string",
+            "$ref": "#/$defs/safeRelativePath",
             "description": "Path relative to the consuming project root."
           },
           "mode": {

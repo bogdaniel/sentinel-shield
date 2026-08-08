@@ -5,6 +5,7 @@
   "stacks": [
     "enterprise"
   ],
+  "tool_policy_version": 2,
   "extends": [
     "laravel",
     "node",

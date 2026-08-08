@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../../profiles/profile.manifest.schema.json",
+  "profile": "ps-composed",
+  "description": "Composed-semantics negative fixture:\u6bcf manifest is individually valid; the defect only exists after inheritance is merged.",
+  "tool_policy_version": 2,
+  "files": [],
+  "tools": {
+    "php-tests": {
+      "policy": "one-of",
+      "alternatives": [
+        "pest",
+        "phpunit"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "pest": {
+      "policy": "one-of",
+      "alternatives": [
+        "vitest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "phpunit": {
+      "policy": "one-of",
+      "alternatives": [
+        "pest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "js-tests": {
+      "policy": "one-of",
+      "alternatives": [
+        "jest",
+        "vitest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "jest": {
+      "policy": "one-of",
+      "alternatives": [
+        "vitest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    },
+    "vitest": {
+      "policy": "one-of",
+      "alternatives": [
+        "jest"
+      ],
+      "execution": {
+        "pr": true,
+        "main": true,
+        "scheduled": false
+      }
+    }
+  }
+}

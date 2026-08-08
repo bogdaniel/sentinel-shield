@@ -42,6 +42,18 @@ if [ "${__SENTINEL_SHIELD_COMMON_LOADED:-}" != "1" ]; then
 	fi
 fi
 
+# Canonical profile-manifest schema + semantic validator (#248). MANDATORY: every
+# manifest in the inheritance DAG, and the arbitrary-manifest entry point, is fully
+# validated BEFORE any of its fields are read or merged. Fail-closed if absent —
+# resolving an unvalidated manifest is the defect this library exists to remove.
+if [ "${__SENTINEL_SHIELD_PROFILE_SCHEMA_LOADED:-}" != "1" ]; then
+	_ep_ps=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+	if [ -f "$_ep_ps/profile-schema.sh" ]; then . "$_ep_ps/profile-schema.sh"
+	elif [ -f "$_ep_ps/lib/profile-schema.sh" ]; then . "$_ep_ps/lib/profile-schema.sh"
+	else printf '%s\n' "[sentinel-shield][error] effective-profile: cannot locate profile-schema.sh (mandatory manifest validator); refusing to resolve an unvalidated manifest" >&2; exit 2
+	fi
+fi
+
 # Shared control-waiver validator (a project override may only WEAKEN a required /
 # one-of control when a valid, unexpired waiver covers that tool — Part A1/A4).
 if [ "${__SENTINEL_SHIELD_CONTROL_WAIVERS_LOADED:-}" != "1" ]; then
@@ -92,15 +104,15 @@ ep__collect() {
 	case " $EP_RESOLVED " in
 		*" $_p "*) return 0 ;;   # already fully merged elsewhere in the DAG
 	esac
+	# (#248/#251) The name becomes a filesystem path on the next line, and is then
+	# stored in the space-delimited EP_VISITING/EP_RESOLVED sets. Validate the
+	# IDENTIFIER before either happens.
+	ps_valid_id "$_p" || ep__die_cfg "invalid profile identifier '$_p' (must match $PS_ID_PATTERN)${_path:+; via ${_path%% -> }}"
 	_mf=$(ep__manifest_path "$_root" "$_p") \
 		|| ep__die_cfg "unknown parent profile '$_p' (no manifest in profiles/$_p/ or profiles/combinations/)${_path:+; via ${_path%% -> }}"
-	jq -e . "$_mf" >/dev/null 2>&1 || ep__die_cfg "invalid JSON in parent manifest: $_mf"
-	# Validate every declared tool's policy value up-front (fail-closed).
-	_badpol=$(jq -r '
-		(.tools // {}) | to_entries[]
-		| select((.value.policy // "") | IN("required","recommended","optional","one-of","disabled","external") | not)
-		| .key' "$_mf" 2>/dev/null || true)
-	[ -z "$_badpol" ] || ep__die_cfg "invalid policy value for tool(s) in $_mf: $(printf '%s' "$_badpol" | tr '\n' ' ')"
+	# (#248) FULL schema + semantic validation before ANY field of this manifest is
+	# read or merged. Replaces the former `jq -e .` + policy-string-only check.
+	ps_validate_manifest "$_mf" policy "profile '$_p'${_path:+; via ${_path%% -> }}"
 	EP_VISITING="$EP_VISITING $_p"
 	for _parent in $(jq -r '.extends[]? // empty' "$_mf"); do
 		ep__collect "$_root" "$_parent" "${_path}${_p} -> "
@@ -244,14 +256,11 @@ ep__applicability() {
 	esac
 }
 
-# ep__validate_policies <manifest-path> — fail-closed on any invalid policy value.
-ep__validate_policies() {
-	_bp=$(jq -r '
-		(.tools // {}) | to_entries[]
-		| select((.value.policy // "") | IN("required","recommended","optional","one-of","disabled","external") | not)
-		| .key' "$1" 2>/dev/null || true)
-	[ -z "$_bp" ] || ep__die_cfg "invalid policy value for tool(s) in $1: $(printf '%s' "$_bp" | tr '\n' ' ')"
-}
+# ep__validate_policies <manifest-path> — DEPRECATED (#248). Policy-string
+# validation is not manifest validation: it checked ONE field and let every other
+# typed field through. It now delegates to the canonical validator so that any
+# out-of-tree caller gets the full contract rather than the old partial one.
+ep__validate_policies() { ps_validate_manifest "$1" policy "ep__validate_policies (deprecated shim)"; }
 
 # ep_resolve <profile> [override-json-file] [target] [waivers-file] — emit the
 # effective profile for a NAMED profile (resolved under profiles/).
@@ -276,12 +285,13 @@ ep_resolve_manifest() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] && [ -f "$1" ] || ep__die_cfg "ep_resolve_manifest: manifest file not found: ${1:-}"
 	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
-	jq -e . "$_mf" >/dev/null 2>&1 || ep__die_cfg "invalid JSON in manifest: $_mf"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
-	_profile=$(jq -r '.profile // "unknown"' "$_mf")
+	# (#248) The arbitrary-manifest entry point runs the SAME full validation as
+	# every manifest in the DAG, BEFORE `.profile` or `.extends` is read.
+	ps_validate_manifest "$_mf" policy "arbitrary manifest entry point"
+	_profile=$(jq -r '.profile' "$_mf")
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
 	EP_VISITING=" $_profile "        # guard self-reference in the seed's extends
-	ep__validate_policies "$_mf"
 	for _parent in $(jq -r '.extends[]? // empty' "$_mf"); do
 		ep__collect "$_root" "$_parent" "$_profile -> "
 	done
@@ -300,6 +310,13 @@ ep__finish() {
 
 	# shellcheck disable=SC2086
 	_tools=$(ep__merge_tools "$@")
+
+	# (#248) Cross-manifest semantics, once, on the merged inheritance result:
+	# `alternatives`/`requires` may legitimately name a tool a PARENT declares, so
+	# reference integrity and the one-of group graph cannot be settled inside a
+	# single manifest. Runs BEFORE the project override, which is its own
+	# separately-validated surface (see ep__apply_override).
+	ps_validate_composed "$_tools" "profile '$_profile'"
 
 	# Project override (already JSON; the caller converts YAML→JSON + schema-validates).
 	_ovr=""

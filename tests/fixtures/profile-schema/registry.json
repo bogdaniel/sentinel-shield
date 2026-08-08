@@ -1,0 +1,414 @@
+{
+  "$comment": "Registry for tests/prod/300-profile-manifest-schema.sh. Every rejected fixture MUST be rejected by scripts/lib/profile-schema.sh with the recorded code, and MUST have been ACCEPTED by the pre-#248 gate (jq -e . plus a tools[*].policy enum check) \u2014 otherwise it is not a regression for this issue.",
+  "categories": [
+    "unknown-fields",
+    "missing-required",
+    "malformed-types",
+    "invalid-identifiers",
+    "unsafe-paths",
+    "execution-semantics",
+    "invalid-enums",
+    "one-of-errors",
+    "version-drift",
+    "graph-errors",
+    "composed-semantics"
+  ],
+  "rejected": [
+    {
+      "path": "tests/fixtures/profile-schema/rejected/01-unknown-top-level-field.json",
+      "category": "unknown-fields",
+      "code": "UNKNOWN_FIELD",
+      "why": "a top-level key no engine version understands is a typo that silently does nothing",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/02-unknown-tool-field.json",
+      "category": "unknown-fields",
+      "code": "UNKNOWN_FIELD",
+      "why": "a misspelt tool field (missing_behaviour) leaves the real field at its default and the gate silently weaker",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/03-unknown-execution-stage.json",
+      "category": "unknown-fields",
+      "code": "UNKNOWN_FIELD",
+      "why": "an unknown execution stage is never run and never reported as unrun",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/04-unknown-package-field.json",
+      "category": "unknown-fields",
+      "code": "UNKNOWN_FIELD",
+      "why": "an unknown package field is dropped by the installer without notice",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/10-missing-policy.json",
+      "category": "missing-required",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "a tool with no policy ranks -1 in the merge ladder and is silently outranked by anything",
+      "pre_fix": "rejected"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/11-missing-profile.json",
+      "category": "missing-required",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "a manifest with no identity resolved as the literal profile name 'unknown'",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/12-missing-package-name.json",
+      "category": "missing-required",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "a package with no name reaches the installer as an empty install target",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/13-entry-missing-mode.json",
+      "category": "missing-required",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "an install entry with no mode has no defined write behaviour",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/20-execution-string-boolean.json",
+      "category": "malformed-types",
+      "code": "FIELD_TYPE",
+      "why": "execution.pr:\"false\" is a TRUTHY string in jq; the stage would run while the manifest says it does not",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/21-tools-is-array.json",
+      "category": "malformed-types",
+      "code": "FIELD_TYPE",
+      "why": "tools as an array merges to nothing and the profile silently gates zero tools",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/22-tool-is-string.json",
+      "category": "malformed-types",
+      "code": "FIELD_TYPE",
+      "why": "a tool declared as a bare string reaches the merge reducer as a scalar",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/23-extends-is-string.json",
+      "category": "malformed-types",
+      "code": "FIELD_TYPE",
+      "why": "extends as a string yields no parents at all \u2014 inheritance silently disappears",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/24-never-touch-not-strings.json",
+      "category": "malformed-types",
+      "code": "FIELD_TYPE",
+      "why": "a non-string protected path is compared against real paths and never matches",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/25-required-tool-never-runs.json",
+      "category": "execution-semantics",
+      "code": "GATING_TOOL_NEVER_RUNS",
+      "why": "a required control with no execution stage set to true is declared, reported as configured, and never run \u2014 a gate that can never fire",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/26-required-tool-no-execution.json",
+      "category": "execution-semantics",
+      "code": "GATING_TOOL_NEVER_RUNS",
+      "why": "the same hole written by omission rather than by false",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/30-tool-key-uppercase.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a tool key outside the canonical grammar collides after case normalisation and cannot be a stable report key",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/31-tool-key-with-space.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a key with whitespace splits into two words in every `for _k in $(jq -r keys[])` loop in the engine",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/32-extends-traversal.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a parent name containing a path escapes profiles/ when the manifest path is built from it",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/33-extends-glob.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a parent name containing a glob is expanded by the shell before the path is built",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/34-extends-leading-dash.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a leading dash turns the name into an option when it reaches a command",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/35-category-invalid.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a category outside the grammar cannot be a stable reporting group key",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/36-alternatives-identifier.json",
+      "category": "invalid-identifiers",
+      "code": "INVALID_IDENTIFIER",
+      "why": "a one-of alternative with whitespace splits inside the fallback_order loop",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/40-report-traversal.json",
+      "category": "unsafe-paths",
+      "code": "INVALID_REPORT_PATH",
+      "why": "reports/raw/../../x.json escapes the normalized-report directory the collectors trust",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/41-report-outside-raw.json",
+      "category": "unsafe-paths",
+      "code": "INVALID_REPORT_PATH",
+      "why": "a report outside reports/raw/ is never collected, so the tool is gated and invisible",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/42-executable-glob.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "ep__exe_present iterates executable[] UNQUOTED: a glob is expanded against the target tree",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/43-executable-whitespace.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "whitespace splits one candidate into two in the same unquoted loop",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/44-executable-substitution.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "a command-substitution payload must never reach a path probe as data",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/45-runner-traversal.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "a runner path with a .. segment executes something outside the engine's runner set",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/46-config-path-absolute.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "an absolute config path is not project-relative and reaches the host filesystem",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/47-entry-target-traversal.json",
+      "category": "unsafe-paths",
+      "code": "UNSAFE_PATH",
+      "why": "an install target with a .. segment writes outside the consuming project",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/48-missing-runner-script.json",
+      "category": "unsafe-paths",
+      "code": "MISSING_SCRIPT",
+      "why": "a runner this engine does not ship resolves happily and fails only at execution time, after the plan was trusted",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/50-policy-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "an unknown policy ranks -1 and is outranked by every real policy in the merge",
+      "pre_fix": "rejected"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/51-missing-behavior-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "an unknown missing_behavior has no defined state-machine transition",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/52-config-classification-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "an unknown classification has no defined installer ownership rule",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/53-entry-mode-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "an unknown write mode has no defined install behaviour",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/54-package-scope-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "an unknown dependency scope silently installs into the wrong section",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/55-selection-enum.json",
+      "category": "invalid-enums",
+      "code": "INVALID_ENUM",
+      "why": "only prefer-existing is implemented; any other strategy is emitted and then silently ignored",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/60-one-of-without-alternatives.json",
+      "category": "one-of-errors",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "a one-of control with no alternatives can never be satisfied and never fails either",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/61-alternatives-on-required.json",
+      "category": "one-of-errors",
+      "code": "INVALID_VALUE",
+      "why": "alternatives on a non-one-of tool are silently ignored by ep__one_of_groups \u2014 the author believes a fallback exists",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/62-fallback-order-mismatch.json",
+      "category": "one-of-errors",
+      "code": "ONE_OF_FALLBACK_MISMATCH",
+      "why": "fallback_order[0] is what bootstrap-profile-tools.sh INSTALLS; a set that disagrees with alternatives installs something the profile never offered",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/63-alternatives-self.json",
+      "category": "one-of-errors",
+      "code": "SELF_REFERENCE",
+      "why": "a tool listed as its own alternative makes it both group and member",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/64-alternatives-duplicate.json",
+      "category": "one-of-errors",
+      "code": "DUPLICATE_ENTRY",
+      "why": "a duplicated alternative double-counts in the derived member set",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/70-tool-policy-version-1.json",
+      "category": "version-drift",
+      "code": "UNSUPPORTED_TOOL_POLICY_VERSION",
+      "why": "a v1 manifest must be migrated, not executed by a v2 engine",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/71-tool-policy-version-99.json",
+      "category": "version-drift",
+      "code": "UNSUPPORTED_TOOL_POLICY_VERSION",
+      "why": "this engine cannot execute a newer tool policy and must not guess",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/72-tool-policy-version-string.json",
+      "category": "version-drift",
+      "code": "FIELD_TYPE",
+      "why": "the version as the string \"2\" is not the integer 2 and would compare unequal everywhere",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/73-tool-policy-version-missing.json",
+      "category": "version-drift",
+      "code": "MISSING_REQUIRED_FIELD",
+      "why": "a manifest that declares tools without declaring the version it was written against",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/74-unknown-schema.json",
+      "category": "version-drift",
+      "code": "UNSUPPORTED_SCHEMA",
+      "why": "a manifest claiming a schema this engine does not publish is validated against the wrong contract",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/80-extends-self.json",
+      "category": "graph-errors",
+      "code": "SELF_REFERENCE",
+      "why": "a profile that extends itself is a one-node cycle",
+      "pre_fix": "accepted"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/rejected/81-extends-duplicate.json",
+      "category": "graph-errors",
+      "code": "DUPLICATE_ENTRY",
+      "why": "a duplicated parent is ambiguous about merge order",
+      "pre_fix": "accepted"
+    }
+  ],
+  "composed": [
+    {
+      "path": "tests/fixtures/profile-schema/composed/90-unresolved-alternative.json",
+      "category": "composed-semantics",
+      "code": "UNRESOLVED_REFERENCE",
+      "why": "a one-of group offering a tool no manifest in the DAG declares can never be satisfied, and reports 'unsatisfied' as if the tool were merely absent"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/composed/91-unresolved-requires.json",
+      "category": "composed-semantics",
+      "code": "UNRESOLVED_REFERENCE",
+      "why": "a hard prerequisite naming an undeclared tool is a prerequisite that can never be checked"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/composed/92-one-of-no-group.json",
+      "category": "composed-semantics",
+      "code": "ONE_OF_NO_GROUP",
+      "why": "ep__one_of_groups derives a group as a one-of tool nobody lists as an alternative; a mutually-referencing pair therefore derives ZERO groups and the whole requirement disappears without a single error"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/composed/93-one-of-member-policy.json",
+      "category": "composed-semantics",
+      "code": "ONE_OF_MEMBER_POLICY",
+      "why": "a group whose member is `optional` can be reported satisfied by a tool the profile never gates"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/composed/94-one-of-cross-group.json",
+      "category": "composed-semantics",
+      "code": "ONE_OF_CROSS_GROUP",
+      "why": "a member offering an alternative from another group makes one group's satisfaction depend on the other's members"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/composed/95-one-of-single-member.json",
+      "category": "composed-semantics",
+      "code": "ONE_OF_SINGLE_MEMBER",
+      "why": "a one-of group with one alternative reads as 'there is a fallback' and offers none"
+    }
+  ],
+  "accepted": [
+    {
+      "path": "tests/fixtures/profile-schema/accepted/01-minimal.json",
+      "role": "install"
+    },
+    {
+      "path": "tests/fixtures/profile-schema/accepted/02-full-featured.json",
+      "role": "install",
+      "must_resolve": true
+    },
+    {
+      "path": "tests/fixtures/profile-schema/accepted/03-nested-report.json",
+      "role": "install"
+    }
+  ]
+}
