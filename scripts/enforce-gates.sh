@@ -467,6 +467,31 @@ case "$MODE" in
 		;;
 esac
 
+# #182: the same principle one level DOWN. A collector may emit fixture evidence — explicitly
+# invoked, explicitly labelled `trust.type=fixture`, and only outside a release context — and
+# it stamps `non_production: true` on that tool's report. Every enforcing mode refuses it here.
+#
+# The counts in fixture evidence are typically all zero, which is exactly why this keys on the
+# LABEL and never on the numbers: a clean fixture is indistinguishable from a clean real scan
+# by its counts alone. That indistinguishability is the whole reason the label is load-bearing.
+case "$MODE" in
+	baseline | strict | regulated)
+		_np=$(jq -r '[(.tools // {}) | to_entries[]
+			| select(.value | (type == "object") and ((.non_production // false) == true))
+			| .key] | join(", ")' "$SUMMARY" 2>/dev/null || printf 'unreadable')
+		if [ "$_np" = "unreadable" ]; then
+			die_cfg "'$SUMMARY' could not be read for the non-production evidence check; an unparseable summary is untrusted evidence in '$MODE'"
+		fi
+		if [ -n "$_np" ]; then
+			log_error "'$SUMMARY' carries NON-PRODUCTION tool evidence: $_np"
+			log_error "  Those entries were produced with --fixture-evidence and are labelled"
+			log_error "  trust.type=fixture. Fixture evidence is never gate evidence, and its"
+			log_error "  all-zero counts are not a clean result."
+			die_cfg "refusing to enforce '$MODE' against non-production tool evidence"
+		fi
+		;;
+esac
+
 case "$MODE" in
 	strict | regulated)
 		_evi=$(jq -r '
