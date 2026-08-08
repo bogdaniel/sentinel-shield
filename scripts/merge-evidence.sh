@@ -164,7 +164,19 @@ me_account_set() {
 # already queued when the snapshot was taken.
 me_filter_captured() {
 	awk -F'\t' -v e="$3" '$3 > e { print $1 "\t" $2 }' "$1" | sort -u > "$1.epoch"
-	awk -F'\t' 'NR==FNR{pre[$0]=1;next} !($1 in pre)' "$2" "$1.epoch"
+	# FILENAME==ARGV[1], not the usual NR==FNR two-file idiom.
+	#
+	# NR==FNR identifies "still reading the first file" by NR having caught up with FNR — which
+	# is also true for the FIRST LINE OF THE SECOND FILE when the first file is EMPTY. With an
+	# empty pre-trigger snapshot, awk therefore swallowed the first captured run as though it
+	# were a pre-existing ID, and (because that line then set pre[...] and `next`) the whole
+	# capture came back short. Observed live on PR #311: the PR was triggered before its
+	# open-event runs existed, so the snapshot was legitimately empty, the capture returned
+	# nothing, and the trigger phase span until its timeout reporting 11 workflows missing.
+	#
+	# An empty snapshot is a normal state, not an error — it means nothing had run yet — so the
+	# filter has to be correct for it rather than assume at least one prior run.
+	awk -F'\t' 'FILENAME==ARGV[1]{pre[$0]=1;next} !($1 in pre)' "$2" "$1.epoch"
 	rm -f "$1.epoch"
 }
 

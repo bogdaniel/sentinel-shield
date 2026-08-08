@@ -116,6 +116,22 @@ expect "defect 4: only post-trigger runs are captured; the pre-trigger pair is e
 _cap_ids_only=$(me_filter_captured "$TMP/runs.tsv" "$TMP/pre.ids" "2026-08-06T09:00:00Z" | cut -f1 | tr '\n' ' ')
 expect "defect 4: the pre-trigger ID snapshot still excludes old runs when the epoch is too permissive" \
 	"200 201 " "$_cap_ids_only"
+# An EMPTY pre-trigger snapshot is a normal state — it means nothing had run on this head yet,
+# which is what happens when a PR is triggered before its open-event runs are created. The
+# usual NR==FNR two-file awk idiom is WRONG here: with an empty first file, NR==FNR is still
+# true for the first line of the SECOND file, so the first captured run was swallowed as
+# though it were pre-existing and the capture came back short. Observed live on PR #311: the
+# trigger phase span to its timeout reporting all 11 workflows missing.
+: > "$TMP/pre-empty.ids"
+_cap_empty=$(me_filter_captured "$TMP/runs.tsv" "$TMP/pre-empty.ids" "2026-08-06T11:00:00Z" | cut -f1 | tr '\n' ' ')
+expect "defect 4: an EMPTY pre-trigger snapshot still captures every post-epoch run" \
+	"200 201 " "$_cap_empty"
+# ...and with an empty snapshot AND a permissive epoch, everything is captured rather than
+# nothing — the failure mode was silent under-capture, which reads identically to "no runs yet".
+_cap_all=$(me_filter_captured "$TMP/runs.tsv" "$TMP/pre-empty.ids" "2026-01-01T00:00:00Z" | cut -f1 | tr '\n' ' ')
+expect "defect 4: an empty snapshot never silently drops the first captured run" \
+	"100 101 200 201 " "$_cap_all"
+
 # And conversely, the epoch still excludes a run absent from the snapshot but created earlier.
 printf '999\n' > "$TMP/pre2.ids"
 _cap_epoch_only=$(me_filter_captured "$TMP/runs.tsv" "$TMP/pre2.ids" "2026-08-06T11:00:00Z" | cut -f1 | tr '\n' ' ')
