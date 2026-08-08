@@ -1,0 +1,5 @@
+gates:
+  mode: strict
+---
+gates:
+  mode: regulated

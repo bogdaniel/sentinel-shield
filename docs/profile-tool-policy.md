@@ -222,6 +222,25 @@ tools:
                                        # cannot turn an execution-error into pass
 ```
 
+Both the inline form above and the equivalent block form are accepted:
+
+```yaml
+tools:
+  scorecard:
+    policy: optional
+```
+
+**A duplicate key is an error, not a winner.** Declaring the same tool twice — or the
+same field twice, or once inline and once as a block — fails closed with both source
+locations, before any policy is applied:
+
+```txt
+sentinel-shield-yaml: YAML_DUPLICATE_KEY key=tools.scorecard first=2:3 second=5:3
+```
+
+There is no first-wins and no last-wins any more, and the result no longer depends on
+whether `yq` is installed. See [docs/yaml-policy-contract.md](yaml-policy-contract.md).
+
 The resolver applies precedence
 `required > one-of > recommended > optional > external > disabled`, refuses to set a
 non-suppressible control (`gitleaks`, `trufflehog`) to `disabled` (fail-closed,

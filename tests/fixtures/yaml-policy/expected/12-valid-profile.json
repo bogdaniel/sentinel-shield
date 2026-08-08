@@ -1,0 +1,31 @@
+{
+  "exceptions": {
+    "allowed": true,
+    "max_expiry_days": 90
+  },
+  "gates": {
+    "fail_on": {
+      "critical_vulnerabilities": true,
+      "medium_vulnerabilities": false,
+      "secrets": true
+    },
+    "mode": "baseline"
+  },
+  "profiles": [
+    "laravel",
+    "react"
+  ],
+  "project": {
+    "criticality": "high",
+    "name": "demo",
+    "owner": "platform-team",
+    "type": "laravel"
+  },
+  "reports": {
+    "format": [
+      "markdown",
+      "json"
+    ],
+    "output_dir": "reports"
+  }
+}

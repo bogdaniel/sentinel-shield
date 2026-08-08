@@ -367,8 +367,11 @@ check "no profile tool claims the generic acceptance-tests/behavior-specs path" 
 # does not apply. That must beat a profile that declares a required producer — otherwise a
 # profile default silently overrides an explicit project decision.
 CH="$WORK/chan"; mkdir -p "$CH/raw" "$CH/tgt/.sentinel-shield"
-CHOV="$CH/tgt/.sentinel-shield/tool-policy-override.json"
-printf '{"tools":{"cucumber-specs":{"policy":"required"},"playwright-acceptance":{"policy":"required"}}}\n' > "$CHOV"
+CHOV="$CH/tgt/.sentinel-shield/tool-policy-override.yaml"
+# YAML, not JSON: overrides are read through the canonical YAML frontend
+# (docs/yaml-policy-contract.md), which rejects JSON because duplicate keys
+# cannot be detected in it (#260).
+printf 'tools:\n  cucumber-specs:\n    policy: required\n  playwright-acceptance:\n    policy: required\n' > "$CHOV"
 CHPOL="$CH/tgt/.sentinel-shield/testing-discipline-policy.yaml"
 # chan_flags — build with the required-producer override and echo "mbs:mae".
 chan_flags() {

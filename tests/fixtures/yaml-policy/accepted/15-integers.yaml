@@ -1,0 +1,6 @@
+quality:
+  coverage:
+    line_min: 80
+    branch_min: 0
+  complexity:
+    max_cyclomatic_complexity: 12

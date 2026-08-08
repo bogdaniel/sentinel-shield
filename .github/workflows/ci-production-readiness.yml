@@ -150,6 +150,24 @@ jobs:
         with:
           php-version: "8.3"
 
+      # mikefarah yq v4 is required by tests/prod/257-yaml-policy-contract.sh as an INDEPENDENT
+      # ORACLE: every accepted fixture's canonical JSON is re-derived with real yq and compared
+      # byte-for-byte. The engine itself never invokes yq — 257 proves that separately with a
+      # poisoned shim that fails loudly if touched — so installing it here cannot change engine
+      # behaviour, it only makes the oracle leg real.
+      #
+      # Without this step 257 printed `SKIP: mikefarah yq v4 is not installed — the
+      # independent-oracle checks did not run`, and #259's "CI runs the full corpus through
+      # both backends" was satisfied on a developer host but never in CI. A parity corpus that
+      # only ever runs against one backend is not a parity corpus.
+      - name: Ensure yq (independent oracle for the YAML parity corpus)
+        run: |
+          if ! command -v yq >/dev/null 2>&1 || ! yq --version 2>/dev/null | grep -q 'mikefarah'; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          yq --version
+
       # NOT `self-test.sh all` — that is ci-self-test's job, and running it here as well is
       # what pushed this job past its budget. Duplicating a 20-minute suite buys no additional
       # signal; it only guarantees the sweep after it never reports.

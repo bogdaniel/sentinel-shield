@@ -1,0 +1,18 @@
+{
+  "$schema": "https://sentinel-shield/schemas/intentionally-invalid-yaml.schema.json",
+  "version": "1.0",
+  "description": "Files that are DELIBERATELY not valid YAML. They exist so the canonical policy parser can be proven to reject malformed input, so they cannot also satisfy the repository-wide YAML sanity check. This registry is the ONLY exemption from that check, and the exemption is two-way: an unregistered file that fails to parse is an error, and a registered file that parses cleanly is also an error. Enforced by scripts/audits/yaml-corpus-audit.sh and tested by tests/prod/115-invalid-yaml-corpus.sh. Note that MOST of the rejected corpus is NOT listed here: valid YAML that the Sentinel contract rejects (duplicate keys, anchors, block scalars, multi-document) must still satisfy repository YAML sanity.",
+  "intentionally_invalid_yaml": [
+    "tests/fixtures/yaml-policy/rejected/11-tab-indentation.yaml",
+    "tests/fixtures/yaml-policy/rejected/14-alias.yaml",
+    "tests/fixtures/yaml-policy/rejected/15-merge-key.yaml",
+    "tests/fixtures/yaml-policy/rejected/22-unterminated-quote.yaml",
+    "tests/fixtures/yaml-policy/rejected/24-trailing-content.yaml",
+    "tests/fixtures/yaml-policy/rejected/25-empty-key.yaml",
+    "tests/fixtures/yaml-policy/rejected/28-ambiguous-plain-scalar.yaml",
+    "tests/fixtures/yaml-policy/rejected/29-malformed-line.yaml",
+    "tests/fixtures/yaml-policy/rejected/34-tools-child-without-opener.yaml",
+    "tests/fixtures/yaml-policy/rejected/36-invalid-utf8.yaml",
+    "tests/fixtures/yaml-policy/rejected/37-control-character.yaml"
+  ]
+}

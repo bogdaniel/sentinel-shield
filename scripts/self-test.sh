@@ -192,6 +192,12 @@ run_syntax() {
 		grep -q 'semgrep/app' "$f" \
 			|| { log_error "$f missing app scan config (semgrep/app)"; return 1; }
 	done
+	# Repository-wide YAML sanity with the registered negative corpus. This lived only in
+	# ci-self-test.yml, so a malformed YAML file could not be caught before pushing — and the
+	# deliberately-invalid parser corpus made the old unexempted version fail outright.
+	log_info "syntax: YAML sanity + registered intentionally-invalid corpus"
+	sh "$ROOT/scripts/audits/yaml-corpus-audit.sh" --quiet \
+		|| { log_error "syntax: YAML corpus audit failed"; return 1; }
 	log_info "syntax: OK"
 }
 
@@ -3046,11 +3052,11 @@ v2e_composition() {
 	tpe_check "composition: base deptrac policy is recommended" \
 		"$(sh "$RES" --profile laravel --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "recommended"
 	tpe_check "composition: override raises deptrac -> required" \
-		"$(sh "$RES" --profile laravel --override "$FX/override-raise-deptrac.json" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
+		"$(sh "$RES" --profile laravel --override "$FX/override-raise-deptrac.yaml" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
 
 	# required-disable rejection: an override that disables a NON-SUPPRESSIBLE control
 	# (gitleaks) is fail-closed (exit 2) with a clear message. Real.
-	_rc=0; _err=$(sh "$RES" --profile laravel --override "$FX/override-disable-gitleaks.json" --format json 2>&1 >/dev/null) || _rc=$?
+	_rc=0; _err=$(sh "$RES" --profile laravel --override "$FX/override-disable-gitleaks.yaml" --format json 2>&1 >/dev/null) || _rc=$?
 	tpe_check "composition: override disabling gitleaks -> exit 2" "$_rc" "2"
 	tpe_contains "composition: gitleaks disable rejected as non-suppressible" "$_err" "non-suppressible"
 
@@ -3423,45 +3429,47 @@ vr_waiver_json() {
 vr_override() {
 	_R="$ROOT/scripts/resolve-effective-profile.sh"
 	_d=$(mktemp -d)
-	# Overrides (built inline — no secrets, no abs paths).
-	printf '{"tools":{"phpstan":{"policy":"optional"}}}'  > "$_d/weaken-required.json"   # required -> optional
-	printf '{"tools":{"php-tests":{"policy":"optional"}}}' > "$_d/weaken-oneof.json"     # one-of (php-tests) -> optional
-	printf '{"tools":{"deptrac":{"policy":"required"}}}'  > "$_d/strengthen.json"        # recommended -> required
-	printf '{"tools":{"not_a_real_tool":{"policy":"required"}}}' > "$_d/typo.json"
-	printf '{"tools":{" ":{"policy":"required"}}}'        > "$_d/blank-key.json"
-	printf '{"tools":{"phpstan":{"policy":null}}}'        > "$_d/pol-null.json"
-	printf '{"tools":{"phpstan":{}}}'                     > "$_d/pol-missing.json"
-	printf '{"tools":{"phpstan":{"policy":5}}}'           > "$_d/pol-numeric.json"
-	printf '{"tools":{"phpstan":{"policy":"bogus"}}}'     > "$_d/pol-unknown.json"
-	printf '{"tools":{"phpstan":"required"}}'             > "$_d/pol-nonobject.json"
+	# Overrides (built inline — no secrets, no abs paths). YAML, not JSON: an override
+	# is read through the canonical YAML frontend (docs/yaml-policy-contract.md), which
+	# does not accept JSON because duplicate keys are undetectable in it (#260).
+	printf 'tools:\n  phpstan:\n    policy: optional\n'   > "$_d/weaken-required.yaml"  # required -> optional
+	printf 'tools:\n  php-tests:\n    policy: optional\n' > "$_d/weaken-oneof.yaml"     # one-of (php-tests) -> optional
+	printf 'tools:\n  deptrac:\n    policy: required\n'   > "$_d/strengthen.yaml"       # recommended -> required
+	printf 'tools:\n  not_a_real_tool:\n    policy: required\n' > "$_d/typo.yaml"
+	printf 'tools:\n  " ":\n    policy: required\n'       > "$_d/blank-key.yaml"
+	printf 'tools:\n  phpstan:\n    policy:\n'            > "$_d/pol-null.yaml"
+	printf 'tools:\n  phpstan: {}\n'                      > "$_d/pol-missing.yaml"
+	printf 'tools:\n  phpstan:\n    policy: 5\n'          > "$_d/pol-numeric.yaml"
+	printf 'tools:\n  phpstan:\n    policy: bogus\n'      > "$_d/pol-unknown.yaml"
+	printf 'tools:\n  phpstan: required\n'                > "$_d/pol-nonobject.yaml"
 
 	# no-downgrade: a required / one-of control cannot be weakened (exit 2); strengthen OK (exit 0).
-	vr_run 2 "(D) override weakening a REQUIRED control -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.json" --format json
-	vr_run 2 "(D) override weakening a ONE-OF control -> exit 2"    sh "$_R" --profile laravel --override "$_d/weaken-oneof.json" --format json
-	vr_run 0 "(D) override STRENGTHENING (recommended->required) -> exit 0" sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json
+	vr_run 2 "(D) override weakening a REQUIRED control -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.yaml" --format json
+	vr_run 2 "(D) override weakening a ONE-OF control -> exit 2"    sh "$_R" --profile laravel --override "$_d/weaken-oneof.yaml" --format json
+	vr_run 0 "(D) override STRENGTHENING (recommended->required) -> exit 0" sh "$_R" --profile laravel --override "$_d/strengthen.yaml" --format json
 	vr_check "(D) strengthen actually raises deptrac -> required" \
-		"$(sh "$_R" --profile laravel --override "$_d/strengthen.json" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
+		"$(sh "$_R" --profile laravel --override "$_d/strengthen.yaml" --format json 2>/dev/null | jq -r '.tools.deptrac.policy')" "required"
 
 	# unknown/typo + blank key => exit 2.
-	vr_run 2 "(D) unknown/typo override key -> exit 2"  sh "$_R" --profile laravel --override "$_d/typo.json" --format json
-	vr_run 2 "(D) blank override key -> exit 2"         sh "$_R" --profile laravel --override "$_d/blank-key.json" --format json
+	vr_run 2 "(D) unknown/typo override key -> exit 2"  sh "$_R" --profile laravel --override "$_d/typo.yaml" --format json
+	vr_run 2 "(D) blank override key -> exit 2"         sh "$_R" --profile laravel --override "$_d/blank-key.yaml" --format json
 
 	# invalid override policy values (null/missing/numeric/unknown/non-object) => exit 2.
-	vr_run 2 "(D) override policy null -> exit 2"        sh "$_R" --profile laravel --override "$_d/pol-null.json" --format json
-	vr_run 2 "(D) override policy missing -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-missing.json" --format json
-	vr_run 2 "(D) override policy numeric -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-numeric.json" --format json
-	vr_run 2 "(D) override policy unknown-enum -> exit 2" sh "$_R" --profile laravel --override "$_d/pol-unknown.json" --format json
-	vr_run 2 "(D) override entry non-object -> exit 2"   sh "$_R" --profile laravel --override "$_d/pol-nonobject.json" --format json
+	vr_run 2 "(D) override policy null -> exit 2"        sh "$_R" --profile laravel --override "$_d/pol-null.yaml" --format json
+	vr_run 2 "(D) override policy missing -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-missing.yaml" --format json
+	vr_run 2 "(D) override policy numeric -> exit 2"     sh "$_R" --profile laravel --override "$_d/pol-numeric.yaml" --format json
+	vr_run 2 "(D) override policy unknown-enum -> exit 2" sh "$_R" --profile laravel --override "$_d/pol-unknown.yaml" --format json
+	vr_run 2 "(D) override entry non-object -> exit 2"   sh "$_R" --profile laravel --override "$_d/pol-nonobject.yaml" --format json
 
 	# weakening WITH a valid waiver => exit 0; with self-approved / expired / invalid-date => still exit 2.
 	vr_waiver_json "$_d/w-valid.json"   phpstan "$(vr_date_offset +30)"
 	vr_waiver_json "$_d/w-self.json"    phpstan "$(vr_date_offset +30)" alice   # owner==approved_by
 	vr_waiver_json "$_d/w-expired.json" phpstan 2000-01-02 bob 2000-01-01
 	vr_waiver_json "$_d/w-baddate.json" phpstan 2026-99-99
-	vr_run 0 "(D) weaken required WITH valid waiver -> exit 0"       sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-valid.json" --format json
-	vr_run 2 "(D) weaken required + self-approved waiver -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-self.json" --format json
-	vr_run 2 "(D) weaken required + EXPIRED waiver -> exit 2"        sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-expired.json" --format json
-	vr_run 2 "(D) weaken required + invalid-date waiver -> exit 2"   sh "$_R" --profile laravel --override "$_d/weaken-required.json" --waivers "$_d/w-baddate.json" --format json
+	vr_run 0 "(D) weaken required WITH valid waiver -> exit 0"       sh "$_R" --profile laravel --override "$_d/weaken-required.yaml" --waivers "$_d/w-valid.json" --format json
+	vr_run 2 "(D) weaken required + self-approved waiver -> exit 2"  sh "$_R" --profile laravel --override "$_d/weaken-required.yaml" --waivers "$_d/w-self.json" --format json
+	vr_run 2 "(D) weaken required + EXPIRED waiver -> exit 2"        sh "$_R" --profile laravel --override "$_d/weaken-required.yaml" --waivers "$_d/w-expired.json" --format json
+	vr_run 2 "(D) weaken required + invalid-date waiver -> exit 2"   sh "$_R" --profile laravel --override "$_d/weaken-required.yaml" --waivers "$_d/w-baddate.json" --format json
 
 	# missing override validator + --override => exit 2 (no bypass). (Issue 10) Run
 	# against a TEMP COPY of scripts/ with the validator removed — NEVER rename the real
@@ -3472,7 +3480,7 @@ vr_override() {
 		cp -R "$ROOT/scripts" "$_tcp/scripts"
 		rm -f "$_tcp/scripts/lib/tool-policy-override.sh"
 		if EP_REPO_ROOT="$ROOT" sh "$_tcp/scripts/resolve-effective-profile.sh" \
-			--profile laravel --override "$_d/strengthen.json" --format json >/dev/null 2>&1; then _r=0; else _r=$?; fi
+			--profile laravel --override "$_d/strengthen.yaml" --format json >/dev/null 2>&1; then _r=0; else _r=$?; fi
 		rm -rf "$_tcp"
 		vr_check "(D) missing override validator + --override -> exit 2 (no bypass)" "$_r" "2"
 		vr_check "(D) real override validator untouched (temp-copy method)" "$([ -f "$ROOT/scripts/lib/tool-policy-override.sh" ] && echo yes || echo no)" "yes"

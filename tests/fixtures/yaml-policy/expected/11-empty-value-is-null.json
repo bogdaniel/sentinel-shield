@@ -1,0 +1,8 @@
+{
+  "quality": {
+    "coverage": {
+      "enabled": true,
+      "line_min": null
+    }
+  }
+}

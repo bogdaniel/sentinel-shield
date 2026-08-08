@@ -56,6 +56,8 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 # The source-configuration preflight below uses the CANONICAL placeholder detector and value
 # parser rather than keeping a second copy of the regexes here.
 . "$SCRIPT_DIR/lib/source-config.sh"
+# shellcheck source=scripts/lib/yaml-policy.sh
+. "$SCRIPT_DIR/lib/yaml-policy.sh"
 # Opt-in operational-event emission (off by default). Sourced defensively; every oe_emit is a
 # no-op unless SENTINEL_SHIELD_EVENTS=1 + a sink are configured.
 if [ -f "$SCRIPT_DIR/lib/operational-events.sh" ]; then
@@ -493,16 +495,29 @@ if ! command_exists jq; then
   warn "jq absent — cannot resolve the profile tool-policy table"
 else
   # Resolve active profile name(s): --profile wins; else the profile.yaml 'profiles:' list.
+  #
+  # #264: this used to be a SEVENTH ad-hoc YAML reader — a bare awk that scanned for
+  # `profiles:` and took every `- item` under it. It stripped `#` before interpreting
+  # quotes, never removed surrounding quotes, and could not see a duplicate section,
+  # so doctor could report a different active profile set than resolve-gates enforced.
+  # It now goes through the same frontend as every other policy reader.
   PROFILES_RESOLVED="$PROFILES_CLI"
   if [ -z "$PROFILES_RESOLVED" ] && [ -f "$PF" ]; then
-    PROFILES_RESOLVED=$(awk '
-      /^profiles:[[:space:]]*$/ {inlist=1; next}
-      inlist==1 {
-        if ($0 ~ /^[[:space:]]+-[[:space:]]*/) {
-          sub(/^[[:space:]]+-[[:space:]]*/, ""); sub(/[[:space:]]*#.*/, ""); sub(/[[:space:]]+$/, "");
-          if ($0 != "") print $0
-        } else if ($0 ~ /^[^[:space:]#]/) { inlist=0 }
-      }' "$PF")
+    if _pf_json=$(yp_normalize "$PF" 2>/dev/null); then
+      PROFILES_RESOLVED=$(printf '%s' "$_pf_json" | jq -r '
+        if (.profiles | type) == "array" then .profiles[] | tostring else empty end' 2>/dev/null)
+    else
+      # A profile that violates the contract yields NO profile set: doctor must not
+      # invent a winner for a conflict resolve-gates would reject outright. The reason
+      # is re-derived here rather than tee'd through a temp file — this path is the
+      # error path, and doctor has no temp dir at this point in its run.
+      _pf_err=$(yp_normalize "$PF" 2>&1 >/dev/null | head -n1)
+      case "$TOOL_MODE" in
+        require-existing|bootstrap-tools)
+          log_error "doctor: $PF violates the canonical YAML policy contract ($_pf_err) — failing closed under --tool-mode=$TOOL_MODE"; exit 3 ;;
+      esac
+      warn "profile.yaml violates the canonical YAML policy contract: $_pf_err"
+    fi
   fi
   if [ -z "$PROFILES_RESOLVED" ]; then
     warn "no active profile resolved (pass --profile or add a 'profiles:' list to $PF) — skipping table"

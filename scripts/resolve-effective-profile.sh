@@ -13,7 +13,7 @@
 #   --profile <name>   Profile to resolve (profiles/<name>/ or combinations/).
 #   --target <dir>     Consuming project root; enables applicability + one-of
 #                      satisfaction detection. Optional.
-#   --override <path>  Project tool-policy override (.sentinel-shield/tool-policy.yaml
+#   --override <path>  Project tool-policy override, YAML only (.sentinel-shield/tool-policy.yaml
 #                      or .json). Parsed to JSON and schema-validated before use.
 #   --format json      Output format (only json today).
 #

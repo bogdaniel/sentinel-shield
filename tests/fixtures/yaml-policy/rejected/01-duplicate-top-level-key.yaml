@@ -1,0 +1,6 @@
+tools:
+  grype:
+    policy: optional
+tools:
+  semgrep:
+    policy: required

@@ -1,0 +1,22 @@
+project:
+  name: demo
+  type: laravel
+  criticality: high
+  owner: platform-team
+profiles:
+  - laravel
+  - react
+gates:
+  mode: baseline
+  fail_on:
+    secrets: true
+    critical_vulnerabilities: true
+    medium_vulnerabilities: false
+exceptions:
+  allowed: true
+  max_expiry_days: 90
+reports:
+  output_dir: reports
+  format:
+    - markdown
+    - json

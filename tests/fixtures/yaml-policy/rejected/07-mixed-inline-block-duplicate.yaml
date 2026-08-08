@@ -1,0 +1,4 @@
+tools:
+  grype: { policy: optional }
+  grype:
+    policy: required

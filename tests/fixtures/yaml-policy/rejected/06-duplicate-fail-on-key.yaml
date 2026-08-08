@@ -1,0 +1,6 @@
+gates:
+  fail_on:
+    secrets: true
+    # a comment between the two declarations
+
+    secrets: false
