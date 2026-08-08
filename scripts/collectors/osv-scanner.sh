@@ -127,6 +127,22 @@ else
 	STATUS="pass"; HEALTH="ok"
 fi
 
+# #310: verify the EXECUTION RECORD before stamping anything. A parseable report is not a
+# completed scan — the record carries the invoker's observed exit status and binds it to this
+# report's digest, so a non-zero exit, a timeout, a kill, or stale output from an earlier
+# successful run are all refused here rather than normalized into clean evidence.
+if [ "$NE_KIND" != fixture ]; then
+	if ! ne_execution_verify "$TOOL" "$INPUT"; then
+		log_warn "$TOOL: $NE_EXEC_REASON; status=execution-error"
+		ss_emit_collector "$TOOL" "execution-error" \
+			"$(jq -n --arg r "$NE_EXEC_REASON" '{status:"execution-error", health:"untrusted-evidence", reason:$r, critical:0, high:0, medium:0}')" \
+			'{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
+		exit 0
+	fi
+else
+	NE_EXEC_JSON='{"observed":false,"completed":null,"status":"fixture","exit_code":null}'
+fi
+
 # The envelope is STAMPED HERE, after this collector parsed the native report itself.
 if [ "$NE_KIND" = fixture ]; then NE_TRUST_TYPE="$NE_TRUST_FIXTURE"; else NE_TRUST_TYPE="$NE_TRUST_NATIVE"; fi
 ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "osv-scanner-json" "$NE_TRUST_TYPE" \

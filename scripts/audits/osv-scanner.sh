@@ -16,6 +16,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
 # shellcheck source=scripts/lib/bounded-process.sh
 . "$SCRIPT_DIR/../lib/bounded-process.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 
 BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
 trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
@@ -50,5 +52,10 @@ write_prov "local-binary" "$VER" "$BINPATH"
 # BOUNDED scan (not only the version probe): a wedged scan must not stall the wrapper.
 STO=$(bp_timeout scanner-run SENTINEL_SHIELD_OSV_SCANNER_SCAN_TIMEOUT_SECONDS) || STO=900
 bp_run scanner-run "$STO" "$BP_TMP_OUT" "$BP_TMP_ERR" -- osv-scanner --format json --output "$OUT" -r . || true
+# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
+# describe this run. `bp_run ... || true` used to discard it, and the collector then
+# assumed a clean process from a parseable report. Written after the scan so the digest
+# binds to the output as actually left on disk.
+ne_execution_write "osv-scanner" "$OUT" || log_warn "osv-scanner: could not write the execution record"
 [ "${BP_STATUS:-}" = "timed-out" ] && log_warn "osv-scanner: scan exceeded ${STO}s; report may be absent (collector reports unavailable)"
 exit 0
