@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "b17a3bb4dee1879591d9981ebb5f990ec43c8413",
+  "generated_for_master": "0b8d6d4601b3c4bda413a06f19c1ebad6fa6790f",
   "milestones": [
     {
       "key": "M0",
@@ -2130,7 +2130,7 @@
       "milestone_title": "M1 — Evidence Trust Foundation",
       "priority": "p0",
       "type": "security",
-      "status": "blocked",
+      "status": "partial",
       "parent_epic": 287,
       "blocked_by": [
         145
@@ -2569,7 +2569,7 @@
       "milestone_title": "M3 — Policy and Resolution Engine",
       "priority": "p0",
       "type": "architecture",
-      "status": "ready",
+      "status": "partial",
       "parent_epic": 289,
       "blocked_by": [],
       "blocks": [
@@ -2633,7 +2633,7 @@
       "milestone_title": "M3 — Policy and Resolution Engine",
       "priority": "p0",
       "type": "security",
-      "status": "ready",
+      "status": "partial",
       "parent_epic": 289,
       "blocked_by": [],
       "blocks": [
@@ -3286,6 +3286,60 @@
       "closure_evidence": [
         "implementation",
         "doc-contract-review",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 320,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p2",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "shell-idiom-guards",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 323,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 — Policy and Resolution Engine",
+      "priority": "p1",
+      "type": "security",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "shell-idiom-guards",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 324,
+      "primary_domain": "policy",
+      "milestone": "M3",
+      "milestone_title": "M3 — Policy and Resolution Engine",
+      "priority": "p2",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 289,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "shell-idiom-guards",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
         "exact-head-ci"
       ]
     }
