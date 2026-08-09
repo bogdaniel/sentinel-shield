@@ -323,6 +323,12 @@ evidence.
 `warn` is deliberately **unmapped** for these producers: no fixture in the repository uses it,
 so equating it to `findings` would invent semantics they have never been shown to hold.
 
-**`coverage` and `diff-coverage` are NOT yet migrated** — they are owned by #106–#109 and #119,
-and `tests/prod/269-gate-correctness.sh` lists them separately so the partial migration stays
-visible rather than hiding behind a uniform loop.
+**All six engineering-quality producers are now migrated**: `mutation`, `complexity`,
+`duplication`, `dead-code`, `coverage` and `diff-coverage`. `coverage` additionally folds its
+`regression` flag into the countable total, so a report declaring `regression: true` alongside
+`status: pass` is a contradiction and is refused.
+
+While `coverage` and `diff-coverage` were outstanding, `tests/prod/269-gate-correctness.sh`
+listed them separately rather than dropping them from the loop, so the partial migration stayed
+visible in the test instead of hiding behind an iteration that no longer covered what it
+appeared to.

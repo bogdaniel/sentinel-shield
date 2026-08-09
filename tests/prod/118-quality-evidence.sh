@@ -48,7 +48,9 @@ sha() { { command -v sha256sum >/dev/null 2>&1 && sha256sum "$1" || shasum -a 25
 # NOT `jq -r '.x // ""'` — `//` substitutes for false as well as null. See #320.
 f() { printf '%s' "$1" | jq -r "[$2] | .[0] | if . == null then \"\" else tostring end" 2>/dev/null; }
 
-TOOLS="mutation complexity duplication dead-code"
+# All six engineering-quality producers. coverage and diff-coverage joined in #204 PR B;
+# before that they were the visible remainder of a partial migration.
+TOOLS="mutation complexity duplication dead-code coverage diff-coverage"
 mkdir -p "$TMP/reports/raw"
 
 run() { ( cd "$TMP" && sh "$ROOT/scripts/collectors/$1.sh" --input "reports/raw/$1.json" 2>/dev/null ) || true; }
@@ -98,6 +100,26 @@ contra "violations>0 + raw=findings is valid findings" '{"status":"findings","vi
 contra "violations=0 + raw=pass is valid clean"        '{"status":"pass","violations":0}'      pass
 contra "violations>0 + raw=PASS is INVALID"            '{"status":"pass","violations":3}'      execution-error
 contra "violations=0 + raw=FINDINGS is INVALID"        '{"status":"findings","violations":0}'  execution-error
+
+# EVERY producer, not just mutation. A mutation that bypassed the consistency matrix in
+# coverage.sh was caught by tests/prod/269 and MISSED here, because this section only drove
+# one collector — the same "the untested path is the one that breaks" shape that let the #310
+# observed-execution gate ship dead. Each producer gets both contradiction directions and a
+# control.
+for _t in $TOOLS; do
+	put "$_t" '{"status":"pass","violations":3}'
+	[ "$(f "$(run "$_t")" .status)" = "execution-error" ] \
+		&& pass "$_t: raw=pass with violations>0 is INVALID" \
+		|| fail "$_t: a pass/violations>0 contradiction was resolved into a verdict"
+	put "$_t" '{"status":"findings","violations":0}'
+	[ "$(f "$(run "$_t")" .status)" = "execution-error" ] \
+		&& pass "$_t: raw=findings with zero violations is INVALID" \
+		|| fail "$_t: a findings/zero contradiction was resolved into a verdict"
+	put "$_t" '{"status":"findings","violations":2}'
+	[ "$(f "$(run "$_t")" .status)" = "findings" ] \
+		&& pass "$_t: CONTROL — an AGREEING findings report is still findings" \
+		|| fail "$_t: CONTROL failed; the two rejections above prove nothing"
+done
 
 put mutation '{"status":"pass","violations":3}'
 out=$(run mutation)

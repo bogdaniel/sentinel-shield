@@ -38,16 +38,29 @@ done
 # The change is a STRENGTHENING, not a weakening: `pass` becomes `execution-error`. Every
 # malformed-value assertion above is untouched and still holds.
 #
-# coverage and diff-coverage are deliberately NOT migrated yet (they are owned by #106-#109
-# and #119 in M4.2). Listing them separately here keeps the partial migration VISIBLE rather
-# than hiding it behind a uniform loop — when they adopt the envelope, they move up.
-for _c in mutation complexity duplication; do
+# All six engineering-quality producers are now migrated. coverage and diff-coverage were
+# listed separately while they were not, so the partial migration stayed visible rather than
+# hiding behind a uniform loop; they have since adopted the envelope and move up here.
+for _c in coverage mutation complexity duplication diff-coverage dead-code; do
 	check "$_c: an ABSENT .violations is NOT a measured zero (#204)" \
 		"$(c "$_c.sh" '{}')" "execution-error"
 done
-for _c in coverage diff-coverage; do
-	check "$_c: absent .violations still reads as 0 — NOT YET MIGRATED to #204" \
-		"$(c "$_c.sh" '{}')" "pass"
+
+# The CONTROL for the line above. Without it, "absent is rejected" is satisfied by a collector
+# that rejects everything — including one that is simply broken.
+for _c in coverage mutation complexity duplication diff-coverage; do
+	check "$_c: a DECLARED zero is still a clean pass" \
+		"$(c "$_c.sh" '{"status":"pass","violations":0}')" "pass"
+done
+
+# #204 status agreement: a declared status that contradicts the derived count is INVALID
+# evidence — neither clean nor findings. Previously the raw status was accepted and then
+# recomputed from counts, so the disagreement was resolved silently.
+for _c in coverage mutation complexity duplication diff-coverage; do
+	check "$_c: raw 'pass' with violations>0 is inconsistent evidence" \
+		"$(c "$_c.sh" '{"status":"pass","violations":3}')" "execution-error"
+	check "$_c: raw 'findings' with zero violations is inconsistent evidence" \
+		"$(c "$_c.sh" '{"status":"findings","violations":0}')" "execution-error"
 done
 check "debug-code: negative count fails closed" "$(c debug-code.sh '{"debug_code_violations":-1}')" "execution-error"
 check "debug-code: valid count still counts"    "$(c debug-code.sh '{"debug_code_violations":3}')"  "findings"
@@ -67,8 +80,6 @@ check "dead-code: malformed .dead_code_count fails closed (no clean-pass coercio
 	"$(c dead-code.sh '{"dead_code_count":"abc"}')" "execution-error"
 check "dead-code: negative .dead_code_count fails closed" \
 	"$(c dead-code.sh '{"dead_code_count":-1}')" "execution-error"
-check "dead-code: no count at all is NOT a measured zero (#204)" \
-	"$(c dead-code.sh '{}')" "execution-error"
 # A declared count of 0 is still a legitimate clean result — the distinction #204 draws is
 # between MEASURED zero and ABSENT, not between zero and non-zero.
 check "dead-code: a DECLARED zero count is still a clean pass" \
