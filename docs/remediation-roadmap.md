@@ -2,7 +2,13 @@
 
 **Current baseline:** `master` = `cc196ea1bb97054a9f744358d18875e564401c03` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
-**Original audit baseline:** `8f146d11`, 158 findings, all open. **Closed on full acceptance evidence:** #284, #285, #151, #259, #260, #264, #182, #310 — see the closure comment on each. **Newly filed from findings surfaced BY the work:** #306, #310 (now closed), #315, #316, #317, #318. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Original audit baseline:** `8f146d11`, 158 findings, all open.
+
+**Closed on full acceptance evidence:** #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
+
+**Open, filed from findings surfaced BY the work:** #310, #315, #316, #317, #318, #320, #323, #324. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+
+**#310 was closed twice and reopened twice** — first on a criterion that was false (the enforcement gate could never fire), then on an acceptance criterion audited as a whole rather than item by item, which missed the "non-zero exit with no report" case. It is open, P1, `status:needs-verification`. Recorded here rather than smoothed over, because the same reasoning error produced both closures.
 
 **Machine-readable source of truth:** [`config/remediation-plan.json`](../config/remediation-plan.json).
 **Validated by:** `tests/prod/112-remediation-plan.sh`.
