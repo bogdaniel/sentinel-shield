@@ -15,6 +15,42 @@ repositories). The machine-readable source of truth for this status is
 
 ## [Unreleased]
 
+### Fixed — three gates that could not fire (#326, #306)
+
+Two `jq //` polarity inversions and one unreachable exit code. None of the three was a
+missing check: in all three cases the rejection logic was present, reviewed, and permanently
+unreachable, which is why nothing reported them.
+
+- **The observed-execution requirement never rejected anything.** `enforce-gates.sh` tested
+  `(.evidence.execution.observed // true) == false`. jq's `//` substitutes for `false` as
+  well as for `null`, so `false // true` is `true` and the comparison was unsatisfiable —
+  `SENTINEL_SHIELD_REQUIRE_OBSERVED_EXECUTION=1` had been a no-op in `strict` and `regulated`
+  since it shipped. The value is now compared directly. An **absent** execution record is
+  still not a rejection (the requirement stays opt-in and keys only on an explicitly recorded
+  `observed: false`), and malformed `.evidence` still fails closed rather than being skipped.
+- **`ra_gate_ok` could not enforce `complete != false`.** `release-authz.sh` documented
+  "requires: incomplete!=true, **complete!=false**" and then wrote `(.complete // true) ==
+  true` on the line adjacent to a correctly written one, so `{"result":"pass","complete":
+  false}` authorized a release. `complete` remains **optional** — reports that never emit the
+  key are unaffected — but an explicit `false` is now refused.
+- **Gate exit 4 had never been producible.** `sh scripts/health.sh --policy …` documents
+  `4 = probe timeout (UNVERIFIABLE)`, but a bounded probe that timed out escaped the gate as
+  `timeout`'s raw **124**: the status captures were `set -e`-unsafe, and `CP_PROBE_TIMEOUT`
+  was raised inside a command substitution, so even a corrected capture produced exit **3**
+  (misclassified as UNSUPPORTED) rather than 4. Detection now carries the timeout out of the
+  subshell on the exit status and raises the flag in the caller's shell, and health.sh reads
+  it through the library (`cp_probe_timed_out`) instead of touching the variable. Exits
+  0/1/2/3 are unchanged for every existing case.
+- **The compatibility matrix now has a contract for exit 4.** A probe timeout is an
+  environmental **non-verdict**, not a classification: `compat-representative` re-probes once
+  and, if it persists, fails under `COMPAT UNVERIFIABLE` naming the runner, never under
+  `COMPAT MISMATCH`. It is never tolerated into green, and the `expect_rc` assertion is
+  unweakened — a wrong verdict is still a hard mismatch failure. See
+  [`docs/compatibility.md`](docs/compatibility.md#gate-exit-codes).
+- **Proof, not presence.** `tests/prod/302-dead-gate-reachability.sh` runs all three gates and
+  the shipped workflow assertion block, each rejection paired with a control that must pass.
+  13 of its checks fail against the pre-fix tree.
+
 ### Changed — profile manifests are schema-validated before inheritance and composition (#248)
 
 - **The old gate.** A profile manifest reached the resolver on two facts: `jq -e .` said it was

@@ -31,6 +31,36 @@ For every component the gate emits one of:
 Every failure line carries `status=…; reason=<STABLE_CODE>; suite=<responsible validation suite>`
 so the diagnostic is stable and points at the CI that guards the range.
 
+## Gate exit codes
+
+`sh scripts/health.sh --policy …` has its own exit vocabulary, distinct from the operational
+health report. Precedence: `2 > 4 > 3 > 1 > 0`.
+
+| Exit | Meaning | Is it a verdict? |
+| --- | --- | --- |
+| `0` | supported | yes |
+| `1` | degraded — supported, with warnings | yes |
+| `2` | invalid config or invocation | no (the gate could not run) |
+| `3` | UNSUPPORTED | yes |
+| `4` | UNVERIFIABLE — a bounded version probe timed out | **no** (see below) |
+
+### Exit 4 is an environmental non-verdict
+
+A bounded probe (`<tool> --version` under a 5s bound) that times out leaves the gate with no
+classification at all. Exit 4 says *"this environment could not be judged"*, not *"this
+environment is unsupported"* — the two must not be conflated:
+
+- **The matrix does not treat it as a mismatch.** `compat-representative` pins an environment
+  and asserts a classification. On exit 4 it re-probes once and, if the non-verdict persists,
+  fails under `COMPAT UNVERIFIABLE` naming the runner — never under `COMPAT MISMATCH`, which
+  would report a compatibility verdict the gate never reached.
+- **It is never tolerated into green.** A wedged probe fails the job. The `expect_rc`
+  assertion is unweakened and still applies to every verdict the gate does produce.
+- **It is reachable.** `timeout`'s raw 124 used to escape the gate untranslated: the probe runs
+  inside a command substitution, so the flag that maps it to exit 4 was raised in a subshell
+  and discarded. `tests/prod/302-dead-gate-reachability.sh` proves exit 4 under a `timeout`
+  shim, and that exits 0/1/2/3 are unchanged.
+
 ## Operating systems
 
 | OS | Support |

@@ -295,23 +295,50 @@ cp_evaluate() {
 	return 0
 }
 
+# --- probe-timeout flag ------------------------------------------------------
+# THE READ SIDE OF THE FLAG (#306, #326 C).
+#
+# CP_PROBE_TIMEOUT is raised deep inside detection and consumed by scripts/health.sh, which
+# maps it to the documented gate exit 4 (UNVERIFIABLE). Between those two points sits a
+# command substitution — `cp_detect_into_env` captures `cp_detect_tool_version`'s stdout —
+# and a `$( )` is a SUBSHELL: every variable the probe sets there is discarded when it exits.
+# Raising the flag correctly at the point of the timeout is therefore not sufficient on its
+# own, and that is why exit 4 had never been produced: the flag was always set one shell too
+# deep to be seen by the shell that reads it.
+#
+# The read is expressed here, as a predicate, rather than as a bare `[ "$CP_PROBE_TIMEOUT" = 1 ]`
+# in health.sh. Callers ask the library "did a bounded probe time out?" and the library owns
+# how that answer crosses whatever shell boundaries the detection path happens to contain.
+# cp_probe_timeout_reset() is the matching write-side entry point, so no caller has to know
+# the variable's name to arm the gate either.
+cp_probe_timeout_reset() { CP_PROBE_TIMEOUT=0; }
+cp_probe_timeout_raise() { CP_PROBE_TIMEOUT=1; }
+cp_probe_timed_out()     { [ "${CP_PROBE_TIMEOUT:-0}" = 1 ]; }
+
 # --- detection ---------------------------------------------------------------
 # cp_bounded <seconds> <cmd...> — run a probe under a bounded timeout when a timeout
 # tool is available; sets CP_PROBE_TIMEOUT=1 and returns 124 on timeout. Without a
 # timeout tool it runs the command directly (version probes do not contact a daemon).
+#
+# Each branch captures the status with `if cmd; then _rc=0; else _rc=$?; fi`, NOT with
+# `cmd; _rc=$?`. Under `set -eu` — which every caller of this library runs — a failing
+# `cmd` in the second form aborts the shell BEFORE `_rc=$?` is ever reached, so a probe
+# that timed out propagated `timeout`'s raw 124 out of the gate instead of being mapped
+# to the documented exit 4 (#306). The `if` form is a condition context, where `set -e`
+# is suspended by POSIX, so the status is actually captured.
 cp_bounded() {
 	_lim=$1; shift
 	if command_exists timeout; then
-		timeout "$_lim" "$@"; _rc=$?
+		if timeout "$_lim" "$@"; then _rc=0; else _rc=$?; fi
 	elif command_exists gtimeout; then
-		gtimeout "$_lim" "$@"; _rc=$?
+		if gtimeout "$_lim" "$@"; then _rc=0; else _rc=$?; fi
 	else
-		"$@"; _rc=$?
+		if "$@"; then _rc=0; else _rc=$?; fi
 	fi
-	# CP_PROBE_TIMEOUT is read by the caller (scripts/health.sh) to distinguish an
-	# unverifiable probe from a clean result; shellcheck cannot see that cross-file read.
-	# shellcheck disable=SC2034
-	[ "$_rc" = 124 ] && CP_PROBE_TIMEOUT=1
+	# Raise the flag for a DIRECT caller (one not going through a command substitution).
+	# cp_detect_tool_version additionally re-raises it in the caller's shell via its exit
+	# status, because this assignment is lost when cp_bounded runs inside `$( )`.
+	if [ "$_rc" = 124 ]; then cp_probe_timeout_raise; fi
 	return "$_rc"
 }
 
@@ -342,16 +369,22 @@ cp_detect_shell() {
 
 # cp_detect_tool_version <tool> — print the parsed version of <tool> --version, or
 # nothing if the tool is absent / errors / the output has no version. Bounded.
+#
+# RETURNS 124, and prints nothing, when the bounded probe timed out. That exit status is the
+# ONLY channel that survives: this function is itself invoked inside `$( )` by
+# cp_detect_into_env, so the CP_PROBE_TIMEOUT it raises below belongs to a subshell that is
+# already gone by the time anything reads it. The comment this replaces diagnosed the subshell
+# trap one level down (cp_bounded) and then committed exactly the same trap one level up,
+# which is why patching only this function still produced exit 3 rather than 4 (#326 C).
+# cp__detect_version_into() consumes the 124 in the CALLER's shell.
 cp_detect_tool_version() {
 	command_exists "$1" || return 0
-	# cp_bounded runs inside $(), a SUBSHELL — any CP_PROBE_TIMEOUT it sets there is lost. Its
-	# EXIT CODE does propagate through $(), so detect the timeout (124) here and raise the flag
-	# in THIS shell, otherwise a wedged probe would never surface as the caller's exit 4.
-	_out=$(cp_bounded 5 "$1" --version 2>/dev/null); _brc=$?
+	# `if …; then _brc=0; else _brc=$?; fi`, not `…; _brc=$?` — see cp_bounded: under `set -e`
+	# the second form aborts the shell before the status is captured.
+	if _out=$(cp_bounded 5 "$1" --version 2>/dev/null); then _brc=0; else _brc=$?; fi
 	if [ "$_brc" = 124 ]; then
-		# shellcheck disable=SC2034
-		CP_PROBE_TIMEOUT=1
-		return 0
+		cp_probe_timeout_raise
+		return 124
 	fi
 	[ "$_brc" -eq 0 ] || return 0
 	_pv=$(cp_parse_version "$_out") || return 0
@@ -370,6 +403,24 @@ cp_detect_fs_case() {
 	printf '%s' "$_res"
 }
 
+# cp__detect_version_into <var> <override> <tool> — assign the detected version of <tool>
+# to <var>, unless <override> is a non-empty explicit value (which always wins).
+#
+# THIS IS THE SUBSHELL FIX (#306, #326 C). The body runs in the CALLER's shell — a function
+# call is not a subshell — so the `$( )` that captures cp_detect_tool_version's stdout is
+# nested one level INSIDE this function rather than around it. The captured stdout dies with
+# that subshell; the exit status does not. Reading 124 here therefore raises the flag in the
+# shell that cp_detect_into_env, and hence health.sh, actually reads. Written inline as
+# `VAR=${OVERRIDE:-$(cp_detect_tool_version tool)}` there is no shell level at which the
+# status can be observed at all: the substitution is inside a parameter expansion inside an
+# assignment, and `set -e` tears the shell down on the 124 before the next line runs.
+cp__detect_version_into() {
+	if [ -n "$2" ]; then eval "$1=\$2"; return 0; fi
+	if _cdv=$(cp_detect_tool_version "$3"); then _cdrc=0; else _cdrc=$?; fi
+	if [ "$_cdrc" = 124 ]; then cp_probe_timeout_raise; _cdv=""; fi
+	eval "$1=\$_cdv"
+}
+
 # cp_detect_into_env — populate the CP_ENV_* snapshot from live detection, letting
 # any SENTINEL_SHIELD_COMPAT_* override win. CP_ENV_DOCKER_PROFILE / CP_ENV_ONLINE_ONLY
 # may be pre-set by the caller (e.g. health.sh --docker required / --require-network);
@@ -378,14 +429,14 @@ cp_detect_into_env() {
 	CP_ENV_OS=${SENTINEL_SHIELD_COMPAT_OS:-$(cp_detect_os)}
 	CP_ENV_ARCH=${SENTINEL_SHIELD_COMPAT_ARCH:-$(cp_detect_arch)}
 	CP_ENV_SHELL=${SENTINEL_SHIELD_COMPAT_SHELL:-$(cp_detect_shell)}
-	CP_ENV_GIT_VERSION=${SENTINEL_SHIELD_COMPAT_GIT_VERSION:-$(cp_detect_tool_version git)}
-	CP_ENV_JQ_VERSION=${SENTINEL_SHIELD_COMPAT_JQ_VERSION:-$(cp_detect_tool_version jq)}
-	CP_ENV_PHP_VERSION=${SENTINEL_SHIELD_COMPAT_PHP_VERSION:-$(cp_detect_tool_version php)}
-	CP_ENV_NODE_VERSION=${SENTINEL_SHIELD_COMPAT_NODE_VERSION:-$(cp_detect_tool_version node)}
-	CP_ENV_NPM_VERSION=${SENTINEL_SHIELD_COMPAT_NPM_VERSION:-$(cp_detect_tool_version npm)}
-	CP_ENV_PNPM_VERSION=${SENTINEL_SHIELD_COMPAT_PNPM_VERSION:-$(cp_detect_tool_version pnpm)}
-	CP_ENV_YARN_VERSION=${SENTINEL_SHIELD_COMPAT_YARN_VERSION:-$(cp_detect_tool_version yarn)}
-	CP_ENV_COMPOSER_VERSION=${SENTINEL_SHIELD_COMPAT_COMPOSER_VERSION:-$(cp_detect_tool_version composer)}
+	cp__detect_version_into CP_ENV_GIT_VERSION      "${SENTINEL_SHIELD_COMPAT_GIT_VERSION:-}"      git
+	cp__detect_version_into CP_ENV_JQ_VERSION       "${SENTINEL_SHIELD_COMPAT_JQ_VERSION:-}"       jq
+	cp__detect_version_into CP_ENV_PHP_VERSION      "${SENTINEL_SHIELD_COMPAT_PHP_VERSION:-}"      php
+	cp__detect_version_into CP_ENV_NODE_VERSION     "${SENTINEL_SHIELD_COMPAT_NODE_VERSION:-}"     node
+	cp__detect_version_into CP_ENV_NPM_VERSION      "${SENTINEL_SHIELD_COMPAT_NPM_VERSION:-}"      npm
+	cp__detect_version_into CP_ENV_PNPM_VERSION     "${SENTINEL_SHIELD_COMPAT_PNPM_VERSION:-}"     pnpm
+	cp__detect_version_into CP_ENV_YARN_VERSION     "${SENTINEL_SHIELD_COMPAT_YARN_VERSION:-}"     yarn
+	cp__detect_version_into CP_ENV_COMPOSER_VERSION "${SENTINEL_SHIELD_COMPAT_COMPOSER_VERSION:-}" composer
 	if [ -n "${SENTINEL_SHIELD_COMPAT_DOCKER_PRESENT:-}" ]; then
 		CP_ENV_DOCKER_PRESENT=$SENTINEL_SHIELD_COMPAT_DOCKER_PRESENT
 	elif command_exists docker; then
@@ -393,7 +444,7 @@ cp_detect_into_env() {
 	else
 		CP_ENV_DOCKER_PRESENT=no
 	fi
-	CP_ENV_DOCKER_VERSION=${SENTINEL_SHIELD_COMPAT_DOCKER_VERSION:-$(cp_detect_tool_version docker)}
+	cp__detect_version_into CP_ENV_DOCKER_VERSION "${SENTINEL_SHIELD_COMPAT_DOCKER_VERSION:-}" docker
 	CP_ENV_DOCKER_PROFILE=${CP_ENV_DOCKER_PROFILE:-${SENTINEL_SHIELD_COMPAT_DOCKER_PROFILE:-optional}}
 	CP_ENV_FS_CASE=${SENTINEL_SHIELD_COMPAT_FS_CASE:-$(cp_detect_fs_case)}
 	CP_ENV_NETWORK=${SENTINEL_SHIELD_COMPAT_NETWORK:-unknown}

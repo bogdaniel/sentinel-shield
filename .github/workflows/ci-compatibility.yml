@@ -172,12 +172,40 @@ jobs:
           SENTINEL_SHIELD_COMPAT_PHP_VERSION: ${{ matrix.php }}
           SENTINEL_SHIELD_COMPAT_FS_CASE: sensitive
           EXPECT_RC: ${{ matrix.expect_rc }}
+          CASE_NAME: ${{ matrix.name }}
         run: |
-          rc=0
-          sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
-          echo "gate exit=$rc expected=$EXPECT_RC"
+          # THE EXIT-4 CONTRACT OF THIS MATRIX (#306 acceptance criterion 4).
+          #
+          # This job asserts a CLASSIFICATION: given a pinned environment, the gate must reach
+          # a specific verdict. Exit 4 is not one of those verdicts — it means a bounded
+          # version probe timed out and the gate therefore classified NOTHING. Comparing it to
+          # expect_rc reports "expected exit 3 but got 4", i.e. a compatibility mismatch for a
+          # judgement the gate never made. That is how the 2026-08-07 nightly read, and it is
+          # the wrong description of what happened.
+          #
+          # An environmental non-verdict is also NOT a pass: a permanently wedged probe must
+          # never turn this matrix green. So a non-verdict is re-probed once — a timeout is
+          # transient by definition, and if it is not, one more attempt costs seconds and
+          # proves it — and a second non-verdict fails the job under its OWN diagnostic,
+          # naming the runner rather than the compatibility policy.
+          #
+          # The expect_rc assertion itself is UNCHANGED and still applies, unweakened, to every
+          # verdict the gate does produce (including exit 4 itself, should a case ever pin it).
+          attempt=1
+          while :; do
+            rc=0
+            sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
+            echo "gate exit=$rc expected=$EXPECT_RC (attempt $attempt)"
+            if [ "$rc" != 4 ] || [ "$EXPECT_RC" = 4 ]; then break; fi
+            if [ "$attempt" -ge 2 ]; then
+              echo "COMPAT UNVERIFIABLE: '$CASE_NAME' — a bounded probe timed out on both attempts, so the gate produced NO classification (exit 4)."
+              echo "  This is an environmental failure of the runner, not a compatibility verdict, and NOT a mismatch against the expected exit $EXPECT_RC."
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+          done
           if [ "$rc" != "$EXPECT_RC" ]; then
-            echo "COMPAT MISMATCH: '${{ matrix.name }}' expected exit $EXPECT_RC but got $rc"
+            echo "COMPAT MISMATCH: '$CASE_NAME' expected exit $EXPECT_RC but got $rc"
             exit 1
           fi
 
@@ -214,11 +242,21 @@ jobs:
         run: sh tests/prod/260-compatibility-policy.sh
 
       - name: Live compatibility gate on ${{ matrix.image }} (supported or degraded only)
+        env:
+          IMAGE: ${{ matrix.image }}
         run: |
+          # Same exit-4 contract as compat-representative (#306 AC4): a probe timeout is an
+          # environmental non-verdict about the runner, not a support judgement about the
+          # image. It is reported as such and still fails the job — never silently tolerated.
           rc=0
           sh scripts/health.sh --policy config/compatibility-policy.json || rc=$?
-          echo "live gate exit=$rc on ${{ matrix.image }}"
+          echo "live gate exit=$rc on $IMAGE"
+          if [ "$rc" = 4 ]; then
+            echo "runner image $IMAGE is UNVERIFIABLE (gate exit 4): a bounded version probe timed out, so the gate reached no support verdict."
+            echo "  This is a runner/environment failure, not evidence that $IMAGE is unsupported."
+            exit 1
+          fi
           if [ "$rc" -ge 2 ]; then
-            echo "runner image ${{ matrix.image }} is UNSUPPORTED/unverifiable (gate exit $rc) — see FAIL lines above"
+            echo "runner image $IMAGE is UNSUPPORTED (gate exit $rc) — see FAIL lines above"
             exit 1
           fi
