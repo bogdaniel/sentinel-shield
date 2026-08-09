@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "0b8d6d4601b3c4bda413a06f19c1ebad6fa6790f",
+  "generated_for_master": "cc196ea1bb97054a9f744358d18875e564401c03",
   "milestones": [
     {
       "key": "M0",
@@ -3200,17 +3200,17 @@
       ]
     },
     {
-      "issue": 306,
-      "primary_domain": "ci",
-      "milestone": "M0",
-      "milestone_title": "M0 — CI Enablement",
+      "issue": 310,
+      "primary_domain": "evidence",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
       "priority": "p1",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 286,
+      "type": "security",
+      "status": "needs-verification",
+      "parent_epic": 287,
       "blocked_by": [],
       "blocks": [],
-      "implementation_group": "compat-gate-determinism",
+      "implementation_group": "producer-envelope",
       "closure_evidence": [
         "implementation",
         "negative-regression",
