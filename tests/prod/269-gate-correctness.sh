@@ -27,7 +27,27 @@ for _c in coverage mutation complexity duplication diff-coverage; do
 	check "$_c: a fractional .violations fails closed" "$(c "$_c.sh" '{"violations":1.5}')" "execution-error"
 	check "$_c: a string .violations fails closed"     "$(c "$_c.sh" '{"violations":"x"}')" "execution-error"
 	check "$_c: a valid .violations still counts"      "$(c "$_c.sh" '{"violations":2}')"   "findings"
-	check "$_c: an ABSENT .violations is legitimately 0" "$(c "$_c.sh" '{}')"               "pass"
+done
+
+# --- an ABSENT count is NOT a measured zero (#204) --------------------------
+# This suite previously asserted `{}` -> pass for every producer above, as the CONTRAST case
+# to the malformed values: absent was treated as "legitimately 0". #204 overturns exactly
+# that reading — "a missing count is not equivalent to measured zero" — because it made `{}`
+# a clean quality gate.
+#
+# The change is a STRENGTHENING, not a weakening: `pass` becomes `execution-error`. Every
+# malformed-value assertion above is untouched and still holds.
+#
+# coverage and diff-coverage are deliberately NOT migrated yet (they are owned by #106-#109
+# and #119 in M4.2). Listing them separately here keeps the partial migration VISIBLE rather
+# than hiding it behind a uniform loop — when they adopt the envelope, they move up.
+for _c in mutation complexity duplication; do
+	check "$_c: an ABSENT .violations is NOT a measured zero (#204)" \
+		"$(c "$_c.sh" '{}')" "execution-error"
+done
+for _c in coverage diff-coverage; do
+	check "$_c: absent .violations still reads as 0 — NOT YET MIGRATED to #204" \
+		"$(c "$_c.sh" '{}')" "pass"
 done
 check "debug-code: negative count fails closed" "$(c debug-code.sh '{"debug_code_violations":-1}')" "execution-error"
 check "debug-code: valid count still counts"    "$(c debug-code.sh '{"debug_code_violations":3}')"  "findings"
@@ -47,8 +67,12 @@ check "dead-code: malformed .dead_code_count fails closed (no clean-pass coercio
 	"$(c dead-code.sh '{"dead_code_count":"abc"}')" "execution-error"
 check "dead-code: negative .dead_code_count fails closed" \
 	"$(c dead-code.sh '{"dead_code_count":-1}')" "execution-error"
-check "dead-code: absent count is a legitimate pass (0)" \
-	"$(c dead-code.sh '{}')" "pass"
+check "dead-code: no count at all is NOT a measured zero (#204)" \
+	"$(c dead-code.sh '{}')" "execution-error"
+# A declared count of 0 is still a legitimate clean result — the distinction #204 draws is
+# between MEASURED zero and ABSENT, not between zero and non-zero.
+check "dead-code: a DECLARED zero count is still a clean pass" \
+	"$(c dead-code.sh '{"status":"pass","violations":0,"dead_code_count":0}')" "pass"
 
 # --- --strict-summary must accept the schema's own status values ------------
 # The enforcer allowed 5 values; the schema (and every v1.10+ collector) emits 10. So the

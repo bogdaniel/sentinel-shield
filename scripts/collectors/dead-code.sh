@@ -8,6 +8,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/normalized-evidence.sh
+. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 
 TOOL="dead-code"
 INPUT="reports/raw/dead-code.json"
@@ -47,8 +49,11 @@ esac
 # the SAME fail-closed standard as .violations: `((.dead_code_count // 0) | if number...)`
 # coerced a malformed value (e.g. "abc", -1, 1.5) to 0 — read as a clean pass. Distinguish
 # ABSENT (legitimately 0, no count reported) from PRESENT-BUT-MALFORMED (untrusted -> reject).
+# #204: neither count present means nothing was measured. "0" here made `{}` a clean gate
+# via the violations fallback below.
 DCC=$(jq -r '
-	if (has("dead_code_count") | not) then "0"
+	if ((has("dead_code_count") | not) and (has("violations") | not)) then "missing"
+	elif (has("dead_code_count") | not) then "0"
 	elif ((.dead_code_count | type) == "number" and .dead_code_count >= 0 and (.dead_code_count | floor) == .dead_code_count)
 		then (.dead_code_count | floor | tostring)
 	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
@@ -70,14 +75,61 @@ V=$(jq -r --argjson dcc "$DCC" '
 	elif ((.violations | type) == "number" and .violations >= 0 and (.violations | floor) == .violations)
 		then (.violations | floor | tostring)
 	else "invalid" end' "$INPUT" 2>/dev/null || printf 'invalid')
+if [ "$DCC" = "missing" ] || [ "$V" = "missing" ]; then
+	log_warn "$TOOL: neither .violations nor .dead_code_count is present; a missing count is not a measured zero; status=execution-error"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","health":"untrusted-evidence","reason":"no count present; a missing count is not a measured zero"}' '{"dead_code_violations":0}'
+	exit 0
+fi
 if [ "$V" = "invalid" ]; then
 	log_warn "$TOOL: .violations is malformed; status=execution-error (never coerced, never substituted)"
 	ss_emit_collector "$TOOL" "execution-error" \
 		'{"status":"execution-error","reason":"malformed violations count"}' '{"dead_code_violations":0}'
 	exit 0
 fi
-if [ "$V" -gt 0 ]; then STATUS="findings"; else STATUS="pass"; fi
+# #204: the raw producer status is CHECKED against the derived counts and the observed
+# execution, not recomputed over the top of it. Previously `status` was read, accepted, and
+# then discarded in favour of a count-derived verdict — so a producer could say one thing
+# while the numbers said another and the contradiction was silently resolved in whichever
+# direction this line happened to prefer. That is exploitable: a broken or hostile producer
+# picks which field Sentinel privileges.
+#
+# Contradictory evidence is not clean evidence and not finding evidence. It is INVALID.
+ne_quality_verify "$TOOL" "$INPUT" || {
+	log_warn "$TOOL: $NE_EXEC_REASON; status=execution-error"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg r "$NE_EXEC_REASON" '{status:"execution-error", health:"untrusted-evidence", reason:$r}')" \
+		'{"dead_code_violations":0}'
+	exit 0
+}
+# NOT "${NE_EXEC_JSON:-{}}": the `}` closing the inline JSON also closes the parameter
+# expansion, so jq receives truncated text and the collector emits nothing at all. Named
+# constant instead — this exact trap has now bitten three times in this library.
+NE_COMPLETED=$(printf '%s' "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}" | jq -r '[.completed] | .[0] | if . == null then "unobserved" else tostring end')
+# An UNOBSERVED execution cannot contradict anything, so consistency is judged on the two
+# fields that do exist. #310 already records observed=false honestly; enforcing modes may
+# refuse it, which is where that decision belongs.
+[ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+VERDICT=$(ne_status_consistency "$RS" "$V" "$NE_COMPLETED")
+case "$VERDICT" in
+	valid-clean)    STATUS="pass" ;;
+	valid-findings) STATUS="findings" ;;
+	*)
+		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' violations=$V completed=$NE_COMPLETED; status=execution-error"
+		ss_emit_collector "$TOOL" "execution-error" \
+			"$(jq -n --arg r "$VERDICT" --arg raw "$RS" --argjson v "$V" '{status:"execution-error", health:"inconsistent-evidence", reason:$r, raw_status:$raw, violations:$v}')" \
+			'{"dead_code_violations":0}'
+		exit 0 ;;
+esac
 
 OV=$(jq -n --argjson v "$V" --argjson dcc "$DCC" '{dead_code_violations:$v, dead_code_count:$dcc}')
+# #204: the evidence envelope is stamped here, carrying the quality payload — analyzed scope
+# and the configuration digest — above the shared core. Both are LOAD-BEARING: ne_quality_verify
+# recomputes the configuration digest from the file on disk, so a threshold change invalidates
+# evidence produced under the old thresholds rather than merely annotating it.
+ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "sentinel-quality-json" "$NE_TRUST_NATIVE" \
+	"$(printf '%s' "${NE_QUALITY_JSON:-$NE_QUALITY_EMPTY}" | jq --argjson v "$V" '{quality:{violations:$v}} + .')")
+
 REPORT=$(jq -n --arg s "$STATUS" --argjson v "$V" --argjson dcc "$DCC" '{status:$s, findings:$v, dead_code_count:$dcc}')
+REPORT=$(printf '%s' "$REPORT" | jq --argjson e "$ENVELOPE" '. + {evidence:$e}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

@@ -400,3 +400,148 @@ ne_fixture_allowed() {
 	ne_release_context && return 1
 	return 0
 }
+
+# --- quality evidence (#204) ------------------------------------------------
+#
+# EXTENDS the normalized-evidence core rather than forking it. #204 needs producer identity,
+# source digest, target, completion, normalizer identity and trust classification — all of
+# which the core already carries, and all of which have MEANT something since #310 made
+# completion observed rather than assumed. Only two fields are genuinely new, and they live in
+# the quality payload above the core:
+#
+#   scope          which files/paths were actually analyzed
+#   configuration  the thresholds/config the run used, bound by digest
+#
+# BOTH MUST BE LOAD-BEARING. Recording them without verifying them would be provenance
+# decoration: evidence that carries a config hash nobody checks is no better evidence than
+# evidence that carries none. So `ne_quality_verify` RECOMPUTES the configuration digest from
+# the file on disk and rejects a mismatch — change a threshold and prior evidence stops being
+# valid, which is the whole point of binding it.
+#
+# THE CONSISTENCY MATRIX (#204: "raw status agrees with violations and producer completion")
+#
+# The defect being closed is not only the missing field. These collectors accepted a raw
+# `status` from the report and then RECOMPUTED the result from counts, so a producer could say
+# one thing while the numbers said another and the contradiction was silently resolved in
+# whichever direction the code happened to prefer. That is exploitable: a broken or hostile
+# producer chooses which field Sentinel privileges.
+#
+#   completed=true  + violations=0  + raw=pass            -> valid clean
+#   completed=true  + violations>0  + raw=findings|fail   -> valid findings
+#   completed=false                                       -> NEVER clean
+#   violations missing                                    -> NEVER measured zero
+#   raw status contradicts violations                     -> INVALID evidence
+#
+# Contradictory evidence is not clean evidence and not finding evidence. It is INVALID
+# evidence, and it is reported as such rather than normalized into a result.
+#
+# `warn` is deliberately UNMAPPED. Globally equating it to `findings` would be inventing
+# semantics these producers have never been shown to hold — no fixture in the repository uses
+# it for mutation, complexity, duplication or dead-code, so there is nothing to infer from.
+# It is refused with a reason that says so, pending the producer inventory #204 calls for.
+
+# ne_scope_digest <paths-file> — digest of the sorted, newline-separated analyzed path list.
+ne_scope_digest() {
+	[ -f "$1" ] || return 0
+	sort "$1" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | awk '{print $1}'
+}
+
+# ne_status_consistency <raw-status> <violations> <completed>
+#
+# Prints `valid-clean`, `valid-findings`, or `invalid:<reason>`. Never silently picks a side.
+ne_status_consistency() {
+	_nc_raw=${1:-}
+	_nc_v=${2:-}
+	_nc_done=${3:-}
+
+	# A missing count is not a measured zero. This is the #204 headline.
+	case "$_nc_v" in
+	'' | null) printf 'invalid:violations-missing-not-measured-zero\n'; return 0 ;;
+	*[!0-9]*) printf 'invalid:violations-not-a-non-negative-integer\n'; return 0 ;;
+	esac
+
+	# Completion first: nothing is clean over a producer that did not finish.
+	if [ "$_nc_done" != "true" ]; then
+		printf 'invalid:producer-did-not-complete\n'
+		return 0
+	fi
+
+	case "$_nc_raw" in
+	warn)
+		printf 'invalid:warn-semantics-undefined-for-this-producer\n'
+		return 0
+		;;
+	esac
+
+	if [ "$_nc_v" -eq 0 ]; then
+		case "$_nc_raw" in
+		'' | pass) printf 'valid-clean\n' ;;
+		findings | fail) printf 'invalid:raw-status-%s-with-zero-violations\n' "$_nc_raw" ;;
+		*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw" ;;
+		esac
+		return 0
+	fi
+
+	case "$_nc_raw" in
+	findings | fail) printf 'valid-findings\n' ;;
+	'') printf 'valid-findings\n' ;;
+	pass) printf 'invalid:raw-status-pass-with-%s-violations\n' "$_nc_v" ;;
+	*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw" ;;
+	esac
+}
+
+# ne_quality_verify <tool> <input> [record-path] [expected-scope-sha256]
+#
+# Execution verification (#310) plus the two quality bindings. Sets NE_EXEC_JSON and
+# NE_QUALITY_JSON on success; NE_EXEC_REASON on refusal. Returns 0 accept, 1 reject.
+ne_quality_verify() {
+	_nq_tool=$1
+	_nq_in=$2
+	_nq_rec=${3:-}
+	_nq_expscope=${4:-}
+	[ -n "$_nq_rec" ] || _nq_rec=$(ne_execution_record_path "$_nq_in")
+
+	ne_execution_verify "$_nq_tool" "$_nq_in" "$_nq_rec" || return 1
+
+	# No record at all: unobserved. The quality bindings cannot be checked, so they are
+	# recorded as absent rather than assumed satisfied.
+	if [ ! -f "$_nq_rec" ]; then
+		NE_QUALITY_JSON='{"scope":null,"configuration":null}'
+		return 0
+	fi
+
+	# CONFIGURATION BINDING — recomputed, not trusted. A threshold change must invalidate
+	# evidence produced under the old thresholds.
+	_nq_cfg=$(jq -r '.configuration.path // ""' "$_nq_rec" 2>/dev/null)
+	_nq_cfgd=$(jq -r '.configuration.sha256 // ""' "$_nq_rec" 2>/dev/null)
+	if [ -n "$_nq_cfg" ]; then
+		_nq_actual=$(ne_sha256 "$_nq_cfg")
+		if [ -z "$_nq_actual" ]; then
+			NE_EXEC_REASON="configuration '$_nq_cfg' named by the execution record does not exist; its digest cannot be re-proved"
+			return 1
+		fi
+		if [ "$_nq_actual" != "$_nq_cfgd" ]; then
+			NE_EXEC_REASON="configuration digest mismatch for '$_nq_cfg' (record=${_nq_cfgd:-none} actual=$_nq_actual); the thresholds changed after the run, so this evidence describes a different policy"
+			return 1
+		fi
+	fi
+
+	# SCOPE BINDING — an empty or absent scope is not a scope.
+	_nq_scoped=$(jq -r '.scope.sha256 // ""' "$_nq_rec" 2>/dev/null)
+	_nq_n=$(jq -r '[.scope.paths // []] | flatten | length' "$_nq_rec" 2>/dev/null)
+	if [ "${_nq_n:-0}" -eq 0 ]; then
+		NE_EXEC_REASON="execution record declares no analyzed scope; a producer that analyzed nothing has not measured zero violations"
+		return 1
+	fi
+	if [ -n "$_nq_expscope" ] && [ "$_nq_expscope" != "$_nq_scoped" ]; then
+		NE_EXEC_REASON="analyzed scope does not match the expected scope (record=${_nq_scoped:-none} expected=$_nq_expscope)"
+		return 1
+	fi
+
+	NE_QUALITY_JSON=$(jq -c '{scope: .scope, configuration: .configuration}' "$_nq_rec" 2>/dev/null)
+	return 0
+}
+
+# Empty quality payload, as a named constant — see NE_EXEC_UNOBSERVED for why this is not
+# inlined into a `${VAR:-...}` default.
+NE_QUALITY_EMPTY='{"scope":null,"configuration":null}'

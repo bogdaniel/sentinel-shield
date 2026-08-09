@@ -298,3 +298,31 @@ paths, so a hand-rolled producer can never collide with a profile-declared one.
 **Missing evidence is derived only when the channel is expected** — see the expectation rules
 above. TDD cannot be proven from final code; BDD quality and product-owner acceptance are not
 guaranteed by Sentinel Shield.
+
+## Quality evidence: an absent count is not a measured zero (#204)
+
+`mutation`, `complexity`, `duplication` and `dead-code` previously read `.violations` with an
+absent-means-zero fallback, so `{}` — a report that measured **nothing** — was indistinguishable
+from one that measured **zero violations** and became a clean quality gate.
+
+Those four now require the count to be present:
+
+| Report | Before | After |
+| --- | --- | --- |
+| `{}` | `pass` | `execution-error` — a missing count is not a measured zero |
+| `{"status":"pass","violations":0}` | `pass` | `pass` — a **declared** zero is still clean |
+| `{"violations":-5}` / `1.5` / `"x"` | `execution-error` | unchanged |
+
+They additionally require the raw producer `status` to **agree** with the derived count. The
+status used to be read, accepted, and then recomputed from counts, so a producer could report
+`pass` while carrying violations and the contradiction was resolved silently in whichever
+direction the code preferred. A disagreement is now `execution-error` with
+`health: inconsistent-evidence` — contradictory evidence is neither clean evidence nor finding
+evidence.
+
+`warn` is deliberately **unmapped** for these producers: no fixture in the repository uses it,
+so equating it to `findings` would invent semantics they have never been shown to hold.
+
+**`coverage` and `diff-coverage` are NOT yet migrated** — they are owned by #106–#109 and #119,
+and `tests/prod/269-gate-correctness.sh` lists them separately so the partial migration stays
+visible rather than hiding behind a uniform loop.
