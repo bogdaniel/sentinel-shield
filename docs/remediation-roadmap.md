@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `0b8d6d4601b3c4bda413a06f19c1ebad6fa6790f` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `cc196ea1bb97054a9f744358d18875e564401c03` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open. **Closed on full acceptance evidence:** #284, #285, #151, #259, #260, #264, #182, #310 — see the closure comment on each. **Newly filed from findings surfaced BY the work:** #306, #310 (now closed), #315, #316, #317, #318. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
@@ -26,8 +26,8 @@ No framework-validated or full-platform production-readiness claim may be made u
 
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
-| M0 — CI Enablement | #286 | 1 | 0 | #284 and #285 **done**; #306 (compat-gate determinism) remains |
-| M1 — Evidence Trust Foundation | #287 | 17 | 15 | #182 and #310 **done**; **#204 partial** — 4 of 6 quality producers migrated, coverage/diff-coverage remain |
+| M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
+| M1 — Evidence Trust Foundation | #287 | 18 | 15 | #182 **done**; **#310 reopened** (one AC5 case untested); **#204 partial** — envelope migration ≠ completed-producer guarantee, PR C required |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 17 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
