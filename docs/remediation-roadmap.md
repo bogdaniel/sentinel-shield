@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `b17a3bb4dee1879591d9981ebb5f990ec43c8413` · 12 blocking workflows expected on `push` · **170 open issues** = **155 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `0b8d6d4601b3c4bda413a06f19c1ebad6fa6790f` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open. **Closed on full acceptance evidence:** #284, #285, #151, #259, #260, #264, #182, #310 — see the closure comment on each. **Newly filed from findings surfaced BY the work:** #306, #310 (now closed), #315, #316, #317, #318. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
@@ -16,7 +16,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **155 findings remain open, 123 of them P0.** Four were opened on 2026-08-08 from findings surfaced *by* remediation work (#315–#318); the count rising is the programme working, not regressing.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **158 findings remain open, 123 of them P0.** Seven have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324). **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -27,9 +27,9 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | 1 | 0 | #284 and #285 **done**; #306 (compat-gate determinism) remains |
-| M1 — Evidence Trust Foundation | #287 | 16 | 15 | The shared trust primitives everything else consumes — #182 and #310 **done**; **#204 is the last M4 blocker** |
+| M1 — Evidence Trust Foundation | #287 | 17 | 15 | #182 and #310 **done**; **#204 partial** — 4 of 6 quality producers migrated, coverage/diff-coverage remain |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
-| M3 — Policy and Resolution Engine | #289 | 21 | 17 | Resolve the plan before acting on it — parser parity **done**; #248 **partial** (manifest schema landed, AC2 outstanding) |
+| M3 — Policy and Resolution Engine | #289 | 23 | 17 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
 | M5 — Documentation and External Validation | #38 | 4 | 0 | Say what it does; prove it against real consumers |
 
