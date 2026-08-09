@@ -1,0 +1,133 @@
+{
+  "schema": "sentinel-shield/merge-evidence@1",
+  "phase": "merge",
+  "repository": "bogdaniel/sentinel-shield",
+  "pull_request": 319,
+  "triggered_at": "2026-08-08T20:30:32Z",
+  "trigger_epoch": "2026-08-08T20:30:14Z",
+  "frozen": {
+    "head_sha": "ce5219382741e1f0bf91aa8cce2933bb0906f7c1",
+    "base_tip": "b17a3bb4dee1879591d9981ebb5f990ec43c8413",
+    "merge_ref": "92c4a47f0c791809689bd43e19dd1f617e736b1d"
+  },
+  "expected_workflows": [
+    ".github/workflows/ci-adopter-validation.yml",
+    ".github/workflows/ci-codeql.yml",
+    ".github/workflows/ci-compatibility.yml",
+    ".github/workflows/ci-docker.yml",
+    ".github/workflows/ci-node.yml",
+    ".github/workflows/ci-php.yml",
+    ".github/workflows/ci-pipeline.yml",
+    ".github/workflows/ci-production-readiness.yml",
+    ".github/workflows/ci-security.yml",
+    ".github/workflows/ci-self-test.yml",
+    ".github/workflows/ci-workflow-lint.yml"
+  ],
+  "captured_runs": [
+    {
+      "id": 31277059377,
+      "path": ".github/workflows/ci-adopter-validation.yml"
+    },
+    {
+      "id": 31277059379,
+      "path": ".github/workflows/ci-pipeline.yml"
+    },
+    {
+      "id": 31277059383,
+      "path": ".github/workflows/ci-php.yml"
+    },
+    {
+      "id": 31277059396,
+      "path": ".github/workflows/ci-compatibility.yml"
+    },
+    {
+      "id": 31277059401,
+      "path": ".github/workflows/ci-docker.yml"
+    },
+    {
+      "id": 31277059404,
+      "path": ".github/workflows/ci-self-test.yml"
+    },
+    {
+      "id": 31277059407,
+      "path": ".github/workflows/ci-production-readiness.yml"
+    },
+    {
+      "id": 31277059409,
+      "path": ".github/workflows/ci-security.yml"
+    },
+    {
+      "id": 31277059412,
+      "path": ".github/workflows/ci-codeql.yml"
+    },
+    {
+      "id": 31277059437,
+      "path": ".github/workflows/ci-node.yml"
+    },
+    {
+      "id": 31277059470,
+      "path": ".github/workflows/ci-workflow-lint.yml"
+    }
+  ],
+  "verified_at": "2026-08-08T20:50:56Z",
+  "verdict": "verified",
+  "run_verdicts": [
+    {
+      "id": 31277059377,
+      "path": ".github/workflows/ci-adopter-validation.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059379,
+      "path": ".github/workflows/ci-pipeline.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059383,
+      "path": ".github/workflows/ci-php.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059396,
+      "path": ".github/workflows/ci-compatibility.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059401,
+      "path": ".github/workflows/ci-docker.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059404,
+      "path": ".github/workflows/ci-self-test.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059407,
+      "path": ".github/workflows/ci-production-readiness.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059409,
+      "path": ".github/workflows/ci-security.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059412,
+      "path": ".github/workflows/ci-codeql.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059437,
+      "path": ".github/workflows/ci-node.yml",
+      "verdict": "verified"
+    },
+    {
+      "id": 31277059470,
+      "path": ".github/workflows/ci-workflow-lint.yml",
+      "verdict": "verified"
+    }
+  ],
+  "merged_at": "2026-08-08T20:51:24Z",
+  "merge_commit": "4426d128705ae0e640469d0e44659f1f7e3b5adf"
+}
