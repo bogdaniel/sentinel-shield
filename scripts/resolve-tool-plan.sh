@@ -15,6 +15,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
 # shellcheck source=scripts/lib/compat-resolver.sh
 . "$SCRIPT_DIR/lib/compat-resolver.sh"
+# Canonical identifier grammar + structural set primitives (#251).
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 TAB=$(printf '\t')
@@ -38,6 +41,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$PROFILE" ] || { log_error "--profile is required"; usage >&2; exit 2; }
+# (#251) Validate the identifier BEFORE it is handed to a resolver that will turn
+# it into a filesystem path.
+ps_require_id "$PROFILE" "profile identifier" "resolve-tool-plan --profile"
 case "$FORMAT" in
 	text | json) ;;
 	*) log_error "--format must be 'text' or 'json'"; exit 2 ;;
@@ -64,10 +70,22 @@ cr_effective_profile "$REPO_ROOT" "$PROFILE" "$TARGET" > "$EFFECTIVE"
 # installable/missing plan — they are reported as 'disabled', never proposed for
 # install. (A required control cannot be disabled without a control-waiver; that is
 # enforced by the gate, not here — this only keeps the install plan honest.)
-DISABLED_SET=" "
+# (#251) A newline-delimited STRUCTURAL set of validated identifiers, tested with
+# whole-line equality. It used to be a space-padded string built by `for dt in
+# $(jq ...)`: one project-controlled entry containing a space became two disabled
+# tools, one containing a glob character was expanded against the cwd, and the
+# `*" $k "*` membership test matched a key across element boundaries.
+DISABLED_SET=""
 _im="$TARGET/.sentinel-shield/installation.json"
 if [ -f "$_im" ] && jq -e . "$_im" >/dev/null 2>&1; then
-	for _dt in $(jq -r '(.disabled_tools // [])[]' "$_im" 2>/dev/null); do DISABLED_SET="${DISABLED_SET}${_dt} "; done
+	_dts=$(jq -r '(.disabled_tools // [])[]' "$_im" 2>/dev/null || true)
+	while IFS= read -r _dt; do
+		[ -n "$_dt" ] || continue
+		ps_valid_id "$_dt" || { log_error "invalid tool identifier in $_im .disabled_tools: reason=$(ps_id_reject_reason "$_dt" || true) value=$(ps_id_render "$_dt") (must match $PS_ID_PATTERN)"; exit 2; }
+		DISABLED_SET=$(ps_set_add "$_dt" "$DISABLED_SET")
+	done <<RTP_DISABLED
+$_dts
+RTP_DISABLED
 fi
 
 # --- inspect the environment (read-only) ------------------------------------
@@ -82,23 +100,22 @@ REC=""
 ONE=""
 DIS=""
 ACC=""
-_oifs=$IFS
-IFS='
-'
-for k in $KEYS; do
-	IFS=$_oifs
-	[ -n "$k" ] || { IFS='
-'; continue; }
+# (#251) One key per LINE. The IFS-juggling `for k in $KEYS` this replaces still
+# glob-expanded every element, and had to restore/re-set IFS at four different
+# points inside the body — one missed branch and the loop split on spaces again.
+while IFS= read -r k; do
+	[ -n "$k" ] || continue
+	ps_valid_id "$k" || { log_error "effective profile declares an invalid tool identifier: reason=$(ps_id_reject_reason "$k" || true) value=$(ps_id_render "$k") (must match $PS_ID_PATTERN)"; exit 2; }
 	policy=$(cr_tool_policy "$EFFECTIVE" "$k")
 	case "$policy" in
 		required | recommended | one-of) ;;
-		*) IFS='
-'; continue ;;
+		*) continue ;;
 	esac
-	case "$DISABLED_SET" in
-		*" $k "*) decision="disabled"; reason="disabled via .sentinel-shield/installation.json" ;;
-		*) res=$(cr_classify_tool "$TARGET" "$EFFECTIVE" "$k"); decision=${res%%"$TAB"*}; reason=${res#*"$TAB"} ;;
-	esac
+	if ps_set_has "$k" "$DISABLED_SET"; then
+		decision="disabled"; reason="disabled via .sentinel-shield/installation.json"
+	else
+		res=$(cr_classify_tool "$TARGET" "$EFFECTIVE" "$k"); decision=${res%%"$TAB"*}; reason=${res#*"$TAB"}
+	fi
 	line=$(printf '  - %-20s %-18s %s' "$k" "$decision" "$reason")
 	if [ "$decision" = "disabled" ]; then
 		DIS="${DIS}${line}
@@ -116,10 +133,9 @@ for k in $KEYS; do
 	ACC="${ACC}$(jq -nc --arg k "$k" --arg p "$policy" --arg d "$decision" --arg r "$reason" \
 		'{key:$k, policy:$p, decision:$d, reason:$r}')
 "
-	IFS='
-'
-done
-IFS=$_oifs
+done <<RTP_KEYS
+$KEYS
+RTP_KEYS
 
 # --- render ------------------------------------------------------------------
 if [ "$FORMAT" = "json" ]; then

@@ -140,7 +140,10 @@ for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json;
 			main) _rkey=recommended_main_gate_tools; _tok=main ;;
 			scheduled) _rkey=recommended_scheduled_tools; _tok=scheduled ;;
 		esac
-		for _rt in $(jq -r --arg k "$_rkey" '(.[$k] // [])[]' "$f" 2>/dev/null); do
+		# (#251) One recommended TOOL IDENTIFIER per LINE, not word-split command
+		# substitution.
+		_rts=$(jq -r --arg k "$_rkey" '(.[$k] // [])[]' "$f" 2>/dev/null || true)
+		while IFS= read -r _rt; do
 			[ -n "$_rt" ] || continue
 			# Selected at this stage by the profile itself: nothing to reconcile.
 			_sel=$(jq -r --arg t "$_rt" --arg s "$_stage" '
@@ -150,15 +153,21 @@ for f in profiles/*/profile.manifest.json profiles/combinations/*.manifest.json;
 			[ "$_sel" = "false" ] || continue
 			# Not selected — then some workflow for THIS stage must run it.
 			_ran=0
-			for _wsrc in $(jq -r '[(.workflows // [])[] | .source] | .[]?' "$f" 2>/dev/null); do
+			_wsrcs=$(jq -r '[(.workflows // [])[] | .source] | .[]?' "$f" 2>/dev/null || true)
+			while IFS= read -r _wsrc; do
+				[ -n "$_wsrc" ] || continue
 				case "$_wsrc" in *"$_tok"* | */sentinel-shield.yml) ;; *) continue ;; esac
 				_wf="templates/$_wsrc"; [ -f "$_wf" ] || _wf="$_wsrc"; [ -f "$_wf" ] || continue
 				if grep -qE "(runners/${_rt}\.sh|collectors/${_rt}\.sh|audits/${_rt}\.sh|[/\"' ]${_rt}\.json)" "$_wf" 2>/dev/null; then
 					_ran=1; break
 				fi
-			done
+			done <<PTI_WSRCS
+$_wsrcs
+PTI_WSRCS
 			[ "$_ran" -eq 1 ] || fail "$prof: $_rkey recommends '$_rt', but the profile sets execution.$_stage=false for it and no $_stage workflow runs it — following that advice wires a producer the plan never invokes at $_stage"
-		done
+		done <<PTI_RTS
+$_rts
+PTI_RTS
 	done
 
 	# 3. Every DECLARED key must resolve too — including entries with no `report`.

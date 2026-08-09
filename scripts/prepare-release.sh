@@ -79,9 +79,14 @@ printf '[prepare-release] repo=%s source_commit=%s prev=%s\n' "$REPO" "$SOURCE_C
 
 # The canonical required-workflow set (kept in lockstep with config/required-checks.json).
 WF_ARGS=""
-for _wf in $(jq -r '.required_workflows[].workflow_name' "$REQ_WF_CONFIG"); do
+# (#251) One workflow name per LINE, not word-split command substitution.
+_wfnames=$(jq -r '.required_workflows[].workflow_name' "$REQ_WF_CONFIG")
+while IFS= read -r _wf; do
+	[ -n "$_wf" ] || continue
 	WF_ARGS="$WF_ARGS --workflow $_wf"
-done
+done <<PR_WFNAMES
+$_wfnames
+PR_WFNAMES
 [ -n "$WF_ARGS" ] || die "no required workflows in config"
 
 # --- 1. engine CI evidence ---------------------------------------------------

@@ -24,6 +24,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # are classified with the same clock and the same calendar rules as control waivers.
 # shellcheck source=scripts/lib/control-waivers.sh
 . "$SCRIPT_DIR/lib/control-waivers.sh"
+# Canonical identifier grammar + structural set primitives (#251).
+# shellcheck source=scripts/lib/profile-schema.sh
+. "$SCRIPT_DIR/lib/profile-schema.sh"
 
 die_cfg() { log_error "$*"; exit 2; }
 
@@ -247,7 +250,11 @@ EVENT=""
 RUN_ID=""
 RUN_ATTEMPT=""
 STRICT_TOOLS=0
-REQUIRE_TOOLS=" "   # space-padded list for substring matching
+# (#251) A newline-delimited STRUCTURAL set of validated tool identifiers, tested
+# with whole-line equality. It was a space-padded string matched with
+# `*" $key "*`, so `--require-tool "trivy fs"` silently became two requirements
+# and a key could match across element boundaries.
+REQUIRE_TOOLS=""
 PROFILE_NAME=""    # when set, overlay effective-profile tool policy onto summary.tools
 STAGE=""
 TARGET_DIR=""      # consuming project root (applicability + one-of + installation.json)
@@ -318,7 +325,10 @@ while [ $# -gt 0 ]; do
 		--run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
 		--run-attempt) RUN_ATTEMPT="${2:?--run-attempt requires a value}"; shift 2 ;;
 		--strict-tools) STRICT_TOOLS=1; shift ;;
-		--require-tool) REQUIRE_TOOLS="${REQUIRE_TOOLS}${2:?--require-tool requires a value} "; shift 2 ;;
+		--require-tool)
+			_rt="${2:?--require-tool requires a value}"
+			ps_valid_id "$_rt" || die_cfg "--require-tool: invalid tool identifier: reason=$(ps_id_reject_reason "$_rt" || true) value=$(ps_id_render "$_rt") (must match $PS_ID_PATTERN)"
+			REQUIRE_TOOLS=$(ps_set_add "$_rt" "$REQUIRE_TOOLS"); shift 2 ;;
 		--profile) PROFILE_NAME="${2:?--profile requires a value}"; shift 2 ;;
 		--stage) STAGE="${2:?--stage requires a value}"; shift 2 ;;
 		--target) TARGET_DIR="${2:?--target requires a value}"; shift 2 ;;
@@ -489,7 +499,7 @@ for row in $TOOL_TABLE; do
 
 	required=0
 	if [ "$STRICT_TOOLS" -eq 1 ]; then required=1; fi
-	case "$REQUIRE_TOOLS" in *" $key "*) required=1 ;; esac
+	ps_set_has "$key" "$REQUIRE_TOOLS" && required=1
 
 	if [ ! -f "$raw" ] || [ ! -s "$raw" ]; then
 		if [ "$required" -eq 1 ]; then
@@ -668,18 +678,26 @@ if [ -n "$PROFILE_NAME" ]; then
 	printf '%s' "$EFF" | jq -e . >/dev/null 2>&1 || die_cfg "resolver did not emit valid JSON for profile '$PROFILE_NAME'"
 
 	# Tools explicitly disabled in this installation (only knowable with --target).
-	DISABLED_TOOLS=" "
+	# (#251) Structural, newline-delimited sets of VALIDATED identifiers, tested
+	# with whole-line equality. Both were space-padded strings built by word-split
+	# command substitution and matched with `*" $tkey "*`.
+	DISABLED_TOOLS=""
 	if [ -n "$TARGET_DIR" ] && [ -f "$TARGET_DIR/.sentinel-shield/installation.json" ]; then
 		_im="$TARGET_DIR/.sentinel-shield/installation.json"
 		if jq -e . "$_im" >/dev/null 2>&1; then
-			for _d in $(jq -r '(.disabled_tools // [])[]' "$_im" 2>/dev/null); do
-				DISABLED_TOOLS="${DISABLED_TOOLS}${_d} "
-			done
+			_dts=$(jq -r '(.disabled_tools // [])[]' "$_im" 2>/dev/null || true)
+			while IFS= read -r _d; do
+				[ -n "$_d" ] || continue
+				ps_valid_id "$_d" || die_cfg "invalid tool identifier in $_im .disabled_tools: reason=$(ps_id_reject_reason "$_d" || true) value=$(ps_id_render "$_d") (must match $PS_ID_PATTERN)"
+				DISABLED_TOOLS=$(ps_set_add "$_d" "$DISABLED_TOOLS")
+			done <<BSS_DISABLED
+$_dts
+BSS_DISABLED
 		fi
 	fi
 
-	# one-of group members (alternatives across all groups), space-padded.
-	ONEOF_MEMBERS=" $(printf '%s' "$EFF" | jq -r '[ (.one_of_groups // {})[].alternatives[]? ] | join(" ")') "
+	# one-of group members (alternatives across all groups).
+	ONEOF_MEMBERS=$(printf '%s' "$EFF" | jq -r '[ (.one_of_groups // {})[].alternatives[]? ] | unique | .[]')
 
 	# Pipe-delimited rows (empty fields preserved):
 	#   key|policy|applicability|report|exes|cfgpath|cfgclass|category
@@ -730,7 +748,7 @@ if [ -n "$PROFILE_NAME" ]; then
 		# one-of MEMBERS yes; the one-of GROUP entry (policy one-of, not a member,
 		# e.g. 'tests') is represented in one_of_groups only; disabled/external skip.
 		_is_member=0
-		case "$ONEOF_MEMBERS" in *" $tkey "*) _is_member=1 ;; esac
+		ps_set_has "$tkey" "$ONEOF_MEMBERS" && _is_member=1
 		case "$tpol" in
 			required | recommended | optional) : ;;
 			one-of) [ "$_is_member" -eq 1 ] || continue ;;
@@ -791,7 +809,7 @@ if [ -n "$PROFILE_NAME" ]; then
 			report_ok=1
 		fi
 		_disabled=0
-		case "$DISABLED_TOOLS" in *" $tkey "*) _disabled=1 ;; esac
+		ps_set_has "$tkey" "$DISABLED_TOOLS" && _disabled=1
 
 		installed=false; configured=true; executed=false
 		if [ "$tappl" = "not-applicable" ]; then
@@ -895,7 +913,35 @@ if [ -n "$PROFILE_NAME" ]; then
 $_rows
 EOF
 
-	POLICY_TOOLS=$(printf '%s' "$POLICY_COLLECTED" | jq -s 'reduce .[] as $o ({}; .[$o._emit] = ($o | del(._emit)))')
+	# (#251) EMIT-NAME COLLISION. `_emit` is a NORMALIZED name — the tool key with
+	# `-` -> `_`, or an explicit TOOL_TABLE mapping — so two DISTINCT profile tool
+	# identifiers can land on one key: `php-style` (php-library) and
+	# `php-cs-fixer` (symfony) both emit `php_style`, and a profile extending both
+	# composes both. The reduce below was last-wins, so the other producer's whole
+	# policy row — including its `gate_enforced` verdict — vanished from the
+	# summary while its counts stayed in the aggregate. An UNREGISTERED collision
+	# is a configuration failure; a registered channel resolves deterministically
+	# to the row that can never hide a failure.
+	_pdupes=$(printf '%s' "$POLICY_COLLECTED" | jq -s -r --argjson ok "$MERGEABLE_CHANNELS" '
+		[ .[] | {e: ._emit, t: .tool} ] | group_by(.e) | map(select(length > 1))
+		| map(select(. as $g | ($ok | index($g[0].e)) == null))
+		| .[] | "\(.[0].e) <- \(map(.t) | sort | join(", "))"' 2>/dev/null || true)
+	if [ -n "$_pdupes" ]; then
+		printf '%s\n' "$_pdupes" | while IFS= read -r _l; do
+			[ -n "$_l" ] && log_error "profile tool identifiers collide after emit-name normalization: $_l"
+		done
+		die_cfg "two or more profile tool identifiers normalize to one summary key with no registered merger; the later policy row would silently replace the earlier one, including its gate_enforced verdict"
+	fi
+	POLICY_TOOLS=$(printf '%s' "$POLICY_COLLECTED" | jq -s '
+		def sevmap: {"execution-error":6, "not-configured":5, "unavailable":4,
+		             "fail":3, "findings":3, "warn":3, "pass":2, "disabled":1, "not-applicable":0};
+		def sev($s): (if (sevmap | has($s)) then sevmap[$s] else 7 end);
+		group_by(._emit)
+		| map({ key: .[0]._emit,
+		        value: ( sort_by([ (if .gate_enforced then 0 else 1 end),
+		                           (0 - sev(.status)),
+		                           .tool ])[0] | del(._emit) ) })
+		| from_entries')
 
 	# one-of group echo + unsatisfied groups fail the gate. POST-EXECUTION the REPORT
 	# is the source of truth: a group whose normalized report (e.g. reports/raw/tests.json)
@@ -905,7 +951,10 @@ EOF
 	# to the resolver status; a required group with neither is unsatisfied (gate fails).
 	ONEOF_ECHO='{}'
 	_unsat=0
-	for _g in $(printf '%s' "$EFF" | jq -r '(.one_of_groups // {}) | keys[]'); do
+	# (#251) One group key per LINE, not word-split command substitution.
+	_bgroups=$(printf '%s' "$EFF" | jq -r '(.one_of_groups // {}) | keys[]')
+	while IFS= read -r _g; do
+		[ -n "$_g" ] || continue
 		_grep=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '(.tools[$g].report // (.one_of_groups[$g].alternatives[]? as $m | .tools[$m].report) // "")' | head -n1)
 		_gsel=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].selected // ""')
 		_gstatus=$(printf '%s' "$EFF" | jq -r --arg g "$_g" '.one_of_groups[$g].status // "unknown"')
@@ -942,7 +991,9 @@ EOF
 		[ "$_gstatus" = "unsatisfied" ] && _unsat=$((_unsat + 1))
 		ONEOF_ECHO=$(printf '%s' "$ONEOF_ECHO" | jq --arg g "$_g" --arg st "$_gstatus" --arg sel "$_gsel" \
 			'. + {($g): {status: $st, selected: (if $sel=="" then null else $sel end)}}')
-	done
+	done <<BSS_GROUPS
+$_bgroups
+BSS_GROUPS
 	REQ_FAIL=$((REQ_FAIL + _unsat))
 
 	# missing_coverage_evidence (v2.1): an APPLICABLE coverage tool that produced no valid report

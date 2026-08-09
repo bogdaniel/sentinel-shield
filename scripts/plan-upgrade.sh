@@ -75,12 +75,14 @@ done
 case "$FORMAT" in text|markdown|json) ;; *) log_error "invalid --format '$FORMAT' (text|markdown|json)"; exit 2 ;; esac
 command_exists jq || { log_error "jq is required"; exit 2; }
 
-# Locate the target-version profile manifest (same lookup as sync-baseline.sh).
-MANIFEST=""
-for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PROFILE.manifest.json"; do
-	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
-done
-[ -n "$MANIFEST" ] || { log_error "no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)"; exit 2; }
+# Locate the target-version profile manifest (same lookup everywhere). (#251) ONE shared,
+# identifier-validating lookup (scripts/lib/profile-schema.sh): the name is
+# checked against the canonical grammar BEFORE it is concatenated into a path, a
+# name present in BOTH locations is AMBIGUOUS rather than first-wins, and an
+# on-disk entry that matches only case-insensitively is not a match. Sets
+# PS_MANIFEST_PATH, or logs the reason and exits 2.
+ps_require_profile_manifest "$ROOT" "$PROFILE" "plan-upgrade --profile"
+MANIFEST="$PS_MANIFEST_PATH"
 # (#248) FULL schema + semantic validation before any manifest field is read.
 ps_validate_manifest "$MANIFEST" install "plan-upgrade --profile $PROFILE"
 

@@ -353,8 +353,12 @@ phase_verify() {
 		_pending=0
 		# Poll ONLY the captured immutable run IDs. Never a fresh head-only query: that would
 		# re-admit whatever runs happen to exist now, which is the whole failure mode.
-		for _id in $(jq -r '.captured_runs[].id' "$MANIFEST"); do
-			_j=$(api_run "$_id") || me_die "could not read run $_id"
+		# (#251) One run id per LINE, not word-split command substitution.
+		_meids=$(jq -r '.captured_runs[].id' "$MANIFEST")
+		while IFS= read -r _id; do
+			[ -n "$_id" ] || continue
+			# stdin is the id heredoc; keep `gh` from consuming the remaining ids.
+			_j=$(api_run "$_id" </dev/null) || me_die "could not read run $_id"
 			_v=$(me_classify_run \
 				"$(printf '%s' "$_j" | jq -r '.status // ""')" \
 				"$(printf '%s' "$_j" | jq -r '.conclusion // ""')" \
@@ -363,7 +367,9 @@ phase_verify() {
 				"$_head")
 			printf '%s\t%s\t%s\n' "$_id" "$(printf '%s' "$_j" | jq -r '.path // ""')" "$_v" >> "$TMPD/results"
 			[ "$_v" = "pending" ] && _pending=$((_pending + 1))
-		done
+		done <<ME_IDS1
+$_meids
+ME_IDS1
 		[ "$_pending" -eq 0 ] && break
 		[ "$(date +%s)" -ge "$_deadline" ] && me_die "$_pending run(s) still pending at timeout — pending is not a verdict"
 		me_log "$_pending run(s) pending; waiting"
@@ -412,8 +418,12 @@ phase_merge() {
 	[ "$_now_mref" = "$_mref" ] || me_die "merge ref moved: frozen $_mref, now $_now_mref"
 
 	# Re-read the captured runs too: a rerun launched after verification would change attempt.
-	for _id in $(jq -r '.captured_runs[].id' "$MANIFEST"); do
-		_j=$(api_run "$_id") || me_die "could not re-read run $_id"
+	# (#251) One run id per LINE, not word-split command substitution.
+	_meids=$(jq -r '.captured_runs[].id' "$MANIFEST")
+	while IFS= read -r _id; do
+		[ -n "$_id" ] || continue
+		# stdin is the id heredoc; keep `gh` from consuming the remaining ids.
+		_j=$(api_run "$_id" </dev/null) || me_die "could not re-read run $_id"
 		_v=$(me_classify_run \
 			"$(printf '%s' "$_j" | jq -r '.status // ""')" \
 			"$(printf '%s' "$_j" | jq -r '.conclusion // ""')" \
@@ -421,7 +431,9 @@ phase_merge() {
 			"$(printf '%s' "$_j" | jq -r '.head_sha // ""')" \
 			"$_head")
 		[ "$_v" = verified ] || me_die "run $_id no longer verifies: $_v"
-	done
+	done <<ME_IDS2
+$_meids
+ME_IDS2
 
 	me_log "merging with --match-head-commit $_head"
 	gh pr merge "$PR" -R "$REPO" "--$METHOD" --match-head-commit "$_head" --delete-branch ||

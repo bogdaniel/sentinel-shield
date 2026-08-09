@@ -198,7 +198,8 @@ eh_writer_reports() {
 eh_seed_nonwriter() {
 	_eff=$(eh_resolve "$1" "$2") || { log_error "e2e-harness: could not resolve profile '$1'"; return 1; }
 	ensure_dir "$2/reports/raw"
-	for _rep in $(printf '%s' "$_eff" | jq -r '
+	# (#251) One report path per LINE, not word-split command substitution.
+	_reps=$(printf '%s' "$_eff" | jq -r '
 		( [ .tools | to_entries[]
 		    | select(.value.policy=="required" and (.value.applicability//"unknown")!="not-applicable")
 		    | select( (((.value.runner // "") | startswith("scripts/runners/")) and (.value.execution.pr == true)) | not )
@@ -208,9 +209,13 @@ eh_seed_nonwriter() {
 		    | ($g.value.selected) as $sel
 		    | select( (((.tools[$sel].runner // "") | startswith("scripts/runners/")) and ((.tools[$g.key].execution.pr // false) == true)) | not )
 		    | (.tools[$g.key].report // .tools[$sel].report // "reports/raw/tests.json") ] )
-		| unique[] | select(length>0) | sub(".*/";"")'); do
+		| unique[] | select(length>0) | sub(".*/";"")')
+	while IFS= read -r _rep; do
+		[ -n "$_rep" ] || continue
 		[ -f "$2/reports/raw/$_rep" ] || printf '{}\n' > "$2/reports/raw/$_rep"
-	done
+	done <<EH_REPORTS
+$_reps
+EH_REPORTS
 }
 
 # eh_oneof_report <profile> <target> — basename of the SELECTED one-of group's report

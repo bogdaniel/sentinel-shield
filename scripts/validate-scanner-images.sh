@@ -231,9 +231,14 @@ check_contract() {
 	# DECLARED_TEMPLATE_MISSING and "declared templates exist". Only report the pass when
 	# nothing failed, matching check_templates().
 	_decl_ok=1
-	for _t in $(jq -r '.templates[]' "$CONTRACT"); do
+	# (#251) One template path per LINE, not word-split command substitution.
+	_tmpls=$(jq -r '.templates[]' "$CONTRACT")
+	while IFS= read -r _t; do
+		[ -n "$_t" ] || continue
 		[ -f "$REPO_ROOT/$_t" ] || { fail "DECLARED_TEMPLATE_MISSING — $_t is declared in the contract but does not exist"; _decl_ok=0; }
-	done
+	done <<VSI_DECL
+$_tmpls
+VSI_DECL
 	# `[ … ] && pass` as the LAST command makes the function's exit status the test's. Under
 	# `set -eu` a missing declared template therefore killed the whole script here: the
 	# summary never printed and, in `all` mode, check_templates never ran — the run reported
@@ -244,7 +249,10 @@ check_contract() {
 check_templates() {
 	printf 'scanner-images: templates\n'
 	_seen=0
-	for _t in $(jq -r '.templates[]' "$CONTRACT"); do
+	# (#251) One template path per LINE, not word-split command substitution.
+	_tmpls=$(jq -r '.templates[]' "$CONTRACT")
+	while IFS= read -r _t; do
+		[ -n "$_t" ] || continue
 		[ -f "$REPO_ROOT/$_t" ] || { fail "TEMPLATE_MISSING — $_t"; continue; }
 		# Every `SENTINEL_SHIELD_*_IMAGE: <value>` assignment in the file, comments stripped.
 		# Commented-out example lines (`# SENTINEL_SHIELD_..._IMAGE: ...`) are documentation,
@@ -364,7 +372,9 @@ EOF
 		done <<EOF
 $(image_operands "$REPO_ROOT/$_t")
 EOF
-	done
+	done <<VSI_TEMPLATES
+$_tmpls
+VSI_TEMPLATES
 	if [ "$_seen" -eq 0 ]; then
 		fail "SWEEP_EMPTY — no scanner-image assignment was inspected in any declared template"
 	else

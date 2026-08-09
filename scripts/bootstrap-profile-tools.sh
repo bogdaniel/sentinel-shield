@@ -86,12 +86,14 @@ else
 	log_error "target directory not found: $TARGET"; exit 2
 fi
 
-# Resolve the manifest (named profile OR combinations/<name>).
-MANIFEST=""
-for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PROFILE.manifest.json"; do
-	[ -f "$REPO_ROOT/$cand" ] && { MANIFEST="$REPO_ROOT/$cand"; break; }
-done
-[ -n "$MANIFEST" ] || { log_error "no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)"; exit 2; }
+# Resolve the manifest (named profile OR combinations/<name>). (#251) ONE shared,
+# identifier-validating lookup (scripts/lib/profile-schema.sh): the name is
+# checked against the canonical grammar BEFORE it is concatenated into a path, a
+# name present in BOTH locations is AMBIGUOUS rather than first-wins, and an
+# on-disk entry that matches only case-insensitively is not a match. Sets
+# PS_MANIFEST_PATH, or logs the reason and exits 2.
+ps_require_profile_manifest "$REPO_ROOT" "$PROFILE" "bootstrap-profile-tools --profile"
+MANIFEST="$PS_MANIFEST_PATH"
 # (#248) FULL schema + semantic validation before any manifest field is read.
 ps_validate_manifest "$MANIFEST" install "bootstrap-profile-tools --profile $PROFILE"
 
