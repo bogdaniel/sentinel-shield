@@ -34,6 +34,77 @@ shipped manifest escapes the full published schema. `role=policy` exists for
 manifests that participate only in composition (test fixtures, an
 `--manifest` entry point) and legitimately install nothing.
 
+## Identifier grammar
+
+One grammar governs **every** identifier this engine turns into a filesystem
+path, a shell word, a JSON object key or an emitted channel name: profile names,
+parent (`extends`) references, tool keys, one-of group keys, `alternatives`,
+`requires` targets, `fallback_order` entries and category labels.
+
+```
+^[a-z0-9][a-z0-9-]*$      at most 64 bytes
+```
+
+Runtime authority: `ps_valid_id` / `ps_id_reject_reason` / `ps_require_id` in
+[`scripts/lib/profile-schema.sh`](../scripts/lib/profile-schema.sh). Validated by
+[`tests/prod/301-identifier-grammar.sh`](../tests/prod/301-identifier-grammar.sh).
+
+**Case policy.** The canonical form is the only accepted form. An identifier that
+differs from its canonical form by case is **rejected, never folded**. Folding
+would make `Laravel` and `laravel` one profile on a case-insensitive filesystem
+(APFS, HFS+, NTFS) and two profiles on ext4/XFS, so the same repository would
+resolve a different effective profile depending on where it ran. Rejecting is
+the only verdict that is the same everywhere.
+
+**Unicode policy.** Identifiers are ASCII-only, so no Unicode normalization form
+(NFC/NFD/NFKC/NFKD) can alter one and no confusable can exist inside the
+grammar. Cyrillic `а` (U+0430), Greek `ο` (U+03BF), fullwidth `ａ` (U+FF41),
+every combining mark and every zero-width character are outside the grammar and
+are **rejected**. There is deliberately no normalization step anywhere in the
+engine: normalizing input is precisely how two distinct names become one.
+
+**What the grammar excludes, and why**
+
+| Excluded | Failure it prevents |
+| --- | --- |
+| whitespace, newline | word splitting; line-oriented set membership |
+| NUL, control bytes | terminal / CI-log injection, truncation |
+| `*` `?` `[` `]` | pathname (glob) expansion of an unquoted word |
+| `/` `\` | path separators, traversal, separator injection |
+| `.` | `.` and `..` path segments |
+| `_` | the emit-name normalization `-` → `_` would map two identifiers onto one summary channel |
+| leading `-` | option injection into `ls`, `grep`, `rm`, `find` |
+| `$` `` ` `` `"` `'` `;` `&` `|` `(` `)` `<` `>` | command substitution, command separation |
+| uppercase, non-ASCII | see the case and Unicode policies above |
+
+**Collision-freedom.** The only normalizations any consumer applies are ASCII
+case folding and the emit-name `-` → `_` mapping. The grammar admits neither
+uppercase nor `_`, so folding is the identity on every accepted identifier and no
+two distinct accepted identifiers can collide. Where a **non-identity**
+normalization genuinely exists it is checked explicitly:
+
+- the emit-name table in `build-security-summary.sh` maps several tool keys onto
+  one channel on purpose (`php-style` and `php-cs-fixer` both emit `php_style`).
+  An **unregistered** collision is a configuration failure (exit 2); a registered
+  channel resolves deterministically to the row that cannot hide a failure,
+  instead of last-wins.
+- a profile name resolves against two locations
+  (`profiles/<name>/profile.manifest.json` and
+  `profiles/combinations/<name>.manifest.json`). A name present in **both** is
+  ambiguous and fails closed rather than resolving to whichever the lookup
+  happened to list first.
+
+**Structural sets.** Membership — inheritance cycle detection, dedup, waived
+keys, non-suppressible controls, disabled tools, `--require-tool` — is decided by
+whole-line equality on newline-delimited sets, never by `case " $SET " in
+*" $x "*`. No JSON array or key list is iterated by shell word splitting; every
+one is read a line at a time.
+
+**Manifest identity binding.** The inheritance dedup and cycle sets are keyed by
+the name a manifest was *resolved under*; `profile` is the name it *claims*. When
+those disagree the same file can be merged twice under two names and a cycle
+through it is invisible, so the resolver fails closed on a mismatch.
+
 ## What is checked
 
 **Document**
@@ -44,8 +115,9 @@ manifests that participate only in composition (test fixtures, an
   schema is rejected rather than validated against the wrong contract
 
 **Identity and versions**
-- `profile` is required and must match `^[a-z0-9][a-z0-9-]*$` (max 64) — it
-  becomes a filesystem path and a member of a space-delimited shell set
+- `profile` is required and must match the [identifier
+  grammar](#identifier-grammar) — it becomes a filesystem path, a shell word and
+  a member of the inheritance dedup/cycle sets
 - `tool_policy_version` must be the integer `2`. It is **required whenever the
   manifest declares `tools` or `extends`**: a manifest that participates in
   tool-policy resolution must state the version it was written against
@@ -54,8 +126,12 @@ manifests that participate only in composition (test fixtures, an
   not guess
 
 **Inheritance**
-- `extends` is an array of safe identifiers, no duplicates, no self-reference
-- the identifier is validated **before** it is used to build a manifest path
+- `extends` is an array of [canonical identifiers](#identifier-grammar), no
+  duplicates, no self-reference
+- the identifier is validated **before** it is used to build a manifest path,
+  **before** the cycle test and **before** the dedup test — validating after the
+  membership tests let an unvalidated name decide both verdicts
+- the manifest's own `profile` must equal the name it was resolved under
 
 **Tools**
 - unknown tool fields, unknown execution stages, unknown package fields and

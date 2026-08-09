@@ -85,13 +85,38 @@ cr_framework() {
 # standard profiles and combination manifests (matches the canonical resolver's
 # ep__manifest_path) so names like node-react / laravel-react-docker work. Falls
 # back to the standard path so a caller's "not found" message stays accurate.
+#
+# (#251) The lookup itself now lives in ONE place — ps_profile_manifest_path in
+# scripts/lib/profile-schema.sh — which validates the identifier BEFORE
+# concatenating it into a path, refuses a name that resolves in BOTH locations,
+# and refuses an on-disk entry that matches only case-insensitively. An INVALID
+# identifier yields NO path (status 3) rather than a path built from it.
 cr_manifest_path() {
+	if command -v ps_profile_manifest_path >/dev/null 2>&1; then
+		_cr_rc=0
+		_cr_p=$(ps_profile_manifest_path "$1" "$2") || _cr_rc=$?
+		case "$_cr_rc" in
+			0) printf '%s' "$_cr_p"; return 0 ;;
+			2 | 3) return "$_cr_rc" ;;          # ambiguous / invalid: emit nothing
+		esac
+		printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"
+		return 1
+	fi
+	# profile-schema.sh unavailable: still refuse to build a path from an
+	# unvalidated name rather than falling back to the pre-#251 behaviour.
+	# Explicit character enumeration, never a range: a bracket RANGE is resolved
+	# through the locale's collating sequence, so `[!a-z0-9-]` accepts `Laravel`
+	# under bash-as-sh with a UTF-8 locale (see ps_valid_id).
+	case "$2" in
+		'' | -* | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 3 ;;
+	esac
 	if [ -f "$1/profiles/$2/profile.manifest.json" ]; then
 		printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"
 	elif [ -f "$1/profiles/combinations/$2.manifest.json" ]; then
 		printf '%s/profiles/combinations/%s.manifest.json' "$1" "$2"
 	else
 		printf '%s/profiles/%s/profile.manifest.json' "$1" "$2"
+		return 1
 	fi
 }
 

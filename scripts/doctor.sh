@@ -573,7 +573,11 @@ else
       printf '{"tools":%s}\n' "$MERGED" > "$TMPM"
       ok "active profile(s): $(echo $PROFILES_RESOLVED | tr '\n' ' ')${TOOL_MODE:+ (tool-mode=$TOOL_MODE)}"
       [ "$QUIET" = 1 ] || printf '  %-22s %-12s %-10s %-11s %-9s\n' Tool Policy Installed Configured Executed
-      for k in $(jq -r '.tools | keys_unsorted[]' "$TMPM"); do
+      # (#251) One key per LINE: `for k in $(jq ...)` split every key on $IFS and
+      # then glob-expanded it against the cwd.
+      _dkeys=$(jq -r '.tools | keys_unsorted[]' "$TMPM")
+      while IFS= read -r k; do
+        [ -n "$k" ] || continue
         pol=$(jq -r --arg k "$k" '.tools[$k].policy // "?"' "$TMPM")
         inst=$(pt_installed "$TARGET" "$TMPM" "$k")
         cfg=$(pt_configured "$TARGET" "$TMPM" "$k")
@@ -592,14 +596,18 @@ else
             REQUIRED_MISSING="$REQUIRED_MISSING $k($_why)"
           fi
         fi
-      done
+      done <<DOCTOR_TOOL_KEYS
+$_dkeys
+DOCTOR_TOOL_KEYS
       # one-of group satisfaction (from the resolver): a required GROUP (e.g. tests) is
       # satisfied when any alternative is installed. An effective required one-of GROUP is
       # GATING like a required tool (B6): an UNSATISFIED group is accumulated into
       # REQUIRED_MISSING so doctor exits 3 under require-existing/bootstrap-tools (config-only
       # warns only, via the same accumulator handling below). A VALID control-waiver keyed by
       # the GROUP name (e.g. `tests`) downgrades an unsatisfied group to WAIVED (C2).
-      for g in $(printf '%s' "$ONEOF" | jq -r 'keys[]' 2>/dev/null); do
+      _dgroups=$(printf '%s' "$ONEOF" | jq -r 'keys[]' 2>/dev/null || true)
+      while IFS= read -r g; do
+        [ -n "$g" ] || continue
         gstatus=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].status // "unknown"')
         gsel=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '.[$g].selected // "none"')
         galt=$(printf '%s' "$ONEOF" | jq -r --arg g "$g" '(.[$g].alternatives // []) | join("|")')
@@ -611,7 +619,9 @@ else
             REQUIRED_MISSING="$REQUIRED_MISSING $g(one-of-unsatisfied)"
           fi
         fi
-      done
+      done <<DOCTOR_GROUP_KEYS
+$_dgroups
+DOCTOR_GROUP_KEYS
       rm -f "$TMPM"
       if [ -n "$REQUIRED_MISSING" ]; then
         if [ "$TOOL_MODE" = "config-only" ]; then

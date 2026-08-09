@@ -43,13 +43,17 @@ ISOLATED_TOOLS_DIR="${ISOLATED_TOOLS_DIR:-tools}"
 # pattern (^[a-z0-9][a-z0-9-]*$). Keeps tools/<tool> paths predictable and safe.
 isolated_tool_validate_key() {
 	[ -n "${1:-}" ] || die "isolated_tool: missing tool key"
+	# (#251) The character sets are enumerated ONE CHARACTER AT A TIME. A bracket
+	# RANGE is resolved through the locale's collating sequence, so `[a-z0-9]` and
+	# `[!a-z0-9-]` admit `Laravel` and `làravel` under bash-as-sh with a UTF-8
+	# locale — and this key becomes the directory `tools/<key>`. Same fix, same
+	# reason, as ps_valid_id in scripts/lib/profile-schema.sh.
 	case "$1" in
-		[a-z0-9]*) ;;
+		[abcdefghijklmnopqrstuvwxyz0123456789]*) ;;
 		*) die "isolated_tool: invalid tool key '$1' (must start with [a-z0-9])" ;;
 	esac
-	# Reject anything outside [a-z0-9-]; tr-strip and compare lengths via a glob.
 	case "$1" in
-		*[!a-z0-9-]*) die "isolated_tool: invalid tool key '$1' (allowed: a-z 0-9 '-')" ;;
+		*[!abcdefghijklmnopqrstuvwxyz0123456789-]*) die "isolated_tool: invalid tool key '$1' (allowed: a-z 0-9 '-')" ;;
 	esac
 }
 

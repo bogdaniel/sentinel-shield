@@ -406,7 +406,14 @@ fi
 # alone. The consumer set is DISCOVERED, not listed: any script that turns a
 # profile name into a manifest path must call the canonical validator. A new
 # consumer added later is caught by this without editing the test.
-_consumers=$(grep -rl 'profiles/\$PROFILE/profile.manifest.json' "$ROOT/scripts" 2>/dev/null || true)
+#
+# (#251) The discovery predicate follows the code. A consumer resolves a profile
+# name to a manifest path either by calling the shared, identifier-validating
+# lookup `ps_require_profile_manifest`, or by open-coding
+# `profiles/$PROFILE/profile.manifest.json` — the pre-#251 form, which is a
+# finding in its own right (asserted separately in tests/prod/301) but must
+# still be DISCOVERED here so it cannot escape the validator requirement.
+_consumers=$(grep -rl -e 'profiles/\$PROFILE/profile.manifest.json' -e 'ps_require_profile_manifest' "$ROOT/scripts" 2>/dev/null | grep -v '/lib/profile-schema\.sh$' || true)
 _n_consumers=$(printf '%s\n' "$_consumers" | grep -c . || printf '0')
 if [ "$_n_consumers" -ge 5 ]; then
 	pass "discovered $_n_consumers script(s) that resolve a profile name to a manifest path"

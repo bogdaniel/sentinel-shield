@@ -167,12 +167,14 @@ trap ss_cleanup EXIT INT TERM
 case "$MODE" in report-only|baseline|strict|regulated) ;; *) echo "error: invalid --mode '$MODE'" >&2; exit 2 ;; esac
 case "$TOOL_MODE" in config-only|require-existing|bootstrap-tools) ;; *) echo "error: invalid --tool-mode '$TOOL_MODE'" >&2; usage; exit 2 ;; esac
 
-# Resolve the manifest path from the profile name.
-MANIFEST=""
-for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PROFILE.manifest.json"; do
-	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
-done
-[ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE' (looked in profiles/$PROFILE/ and profiles/combinations/)" >&2; exit 2; }
+# Resolve the manifest path from the profile name. (#251) ONE shared,
+# identifier-validating lookup (scripts/lib/profile-schema.sh): the name is
+# checked against the canonical grammar BEFORE it is concatenated into a path, a
+# name present in BOTH locations is AMBIGUOUS rather than first-wins, and an
+# on-disk entry that matches only case-insensitively is not a match. Sets
+# PS_MANIFEST_PATH, or logs the reason and exits 2.
+ps_require_profile_manifest "$ROOT" "$PROFILE" "install-baseline --profile"
+MANIFEST="$PS_MANIFEST_PATH"
 # (#248) FULL schema + semantic validation before any manifest field is read.
 # role=install additionally requires the install/sync surface (`files`).
 ps_validate_manifest "$MANIFEST" install "install-baseline --profile $PROFILE"
@@ -269,10 +271,15 @@ tool_audit() {
 	done
 	IFS=$_oifs
 	# one-of groups: a group is satisfied when the resolver selected a present member.
-	for _g in $(jq -r '(.one_of_groups // {}) | keys[]' "$EFFECTIVE" 2>/dev/null || true); do
+	# (#251) One group key per LINE, not word-split command substitution.
+	_igroups=$(jq -r '(.one_of_groups // {}) | keys[]' "$EFFECTIVE" 2>/dev/null || true)
+	while IFS= read -r _g; do
+		[ -n "$_g" ] || continue
 		_sel=$(jq -r --arg g "$_g" '.one_of_groups[$g].selected // ""' "$EFFECTIVE")
 		[ -n "$_sel" ] && [ "$_sel" != "null" ] || _oneof_unsat="$_oneof_unsat $_g"
-	done
+	done <<IB_GROUPS
+$_igroups
+IB_GROUPS
 	[ -n "$_warn" ] && echo "tool-audit: recommended tools absent (warning):$_warn" >&2
 	if [ -n "$_missing" ]; then
 		if [ "$_strict" = "1" ]; then
@@ -310,10 +317,21 @@ fi
 [ "$TOOL_MODE" = "require-existing" ] && tool_audit 1
 
 # Protected (never created/overwritten) — manifest never_touch + hard defaults.
-PROTECT=" .sentinel-shield/accepted-risks.json phpstan-baseline.neon "
-for p in $(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null); do PROTECT="$PROTECT$p "; done
+# (#251) A newline-delimited STRUCTURAL set tested with whole-line equality. It
+# was a space-padded string built by `for p in $(jq ...)`, so one declared
+# never_touch path containing a space became two protected paths that match
+# nothing, and `*" $1 "*` matched a path across element boundaries.
+PROTECT='.sentinel-shield/accepted-risks.json
+phpstan-baseline.neon'
+_nts=$(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null || true)
+while IFS= read -r p; do
+	[ -n "$p" ] || continue
+	PROTECT=$(ps_set_add "$p" "$PROTECT")
+done <<PROTECT_EOF
+$_nts
+PROTECT_EOF
 
-is_protected() { case "$PROTECT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+is_protected() { ps_set_has "$1" "$PROTECT"; }
 
 # emit_install_plan <path> — write a DETERMINISTIC installation-plan JSON
 # (schemas/installation-plan.schema.json): the read-only per-file (mode, action, source, target)
@@ -344,7 +362,9 @@ emit_install_plan() {
 		jq -cn --arg mode "$_m" --arg action "$_act" --arg source "$_s" --arg target "$_t" \
 			'{mode:$mode, action:$action, source:$source, target:$target}'
 	done | jq -s 'sort_by(.target)' > "$_eip_ops"
-	_eip_prot=$(printf '%s' "$PROTECT" | tr ' ' '\n' | sed '/^$/d' | sort -u | jq -R . | jq -s .)
+	# (#251) PROTECT is newline-delimited; splitting it on SPACE would break any
+	# declared never_touch path that contains one.
+	_eip_prot=$(printf '%s\n' "$PROTECT" | sed '/^$/d' | LC_ALL=C sort -u | jq -R . | jq -s .)
 	jq -n \
 		--slurpfile ops "$_eip_ops" \
 		--argjson protected "$_eip_prot" \
@@ -495,7 +515,11 @@ render_source_config() {
 		return 0
 	fi
 	_rendered=0; _skipped=0
-	for _wfpair in $(jq -r '(.workflows // [])[] | "\(.target)|\(.source)"' "$MANIFEST"); do
+	# (#251) One pair per LINE. `for pair in $(jq ...)` split each target|source
+	# pair on whitespace and glob-expanded it against the cwd.
+	_wfpairs=$(jq -r '(.workflows // [])[] | "\(.target)|\(.source)"' "$MANIFEST")
+	while IFS= read -r _wfpair; do
+		[ -n "$_wfpair" ] || continue
 		_wf="${_wfpair%%|*}"; _wfsrc="${_wfpair#*|}"
 		# Dry-run inspects the TEMPLATE (the target does not exist yet) so the plan can show
 		# the exact substitutions without writing anything.
@@ -548,7 +572,9 @@ render_source_config() {
 			echo "error: could not render the engine source configuration into $_wf" >&2
 			return 1
 		fi
-	done
+	done <<WFPAIRS_EOF
+$_wfpairs
+WFPAIRS_EOF
 	# "nothing to render" and "everything was left alone" are different outcomes, and reporting
 	# the second as the first reads like the profile ships no configurable workflow at all.
 	if [ "$_rendered" -eq 0 ]; then
@@ -565,7 +591,9 @@ render_source_config() {
 echo "PLAN ($([ "$APPLY" -eq 1 ] && echo APPLY || echo dry-run)) — operations to be evaluated"
 echo "      (managed files are overwritten only with --force; protected files are never written):"
 jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | "  - [\(.mode)] \(.source) -> \(.target)"' "$MANIFEST"
-echo "  protected (never written):$PROTECT"
+# Render the structural set on one line for the human report (the set itself
+# stays newline-delimited; only this display joins it).
+echo "  protected (never written): $(printf '%s\n' "$PROTECT" | sed '/^$/d' | tr '\n' ' ')"
 echo "------------------------------------------------------------"
 
 # Open the transaction (apply only): snapshot/restore + operation-lock. A stale lock from a

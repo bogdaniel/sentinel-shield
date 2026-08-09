@@ -82,11 +82,58 @@ fi
 PS_TOOL_POLICY_VERSION=2
 # Basename of the one schema a manifest may claim to conform to.
 PS_SCHEMA_BASENAME='profile.manifest.schema.json'
-# Canonical identifier grammar for profiles, tool keys, one-of group keys,
-# alternatives and category labels (#251 partial: validated BEFORE the value is
-# used to build a path or is stored in a space-delimited shell set).
+# --- canonical identifier grammar (#251) -------------------------------------
+#
+# ONE grammar governs every identifier this engine turns into a filesystem path,
+# a shell word, a JSON object key or an emitted channel name: profile names,
+# parent (`extends`) references, tool keys, one-of group keys, `alternatives`,
+# `requires` targets, `fallback_order` entries and category labels.
+#
+#     PS_ID_PATTERN = ^[a-z0-9][a-z0-9-]*$      (at most PS_ID_MAXLEN bytes)
+#
+# CASE POLICY — the canonical form is the ONLY accepted form. An identifier that
+# differs from its canonical form by case is REJECTED, never folded. Folding
+# would make `Laravel` and `laravel` one profile on a case-insensitive
+# filesystem (APFS, HFS+, NTFS) and two profiles on ext4/XFS, so the same
+# repository would resolve a different effective profile depending on where it
+# ran. Rejecting is the only verdict that is the same everywhere.
+#
+# UNICODE POLICY — identifiers are ASCII-only. No Unicode normalization form
+# (NFC/NFD/NFKC/NFKD) can therefore alter one, and no confusable can exist
+# inside the grammar: Cyrillic `а` U+0430, Greek `ο` U+03BF, fullwidth `ａ`
+# U+FF41, every combining mark and every zero-width character are outside it and
+# are REJECTED. There is deliberately NO normalization step anywhere in the
+# engine — normalizing input is precisely how two distinct names become one.
+#
+# The grammar excludes, by construction:
+#   whitespace and newlines  — word splitting; line-oriented set membership
+#   NUL and control bytes    — terminal/log injection, truncation
+#   `*` `?` `[` `]`          — pathname (glob) expansion in an unquoted word
+#   `/` `\`                  — path separators, traversal, separator injection
+#   `.`                      — `.` and `..` path segments
+#   `_`                      — the emit-name normalization `-` -> `_` in
+#                              build-security-summary.sh would otherwise map two
+#                              distinct identifiers onto ONE channel
+#   a leading `-`            — option injection into ls/grep/rm/find
+#   `$` backtick `"` `'` `;` `&` `|` `(` `)` `<` `>` — command substitution and
+#                              command separation
+#
+# COLLISION-FREEDOM follows from the grammar rather than from a runtime scan:
+# the only normalizations any consumer applies are ASCII case folding and the
+# emit-name `-` -> `_` mapping, and the grammar admits neither uppercase nor
+# `_`, so `ps_id_fold` is the identity on every accepted identifier and no two
+# distinct accepted identifiers can collide. Where a NON-identity normalization
+# genuinely exists — the emit-name table in build-security-summary.sh, and the
+# two-location profile-manifest lookup — the collision is detected explicitly by
+# `ps_id_collisions` and `ps_profile_manifest_path` respectively.
 PS_ID_PATTERN='^[a-z0-9][a-z0-9-]*$'
 PS_ID_MAXLEN=64
+
+# Literal newline / tab, for classification below (a POSIX `case` cannot spell
+# them inline).
+PS__NL='
+'
+PS__TAB=$(printf '\t')
 
 PS_POLICIES='required recommended optional one-of disabled external'
 PS_MISSING_BEHAVIORS='fail warn info skip'
@@ -110,16 +157,139 @@ PS_ENTRY_KEYS='source target mode'
 
 ps__die_cfg() { log_error "profile-schema: $*"; exit 2; }
 
+# The allowed character set, spelled out ONE CHARACTER AT A TIME.
+#
+# It must not be written `[!a-z0-9-]`. A RANGE inside a bracket expression is
+# resolved through the current locale's collating sequence, not through ASCII —
+# so under `bash` as /bin/sh with LANG=en_US.UTF-8, `a-z` collates to include
+# the uppercase letters and the accented Latin letters, and
+#
+#     case "Laravel" in *[!a-z0-9-]*) reject ;; esac
+#
+# ACCEPTS `Laravel`, `LARAVEL` and `làravel`. The published JSON Schema and the
+# jq validator use Oniguruma, whose ranges are codepoint-based and reject all
+# three, so the shell gate and the document gate silently disagreed about the
+# same grammar — and the shell gate is the one standing in front of the
+# filesystem. An explicit enumeration has no collating sequence to depend on and
+# means the same thing in every locale and every shell.
 # ps_valid_id <string> — true when the string is a canonical identifier. Used by
-# callers that must validate a name BEFORE they build a filesystem path from it.
+# callers that must validate a name BEFORE they build a filesystem path from it
+# or store it in a shell variable. Pure shell, no forks, locale-independent.
 ps_valid_id() {
 	case "${1:-}" in
 		'') return 1 ;;
-		*[!a-z0-9-]*) return 1 ;;
+		*[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;;
 		-*) return 1 ;;
 	esac
 	[ "${#1}" -le "$PS_ID_MAXLEN" ] || return 1
 	return 0
+}
+
+# ps_id_reject_reason <string> — print ONE machine-readable token naming the
+# grammar rule the string breaks, and return 1; print nothing and return 0 when
+# the string is a canonical identifier. The token is the diagnostic: "invalid
+# identifier" tells an operator nothing, "reason=control-or-non-ascii" tells
+# them their YAML editor inserted a zero-width space.
+ps_id_reject_reason() {
+	_ps_i="${1-}"
+	[ -n "$_ps_i" ] || { printf 'empty\n'; return 1; }
+	ps_valid_id "$_ps_i" && return 0
+	case "$_ps_i" in -*) printf 'leading-dash\n'; return 1 ;; esac
+	[ "${#_ps_i}" -le "$PS_ID_MAXLEN" ] || { printf 'too-long\n'; return 1; }
+	case "$_ps_i" in
+		*"$PS__NL"*) printf 'newline\n'; return 1 ;;
+		*"$PS__TAB"*) printf 'tab\n'; return 1 ;;
+		*' '*) printf 'space\n'; return 1 ;;
+	esac
+	# Anything that is not printable ASCII in the C locale: control bytes and
+	# every byte of a multi-byte UTF-8 sequence (so confusables, combining marks
+	# and zero-width characters all land here).
+	if [ -n "$(printf '%s' "$_ps_i" | LC_ALL=C tr -d '[:print:]')" ]; then
+		printf 'control-or-non-ascii\n'; return 1
+	fi
+	case "$_ps_i" in
+		*/* | *\\*) printf 'path-separator\n'; return 1 ;;
+		*.*) printf 'dot\n'; return 1 ;;
+		*'*'* | *'?'* | *'['* | *']'*) printf 'glob-metacharacter\n'; return 1 ;;
+		*'$'* | *'`'* | *'"'* | *"'"* | *';'* | *'&'* | *'|'* | *'('* | *')'* | *'<'* | *'>'* | *'!'* | *'~'* | *'#'*)
+			printf 'shell-metacharacter\n'; return 1 ;;
+		*_*) printf 'underscore\n'; return 1 ;;
+	esac
+	if [ "$_ps_i" != "$(printf '%s' "$_ps_i" | LC_ALL=C tr 'A-Z' 'a-z')" ]; then
+		printf 'uppercase\n'; return 1
+	fi
+	printf 'illegal-character\n'; return 1
+}
+
+# ps_id_render <string> — a LOG-SAFE rendering of an identifier that failed the
+# grammar. Every byte outside [A-Za-z0-9._-] becomes `?`, so a rejected value can
+# be echoed into a diagnostic without carrying control bytes or escape sequences
+# into a terminal or a CI log.
+ps_id_render() {
+	printf '%s' "${1-}" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?' 2>/dev/null | LC_ALL=C tr -d '\n'
+}
+
+# ps_require_id <string> <what> [context] — FAIL-CLOSED identifier gate. Call it
+# BEFORE the value becomes a filesystem path, a shell word or a set member.
+ps_require_id() {
+	_ps_v="${1-}"; _ps_w="${2:-identifier}"; _ps_c="${3:-}"
+	_ps_why=$(ps_id_reject_reason "$_ps_v") && return 0
+	log_error "invalid ${_ps_w}: reason=${_ps_why} value=$(ps_id_render "$_ps_v") length=${#_ps_v} pattern=${PS_ID_PATTERN} maxlen=${PS_ID_MAXLEN}${_ps_c:+ (${_ps_c})}"
+	log_error "  identifiers are ASCII-lowercase and are never case-folded or Unicode-normalized; see docs/profile-manifest-validation.md#identifier-grammar"
+	exit 2
+}
+
+# --- structural sets (#251) ---------------------------------------------------
+# Membership is decided by WHOLE-LINE equality, never by substring matching. The
+# space-padded `case " $SET " in *" $x "*)` idiom this replaces treats a set as a
+# string: it cannot represent a member containing a space, it matches a member
+# across element boundaries, and it silently changes meaning when the padding
+# convention is not reproduced exactly at every call site.
+
+# ps_set_has <member> <set> — 0 when <member> is an exact line of <set>.
+ps_set_has() {
+	[ -n "${1-}" ] || return 1
+	printf '%s\n' "${2-}" | LC_ALL=C grep -Fxq -e "$1"
+}
+
+# ps_set_add <member> <set> — print <set> with <member> appended.
+ps_set_add() {
+	if [ -n "${2-}" ]; then printf '%s\n%s' "$2" "${1-}"; else printf '%s' "${1-}"; fi
+}
+
+# ps_set_del <member> <set> — print <set> with every exact <member> line removed.
+ps_set_del() {
+	printf '%s\n' "${2-}" | LC_ALL=C awk -v m="${1-}" '
+		$0 != m && $0 != "" { if (n++) printf "\n"; printf "%s", $0 }'
+}
+
+# --- identifier collision detection (#251) -----------------------------------
+
+# ps_id_fold <string> — the COLLISION KEY: what is left after every
+# normalization a downstream consumer might apply (ASCII case folding, and the
+# emit-name `-` <-> `_` equivalence used by build-security-summary.sh). On an
+# identifier that passed the grammar this is the identity; it is meaningful only
+# on values that reached a normalizing consumer from somewhere else, such as the
+# engine's own emit-name table.
+ps_id_fold() {
+	printf '%s' "${1-}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C tr '_' '-'
+}
+
+# ps_id_collisions <newline-delimited list> — print one
+#   IDENTIFIER_COLLISION fold=<key> ids=<a>,<b>,...
+# line per group of two or more DISTINCT entries that fold to the same key.
+# Returns 1 when any collision was printed, 0 when the list is collision-free.
+ps_id_collisions() {
+	_ps_col=$(printf '%s\n' "${1-}" | LC_ALL=C awk '
+		$0 == "" { next }
+		{
+			k = tolower($0); gsub(/_/, "-", k)
+			if (!( ($0 SUBSEP k) in seen)) { seen[$0 SUBSEP k] = 1; ids[k] = (k in ids) ? ids[k] "," $0 : $0; n[k]++ }
+		}
+		END { for (k in n) if (n[k] > 1) printf "IDENTIFIER_COLLISION fold=%s ids=%s\n", k, ids[k] }' | LC_ALL=C sort)
+	[ -n "$_ps_col" ] || return 0
+	printf '%s\n' "$_ps_col"
+	return 1
 }
 
 # The ENGINE root — the tree that ships scripts/ — captured at source time from
@@ -159,6 +329,76 @@ ps_repo_root() {
 		[ -d "$_c/profiles" ] && { (CDPATH= cd -- "$_c" && pwd); return 0; }
 	done
 	return 1
+}
+
+# --- profile-manifest lookup (#251) ------------------------------------------
+# ONE lookup, shared by the resolver, the installer, sync, upgrade, migrate, the
+# bootstrapper and the compat resolver. Each of those used to open-code
+#
+#     for cand in "profiles/$PROFILE/profile.manifest.json" \
+#                 "profiles/combinations/$PROFILE.manifest.json"; do ...
+#
+# with no identifier validation at all, so `--profile ../../etc` and
+# `--profile 'a b'` reached the filesystem, and a profile present in BOTH
+# locations resolved to whichever the loop happened to list first.
+
+# ps__dirent_exact <dir> <name> — 0 when <dir> contains an entry whose name is
+# BYTE-EXACTLY <name>. `[ -f "$dir/$name" ]` is not this test: on a
+# case-insensitive filesystem (APFS, HFS+, NTFS) it is satisfied by `Laravel`
+# when the caller asked for `laravel`, so the same repository resolves a
+# different manifest on macOS than it does on ext4.
+ps__dirent_exact() {
+	[ -d "${1-}" ] || return 1
+	ls -a -- "$1" 2>/dev/null | LC_ALL=C grep -Fxq -e "${2-}"
+}
+
+# ps_profile_manifest_path <root> <profile> — print the ONE manifest path for
+# <profile> under <root>. Exit status:
+#   0  printed exactly one path
+#   1  no manifest in either location
+#   2  AMBIGUOUS — the identifier names a manifest in BOTH locations
+#   3  <profile> is not a canonical identifier (nothing was touched)
+# The identifier is validated BEFORE it is concatenated into any path.
+ps_profile_manifest_path() {
+	_ps_r="${1-}"; _ps_id="${2-}"
+	ps_valid_id "$_ps_id" || return 3
+	[ -n "$_ps_r" ] || return 1
+	_ps_hit=""; _ps_n=0
+	if ps__dirent_exact "$_ps_r/profiles" "$_ps_id" && [ -f "$_ps_r/profiles/$_ps_id/profile.manifest.json" ]; then
+		_ps_hit="$_ps_r/profiles/$_ps_id/profile.manifest.json"; _ps_n=1
+	fi
+	if ps__dirent_exact "$_ps_r/profiles/combinations" "$_ps_id.manifest.json" && [ -f "$_ps_r/profiles/combinations/$_ps_id.manifest.json" ]; then
+		[ -n "$_ps_hit" ] || _ps_hit="$_ps_r/profiles/combinations/$_ps_id.manifest.json"
+		_ps_n=$((_ps_n + 1))
+	fi
+	[ "$_ps_n" -eq 0 ] && return 1
+	[ "$_ps_n" -gt 1 ] && return 2
+	printf '%s\n' "$_ps_hit"
+	return 0
+}
+
+# ps_require_profile_manifest <root> <profile> <context> — FAIL-CLOSED wrapper.
+# Sets the global PS_MANIFEST_PATH; logs and exits 2 otherwise.
+#
+# It publishes through a GLOBAL rather than stdout on purpose: a caller writing
+# `M=$(ps_require_profile_manifest ...)` would run the whole gate in a subshell,
+# where `exit 2` ends the substitution and NOT the caller — the exact
+# fail-open shape this issue exists to remove. Call it as a bare command.
+ps_require_profile_manifest() {
+	_ps_rr="${1-}"; _ps_rid="${2-}"; _ps_rctx="${3:-}"
+	PS_MANIFEST_PATH=""
+	ps_require_id "$_ps_rid" "profile identifier" "$_ps_rctx"
+	# `VAR=$(...); rc=$?` is not set -e safe (a failing assignment aborts the
+	# caller before $? is read). Capture the status through `||`.
+	_ps_rrc=0
+	_ps_rp=$(ps_profile_manifest_path "$_ps_rr" "$_ps_rid") || _ps_rrc=$?
+	case "$_ps_rrc" in
+		0) PS_MANIFEST_PATH="$_ps_rp"; return 0 ;;
+		2) log_error "ambiguous profile '$_ps_rid'${_ps_rctx:+ (${_ps_rctx})}: a manifest exists at BOTH profiles/$_ps_rid/profile.manifest.json AND profiles/combinations/$_ps_rid.manifest.json; which one is resolved would depend on lookup order" ;;
+		3) log_error "invalid profile identifier${_ps_rctx:+ (${_ps_rctx})}" ;;
+		*) log_error "unknown profile '$_ps_rid'${_ps_rctx:+ (${_ps_rctx})}: no manifest at profiles/$_ps_rid/profile.manifest.json or profiles/combinations/$_ps_rid.manifest.json (an entry whose name differs only by case is NOT a match)" ;;
+	esac
+	exit 2
 }
 
 # --- the jq program ----------------------------------------------------------
@@ -480,13 +720,21 @@ ps_manifest_errors() {
 	# happily and then fails at execution time, after the plan has been trusted.
 	_ps_fs=""
 	if _ps_root=$(ps_engine_root); then
-		for _ps_p in $(jq -r '(.tools // {}) | to_entries[] | (.value.runner // empty), (.value.audit // empty)' "$_ps_f" 2>/dev/null); do
+		# (#251) Read the declared paths LINE BY LINE. `for p in $(jq ...)` splits
+		# on $IFS and then glob-expands every word, so one `runner` containing a
+		# space became two paths and one containing `*` became whatever the cwd
+		# happened to contain.
+		_ps_paths=$(jq -r '(.tools // {}) | to_entries[] | (.value.runner // empty), (.value.audit // empty)' "$_ps_f" 2>/dev/null || true)
+		while IFS= read -r _ps_p; do
+			[ -n "$_ps_p" ] || continue
 			case "$_ps_p" in
 				*[!A-Za-z0-9._/-]* | */../* | ../* | */.. | /*) continue ;;   # shape errors already reported above
 			esac
 			[ -f "$_ps_root/$_ps_p" ] || _ps_fs="${_ps_fs}MISSING_SCRIPT path=$_ps_p reason=declared-runner-or-audit-does-not-exist-in-this-engine
 "
-		done
+		done <<PS_PATHS
+$_ps_paths
+PS_PATHS
 	fi
 	[ -n "$_ps_fs" ] && printf '%s' "$_ps_fs"
 

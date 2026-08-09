@@ -71,7 +71,11 @@ EP_VALID_POLICIES="required recommended optional one-of disabled external"
 ep__rank() { printf '%s' "$EP_RANK" | jq -r --arg p "$1" '.[$p] // -1'; }
 # Non-suppressible security controls: a project override CANNOT set these to
 # disabled without a documented control waiver (Blocker 9 owns the waiver path).
-EP_NON_SUPPRESSIBLE=" gitleaks trufflehog "
+# (#251) A newline-delimited SET, tested with whole-line equality (ps_set_has) —
+# not a space-padded string tested with `case ... in *" $k "*`, which matched any
+# tool key that happened to appear between two spaces of the string.
+EP_NON_SUPPRESSIBLE='gitleaks
+trufflehog'
 
 ep__die_cfg() { log_error "$*"; exit 2; }
 
@@ -85,42 +89,61 @@ ep__repo_root() {
 	return 1
 }
 
-# ep__manifest_path <root> <profile> — print manifest path or non-zero.
-ep__manifest_path() {
-	for _c in "$1/profiles/$2/profile.manifest.json" "$1/profiles/combinations/$2.manifest.json"; do
-		[ -f "$_c" ] && { printf '%s\n' "$_c"; return 0; }
-	done
-	return 1
-}
+# ep__manifest_path <root> <profile> — print manifest path or non-zero. Thin
+# wrapper over the shared, identifier-validating lookup (#251); status 2 is
+# AMBIGUOUS (a manifest in both locations) and 3 is an invalid identifier, which
+# ep__collect reports separately.
+ep__manifest_path() { ps_profile_manifest_path "$1" "$2"; }
 
 # ep__collect <root> <profile> <path-so-far> — depth-first chain collection with
 # cycle detection. Appends manifest paths (parents first, self last) to EP_CHAIN.
 # EP_VISITING tracks the active recursion stack (cycle); EP_RESOLVED dedups.
+#
+# (#251) ORDER MATTERS AND IS PART OF THE CONTRACT. The identifier is validated
+# FIRST — before the cycle test, before the dedup test, before it is turned into
+# a path, and before it is stored in any set. Validating after the membership
+# tests (as this did) meant an unvalidated name decided cycle and dedup verdicts:
+# `a b` tested as the two-word string it is not, and `pest` matched inside the
+# space-padded set entry for `pest-parallel`.
 ep__collect() {
 	_root="$1"; _p="$2"; _path="$3"
-	case " $EP_VISITING " in
-		*" $_p "*) ep__die_cfg "profile inheritance cycle: ${_path}${_p}" ;;
+	ps_valid_id "$_p" || ep__die_cfg "invalid profile identifier: reason=$(ps_id_reject_reason "$_p" || true) value=$(ps_id_render "$_p") (must match $PS_ID_PATTERN, at most $PS_ID_MAXLEN bytes)${_path:+; via ${_path%% -> }}"
+	# Membership is decided by whole-line equality on structural sets.
+	ps_set_has "$_p" "$EP_VISITING" && ep__die_cfg "profile inheritance cycle: ${_path}${_p}"
+	ps_set_has "$_p" "$EP_RESOLVED" && return 0   # already fully merged elsewhere in the DAG
+	# `_mf=$(...); rc=$?` is NOT set -e safe: a failing assignment aborts the
+	# caller before the status can be read, so "unknown profile" exited 1 instead
+	# of the documented 2. Capture through `||`.
+	_eprc=0
+	_mf=$(ep__manifest_path "$_root" "$_p") || _eprc=$?
+	case "$_eprc" in
+		0) ;;
+		2) ep__die_cfg "ambiguous profile '$_p': a manifest exists at BOTH profiles/$_p/profile.manifest.json AND profiles/combinations/$_p.manifest.json${_path:+; via ${_path%% -> }}" ;;
+		*) ep__die_cfg "unknown parent profile '$_p' (no manifest in profiles/$_p/ or profiles/combinations/; an entry whose name differs only by case is NOT a match)${_path:+; via ${_path%% -> }}" ;;
 	esac
-	case " $EP_RESOLVED " in
-		*" $_p "*) return 0 ;;   # already fully merged elsewhere in the DAG
-	esac
-	# (#248/#251) The name becomes a filesystem path on the next line, and is then
-	# stored in the space-delimited EP_VISITING/EP_RESOLVED sets. Validate the
-	# IDENTIFIER before either happens.
-	ps_valid_id "$_p" || ep__die_cfg "invalid profile identifier '$_p' (must match $PS_ID_PATTERN)${_path:+; via ${_path%% -> }}"
-	_mf=$(ep__manifest_path "$_root" "$_p") \
-		|| ep__die_cfg "unknown parent profile '$_p' (no manifest in profiles/$_p/ or profiles/combinations/)${_path:+; via ${_path%% -> }}"
 	# (#248) FULL schema + semantic validation before ANY field of this manifest is
 	# read or merged. Replaces the former `jq -e .` + policy-string-only check.
 	ps_validate_manifest "$_mf" policy "profile '$_p'${_path:+; via ${_path%% -> }}"
-	EP_VISITING="$EP_VISITING $_p"
-	for _parent in $(jq -r '.extends[]? // empty' "$_mf"); do
+	# (#251) IDENTITY BINDING. The dedup and cycle sets are keyed by the NAME the
+	# manifest was resolved under; `.profile` is the name it claims. When those
+	# disagree the same file can be merged twice under two names (dedup misses) and
+	# a cycle through it is invisible. Bind them, fail closed when they differ.
+	_declared=$(jq -r '.profile' "$_mf")
+	[ "$_declared" = "$_p" ] || ep__die_cfg "profile identity mismatch: $_mf resolves under the name '$_p' but declares \"profile\": \"$(ps_id_render "$_declared")\"; inheritance dedup and cycle detection are keyed by the resolved name, so the two must be identical${_path:+; via ${_path%% -> }}"
+	EP_VISITING=$(ps_set_add "$_p" "$EP_VISITING")
+	# (#251) Iterate `extends` LINE BY LINE. `for p in $(jq ...)` split on $IFS and
+	# then glob-expanded every word.
+	_parents=$(jq -r '.extends[]? // empty' "$_mf")
+	while IFS= read -r _parent; do
+		[ -n "$_parent" ] || continue
 		ep__collect "$_root" "$_parent" "${_path}${_p} -> "
-	done
+	done <<EP_PARENTS
+$_parents
+EP_PARENTS
 	# pop from the visiting stack, mark resolved, record in merge order
-	EP_VISITING=$(printf '%s' " $EP_VISITING " | sed "s/ $_p / /" | sed 's/^ //;s/ $//')
-	EP_RESOLVED="$EP_RESOLVED $_p"
-	EP_CHAIN="$EP_CHAIN $_mf"
+	EP_VISITING=$(ps_set_del "$_p" "$EP_VISITING")
+	EP_RESOLVED=$(ps_set_add "$_p" "$EP_RESOLVED")
+	EP_CHAIN=$(ps_set_add "$_mf" "$EP_CHAIN")
 }
 
 # ep__merge_tools <chain...> — strongest-policy merge of every manifest's tools{}.
@@ -178,7 +201,14 @@ ep__apply_override() {
 	if [ -n "$_wf" ] && command -v cw_valid_keys >/dev/null 2>&1; then
 		_waived_keys=$(cw_valid_keys "$_wf") || ep__die_cfg "invalid control-waivers file: $_wf"
 	fi
-	for _k in $(printf '%s' "$_ovr" | jq -r '(.tools // {}) | keys[]'); do
+	# (#251) Override tool keys are read LINE BY LINE, and every one is validated
+	# against the canonical grammar before it is used as a set member or a jq key.
+	# The manifest side is schema-validated (#248); the override is a SEPARATE,
+	# project-controlled surface and was never identifier-checked at all.
+	_ovrkeys=$(printf '%s' "$_ovr" | jq -r '(.tools // {}) | keys[]')
+	while IFS= read -r _k; do
+		[ -n "$_k" ] || continue
+		ps_valid_id "$_k" || ep__die_cfg "tool-policy override declares an invalid tool identifier: reason=$(ps_id_reject_reason "$_k" || true) value=$(ps_id_render "$_k") (must match $PS_ID_PATTERN)"
 		_cur=$(printf '%s' "$_tools" | jq -r --arg k "$_k" '.[$k].policy // "-"')
 		_new=$(printf '%s' "$_ovr" | jq -r --arg k "$_k" '.tools[$k].policy')
 		_rc=$(ep__rank "$_cur"); _rn=$(ep__rank "$_new")
@@ -186,20 +216,18 @@ ep__apply_override() {
 		# weakening: only blocked when the CURRENT control is required or one-of.
 		case "$_cur" in
 			required | one-of)
-				case " $EP_NON_SUPPRESSIBLE " in
-					*" $_k "*) ep__die_cfg "tool-policy override may not weaken non-suppressible control '$_k' ($_cur -> $_new)" ;;
-				esac
-				case "
-$_waived_keys
-" in
-					*"
-$_k
-"*) EP_DIAG="${EP_DIAG}override weakens '$_k' ($_cur -> $_new) under control-waiver
-" ;;
-					*) ep__die_cfg "tool-policy override may not weaken required/one-of control '$_k' ($_cur -> $_new) without a valid control-waiver" ;;
-				esac ;;
+				ps_set_has "$_k" "$EP_NON_SUPPRESSIBLE" \
+					&& ep__die_cfg "tool-policy override may not weaken non-suppressible control '$_k' ($_cur -> $_new)"
+				if ps_set_has "$_k" "$_waived_keys"; then
+					EP_DIAG="${EP_DIAG}override weakens '$_k' ($_cur -> $_new) under control-waiver
+"
+				else
+					ep__die_cfg "tool-policy override may not weaken required/one-of control '$_k' ($_cur -> $_new) without a valid control-waiver"
+				fi ;;
 		esac
-	done
+	done <<EP_OVR_KEYS
+$_ovrkeys
+EP_OVR_KEYS
 
 	printf '%s' "$_tools" | jq --argjson o "$_ovr" '
 		. as $t
@@ -229,13 +257,19 @@ ep__one_of_groups() {
 # executables resolves under <target> or on PATH.
 ep__exe_present() {
 	_t="$1"; _tj="$2"; _k="$3"
-	for _e in $(printf '%s' "$_tj" | jq -r --arg k "$_k" '(.[$k].executable // [])[]' 2>/dev/null); do
+	# (#251) One candidate per LINE. `for e in $(jq ...)` split a declared
+	# `executable` on whitespace and glob-expanded it against the cwd.
+	_exes=$(printf '%s' "$_tj" | jq -r --arg k "$_k" '(.[$k].executable // [])[]' 2>/dev/null || true)
+	while IFS= read -r _e; do
+		[ -n "$_e" ] || continue
 		case "$_e" in
 			/*) [ -x "$_e" ] && return 0 ;;
 			*/*) [ -x "$_t/$_e" ] && return 0 ;;
 			*) command -v "$_e" >/dev/null 2>&1 && return 0; [ -x "$_t/$_e" ] && return 0 ;;
 		esac
-	done
+	done <<EP_EXES
+$_exes
+EP_EXES
 	return 1
 }
 
@@ -268,12 +302,16 @@ ep_resolve() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] || ep__die_cfg "ep_resolve: missing profile name."
 	_profile="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
+	# (#251) Validate the entry identifier BEFORE it reaches the filesystem or any
+	# set. ep__collect re-checks it; this makes the CLI boundary explicit and the
+	# diagnostic name the argument the operator actually typed.
+	ps_require_id "$_profile" "profile identifier" "ep_resolve --profile"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
+	ep__require_line_safe_root "$_root"
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
 	ep__collect "$_root" "$_profile" ""
 	_topmf=$(ep__manifest_path "$_root" "$_profile")
-	# shellcheck disable=SC2086
-	ep__finish "$_profile" "$_topmf" "$_ovrfile" "$_target" $EP_CHAIN
+	ep__finish "$_profile" "$_topmf" "$_ovrfile" "$_target"
 }
 
 # ep_resolve_manifest <manifest-file> [override-json-file] [target] — emit the
@@ -286,29 +324,57 @@ ep_resolve_manifest() {
 	[ -n "${1:-}" ] && [ -f "$1" ] || ep__die_cfg "ep_resolve_manifest: manifest file not found: ${1:-}"
 	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
+	ep__require_line_safe_root "$_root"
+	ep__require_line_safe_root "$_mf"
 	# (#248) The arbitrary-manifest entry point runs the SAME full validation as
 	# every manifest in the DAG, BEFORE `.profile` or `.extends` is read.
 	ps_validate_manifest "$_mf" policy "arbitrary manifest entry point"
 	_profile=$(jq -r '.profile' "$_mf")
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
-	EP_VISITING=" $_profile "        # guard self-reference in the seed's extends
-	for _parent in $(jq -r '.extends[]? // empty' "$_mf"); do
+	EP_VISITING=$(ps_set_add "$_profile" "")   # guard self-reference in the seed's extends
+	_parents=$(jq -r '.extends[]? // empty' "$_mf")
+	while IFS= read -r _parent; do
+		[ -n "$_parent" ] || continue
 		ep__collect "$_root" "$_parent" "$_profile -> "
-	done
+	done <<EP_SEED_PARENTS
+$_parents
+EP_SEED_PARENTS
 	# seed manifest merges LAST (most specific), like the child in ep__collect.
-	EP_CHAIN="$EP_CHAIN $_mf"
-	# shellcheck disable=SC2086
-	ep__finish "$_profile" "$_mf" "$_ovrfile" "$_target" $EP_CHAIN
+	EP_CHAIN=$(ps_set_add "$_mf" "$EP_CHAIN")
+	ep__finish "$_profile" "$_mf" "$_ovrfile" "$_target"
 }
 
-# ep__finish <profile> <top-manifest> <override-file> <target> <chain...> — the
-# ONE merge+override+annotate+groups+emit tail shared by both entry points.
+# ep__require_line_safe_root <path> — the manifest chain is a newline-delimited
+# structural list (#251). A path carrying a literal newline would split into two
+# chain entries; refuse rather than silently merge the wrong files.
+ep__require_line_safe_root() {
+	case "${1-}" in
+		*"$PS__NL"*) ep__die_cfg "path contains a newline and cannot be carried in the manifest chain: $(ps_id_render "$1")" ;;
+	esac
+}
+
+# ep__finish <profile> <top-manifest> <override-file> <target> — the ONE
+# merge+override+annotate+groups+emit tail shared by both entry points. The
+# manifest chain arrives through the global EP_CHAIN (#251): it used to be
+# splatted as `$EP_CHAIN` from a space-delimited string, so a repository path
+# containing a space became two nonexistent manifests and one containing a glob
+# character became whatever the cwd happened to hold.
 ep__finish() {
-	_profile="$1"; _topmf="$2"; _ovrfile="$3"; _target="$4"; shift 4
+	_profile="$1"; _topmf="$2"; _ovrfile="$3"; _target="$4"
 	_extends=$(jq -c '.extends // []' "$_topmf")
 	_tpv=$(jq '.tool_policy_version // null' "$_topmf")
 
-	# shellcheck disable=SC2086
+	# Rebuild the chain as POSITIONAL PARAMETERS — the only array POSIX sh has —
+	# one manifest per line, with no word splitting and no glob expansion.
+	set --
+	while IFS= read -r _cm; do
+		[ -n "$_cm" ] || continue
+		set -- "$@" "$_cm"
+	done <<EP_CHAIN_EOF
+$EP_CHAIN
+EP_CHAIN_EOF
+	[ "$#" -gt 0 ] || ep__die_cfg "internal: empty manifest chain for profile '$_profile'"
+
 	_tools=$(ep__merge_tools "$@")
 
 	# (#248) Cross-manifest semantics, once, on the merged inheritance result:
@@ -327,32 +393,50 @@ ep__finish() {
 	fi
 	_tools=$(ep__apply_override "$_tools" "$_ovr" "${EP_WAIVERS_FILE:-}")
 
-	# Annotate applicability per tool.
+	# Annotate applicability per tool. (#251) Tool keys are read one per LINE; each
+	# is re-checked against the canonical grammar, because from here on the key is
+	# a jq object key, a shell word and (via `report`) a filename component.
 	_annot="{}"
-	for _k in $(printf '%s' "$_tools" | jq -r 'keys[]'); do
+	_tkeys=$(printf '%s' "$_tools" | jq -r 'keys[]')
+	while IFS= read -r _k; do
+		[ -n "$_k" ] || continue
+		ps_valid_id "$_k" || ep__die_cfg "composed profile '$_profile' declares an invalid tool identifier: reason=$(ps_id_reject_reason "$_k" || true) value=$(ps_id_render "$_k") (must match $PS_ID_PATTERN)"
 		_app=$(ep__applicability "$_target" "$_tools" "$_k")
 		_annot=$(printf '%s' "$_tools" | jq --argjson acc "$_annot" --arg k "$_k" --arg app "$_app" \
 			'$acc + {($k): (.[$k] + {applicability: $app})}')
-	done
+	done <<EP_TOOL_KEYS
+$_tkeys
+EP_TOOL_KEYS
 	_tools="$_annot"
 
 	# one-of groups (+ satisfaction when a target is given).
 	_groups=$(ep__one_of_groups "$_tools")
 	if [ -n "$_target" ] && [ -d "$_target" ]; then
-		for _g in $(printf '%s' "$_groups" | jq -r 'keys[]'); do
-			_avail=""
-			for _m in $(printf '%s' "$_groups" | jq -r --arg g "$_g" '.[$g].fallback_order[]'); do
-				if ep__exe_present "$_target" "$_tools" "$_m"; then _avail="$_avail $_m"; fi
-			done
-			_sel=$(printf '%s' "$_groups" | jq -r --arg g "$_g" --arg av "$_avail" '
-				($av | split(" ") | map(select(length>0))) as $A
-				| (.[$g].fallback_order[] | select(. as $x | $A | index($x)) ) // empty' | head -n1)
+		_gkeys=$(printf '%s' "$_groups" | jq -r 'keys[]')
+		while IFS= read -r _g; do
+			[ -n "$_g" ] || continue
+			# (#251) `available` is built as a JSON ARRAY, member by member. It used
+			# to be a space-joined shell string handed back to jq as `split(" ")`,
+			# so a member containing a space became two phantom alternatives and the
+			# group could report itself satisfied by a name nobody declared.
+			_avjson='[]'
+			_members=$(printf '%s' "$_groups" | jq -r --arg g "$_g" '.[$g].fallback_order[]')
+			while IFS= read -r _m; do
+				[ -n "$_m" ] || continue
+				if ep__exe_present "$_target" "$_tools" "$_m"; then
+					_avjson=$(printf '%s' "$_avjson" | jq -c --arg m "$_m" '. + [$m]')
+				fi
+			done <<EP_MEMBERS
+$_members
+EP_MEMBERS
+			_sel=$(printf '%s' "$_groups" | jq -r --arg g "$_g" --argjson av "$_avjson" '
+				(.[$g].fallback_order[] | select(. as $x | $av | index($x))) // empty' | head -n1)
 			_status="unsatisfied"; [ -n "$_sel" ] && _status="satisfied"
-			# shellcheck disable=SC2086
-			_avjson=$(printf '%s\n' $_avail | jq -R . | jq -s 'map(select(length>0))')
 			_groups=$(printf '%s' "$_groups" | jq --arg g "$_g" --arg st "$_status" --arg sel "$_sel" --argjson av "$_avjson" \
 				'.[$g] |= (.status=$st | .selected=(if $sel=="" then null else $sel end) | .available=$av)')
-		done
+		done <<EP_GROUPS
+$_gkeys
+EP_GROUPS
 	fi
 
 	# diagnostics array

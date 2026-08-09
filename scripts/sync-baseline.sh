@@ -155,11 +155,14 @@ trap ss_cleanup EXIT INT TERM
 # --recover is a standalone mode: restore + clear the lock, then exit.
 [ "$RECOVER" -eq 1 ] && tx_recover
 
-MANIFEST=""
-for cand in "profiles/$PROFILE/profile.manifest.json" "profiles/combinations/$PROFILE.manifest.json"; do
-	[ -f "$ROOT/$cand" ] && { MANIFEST="$ROOT/$cand"; break; }
-done
-[ -n "$MANIFEST" ] || { echo "error: no manifest for profile '$PROFILE'" >&2; exit 2; }
+# Resolve the manifest path from the profile name. (#251) ONE shared,
+# identifier-validating lookup (scripts/lib/profile-schema.sh): the name is
+# checked against the canonical grammar BEFORE it is concatenated into a path, a
+# name present in BOTH locations is AMBIGUOUS rather than first-wins, and an
+# on-disk entry that matches only case-insensitively is not a match. Sets
+# PS_MANIFEST_PATH, or logs the reason and exits 2.
+ps_require_profile_manifest "$ROOT" "$PROFILE" "sync-baseline --profile"
+MANIFEST="$PS_MANIFEST_PATH"
 # (#248) FULL schema + semantic validation before any manifest field is read.
 ps_validate_manifest "$MANIFEST" install "sync-baseline --profile $PROFILE"
 
@@ -178,9 +181,21 @@ fi
 echo "Profile: $PROFILE   Source: $ROOT   Target: $TARGET"
 echo "------------------------------------------------------------"
 
-PROTECT=" .sentinel-shield/accepted-risks.json phpstan-baseline.neon "
-for p in $(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null); do PROTECT="$PROTECT$p "; done
-is_protected() { case "$PROTECT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+# (#251) A newline-delimited STRUCTURAL set tested with whole-line equality. It
+# was a space-padded string built by `for p in $(jq ...)`, so one declared
+# never_touch path containing a space became two protected paths that match
+# nothing, and `*" $1 "*` matched a path across element boundaries.
+PROTECT='.sentinel-shield/accepted-risks.json
+phpstan-baseline.neon'
+_nts=$(jq -r '(.never_touch // [])[]' "$MANIFEST" 2>/dev/null || true)
+while IFS= read -r p; do
+	[ -n "$p" ] || continue
+	PROTECT=$(ps_set_add "$p" "$PROTECT")
+done <<PROTECT_EOF
+$_nts
+PROTECT_EOF
+
+is_protected() { ps_set_has "$1" "$PROTECT"; }
 
 # emit_install_plan <path> — write a DETERMINISTIC installation-plan JSON
 # (schemas/installation-plan.schema.json): the read-only per-file (mode, action, source, target)
@@ -211,7 +226,9 @@ emit_install_plan() {
 		jq -cn --arg mode "$_m" --arg action "$_act" --arg source "$_s" --arg target "$_t" \
 			'{mode:$mode, action:$action, source:$source, target:$target}'
 	done | jq -s 'sort_by(.target)' > "$_eip_ops"
-	_eip_prot=$(printf '%s' "$PROTECT" | tr ' ' '\n' | sed '/^$/d' | sort -u | jq -R . | jq -s .)
+	# (#251) PROTECT is newline-delimited; splitting it on SPACE would break any
+	# declared never_touch path that contains one.
+	_eip_prot=$(printf '%s\n' "$PROTECT" | sed '/^$/d' | LC_ALL=C sort -u | jq -R . | jq -s .)
 	jq -n \
 		--slurpfile ops "$_eip_ops" \
 		--argjson protected "$_eip_prot" \
@@ -358,7 +375,9 @@ sync_entry() { # <source> <target> <mode>
 # lock from a prior ungraceful kill is detected here and blocks until --recover.
 echo "PLAN ($([ "$APPLY" -eq 1 ] && echo APPLY || echo dry-run)) — managed files updated only with --force; protected files never written:"
 jq -r '((.files // []) + (.workflows // []) + (.docs // []))[] | "  - [\(.mode)] \(.source) -> \(.target)"' "$MANIFEST"
-echo "  protected (never written):$PROTECT"
+# Render the structural set on one line for the human report (the set itself
+# stays newline-delimited; only this display joins it).
+echo "  protected (never written): $(printf '%s\n' "$PROTECT" | sed '/^$/d' | tr '\n' ' ')"
 echo "------------------------------------------------------------"
 if [ "$APPLY" -eq 1 ]; then
 	tx_detect_stale
