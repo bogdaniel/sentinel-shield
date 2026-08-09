@@ -470,6 +470,37 @@ else
 	fail "  control: the bound DAG no longer resolves"
 fi
 
+# --- 4d2. prefix/suffix profile names stay distinct ---------------------------
+#     `php` is a prefix of `php-library`, and `library` a suffix. Under the
+#     space-padded dedup set those were still distinct WORDS, but the padded
+#     idiom is one `case` pattern away from matching a prefix (`*"$p"*`), and the
+#     cycle path is built by string concatenation. Prove all three resolve, that
+#     none is deduped against another, and that all three appear in the chain.
+S=$(synth_root s-prefix)
+for _n in php php-library-extra; do
+	mkdir -p "$S/profiles/$_n"
+	jq --arg n "$_n" '.profile = $n | .extends = [] | .tools = {}' \
+		"$ROOT/profiles/php-library/profile.manifest.json" > "$S/profiles/$_n/profile.manifest.json"
+done
+mkdir -p "$S/profiles/prefix-top"
+jq '.profile = "prefix-top" | .extends = ["php","php-library","php-library-extra"] | .tools = {}' \
+	"$ROOT/profiles/php-library/profile.manifest.json" > "$S/profiles/prefix-top/profile.manifest.json"
+check "mutation applied: three prefix/suffix-related parents are declared" \
+	"$(jq -r '.extends | join(",")' "$S/profiles/prefix-top/profile.manifest.json")" \
+	"php,php-library,php-library-extra"
+if EP_REPO_ROOT="$S" sh "$RES" --profile prefix-top --format json > "$TMP/prefix.json" 2>"$TMP/prefix.err"; then
+	pass "prefix/suffix profile names all resolve without deduping against each other"
+	check "  and the composed extends list is intact" \
+		"$(jq -r '.extends | join(",")' "$TMP/prefix.json")" "php,php-library,php-library-extra"
+else
+	fail "prefix/suffix profile names failed to resolve: $(head -2 "$TMP/prefix.err" | tr '\n' ' ')"
+fi
+# A REAL self-cycle through a prefix name is still caught.
+jq '.extends = ["php-library"]' "$S/profiles/php-library/profile.manifest.json" > "$S/p.tmp" \
+	&& mv "$S/p.tmp" "$S/profiles/php-library/profile.manifest.json"
+_rc=0; EP_REPO_ROOT="$S" sh "$RES" --profile prefix-top --format json >/dev/null 2>&1 || _rc=$?
+check "  a self-reference through the longer name is still refused (exit 2)" "$_rc" "2"
+
 # --- 4e. a real cycle is still detected, and its path is still reported -------
 FX="$ROOT/tests/fixtures/v2"
 if [ -d "$FX/profiles/cycle-a" ]; then
@@ -565,39 +596,24 @@ fi
 # ---------------------------------------------------------------------------
 # 5. NO WORD-SPLIT ITERATION OVER A JSON ARRAY OR KEY LIST
 # ---------------------------------------------------------------------------
-# The scanner: `for <var> in $( ... jq ... )` anywhere on the profile-resolution
-# path. Membership of that path is listed here because it IS the scope of #251;
-# the scanner's own non-vacuity is proven immediately below.
-SCAN_FILES="scripts/lib/effective-profile.sh
-scripts/lib/profile-schema.sh
-scripts/lib/compat-resolver.sh
-scripts/resolve-effective-profile.sh
-scripts/resolve-tool-plan.sh
-scripts/install-baseline.sh
-scripts/sync-baseline.sh
-scripts/plan-upgrade.sh
-scripts/migrate-v1.sh
-scripts/bootstrap-profile-tools.sh
-scripts/doctor.sh
-scripts/build-security-summary.sh"
-
+# The scanner: `for <var> in $( ... jq ... )` anywhere in the ENGINE. The scope is
+# every shell script under scripts/ — not a hand-maintained list, so a new
+# consumer added later is caught without editing this test. tests/ is excluded on
+# purpose: a test harness that deliberately RECONSTRUCTS the defective idiom (as
+# section 3 above does) must keep it, and a test is not the engine.
 scan_wordsplit() { # scan_wordsplit <root> — print offending "file:line" pairs
-	_r="$1"
-	while IFS= read -r _f; do
-		[ -n "$_f" ] || continue
-		[ -f "$_r/$_f" ] || continue
-		# `grep -n` prefixes "<line>:"; a COMMENT is a line whose first
-		# non-blank character after that prefix is `#`.
-		grep -n 'for [_A-Za-z][_A-Za-z0-9]* in \$(' "$_r/$_f" 2>/dev/null \
-			| grep 'jq ' | grep -v '^[0-9][0-9]*:[[:space:]]*#' | sed "s|^|$_f:|" || true
-	done <<EOF
-$SCAN_FILES
-EOF
+	# `grep -n` prefixes "<line>:"; a COMMENT is a line whose first non-blank
+	# character after that prefix is `#`.
+	grep -rn 'for [_A-Za-z][_A-Za-z0-9]* in \$(' \
+		"$1/scripts" 2>/dev/null \
+		| grep 'jq ' \
+		| grep -v ':[0-9][0-9]*:[[:space:]]*#' \
+		| sed "s|^$1/||" || true
 }
 
 # 5a. Non-vacuity: the scanner catches a planted instance.
 PLANT="$TMP/plant"; mkdir -p "$PLANT/scripts/lib"
-printf '#!/bin/sh\nfor _k in $(jq -r "keys[]" x.json); do :; done\n' > "$PLANT/scripts/lib/effective-profile.sh"
+printf '#!/bin/sh\nfor _k in $(jq -r "keys[]" x.json); do :; done\n' > "$PLANT/scripts/lib/planted.sh"
 _planted=$(scan_wordsplit "$PLANT")
 if [ -n "$_planted" ]; then
 	pass "non-vacuity: the word-split scanner catches a planted instance"
@@ -608,24 +624,30 @@ fi
 # 5b. The live tree is clean.
 _found=$(scan_wordsplit "$ROOT")
 if [ -z "$_found" ]; then
-	pass "no JSON array or key list on the resolution path is iterated by word splitting"
+	pass "no JSON array or key list anywhere under scripts/ is iterated by word splitting"
 else
 	fail "word-split iteration over jq output remains:"
 	printf '%s\n' "$_found" | while IFS= read -r _l; do [ -n "$_l" ] && printf '        %s\n' "$_l"; done
 fi
 
-# 5c. The space-padded membership idiom is gone from the same files.
-_padded=$(
-	while IFS= read -r _f; do
-		[ -n "$_f" ] || continue
-		[ -f "$ROOT/$_f" ] || continue
-		grep -n 'case " \$[A-Z_]*SET\|case " \$EP_NON_SUPPRESSIBLE\|case " \$REQUIRE_TOOLS\|case " \$DISABLED_SET\|case " \$DISABLED_TOOLS\|case " \$ONEOF_MEMBERS\|case " \$PROTECT\|case " \$EP_VISITING\|case " \$EP_RESOLVED' "$ROOT/$_f" 2>/dev/null | grep -v '^[0-9][0-9]*:[[:space:]]*#' | sed "s|^|$_f:|" || true
-	done <<EOF
-$SCAN_FILES
-EOF
-)
+# 5c. The space-padded membership idiom is gone from every identifier set this
+#     issue names. Same scope as 5b: all of scripts/, discovered not listed.
+scan_padded() { # scan_padded <root>
+	grep -rn 'case " \$EP_NON_SUPPRESSIBLE\|case " \$REQUIRE_TOOLS\|case " \$DISABLED_SET\|case " \$DISABLED_TOOLS\|case " \$ONEOF_MEMBERS\|case " \$PROTECT\|case " \$EP_VISITING\|case " \$EP_RESOLVED' \
+		"$1/scripts" 2>/dev/null \
+		| grep -v ':[0-9][0-9]*:[[:space:]]*#' \
+		| sed "s|^$1/||" || true
+}
+# Non-vacuity: the padded-set scanner catches a planted instance too.
+printf '#!/bin/sh\ncase " $DISABLED_SET " in *" x "*) : ;; esac\n' > "$PLANT/scripts/lib/planted2.sh"
+if [ -n "$(scan_padded "$PLANT")" ]; then
+	pass "non-vacuity: the padded-set scanner catches a planted instance"
+else
+	fail "the padded-set scanner does not catch a planted instance"
+fi
+_padded=$(scan_padded "$ROOT")
 if [ -z "$_padded" ]; then
-	pass "no identifier set on the resolution path is a space-padded string"
+	pass "no identifier set under scripts/ is a space-padded string"
 else
 	fail "space-padded identifier sets remain:"
 	printf '%s\n' "$_padded" | while IFS= read -r _l; do [ -n "$_l" ] && printf '        %s\n' "$_l"; done

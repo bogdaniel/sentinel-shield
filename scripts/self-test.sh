@@ -2895,19 +2895,34 @@ run_v2_toolpolicy() {
 	_prplan=$(sh scripts/resolve-workflow-plan.sh --profile laravel --stage pr 2>/dev/null)
 	_mainplan=$(sh scripts/resolve-workflow-plan.sh --profile laravel --stage main 2>/dev/null)
 	_miss=0
-	for _k in $(jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.pr==true)|.key' "$LMAN"); do
+	# (#251) One key per LINE, not word-split command substitution.
+	_stkeys=$(jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.pr==true)|.key' "$LMAN")
+	while IFS= read -r _k; do
+		[ -n "$_k" ] || continue
 		printf '%s' "$_prplan" | jq -e --arg k "$_k" '.tools[]|select(.tool==$k)' >/dev/null 2>&1 || _miss=$((_miss + 1))
-	done
+	done <<ST_PRKEYS
+$_stkeys
+ST_PRKEYS
 	tpv2_check "(23) every required PR tool appears in the PR workflow plan" "$_miss" "0"
 	_miss=0
-	for _k in $(jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.main==true)|.key' "$LMAN"); do
+	# (#251) One key per LINE, not word-split command substitution.
+	_stkeys=$(jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.main==true)|.key' "$LMAN")
+	while IFS= read -r _k; do
+		[ -n "$_k" ] || continue
 		printf '%s' "$_mainplan" | jq -e --arg k "$_k" '.tools[]|select(.tool==$k)' >/dev/null 2>&1 || _miss=$((_miss + 1))
-	done
+	done <<ST_MAINKEYS
+$_stkeys
+ST_MAINKEYS
 	tpv2_check "(23) every required main-gate tool appears in the main workflow plan" "$_miss" "0"
 	_miss=0
-	for _r in $(jq -r '.tools|to_entries[]|select(.value.policy=="required" and (.value.runner//"")!="")|.value.runner' "$LMAN" | sort -u); do
+	# (#251) One runner path per LINE, not word-split command substitution.
+	_strunners=$(jq -r '.tools|to_entries[]|select(.value.policy=="required" and (.value.runner//"")!="")|.value.runner' "$LMAN" | LC_ALL=C sort -u)
+	while IFS= read -r _r; do
+		[ -n "$_r" ] || continue
 		grep -q "$_r" "$WF" || { log_warn "required runner not wired in canonical template: $_r"; _miss=$((_miss + 1)); }
-	done
+	done <<ST_RUNNERS
+$_strunners
+ST_RUNNERS
 	tpv2_check "(23) every required runner-bearing tool is wired in the canonical workflow template" "$_miss" "0"
 
 	# (24) workflow actions SHA-pinned: every `uses:` in the canonical template is pinned to a 40-hex SHA
@@ -3303,9 +3318,14 @@ v2e_workflow() {
 		_m="$_w/reports/pr-execution.json"
 		_eff=$(sh "$ROOT/scripts/resolve-effective-profile.sh" --profile "$_p" --target "$_w" --format json 2>/dev/null || true)
 		_missing=0
-		for _k in $(printf '%s' "$_eff" | jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.pr==true and (.value.applicability//"unknown")!="not-applicable")|.key'); do
+		# (#251) One key per LINE, not word-split command substitution.
+		_stkeys=$(printf '%s' "$_eff" | jq -r '.tools|to_entries[]|select(.value.policy=="required" and .value.execution.pr==true and (.value.applicability//"unknown")!="not-applicable")|.key')
+		while IFS= read -r _k; do
+			[ -n "$_k" ] || continue
 			jq -e --arg k "$_k" '(.tools[$k] // .one_of_groups[$k]) != null' "$_m" >/dev/null 2>&1 || _missing=$((_missing + 1))
-		done
+		done <<ST_EFFKEYS
+$_stkeys
+ST_EFFKEYS
 		tpe_check "workflow: $_p PR plan includes every required PR tool (manifest)" "$_missing" "0"
 		rm -rf "$_w"
 	done
@@ -3335,8 +3355,15 @@ v2e_workflow() {
 		"$(jq -r '.tools | has("larastan")' "$_pl")" "false"
 	tpe_check "workflow: php-library phpstan uses the generic runner (no artisan boot)" \
 		"$(jq -r '.tools.phpstan.runner' "$_pl")" "scripts/runners/phpstan.sh"
-	_lara=0; for _r in $(jq -r '[.tools[].runner // empty]|.[]' "$_pl" 2>/dev/null); do
-		case "$_r" in *laravel*) _lara=$((_lara+1)) ;; esac; done
+	# (#251) One runner path per LINE, not word-split command substitution.
+	_lara=0
+	_strunners=$(jq -r '[.tools[].runner // empty]|.[]' "$_pl" 2>/dev/null || true)
+	while IFS= read -r _r; do
+		[ -n "$_r" ] || continue
+		case "$_r" in *laravel*) _lara=$((_lara+1)) ;; esac
+	done <<ST_PLRUNNERS
+$_strunners
+ST_PLRUNNERS
 	tpe_check "workflow: php-library wires no laravel-* runner" "$_lara" "0"
 
 	# JS-only avoids required TS; TS runs typecheck (typescript runner wired). Real.
