@@ -479,9 +479,20 @@ esac
 if [ "${SENTINEL_SHIELD_REQUIRE_OBSERVED_EXECUTION:-0}" = "1" ]; then
 	case "$MODE" in
 		strict | regulated)
+			# NOT `(.evidence.execution.observed // true) == false`. jq's `//` substitutes for
+			# `false` as well as for `null`, so `false // true` is `true` and `== false` was
+			# UNSATISFIABLE: this gate rejected nothing from the day it shipped (#326 A). The
+			# comparison is made directly against the value instead — `null == false` is already
+			# false in jq, so an ABSENT record still does not trip the gate, which is the
+			# documented behaviour (only an explicitly recorded `observed: false` does).
+			#
+			# The path is deliberately NOT written with `?`. A tool whose `.evidence` is a string
+			# or whose `.execution` is a number makes jq error, which surfaces here as
+			# `unreadable` and fails closed; `.evidence?.execution?.observed?` would yield EMPTY
+			# and silently skip that tool, turning malformed evidence into a pass.
 			_unobs=$(jq -r '[(.tools // {}) | to_entries[]
 				| select(.value | (type == "object")
-					and ((.evidence.execution.observed // true) == false))
+					and ((.evidence.execution.observed) == false))
 				| .key] | join(", ")' "$SUMMARY" 2>/dev/null || printf 'unreadable')
 			if [ "$_unobs" = "unreadable" ]; then
 				die_cfg "'$SUMMARY' could not be read for the observed-execution check; an unparseable summary is untrusted evidence in '$MODE'"

@@ -111,6 +111,14 @@ ra_guard_destructive() {
 # explicit incompleteness/failure signal. Recognizes result|decision|status|verdict in a
 # fixed pass vocabulary and additionally requires: incomplete!=true, complete!=false,
 # missing[] empty, failure_count==0. An unrecognized/empty verdict FAILS CLOSED.
+#
+# #326 B — the `complete` clause is written `(.complete) != false`, NOT `(.complete // true)
+# == true`. jq's `//` substitutes for `false` as well as for `null`, so `false // true` is
+# `true` and the clause was UNSATISFIABLE: `{"result":"pass","complete":false}` — documented
+# right here as a fail — passed this gate from the day it shipped, on the line adjacent to a
+# correctly written one. Comparing directly keeps `complete` OPTIONAL (`null != false` is true
+# in jq), which matters: validate-release-lifecycle.sh and the adopter scorecard emit
+# ra_gate_ok-shaped reports that carry no `complete` key at all.
 ra_gate_ok() {
 	ra_json_ok "$1" || {
 		log_error "ra_gate_ok: '${1:-}' is missing/empty/not JSON (fail closed)"
@@ -121,7 +129,7 @@ ra_gate_ok() {
 		| ($d == "pass" or $d == "accepted" or $d == "accepted-emergency" or $d == "ready"
 			or $d == "complete" or $d == "green" or $d == "ok" or $d == "success")
 			and ((.incomplete // false) == false)
-			and ((.complete // true) == true)
+			and ((.complete) != false)
 			and (((.missing // []) | length) == 0)
 			and (((.failure_count // 0)) == 0)
 	' "$1" >/dev/null 2>&1

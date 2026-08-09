@@ -114,11 +114,16 @@ _health_compat_gate() {
 	CP_QUIET="$QUIET"
 	# shellcheck disable=SC2034
 	if [ "$REQUIRE_NETWORK" = 1 ]; then CP_ENV_ONLINE_ONLY=yes; else CP_ENV_ONLINE_ONLY=no; fi
-	CP_PROBE_TIMEOUT=0
+	# Arm and read the probe-timeout flag through the library's own entry points
+	# (cp_probe_timeout_reset / cp_probe_timed_out) instead of touching CP_PROBE_TIMEOUT
+	# directly. The flag is raised several shell levels down, behind a command substitution
+	# that used to swallow it — so where it is READ is precisely where the mapping to exit 4
+	# was lost (#306, #326 C), and the library now owns crossing that boundary.
+	cp_probe_timeout_reset
 	cp_detect_into_env
 	cp_evaluate "$POLICY" 1
 	echo "----"
-	if [ "$CP_PROBE_TIMEOUT" = 1 ]; then echo "health: a bounded version probe timed out — environment UNVERIFIABLE (exit 4)"; exit 4; fi
+	if cp_probe_timed_out; then echo "health: a bounded version probe timed out — environment UNVERIFIABLE (exit 4)"; exit 4; fi
 	if [ "$CP_FAIL" -gt 0 ]; then echo "health: $CP_FAIL unsupported/incompatible component(s) — see FAIL line(s) above (exit 3)"; exit 3; fi
 	if [ "$CP_WARN" -gt 0 ]; then echo "health: $CP_WARN warning(s) — supported but degraded (exit 1)"; exit 1; fi
 	echo "health: environment supported (all components within policy)"
