@@ -106,44 +106,61 @@ ep__manifest_path() { ps_profile_manifest_path "$1" "$2"; }
 # `a b` tested as the two-word string it is not, and `pest` matched inside the
 # space-padded set entry for `pest-parallel`.
 ep__collect() {
-	_root="$1"; _p="$2"; _path="$3"
-	ps_valid_id "$_p" || ep__die_cfg "invalid profile identifier: reason=$(ps_id_reject_reason "$_p" || true) value=$(ps_id_render "$_p") (must match $PS_ID_PATTERN, at most $PS_ID_MAXLEN bytes)${_path:+; via ${_path%% -> }}"
+	# (#251) POSIX sh has NO function-local variables, and this function RECURSES.
+	# Every `_name=` below is a GLOBAL that the recursive call overwrites, so any
+	# value still needed AFTER that call must come from a positional parameter
+	# ($1/$2/$3, which ARE per-invocation) or be re-derived from one.
+	#
+	# It did neither. `_p` and `_mf` were read after the `extends` loop and by
+	# then held the LAST PARENT's values, so for every profile that declares
+	# `extends`:
+	#   * its OWN manifest was never appended to EP_CHAIN — its own `tools` were
+	#     silently never merged, including `required` ones;
+	#   * its name was never popped from EP_VISITING, so a later branch of the
+	#     DAG reaching it reported a cycle that does not exist;
+	#   * the last parent was marked resolved, and chained, twice.
+	# Reproduced against a real tree in tests/prod/301.
+	ps_valid_id "$2" || ep__die_cfg "invalid profile identifier: reason=$(ps_id_reject_reason "$2" || true) value=$(ps_id_render "$2") (must match $PS_ID_PATTERN, at most $PS_ID_MAXLEN bytes)${3:+; via ${3%% -> }}"
 	# Membership is decided by whole-line equality on structural sets.
-	ps_set_has "$_p" "$EP_VISITING" && ep__die_cfg "profile inheritance cycle: ${_path}${_p}"
-	ps_set_has "$_p" "$EP_RESOLVED" && return 0   # already fully merged elsewhere in the DAG
+	ps_set_has "$2" "$EP_VISITING" && ep__die_cfg "profile inheritance cycle: ${3}${2}"
+	ps_set_has "$2" "$EP_RESOLVED" && return 0   # already fully merged elsewhere in the DAG
 	# `_mf=$(...); rc=$?` is NOT set -e safe: a failing assignment aborts the
 	# caller before the status can be read, so "unknown profile" exited 1 instead
 	# of the documented 2. Capture through `||`.
 	_eprc=0
-	_mf=$(ep__manifest_path "$_root" "$_p") || _eprc=$?
+	_mf=$(ep__manifest_path "$1" "$2") || _eprc=$?
 	case "$_eprc" in
 		0) ;;
-		2) ep__die_cfg "ambiguous profile '$_p': a manifest exists at BOTH profiles/$_p/profile.manifest.json AND profiles/combinations/$_p.manifest.json${_path:+; via ${_path%% -> }}" ;;
-		*) ep__die_cfg "unknown parent profile '$_p' (no manifest in profiles/$_p/ or profiles/combinations/; an entry whose name differs only by case is NOT a match)${_path:+; via ${_path%% -> }}" ;;
+		2) ep__die_cfg "ambiguous profile '$2': a manifest exists at BOTH profiles/$2/profile.manifest.json AND profiles/combinations/$2.manifest.json${3:+; via ${3%% -> }}" ;;
+		*) ep__die_cfg "unknown parent profile '$2' (no manifest in profiles/$2/ or profiles/combinations/; an entry whose name differs only by case is NOT a match)${3:+; via ${3%% -> }}" ;;
 	esac
 	# (#248) FULL schema + semantic validation before ANY field of this manifest is
 	# read or merged. Replaces the former `jq -e .` + policy-string-only check.
-	ps_validate_manifest "$_mf" policy "profile '$_p'${_path:+; via ${_path%% -> }}"
+	ps_validate_manifest "$_mf" policy "profile '$2'${3:+; via ${3%% -> }}"
 	# (#251) IDENTITY BINDING. The dedup and cycle sets are keyed by the NAME the
 	# manifest was resolved under; `.profile` is the name it claims. When those
 	# disagree the same file can be merged twice under two names (dedup misses) and
 	# a cycle through it is invisible. Bind them, fail closed when they differ.
 	_declared=$(jq -r '.profile' "$_mf")
-	[ "$_declared" = "$_p" ] || ep__die_cfg "profile identity mismatch: $_mf resolves under the name '$_p' but declares \"profile\": \"$(ps_id_render "$_declared")\"; inheritance dedup and cycle detection are keyed by the resolved name, so the two must be identical${_path:+; via ${_path%% -> }}"
-	EP_VISITING=$(ps_set_add "$_p" "$EP_VISITING")
+	[ "$_declared" = "$2" ] || ep__die_cfg "profile identity mismatch: $_mf resolves under the name '$2' but declares \"profile\": \"$(ps_id_render "$_declared")\"; inheritance dedup and cycle detection are keyed by the resolved name, so the two must be identical${3:+; via ${3%% -> }}"
+	EP_VISITING=$(ps_set_add "$2" "$EP_VISITING")
 	# (#251) Iterate `extends` LINE BY LINE. `for p in $(jq ...)` split on $IFS and
-	# then glob-expanded every word.
+	# then glob-expanded every word. The heredoc snapshots the list before the
+	# first recursive call clobbers `_parents`.
 	_parents=$(jq -r '.extends[]? // empty' "$_mf")
 	while IFS= read -r _parent; do
 		[ -n "$_parent" ] || continue
-		ep__collect "$_root" "$_parent" "${_path}${_p} -> "
+		ep__collect "$1" "$_parent" "${3}${2} -> "
 	done <<EP_PARENTS
 $_parents
 EP_PARENTS
+	# The recursion clobbered every `_name`. Re-derive THIS frame's manifest from
+	# the positional parameters, which it could not touch.
+	_epmf=$(ep__manifest_path "$1" "$2") || ep__die_cfg "internal: manifest for '$2' disappeared during inheritance collection"
 	# pop from the visiting stack, mark resolved, record in merge order
-	EP_VISITING=$(ps_set_del "$_p" "$EP_VISITING")
-	EP_RESOLVED=$(ps_set_add "$_p" "$EP_RESOLVED")
-	EP_CHAIN=$(ps_set_add "$_mf" "$EP_CHAIN")
+	EP_VISITING=$(ps_set_del "$2" "$EP_VISITING")
+	EP_RESOLVED=$(ps_set_add "$2" "$EP_RESOLVED")
+	EP_CHAIN=$(ps_set_add "$_epmf" "$EP_CHAIN")
 }
 
 # ep__merge_tools <chain...> — strongest-policy merge of every manifest's tools{}.
@@ -322,26 +339,33 @@ ep_resolve() {
 ep_resolve_manifest() {
 	command_exists jq || ep__die_cfg "effective-profile: jq is required."
 	[ -n "${1:-}" ] && [ -f "$1" ] || ep__die_cfg "ep_resolve_manifest: manifest file not found: ${1:-}"
-	_mf="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
+	# (#251) `_mf` is the name ep__collect uses for its own manifest, and ep__collect
+	# is called below — in POSIX sh that is the SAME global. The seed manifest was
+	# therefore replaced by the last parent's before it was appended to EP_CHAIN and
+	# handed to ep__finish, so `--manifest` merged the wrong file's tools and read
+	# `extends`/`tool_policy_version` off it. `_ep_seed` is not a name ep__collect
+	# touches, and it is re-read from the positional parameter after the loop.
+	_ep_seed="$1"; _ovrfile="${2:-}"; _target="${3:-}"; EP_WAIVERS_FILE="${4:-}"
 	_root=$(ep__repo_root) || ep__die_cfg "effective-profile: cannot locate repo root (no profiles/); set EP_REPO_ROOT."
 	ep__require_line_safe_root "$_root"
-	ep__require_line_safe_root "$_mf"
+	ep__require_line_safe_root "$_ep_seed"
 	# (#248) The arbitrary-manifest entry point runs the SAME full validation as
 	# every manifest in the DAG, BEFORE `.profile` or `.extends` is read.
-	ps_validate_manifest "$_mf" policy "arbitrary manifest entry point"
-	_profile=$(jq -r '.profile' "$_mf")
+	ps_validate_manifest "$_ep_seed" policy "arbitrary manifest entry point"
+	_ep_prof=$(jq -r '.profile' "$_ep_seed")
 	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
-	EP_VISITING=$(ps_set_add "$_profile" "")   # guard self-reference in the seed's extends
-	_parents=$(jq -r '.extends[]? // empty' "$_mf")
+	EP_VISITING=$(ps_set_add "$_ep_prof" "")   # guard self-reference in the seed's extends
+	_ep_parents=$(jq -r '.extends[]? // empty' "$_ep_seed")
 	while IFS= read -r _parent; do
 		[ -n "$_parent" ] || continue
-		ep__collect "$_root" "$_parent" "$_profile -> "
+		ep__collect "$_root" "$_parent" "$_ep_prof -> "
 	done <<EP_SEED_PARENTS
-$_parents
+$_ep_parents
 EP_SEED_PARENTS
 	# seed manifest merges LAST (most specific), like the child in ep__collect.
-	EP_CHAIN=$(ps_set_add "$_mf" "$EP_CHAIN")
-	ep__finish "$_profile" "$_mf" "$_ovrfile" "$_target"
+	_ep_seed="$1"
+	EP_CHAIN=$(ps_set_add "$_ep_seed" "$EP_CHAIN")
+	ep__finish "$_ep_prof" "$_ep_seed" "$_ovrfile" "$_target"
 }
 
 # ep__require_line_safe_root <path> — the manifest chain is a newline-delimited

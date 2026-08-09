@@ -501,6 +501,78 @@ jq '.extends = ["php-library"]' "$S/profiles/php-library/profile.manifest.json" 
 _rc=0; EP_REPO_ROOT="$S" sh "$RES" --profile prefix-top --format json >/dev/null 2>&1 || _rc=$?
 check "  a self-reference through the longer name is still refused (exit 2)" "$_rc" "2"
 
+# --- 4d3. recursion scoping: the profile's OWN manifest reaches the chain ------
+#     POSIX sh has no function-local variables and ep__collect RECURSES, so `_p`
+#     and `_mf` held the LAST PARENT's values after the `extends` loop. For every
+#     profile that declares `extends`, its own manifest was never appended to
+#     EP_CHAIN (its own tools, including `required` ones, silently never merged),
+#     its name was never popped from EP_VISITING (a later branch reaching it
+#     reported a cycle that does not exist), and the last parent was chained and
+#     marked resolved twice.
+S=$(synth_root s-scope)
+jq '.profile="combo" | .extends=["php-library"] | .files=[] |
+    .tools={"combo-only":{"policy":"required","execution":{"pr":true},"report":"reports/raw/combo-only.json"}}' \
+	"$ROOT/profiles/php-library/profile.manifest.json" > "$S/profiles/combinations/combo.manifest.json"
+check "mutation applied: the combination declares its OWN required tool" \
+	"$(jq -r '[.tools|keys[]]|join(",")' "$S/profiles/combinations/combo.manifest.json")" "combo-only"
+if EP_REPO_ROOT="$S" sh "$RES" --profile combo --format json > "$TMP/combo.json" 2>"$TMP/combo.err"; then
+	check "a profile's OWN tools survive its inheritance (named entry point)" \
+		"$(jq -r 'if (.tools|has("combo-only")) then "present" else "VANISHED" end' "$TMP/combo.json")" "present"
+	check "  and it kept its declared policy" \
+		"$(jq -r '.tools["combo-only"].policy' "$TMP/combo.json")" "required"
+	check "  while the parent's tools are still merged" \
+		"$(jq -r 'if (.tools|has("php-style")) then "present" else "MISSING" end' "$TMP/combo.json")" "present"
+else
+	fail "the combination profile did not resolve: $(head -2 "$TMP/combo.err" | tr '\n' ' ')"
+fi
+if EP_REPO_ROOT="$S" sh "$RES" --manifest "$S/profiles/combinations/combo.manifest.json" --format json > "$TMP/combom.json" 2>"$TMP/combom.err"; then
+	check "a seed manifest's OWN tools survive its inheritance (--manifest entry point)" \
+		"$(jq -r 'if (.tools|has("combo-only")) then "present" else "VANISHED" end' "$TMP/combom.json")" "present"
+	check "  and --manifest read extends off the SEED, not off the last parent" \
+		"$(jq -c '.extends' "$TMP/combom.json")" '["php-library"]'
+else
+	fail "the --manifest entry point did not resolve: $(head -2 "$TMP/combom.err" | tr '\n' ' ')"
+fi
+# The chain itself: every manifest exactly once, the profile's own manifest last.
+_chain=$(EP_REPO_ROOT="$S" sh -c '
+	. "$1/scripts/lib/sentinel-shield-common.sh"
+	. "$1/scripts/lib/profile-schema.sh"
+	. "$1/scripts/lib/effective-profile.sh"
+	EP_CHAIN=""; EP_VISITING=""; EP_RESOLVED=""; EP_DIAG=""
+	ep__collect "$EP_REPO_ROOT" combo ""
+	printf "%s\n" "$EP_CHAIN" | sed "s|.*/||"
+	printf "VISITING=[%s]\n" "$EP_VISITING"' _ "$ROOT" 2>/dev/null)
+check "  the chain is the parent then the profile itself, each once" \
+	"$(printf '%s' "$_chain" | grep -v '^VISITING' | tr '\n' ',')" \
+	"profile.manifest.json,combo.manifest.json,"
+check "  and the visiting stack is empty when collection ends" \
+	"$(printf '%s' "$_chain" | grep '^VISITING')" "VISITING=[]"
+
+# --- 4d4. a diamond DAG is not a cycle ---------------------------------------
+#     Because the name was never popped from EP_VISITING, a second path to an
+#     already-collected profile was reported as an inheritance cycle — with a
+#     nonsense path. This is a plain diamond and must resolve.
+S=$(synth_root s-diamond)
+for _spec in 'leaf:[]' 'mid:["leaf"]' 'other:["mid"]' 'top:["mid","other"]'; do
+	_dn=${_spec%%:*}; _de=${_spec#*:}
+	mkdir -p "$S/profiles/$_dn"
+	jq --arg n "$_dn" --argjson e "$_de" '.profile=$n | .extends=$e | .tools={} | .files=[]' \
+		"$ROOT/profiles/php-library/profile.manifest.json" > "$S/profiles/$_dn/profile.manifest.json"
+done
+check "mutation applied: top extends mid and other, and other extends mid" \
+	"$(jq -r '.extends|join(",")' "$S/profiles/top/profile.manifest.json")/$(jq -r '.extends|join(",")' "$S/profiles/other/profile.manifest.json")" \
+	"mid,other/mid"
+_rc=0; _err=$(EP_REPO_ROOT="$S" sh "$RES" --profile top --format json 2>&1 >/dev/null) || _rc=$?
+if [ "$_rc" -eq 0 ]; then
+	pass "a diamond inheritance DAG resolves and is NOT reported as a cycle"
+else
+	fail "a diamond DAG was refused (rc=$_rc): $(printf '%s' "$_err" | head -1)"
+fi
+# CONTROL: making it a REAL cycle must still be refused.
+jq '.extends=["top"]' "$S/profiles/leaf/profile.manifest.json" > "$S/l.tmp" && mv "$S/l.tmp" "$S/profiles/leaf/profile.manifest.json"
+_rc=0; EP_REPO_ROOT="$S" sh "$RES" --profile top --format json >/dev/null 2>&1 || _rc=$?
+check "  control: turning the diamond into a real cycle is still refused (exit 2)" "$_rc" "2"
+
 # --- 4e. a real cycle is still detected, and its path is still reported -------
 FX="$ROOT/tests/fixtures/v2"
 if [ -d "$FX/profiles/cycle-a" ]; then
