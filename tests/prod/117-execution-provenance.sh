@@ -257,6 +257,106 @@ else
 	fi
 fi
 
+# ===========================================================================
+# C. all four migrated collectors, not just grype (#310 acceptance criterion 6)
+# ===========================================================================
+# Sections A and B exercise grype alone. Criterion 6 is about codeql, dependency-check,
+# grype and osv-scanner using the OBSERVED value consistently — and "consistently" is a
+# property of the set, so a suite that drives one member cannot establish it. Until this
+# section existed, three of the four collectors could have regressed to the #182 constant
+# with every #310 test still green.
+#
+# Each collector gets the same four cases over its own native report shape.
+CTMP="$TMP/parity"
+mkdir -p "$CTMP"
+
+# c_report <tool> — a well-formed native report for that collector.
+c_report() {
+	case "$1" in
+	grype)            printf '%s' '{"matches":[{"vulnerability":{"id":"CVE-1","severity":"High"}}]}' ;;
+	osv-scanner)      printf '%s' '{"results":[]}' ;;
+	codeql)           printf '%s' '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","rules":[]}},"results":[]}]}' ;;
+	dependency-check) printf '%s' '{"dependencies":[]}' ;;
+	*) return 1 ;;
+	esac
+}
+
+# c_record <tool> <report-path> <status> <exit-code> — an execution record bound to the
+# report's CURRENT digest, so only the observed status differs between cases.
+c_record() {
+	jq -n --arg t "$1" --arg st "$3" --arg ec "$4" --arg out "$2" --arg d "$(sha "$2")" '{
+		record: "sentinel-shield/execution-record@1",
+		producer: { tool: $t },
+		execution: { observed: true, status: $st, completed: ($st == "success"),
+		             exit_code: (if $ec == "" then null else ($ec|tonumber) end),
+		             signal: null, timed_out: ($st == "timed-out"), duration_seconds: 1 },
+		output: { path: $out, sha256: $d },
+		target: { repository: null, commit: null }
+	}' > "${2%.json}.execution.json"
+}
+
+c_run() { sh "$ROOT/scripts/collectors/$1.sh" --input "$2" 2>/dev/null || true; }
+
+C_SHAPE=""
+C_SHAPE_TOOL=""
+for _t in grype osv-scanner codeql dependency-check; do
+	_r="$CTMP/$_t.json"
+	c_report "$_t" > "$_r" || { fail "C: no native fixture defined for $_t"; continue; }
+
+	# C1 — observed non-zero exit over a well-formed report: never a verdict, never completed.
+	c_record "$_t" "$_r" failed 3
+	_o=$(c_run "$_t" "$_r")
+	_st=$(f "$_o" .status)
+	_cp=$(f "$_o" .tool_report.evidence.execution.completed)
+	case "$_st" in
+	pass | fail | findings)
+		fail "C1 $_t: exit 3 over a valid report still produced a verdict (status=$_st)" ;;
+	*)
+		[ "$_cp" = "true" ] \
+			&& fail "C1 $_t: exit 3 was recorded as execution.completed=true" \
+			|| pass "C1 $_t: exit 3 -> status=$_st, completed=${_cp:-null}" ;;
+	esac
+
+	# C2 — no execution record at all: recorded as unobserved, never as success.
+	rm -f "${_r%.json}.execution.json"
+	_o=$(c_run "$_t" "$_r")
+	_ob=$(f "$_o" .tool_report.evidence.execution.observed)
+	_cp=$(f "$_o" .tool_report.evidence.execution.completed)
+	if [ "$_ob" = "false" ] && [ -z "$_cp" ]; then
+		pass "C2 $_t: no execution record -> observed=false, completed=null"
+	else
+		fail "C2 $_t: no execution record -> observed='$_ob', completed='$_cp' (want false/null)"
+	fi
+
+	# C3 — CONTROL. The same collector, the same report, an exit-0 record: it must reach a
+	# real verdict with completed=true. Without this, C1 and C2 are satisfied by a collector
+	# that refuses everything, which is exactly how the #310 enforcement gate shipped dead.
+	c_record "$_t" "$_r" success 0
+	_o=$(c_run "$_t" "$_r")
+	_st=$(f "$_o" .status)
+	_cp=$(f "$_o" .tool_report.evidence.execution.completed)
+	case "$_st" in
+	pass | fail | findings)
+		[ "$_cp" = "true" ] \
+			&& pass "C3 CONTROL $_t: exit 0 -> status=$_st, completed=true" \
+			|| fail "C3 CONTROL $_t: reached $_st but completed='$_cp' — C1 is unattributable" ;;
+	*)
+		fail "C3 CONTROL $_t: exit 0 + valid report + matching record produced status=$_st — this collector refuses everything, so C1/C2 prove nothing" ;;
+	esac
+
+	# C4 — the consistency claim itself: every collector must answer the SAME observed
+	# failure with the SAME shape. Divergence here is the criterion-6 failure mode.
+	c_record "$_t" "$_r" timed-out 124
+	_o=$(c_run "$_t" "$_r")
+	_sh="$(f "$_o" .status)/completed=$(f "$_o" .tool_report.evidence.execution.completed)/health=$(f "$_o" .tool_report.health)"
+	if [ -z "$C_SHAPE" ]; then
+		C_SHAPE="$_sh"; C_SHAPE_TOOL="$_t"
+	elif [ "$_sh" != "$C_SHAPE" ]; then
+		fail "C4 $_t: a timed-out scan yields '$_sh' but $C_SHAPE_TOOL yields '$C_SHAPE' — the four collectors do not use the observed value consistently"
+	fi
+done
+[ -n "$C_SHAPE" ] && pass "C4: all four migrated collectors answer a timed-out scan identically ($C_SHAPE)"
+
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d execution-provenance check(s) failed\n' "$FAILS" >&2
 	exit 1
