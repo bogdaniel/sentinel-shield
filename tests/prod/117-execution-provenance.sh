@@ -150,6 +150,49 @@ else
 	fail "a missing record produced observed=$(f "$out" .tool_report.evidence.execution.observed) completed=$(f "$out" .tool_report.evidence.execution.completed) — it must never default to success"
 fi
 
+# A9b — NON-ZERO EXIT WITH NO REPORT AT ALL.
+#
+# Required verbatim by this issue's acceptance criteria ("non-zero exit with no report") and
+# missing from the original suite. I closed #310 twice partly on this gap: the second time I
+# audited criterion 5 as a whole rather than item by item, and this case is the item that was
+# not there. The implementation was almost certainly correct — but a criterion demanding a test
+# is not satisfied by reasoning about the behaviour.
+#
+# The scanner failed AND left nothing behind. There is no report to normalize, so the collector
+# must report unavailable/execution-error. What it must never do is reach a pass/findings
+# verdict, and it must never claim a completed execution over a report that does not exist.
+rm -f "$TMP/reports/raw/grype.json"
+mkrec failed "" 3          # a record describing the failed run; the report it names is absent
+out=$(run_grype)
+_st=$(f "$out" .status)
+case "$_st" in
+unavailable | execution-error)
+	pass "a non-zero exit that produced NO report is $_st, not a verdict"
+	;;
+*)
+	fail "a non-zero exit with no report produced status=$_st — a scan that wrote nothing is not a result"
+	;;
+esac
+if [ "$(f "$out" .tool_report.evidence.execution.completed)" != "true" ] \
+	&& [ "$(f "$out" .status)" != "pass" ] && [ "$(f "$out" .status)" != "findings" ]; then
+	pass "a non-zero exit with no report never claims completed execution or a clean/finding verdict"
+else
+	fail "a missing report was credited with completion or a verdict (status=$_st completed=$(f "$out" .tool_report.evidence.execution.completed))"
+fi
+
+# The CONTROL for A9b. Restore the report and a matching record: the same collector, the same
+# code path, must reach a normal verdict — otherwise the two assertions above are satisfied by
+# a collector that refuses everything once a file has been deleted.
+printf '%s\n' "$NATIVE" > "$TMP/reports/raw/grype.json"
+D=$(sha "$TMP/reports/raw/grype.json")
+mkrec success "$D" 0
+out=$(run_grype)
+if [ "$(f "$out" .status)" = "fail" ] && [ "$(f "$out" .tool_report.evidence.execution.completed)" = "true" ]; then
+	pass "A9b CONTROL: exit 0 + valid report + matching record still reaches its normal verdict"
+else
+	fail "A9b CONTROL: the restored valid case did not reach its normal verdict (status=$(f "$out" .status)) — the two assertions above prove nothing"
+fi
+
 # A10 — the envelope must no longer carry the #182 constant.
 if grep -vE '^[[:space:]]*#' "$ROOT/scripts/lib/normalized-evidence.sh" | grep -q 'completed: true, exit_code: 0'; then
 	fail "ne_envelope still hardcodes {completed:true, exit_code:0} — the #182 constant is back"
