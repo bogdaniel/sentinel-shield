@@ -8,7 +8,12 @@
 # admitted stale evidence as green. This suite carries a fixture for each, so the oracle
 # cannot silently regress to any of them.
 #
-# All seven run OFFLINE. `scripts/merge-evidence.sh` is sourced in library mode
+# An eighth was surfaced later, by the oracle refusing PR #327: a path-filtered pull_request
+# workflow that legitimately FIRED was reported `unexpected:` and blocked the round. It is
+# recorded here in the same form as the original seven — the oracle failing closed on its own
+# under-computed expectation is still the oracle being wrong.
+#
+# All eight run OFFLINE. `scripts/merge-evidence.sh` is sourced in library mode
 # (MERGE_EVIDENCE_LIB_ONLY=1), which defines the decision functions without executing a phase.
 # A guard against a network-dependent race that can only be tested against the network is not
 # a guard — it is a hope with a test file.
@@ -240,6 +245,66 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# DEFECT 8: a path-filtered workflow that DOES fire
+#
+# The always-expected set was also the only PERMITTED set, so a path-filtered workflow that
+# fired was reported `unexpected:` and the round span to its timeout. Observed live on PR
+# #327, which touches scripts/lib/sentinel-shield-common.sh — a declared path trigger for
+# security-incident-validation.
+#
+# The fix has to be ASYMMETRIC: such a workflow may be absent, but if present it is verified
+# like any other. Cases 3, 4 and 5 are what separate that from "ignore anything unexpected".
+# ---------------------------------------------------------------------------
+_perm=$(me_permitted_workflows "$TMP/wf" | sed 's|.*/||' | sort | tr '\n' ' ')
+expect "permitted set: exactly the path-filtered pull_request workflow" \
+	"filtered.yml " "$_perm"
+
+me_expected_workflows "$TMP/wf" | sort > "$TMP/acc_exp"
+me_permitted_workflows "$TMP/wf" | sort > "$TMP/acc_perm"
+
+# The two sets partition the pull_request workflows: nothing may be in both.
+expect "expected and permitted sets are disjoint" "" "$(comm -12 "$TMP/acc_exp" "$TMP/acc_perm")"
+
+# 1. it fired -> permitted, no problems reported.
+printf '.github/workflows/always.yml\n.github/workflows/filtered.yml\n' > "$TMP/cap_pf"
+expect "accounting: a path-filtered workflow that FIRED is permitted, not 'unexpected'" \
+	"" "$(me_account_set "$TMP/cap_pf" "$TMP/acc_exp" "$TMP/acc_perm")"
+
+# 2. it did not fire -> also no problems; its absence is legitimate.
+printf '.github/workflows/always.yml\n' > "$TMP/cap_nopf"
+expect "accounting: a path-filtered workflow that did NOT fire is never reported missing" \
+	"" "$(me_account_set "$TMP/cap_nopf" "$TMP/acc_exp" "$TMP/acc_perm")"
+
+# 3. CONTROL — a required workflow is still required. Permitting extras must not have turned
+#    the accounting into "anything goes".
+printf '.github/workflows/filtered.yml\n' > "$TMP/cap_lost"
+expect "accounting CONTROL: an always-expected workflow is still reported missing" \
+	"missing:.github/workflows/always.yml" \
+	"$(me_account_set "$TMP/cap_lost" "$TMP/acc_exp" "$TMP/acc_perm")"
+
+# 4. CONTROL — a run from a workflow with NO pull_request trigger is still unexpected. This
+#    is the case that distinguishes the fix from deleting the check.
+printf '.github/workflows/always.yml\n.github/workflows/pushonly.yml\n' > "$TMP/cap_alien"
+expect "accounting CONTROL: a workflow with no pull_request trigger is still 'unexpected'" \
+	"unexpected:.github/workflows/pushonly.yml" \
+	"$(me_account_set "$TMP/cap_alien" "$TMP/acc_exp" "$TMP/acc_perm")"
+
+# 5. CONTROL — the permitted set is opt-in. A two-argument caller keeps strict behaviour, so
+#    the permissive path cannot be reached by accident.
+expect "accounting: without a permitted set, a path-filtered workflow is still 'unexpected'" \
+	"unexpected:.github/workflows/filtered.yml" \
+	"$(me_account_set "$TMP/cap_pf" "$TMP/acc_exp")"
+
+# 6. The real repository must actually contain the shape that broke #327, or these fixtures
+#    describe a case that does not occur.
+_realperm=$(me_permitted_workflows "$ROOT/.github/workflows" | wc -l | tr -d ' ')
+if [ "$_realperm" -gt 0 ]; then
+	pass "the repository really has $_realperm path-filtered pull_request workflow(s) — the fixtures describe reality"
+else
+	fail "no path-filtered pull_request workflow in this repository — the DEFECT 8 fixtures no longer describe reality"
+fi
+
+# ---------------------------------------------------------------------------
 # Structural: the phases exist, and merge is gated on a verified manifest
 # ---------------------------------------------------------------------------
 for _p in trigger verify merge; do
@@ -269,5 +334,5 @@ if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d merge-evidence check(s) failed\n' "$FAILS" >&2
 	exit 1
 fi
-printf '\nmerge-evidence-oracle: OK (all seven stack-collapse defects have a passing fixture)\n'
+printf '\nmerge-evidence-oracle: OK (all eight oracle defects have a passing fixture)\n'
 exit 0

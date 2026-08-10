@@ -32,6 +32,14 @@
 #      round.
 #   7. `gh run rerun` preserves the original trigger context -> tested tree unprovable.
 #
+# An eighth was surfaced later, by this tool refusing PR #327:
+#
+#   8. The always-expected set (`pull_request:` with no `paths:`) was also the only PERMITTED
+#      set, so a path-filtered workflow that legitimately FIRED was reported `unexpected:` and
+#      the round span to its timeout -> a correct, blocking run blocked the round that should
+#      have counted it. Fixed asymmetrically: such a workflow MAY be absent, but once captured
+#      it is verified exactly like a required one.
+#
 # The through-line: every field reachable as "evidence" turned out to be a LIVE VIEW rather
 # than a RECORD. Only run ID and `created_at` never moved. So this tool reads run identity and
 # nothing else about a run's relationship to a base — `pull_requests[].base.sha` is never
@@ -133,22 +141,52 @@ me_classify_run() {
 	esac
 }
 
-# me_account_set <captured-file> <expected-file>
+# me_account_set <captured-file> <expected-file> [permitted-file]
 #
 # Complete accounting of captured workflow paths against the expected set. Prints one
 # `missing:<path>` / `unexpected:<path>` / `duplicate:<path>` line per problem, nothing when
-# the sets agree exactly. A spot check is not an accounting: a missing workflow and a passing
-# one are indistinguishable unless absence is asserted.
+# the sets agree. A spot check is not an accounting: a missing workflow and a passing one are
+# indistinguishable unless absence is asserted.
+#
+# DEFECT 8 — path-filtered workflows that DO fire.
+#
+# The expected set is the workflows that must fire for ANY pull request: `pull_request:` with
+# no `paths:` filter. A path-filtered workflow was therefore neither required nor permitted —
+# so when one legitimately fired, the round reported `unexpected:` and span to its timeout.
+# Observed live on PR #327, which touches scripts/lib/sentinel-shield-common.sh, a declared
+# path trigger for security-incident-validation.
+#
+# The asymmetry is the point, and it is not the same as ignoring the workflow:
+#
+#   always-expected  ->  MUST be captured   (absence is a missing check)
+#   path-filtered    ->  MAY be captured    (absence is legitimate — its paths did not change)
+#                        but once captured it is a BLOCKING run like any other: it is written
+#                        into the manifest and the verify phase polls it by ID and requires
+#                        completed/success/attempt-1 from it.
+#   neither          ->  `unexpected:`      (a run from a workflow with no pull_request trigger
+#                        at all does not belong to this round)
+#
+# Permitting it is not weakening the gate: it moves a legitimate run from "blocks the round"
+# to "must pass like the rest". <permitted-file> is optional so existing two-argument callers
+# keep the strict behaviour.
 me_account_set() {
 	_cap=$1
 	_exp=$2
+	_perm=${3:-}
 	sort "$_exp" | uniq > "$_cap.exp.sorted"
 	sort "$_cap" > "$_cap.sorted"
 	sort -u "$_cap" > "$_cap.uniq"
+	# Anything expected is also permitted; a permitted-but-not-expected path is never
+	# reported missing, because its absence is the normal case.
+	if [ -n "$_perm" ] && [ -f "$_perm" ]; then
+		sort -u "$_cap.exp.sorted" "$_perm" > "$_cap.perm.sorted"
+	else
+		cp "$_cap.exp.sorted" "$_cap.perm.sorted"
+	fi
 	comm -23 "$_cap.exp.sorted" "$_cap.uniq" | sed 's/^/missing:/'
-	comm -13 "$_cap.exp.sorted" "$_cap.uniq" | sed 's/^/unexpected:/'
+	comm -13 "$_cap.perm.sorted" "$_cap.uniq" | sed 's/^/unexpected:/'
 	uniq -d "$_cap.sorted" | sed 's/^/duplicate:/'
-	rm -f "$_cap.exp.sorted" "$_cap.sorted" "$_cap.uniq"
+	rm -f "$_cap.exp.sorted" "$_cap.sorted" "$_cap.uniq" "$_cap.perm.sorted"
 }
 
 # me_filter_captured <runs-tsv> <pre-ids-file> <epoch>
@@ -200,6 +238,32 @@ me_expected_workflows() {
 			inon && inpr && /^  [A-Za-z_]+:/ { inpr = 0 }
 			inon && inpr && /^    paths(-ignore)?:[[:space:]]*$/ { filtered = 1 }
 			END { if (found && !filtered) print path }
+		'
+	done
+}
+
+# me_permitted_workflows <workflows-dir>
+#
+# The complement of me_expected_workflows: workflows with a `pull_request:` trigger that IS
+# path-filtered. They MAY fire — whether they do depends on which files the PR touches, which
+# the oracle deliberately does not try to predict (that would mean reimplementing GitHub's
+# path matching, including its glob dialect, against a diff the oracle would have to compute).
+#
+# Predicting is not needed. What matters is only that a run from such a workflow is a
+# legitimate part of this round rather than an anomaly; once captured it is verified exactly
+# like every other captured run. The two functions share the same parser so a workflow can
+# never land in both sets or in neither.
+me_permitted_workflows() {
+	_dir=$1
+	for _f in "$_dir"/*.yml "$_dir"/*.yaml; do
+		[ -e "$_f" ] || continue
+		grep -vE '^[[:space:]]*#' "$_f" | awk -v path=".github/workflows/${_f##*/}" '
+			/^on:[[:space:]]*$/ { inon = 1; next }
+			inon && /^[^[:space:]]/ { inon = 0 }
+			inon && /^  pull_request:[[:space:]]*$/ { inpr = 1; found = 1; next }
+			inon && inpr && /^  [A-Za-z_]+:/ { inpr = 0 }
+			inon && inpr && /^    paths(-ignore)?:[[:space:]]*$/ { filtered = 1 }
+			END { if (found && filtered) print path }
 		'
 	done
 }
@@ -284,6 +348,11 @@ phase_trigger() {
 	[ "$_exp_n" -gt 0 ] || me_die "no always-expected pull_request workflows found — refusing to verify against an empty set"
 	me_log "expected blocking workflows: $_exp_n"
 
+	# DEFECT 8: path-filtered pull_request workflows MAY fire. They are not required, but when
+	# they do fire they are captured, recorded and verified like any other blocking run.
+	me_permitted_workflows "$ROOT/.github/workflows" | sort > "$TMPD/permitted"
+	me_log "additionally permitted (path-filtered) workflows: $(wc -l < "$TMPD/permitted" | tr -d ' ')"
+
 	# DEFECT 4: a reopen retriggers EVERY workflow. Without a pre-trigger snapshot the
 	# capture cannot tell the new runs from the old ones, and an unfiltered capture never
 	# converges on the expected set.
@@ -307,7 +376,7 @@ phase_trigger() {
 		runs_for_head "$_head" > "$TMPD/runs_raw" || true
 		me_filter_captured "$TMPD/runs_raw" "$TMPD/pre_ids" "$_epoch" > "$TMPD/captured"
 		cut -f2 "$TMPD/captured" | sort > "$TMPD/captured_paths"
-		_problems=$(me_account_set "$TMPD/captured_paths" "$TMPD/expected")
+		_problems=$(me_account_set "$TMPD/captured_paths" "$TMPD/expected" "$TMPD/permitted")
 		[ -z "$_problems" ] && break
 		[ "$(date +%s)" -ge "$_deadline" ] && {
 			me_log "accounting still incomplete at timeout:"
@@ -316,7 +385,7 @@ phase_trigger() {
 		}
 		sleep 15
 	done
-	me_log "captured exactly $(wc -l < "$TMPD/captured" | tr -d ' ') run(s), one per expected workflow"
+	me_log "captured $(wc -l < "$TMPD/captured" | tr -d ' ') run(s): every expected workflow, plus any path-filtered workflow that fired"
 
 	# DEFECT 6: the merge ref is recomputed BY the trigger. Baselining it before the trigger
 	# guarantees a mismatch and blocks every round. Baseline it here, after.
@@ -327,6 +396,7 @@ phase_trigger() {
 		--arg repo "$REPO" --arg pr "$PR" --arg head "$_head" --arg base "$_base" \
 		--arg mref "$_mref" --arg epoch "$_epoch" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 		--rawfile cap "$TMPD/captured" --rawfile exp "$TMPD/expected" \
+		--rawfile perm "$TMPD/permitted" \
 		'{
 			schema: "sentinel-shield/merge-evidence@1",
 			phase: "trigger",
@@ -336,6 +406,7 @@ phase_trigger() {
 			trigger_epoch: $epoch,
 			frozen: { head_sha: $head, base_tip: $base, merge_ref: $mref },
 			expected_workflows: ($exp | split("\n") | map(select(length > 0))),
+			permitted_workflows: ($perm | split("\n") | map(select(length > 0))),
 			captured_runs: ($cap | split("\n") | map(select(length > 0))
 				| map(split("\t") | {id: (.[0] | tonumber), path: .[1]}))
 		}' > "$MANIFEST"
@@ -346,6 +417,11 @@ phase_verify() {
 	[ -f "$MANIFEST" ] || me_die "no manifest at $MANIFEST — run the trigger phase first"
 	_head=$(jq -r .frozen.head_sha "$MANIFEST")
 	jq -r '.expected_workflows[]' "$MANIFEST" | sort > "$TMPD/expected"
+	# The permitted set is read from the MANIFEST, not recomputed from the working tree: the
+	# manifest is the frozen record of what this round admitted, and re-deriving it here would
+	# let a later edit to .github/workflows change the meaning of an already-captured round.
+	# `// []` covers a manifest written before this field existed.
+	jq -r '(.permitted_workflows // [])[]' "$MANIFEST" | sort > "$TMPD/permitted"
 
 	_deadline=$(( $(date +%s) + TIMEOUT ))
 	while :; do
@@ -377,7 +453,11 @@ ME_IDS1
 	done
 
 	awk -F'\t' '{print $2}' "$TMPD/results" | sort > "$TMPD/captured_paths"
-	_problems=$(me_account_set "$TMPD/captured_paths" "$TMPD/expected")
+	_problems=$(me_account_set "$TMPD/captured_paths" "$TMPD/expected" "$TMPD/permitted")
+	# Every captured run is held to the same standard regardless of which set it came from —
+	# a path-filtered workflow that fired must be completed/success/attempt-1 on the frozen
+	# head exactly like a required one. Permitting it changes whether it may be ABSENT, never
+	# whether it may FAIL.
 	_rejected=$(awk -F'\t' '$3 != "verified"' "$TMPD/results")
 
 	if [ -n "$_problems" ] || [ -n "$_rejected" ]; then
