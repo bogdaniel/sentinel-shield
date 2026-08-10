@@ -62,7 +62,7 @@ V=$(jq -r '
 if [ "$V" = "missing" ]; then
 	log_warn "$TOOL: no .violations field; a missing count is not a measured zero; status=execution-error"
 	ss_emit_collector "$TOOL" "execution-error" \
-		'{"status":"execution-error","health":"untrusted-evidence","reason":"violations absent; a missing count is not a measured zero"}' '{"diff_coverage_violations":0}'
+		'{"status":"execution-error","health":"untrusted-evidence","reason":"violations absent; a missing count is not a measured zero"}' '{"changed_lines_coverage_violations":0}'
 	exit 0
 fi
 if [ "$V" = "invalid" ]; then
@@ -80,7 +80,7 @@ ne_quality_verify "$TOOL" "$INPUT" || {
 	log_warn "$TOOL: $NE_EXEC_REASON; status=execution-error"
 	ss_emit_collector "$TOOL" "execution-error" \
 		"$(jq -n --arg r "$NE_EXEC_REASON" '{status:"execution-error", health:"untrusted-evidence", reason:$r}')" \
-		'{"diff_coverage_violations":0}'
+		'{"changed_lines_coverage_violations":0}'
 	exit 0
 }
 NE_COMPLETED=$(printf '%s' "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}" | jq -r '[.completed] | .[0] | if . == null then "unobserved" else tostring end')
@@ -94,7 +94,7 @@ case "$VERDICT" in
 		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' countable=$NE_TOTAL completed=$NE_COMPLETED; status=execution-error"
 		ss_emit_collector "$TOOL" "execution-error" \
 			"$(jq -n --arg r "$VERDICT" --arg raw "$RS" --argjson v "$NE_TOTAL" '{status:"execution-error", health:"inconsistent-evidence", reason:$r, raw_status:$raw, violations:$v}')" \
-			'{"diff_coverage_violations":0}'
+			'{"changed_lines_coverage_violations":0}'
 		exit 0 ;;
 esac
 

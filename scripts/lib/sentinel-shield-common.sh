@@ -116,6 +116,37 @@ ss_require_jq() {
 	}
 }
 
+# SS_SUMMARY_KEYS — the canonical summary-key set, verbatim from
+# schemas/security-summary.schema.json (`properties.summary.properties`, which declares
+# "additionalProperties": false). It is duplicated here rather than read from the schema at
+# runtime so a collector never depends on the schema file being present in an installed
+# layout; tests/prod/273 asserts the two sets are EXACTLY equal, so drift cannot survive CI.
+#
+# Why this is a hard boundary and not a lint: ss_emit_collector merges arbitrary overrides
+# into the summary, so a misspelled key is not a no-op — it invents a summary field that no
+# gate reads, while the real gating key silently keeps its zeroed default. The gate then
+# resolves clean on evidence that was meant to be an error. #327 shipped exactly that
+# (`diff_coverage_violations` for `changed_lines_coverage_violations`) and nothing caught it.
+SS_SUMMARY_KEYS="acceptance_test_count acceptance_test_failures ai_review_findings \
+architecture_context_count architecture_rule_count architecture_tool_count \
+architecture_violations behavior_spec_count changed_lines_coverage_percent \
+changed_lines_coverage_violations complexity_average complexity_max complexity_violations \
+container_image_violations coverage_branch_percent coverage_class_percent \
+coverage_line_percent coverage_method_percent coverage_regression \
+coverage_threshold_violations critical_vulnerabilities dast_findings dead_code_count \
+dead_code_violations debug_code_violations dependency_policy_violations duplication_percent \
+duplication_violations empty_test_suite expired_exceptions focused_test_violations \
+high_vulnerabilities iac_violations large_file_violations large_function_violations \
+max_file_lines max_function_lines medium_vulnerabilities missing_acceptance_evidence \
+missing_architecture_evidence missing_behavior_specification missing_coverage_evidence \
+missing_release_evidence missing_sbom missing_test_change_evidence missing_test_evidence \
+mutation_score_percent mutation_score_violations orphan_behavior_specifications \
+php_syntax_errors production_change_without_test_change repository_health_warnings \
+required_tool_failures secrets skipped_test_marker_violations skipped_tests style_violations \
+test_count test_failures third_party_install_script_risk third_party_network_behavior \
+third_party_obfuscation third_party_suspicious_code tool_configuration_failures \
+tool_execution_failures type_errors unsafe_docker unsafe_github_actions"
+
 # ss_emit_collector <tool> <status> <tool_report_json> <summary_overrides_json>
 # Emit a canonical collector object on stdout. The summary always has all ten count
 # keys (zeroed), with <summary_overrides_json> merged on top.
@@ -129,6 +160,23 @@ ss_emit_collector() {
 	fi
 	if ! printf '%s' "$4" | jq empty 2>/dev/null; then
 		log_error "ss_emit_collector: <summary_overrides_json> for '$1' is not valid JSON"
+		return 2
+	fi
+	# Every override key must be a canonical summary key. An unknown key is rejected here,
+	# at the shared boundary, rather than trusting every collector author to spell it right.
+	# `jq -e` is deliberately not used: an EMPTY unknown-key list is the success case, and
+	# `-e` would report empty output as failure.
+	if [ "$(printf '%s' "$4" | jq -r 'type' 2>/dev/null)" != "object" ]; then
+		log_error "ss_emit_collector: <summary_overrides_json> for '$1' is not a JSON object"
+		return 2
+	fi
+	_ss_unknown=$(printf '%s' "$4" | jq -r --arg canon "$SS_SUMMARY_KEYS" '
+		keys - ($canon | split(" ") | map(select(length > 0))) | .[]' 2>/dev/null) || {
+		log_error "ss_emit_collector: could not validate <summary_overrides_json> for '$1'"
+		return 2
+	}
+	if [ -n "$_ss_unknown" ]; then
+		log_error "ss_emit_collector: '$1' emits summary key(s) outside the canonical set: $(printf '%s' "$_ss_unknown" | tr '\n' ' ')"
 		return 2
 	fi
 	jq -n \
