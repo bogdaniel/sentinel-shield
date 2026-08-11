@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `cc196ea1bb97054a9f744358d18875e564401c03` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `d442ad79daa5e8523fa694d4f27b0936e64a56d3` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
@@ -8,7 +8,11 @@
 
 **Open, filed from findings surfaced BY the work:** #310, #315, #316, #317, #318, #320, #323, #324. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
-**#310 was closed twice and reopened twice** — first on a criterion that was false (the enforcement gate could never fire), then on an acceptance criterion audited as a whole rather than item by item, which missed the "non-zero exit with no report" case. It is open, P1, `status:needs-verification`. Recorded here rather than smoothed over, because the same reasoning error produced both closures.
+**#310 has been closed three times and reopened three times.** First on a criterion that was false (the enforcement gate could never fire). Second on an acceptance criterion audited as a whole rather than item by item, which missed the "non-zero exit with no report" case. Third **by accident**: #330's body contained the sentence "I closed #310 twice", and GitHub's linked-issue parser reads `closed #310` as a closing keyword regardless of the surrounding prose — so merging that PR closed the issue with no audit behind it at all.
+
+It is open, P1, `status:needs-verification`. The full item-by-item ledger — all six criteria, with criterion 5 split into its five enumerated cases — is [comment 5244140836](https://github.com/bogdaniel/sentinel-shield/issues/310#issuecomment-5244140836), and closure awaits review of it. Criteria 4 and 6 were **not** met at either deliberate closure; 4 was fixed by #328 and 6 by #331.
+
+Recorded here rather than smoothed over: the same reasoning error produced the first two closures, and the third is a reminder that an issue reference in prose must never be preceded by close/fix/resolve.
 
 **Machine-readable source of truth:** [`config/remediation-plan.json`](../config/remediation-plan.json).
 **Validated by:** `tests/prod/112-remediation-plan.sh`.
@@ -33,7 +37,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
-| M1 — Evidence Trust Foundation | #287 | 18 | 15 | #182 **done**; **#310 reopened** (one AC5 case untested); **#204 partial** — envelope migration ≠ completed-producer guarantee, PR C required |
+| M1 — Evidence Trust Foundation | #287 | 18 | 15 | #182 **done**; **#310 audited, awaiting review** (all six criteria met on `d442ad79`; 4 and 6 only after #328/#331); **#204 partial** — all six producers now emit the envelope, but envelope migration ≠ completed-producer guarantee, PR C required |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 17 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
@@ -52,6 +56,8 @@ Two issues, and neither is a product fix:
 
 #285 exists because the stack collapse surfaced seven defects in how merge evidence was read. The through-line is that **every field reachable as "evidence" turned out to be a live view rather than a record.** Only run ID and `created_at` never moved. Most dangerous was `run.pull_requests[].base.sha`: it is rewritten retroactively on old runs, so runs from the previous day — never re-executed — began reporting the *new* base. Any guard resting on it would have accepted runs that tested a superseded tree.
 
+An **eighth** defect was found later, by the oracle refusing #327 (PR #332). The always-expected set — `pull_request:` with no `paths:` filter — was also the only *permitted* set, so a path-filtered workflow that legitimately fired was reported `unexpected:` and the round spun to its timeout. #327 touches `scripts/lib/sentinel-shield-common.sh`, a declared path trigger for `security-incident-validation`, so a correct blocking run blocked the round that should have counted it. The fix is asymmetric: such a workflow **may be absent**, but once captured it is recorded in the manifest and held to the same completed/success/attempt-1 standard as a required one. Permitting is not ignoring — #327 then merged on a **12-run** verdict, not eleven.
+
 Doing M0 last would mean re-validating five waves of work with an oracle that can launder stale runs as current.
 
 ### M1 before M4, because 83 producer fixes share about nine contracts
@@ -61,7 +67,7 @@ This is the single most important sequencing decision in the programme, and the 
 | Blocker | Blocks | What it is |
 | --- | --- | --- |
 | ~~#182~~ ✓ | ~~65~~ | trusted producer identity — **DONE**, PR #309. M4 ready work went from **10 to 61** the moment it landed |
-| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one |
+| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one. PRs A (#321) and B (#327) have landed: all six producers emit the shared envelope. That is **structural** compliance. PR C — real execution records, no `unobserved → completed=true` escape, load-bearing scope binding, producer inventory — is the **semantic** half, and #204 requires both |
 | #146 | 8 | bounded safe-integer limits for all collector counts |
 | #147 | 5 | atomic, symlink-safe publication primitive |
 
