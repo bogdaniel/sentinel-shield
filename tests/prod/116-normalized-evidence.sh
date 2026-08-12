@@ -245,6 +245,79 @@ if [ "$_unguarded" = 0 ]; then
 	pass "every migrated collector guards ne_gate_input with '|| exit 0'"
 fi
 
+# ===========================================================================
+# The tri-state execution contract (#204 C1), asserted DIRECTLY on the matrix
+# ===========================================================================
+# WHY THIS IS HERE AND NOT ONLY IN 118/269.
+#
+# C1's headline property is that no legal caller operation can turn `unobserved` into
+# `observed-complete`. 118 and 269 prove the CONSEQUENCE — an unobserved producer never
+# reaches a clean verdict — by driving collectors. They cannot prove the property itself,
+# because after C1 no collector passes a boolean any more.
+#
+# Measured, not assumed: mutating ne_status_consistency to accept `true` as complete again
+# broke ZERO assertions across the whole suite. The leniency was unreachable through the
+# collectors, so the strictness arm had no regression at all. These assertions call the matrix
+# directly, which is the only place that arm is observable.
+. "$ROOT/scripts/lib/normalized-evidence.sh"
+
+_sc() { ne_status_consistency "$1" "$2" "$3"; }
+
+# The three declared states behave as specified.
+[ "$(_sc pass 0 observed-complete)" = "valid-clean" ] \
+	&& pass "C1: observed-complete + zero + pass -> valid-clean" \
+	|| fail "C1: observed-complete + zero + pass gave $(_sc pass 0 observed-complete)"
+[ "$(_sc findings 3 observed-complete)" = "valid-findings" ] \
+	&& pass "C1: observed-complete + findings -> valid-findings" \
+	|| fail "C1: observed-complete + findings gave $(_sc findings 3 observed-complete)"
+case "$(_sc pass 0 observed-incomplete)" in
+invalid:*) pass "C1: observed-incomplete is NEVER clean ($(_sc pass 0 observed-incomplete))" ;;
+*) fail "C1: observed-incomplete + zero produced $(_sc pass 0 observed-incomplete)" ;;
+esac
+case "$(_sc pass 0 unobserved)" in
+invalid:unobserved-zero-is-not-a-measured-clean) pass "C1: unobserved + zero is NEVER clean" ;;
+*) fail "C1: unobserved + zero produced $(_sc pass 0 unobserved)" ;;
+esac
+# Findings from an unobserved producer are REAL — something was found. What the run cannot
+# support is the claim that this is all there was, so it gets its own verdict rather than
+# being discarded or promoted.
+[ "$(_sc findings 3 unobserved)" = "valid-findings-unobserved" ] \
+	&& pass "C1: unobserved + findings is a lower-bound signal, not a complete scan" \
+	|| fail "C1: unobserved + findings gave $(_sc findings 3 unobserved)"
+
+# THE STRICTNESS ARM. Every one of these was a legal third argument before C1.
+for _bad in true false 1 0 "" "complete" "yes"; do
+	case "$(_sc pass 0 "$_bad")" in
+	invalid:execution-state-not-declared-*)
+		pass "C1: '${_bad:-<empty>}' is refused as an execution state, not interpreted" ;;
+	*)
+		fail "C1: '${_bad:-<empty>}' was accepted as an execution state -> $(_sc pass 0 "$_bad")" ;;
+	esac
+done
+
+# A contradiction outranks the observation question: it is untrusted evidence either way, and
+# must not be reported as merely unobserved.
+case "$(_sc pass 3 unobserved)" in
+invalid:raw-status-pass-with-3-violations) pass "C1: a contradiction is judged before the unobserved split" ;;
+*) fail "C1: an unobserved contradiction reported as $(_sc pass 3 unobserved)" ;;
+esac
+
+# ne_execution_state must derive `unobserved` from honestly-recorded evidence. `observed:false`
+# is the exact shape jq's `//` swallows (#320), so it is asserted rather than assumed.
+[ "$(ne_execution_state "$NE_EXEC_UNOBSERVED")" = "unobserved" ] \
+	&& pass "C1: the unobserved constant derives to the unobserved state" \
+	|| fail "C1: NE_EXEC_UNOBSERVED derived to $(ne_execution_state "$NE_EXEC_UNOBSERVED")"
+[ "$(ne_execution_state '{"observed":true,"completed":true}')" = "observed-complete" ] \
+	&& pass "C1: observed+completed derives to observed-complete" \
+	|| fail "C1: observed+completed derived wrongly"
+[ "$(ne_execution_state '{"observed":true,"completed":false}')" = "observed-incomplete" ] \
+	&& pass "C1: observed+not-completed derives to observed-incomplete" \
+	|| fail "C1: observed+not-completed derived wrongly"
+# Observed but with NO completion verdict is not a completion verdict.
+[ "$(ne_execution_state '{"observed":true}')" = "unobserved" ] \
+	&& pass "C1: observed with no completion verdict is not treated as complete" \
+	|| fail "C1: observed with no completion verdict derived to $(ne_execution_state '{"observed":true}')"
+
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d normalized-evidence check(s) failed\n' "$FAILS" >&2
 	exit 1

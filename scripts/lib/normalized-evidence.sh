@@ -446,13 +446,84 @@ ne_scope_digest() {
 	sort "$1" | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | awk '{print $1}'
 }
 
-# ne_status_consistency <raw-status> <violations> <completed>
+# The three execution states a caller may declare. Named constants, because the whole point of
+# #204 C1 is that there is no way to SPELL "the producer completed" without having observed it.
+NE_EXEC_STATE_COMPLETE='observed-complete'
+NE_EXEC_STATE_INCOMPLETE='observed-incomplete'
+NE_EXEC_STATE_UNOBSERVED='unobserved'
+
+# ne_execution_state <execution-json>
 #
-# Prints `valid-clean`, `valid-findings`, or `invalid:<reason>`. Never silently picks a side.
+# Derive the declared execution state from an execution object (the envelope's
+# `.evidence.execution`, or NE_EXEC_JSON). This is the ONLY supported way to produce the third
+# argument of ne_status_consistency — a collector must not compute it by hand, because that is
+# exactly where the #204 defect lived.
+ne_execution_state() {
+	_ns_json=${1:-}
+	[ -n "$_ns_json" ] || { printf '%s\n' "$NE_EXEC_STATE_UNOBSERVED"; return 0; }
+	# `[.x] | .[0]` rather than `.x // default`: jq's `//` substitutes for FALSE as well as for
+	# null, so `observed: false` came back as the default and an unobserved producer read as
+	# observed. Same operator family as #320.
+	_ns_obs=$(printf '%s' "$_ns_json" | jq -r '[.observed] | .[0] | if . == null then "" else tostring end' 2>/dev/null)
+	_ns_done=$(printf '%s' "$_ns_json" | jq -r '[.completed] | .[0] | if . == null then "" else tostring end' 2>/dev/null)
+	if [ "$_ns_obs" != "true" ]; then
+		printf '%s\n' "$NE_EXEC_STATE_UNOBSERVED"
+		return 0
+	fi
+	case "$_ns_done" in
+	true)  printf '%s\n' "$NE_EXEC_STATE_COMPLETE" ;;
+	false) printf '%s\n' "$NE_EXEC_STATE_INCOMPLETE" ;;
+	# Observed but no completion verdict is not a completion verdict.
+	*)     printf '%s\n' "$NE_EXEC_STATE_UNOBSERVED" ;;
+	esac
+}
+
+# ne_status_consistency <raw-status> <violations> <execution-state>
+#
+# Prints `valid-clean`, `valid-findings`, `valid-findings-unobserved`, or `invalid:<reason>`.
+# Never silently picks a side.
+#
+# #204 C1 — WHY THE THIRD ARGUMENT IS A STATE AND NOT A BOOLEAN.
+#
+# It used to be `<completed>`, a boolean, with the rule "anything other than true means the
+# producer did not complete". The six quality collectors each satisfied that rule like this:
+#
+#     [ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+#
+# The evidence was never falsified — the emitted envelope still said `observed: false,
+# completed: null`, truthfully. The FICTION was in the decision input: the matrix was told the
+# producer finished by a caller that had no idea whether it had. A producer that never ran
+# reached `pass`, with an honest envelope printed beside that verdict saying nobody watched it.
+#
+# That is a DECISION-INPUT integrity defect, and a boolean cannot express the difference
+# between "it did not finish" and "nobody looked". Three states can, and the third argument is
+# now validated against exactly those three: passing `true`, `false`, `1`, or an empty string
+# is a hard `invalid:` verdict rather than a silent coercion. There is no legal caller
+# operation that turns `unobserved` into `observed-complete`.
+#
+#   observed-complete    the producer ran and finished. The full matrix applies.
+#   observed-incomplete  the producer ran and did NOT finish. Nothing is clean over it, and
+#                        findings over it are a partial view, not a result.
+#   unobserved           nobody watched. A zero here is the ABSENCE OF OBSERVATION, not a
+#                        measured clean — so it is never `valid-clean`, by the same rule that
+#                        made a missing count not a measured zero. Findings ARE still real
+#                        (something was found; the scan may simply have found more), so they
+#                        surface as a lower-bound signal under a distinct verdict.
+#
+# `valid-findings-unobserved` is deliberately an INTERNAL matrix verdict. It does not become a
+# new public collector status: the summary schema's status vocabulary is a consumer contract,
+# and widening it is a separate decision that needs the schema reviewed first.
 ne_status_consistency() {
 	_nc_raw=${1:-}
 	_nc_v=${2:-}
-	_nc_done=${3:-}
+	_nc_state=${3:-}
+
+	# The execution state must be DECLARED, from the vocabulary. A caller that passes a boolean
+	# — which is what every caller did before C1 — fails here instead of being interpreted.
+	case "$_nc_state" in
+	"$NE_EXEC_STATE_COMPLETE" | "$NE_EXEC_STATE_INCOMPLETE" | "$NE_EXEC_STATE_UNOBSERVED") : ;;
+	*) printf 'invalid:execution-state-not-declared-%s\n' "${_nc_state:-empty}"; return 0 ;;
+	esac
 
 	# A missing count is not a measured zero. This is the #204 headline.
 	case "$_nc_v" in
@@ -461,7 +532,7 @@ ne_status_consistency() {
 	esac
 
 	# Completion first: nothing is clean over a producer that did not finish.
-	if [ "$_nc_done" != "true" ]; then
+	if [ "$_nc_state" = "$NE_EXEC_STATE_INCOMPLETE" ]; then
 		printf 'invalid:producer-did-not-complete\n'
 		return 0
 	fi
@@ -473,21 +544,35 @@ ne_status_consistency() {
 		;;
 	esac
 
+	# A contradiction between the declared status and the counts is untrusted evidence whether
+	# or not anyone watched the producer run, so it is judged before the unobserved split.
 	if [ "$_nc_v" -eq 0 ]; then
 		case "$_nc_raw" in
-		'' | pass) printf 'valid-clean\n' ;;
-		findings | fail) printf 'invalid:raw-status-%s-with-zero-violations\n' "$_nc_raw" ;;
-		*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw" ;;
+		'' | pass) : ;;
+		findings | fail) printf 'invalid:raw-status-%s-with-zero-violations\n' "$_nc_raw"; return 0 ;;
+		*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw"; return 0 ;;
 		esac
+		# Zero violations from a producer nobody watched is the absence of a measurement.
+		if [ "$_nc_state" = "$NE_EXEC_STATE_UNOBSERVED" ]; then
+			printf 'invalid:unobserved-zero-is-not-a-measured-clean\n'
+			return 0
+		fi
+		printf 'valid-clean\n'
 		return 0
 	fi
 
 	case "$_nc_raw" in
-	findings | fail) printf 'valid-findings\n' ;;
-	'') printf 'valid-findings\n' ;;
-	pass) printf 'invalid:raw-status-pass-with-%s-violations\n' "$_nc_v" ;;
-	*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw" ;;
+	findings | fail | '') : ;;
+	pass) printf 'invalid:raw-status-pass-with-%s-violations\n' "$_nc_v"; return 0 ;;
+	*) printf 'invalid:unknown-raw-status-%s\n' "$_nc_raw"; return 0 ;;
 	esac
+	# Findings are real regardless of observation — something WAS found. What an unobserved run
+	# cannot support is the claim that this is all there was to find.
+	if [ "$_nc_state" = "$NE_EXEC_STATE_UNOBSERVED" ]; then
+		printf 'valid-findings-unobserved\n'
+		return 0
+	fi
+	printf 'valid-findings\n'
 }
 
 # ne_quality_verify <tool> <input> [record-path] [expected-scope-sha256]
@@ -545,3 +630,19 @@ ne_quality_verify() {
 # Empty quality payload, as a named constant — see NE_EXEC_UNOBSERVED for why this is not
 # inlined into a `${VAR:-...}` default.
 NE_QUALITY_EMPTY='{"scope":null,"configuration":null}'
+
+# ne_verdict_health <verdict> — the health label for a non-valid consistency verdict.
+#
+# Not every refusal is the same kind of refusal, and reporting them all as
+# `inconsistent-evidence` would be inaccurate in exactly the direction this issue is about:
+# an UNOBSERVED producer is not self-contradictory, it is unwitnessed. A reader (or an
+# operator triaging a failed gate) needs to be able to tell "this producer disagreed with
+# itself" from "nobody watched this producer run".
+ne_verdict_health() {
+	case "${1:-}" in
+	invalid:unobserved-*)        printf 'unobserved-execution\n' ;;
+	invalid:producer-did-not-*)  printf 'incomplete-execution\n' ;;
+	invalid:execution-state-*)   printf 'undeclared-execution-state\n' ;;
+	*)                           printf 'inconsistent-evidence\n' ;;
+	esac
+}

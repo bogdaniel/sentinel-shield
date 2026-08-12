@@ -53,8 +53,20 @@ f() { printf '%s' "$1" | jq -r "[$2] | .[0] | if . == null then \"\" else tostri
 TOOLS="mutation complexity duplication dead-code coverage diff-coverage"
 mkdir -p "$TMP/reports/raw"
 
+# shellcheck source=tests/lib/quality-execution-record.sh
+. "$ROOT/tests/lib/quality-execution-record.sh"
+
 run() { ( cd "$TMP" && sh "$ROOT/scripts/collectors/$1.sh" --input "reports/raw/$1.json" 2>/dev/null ) || true; }
-put() { printf '%s\n' "$2" > "$TMP/reports/raw/$1.json"; }
+
+# put — write a report with NO execution record. Under #204 C1 that is an UNOBSERVED producer,
+# which is the honest reading of a bare fixture and can never be `valid-clean`.
+put() { qer_clear "$TMP/reports/raw/$1.json"; printf '%s\n' "$2" > "$TMP/reports/raw/$1.json"; }
+
+# put_observed — the same report PLUS a matching observed-complete execution record, i.e. the
+# provenance a real invoker writes. Positive controls use this so they stay positive controls:
+# rewriting them to expect `execution-error` would assert only that the collector refuses
+# things, which a collector that refuses everything satisfies.
+put_observed() { put "$1" "$2"; qer_write "$1" "$TMP/reports/raw/$1.json"; }
 
 # ===========================================================================
 # A. a missing count is never a measured zero
@@ -73,13 +85,20 @@ done
 # everything, including one that is simply broken.
 for t in $TOOLS; do
 	case "$t" in
-	dead-code) put "$t" '{"status":"pass","violations":0,"dead_code_count":0}' ;;
-	*) put "$t" '{"status":"pass","violations":0}' ;;
+	dead-code) _clean='{"status":"pass","violations":0,"dead_code_count":0}' ;;
+	*) _clean='{"status":"pass","violations":0}' ;;
 	esac
+	# #204 C1: a declared zero passes only when the producer was OBSERVED to complete.
+	put_observed "$t" "$_clean"
 	out=$(run "$t")
 	[ "$(f "$out" .status)" = "pass" ] \
-		&& pass "$t: CONTROL — a real report declaring violations:0 still passes" \
+		&& pass "$t: CONTROL — a real report declaring violations:0, observed complete, still passes" \
 		|| fail "$t: CONTROL failed (status=$(f "$out" .status)); the rejections above prove nothing"
+	# The paired negative, over the SAME report with one variable changed: no observation.
+	put "$t" "$_clean"
+	[ "$(f "$(run "$t")" .status)" = "execution-error" ] \
+		&& pass "$t: the same declared zero, UNOBSERVED, is not clean" \
+		|| fail "$t: an unobserved producer reached a clean verdict — the C1 false-clean route is back"
 done
 
 # ===========================================================================
@@ -88,7 +107,10 @@ done
 # Every case below has all counts present and a producer that completed. Only the
 # DISAGREEMENT between the declared status and the derived count distinguishes them.
 contra() { # contra <label> <json> <expect-status>
-	put mutation "$2"
+	# Observation is held CONSTANT across this section, so the only variable is the agreement
+	# between the declared status and the derived count. The section's own comment says "a
+	# producer that completed"; under #204 C1 that has to be literally true rather than implied.
+	put_observed mutation "$2"
 	out=$(run mutation)
 	if [ "$(f "$out" .status)" = "$3" ]; then
 		pass "consistency: $1"
@@ -107,21 +129,21 @@ contra "violations=0 + raw=FINDINGS is INVALID"        '{"status":"findings","vi
 # observed-execution gate ship dead. Each producer gets both contradiction directions and a
 # control.
 for _t in $TOOLS; do
-	put "$_t" '{"status":"pass","violations":3}'
+	put_observed "$_t" '{"status":"pass","violations":3}'
 	[ "$(f "$(run "$_t")" .status)" = "execution-error" ] \
 		&& pass "$_t: raw=pass with violations>0 is INVALID" \
 		|| fail "$_t: a pass/violations>0 contradiction was resolved into a verdict"
-	put "$_t" '{"status":"findings","violations":0}'
+	put_observed "$_t" '{"status":"findings","violations":0}'
 	[ "$(f "$(run "$_t")" .status)" = "execution-error" ] \
 		&& pass "$_t: raw=findings with zero violations is INVALID" \
 		|| fail "$_t: a findings/zero contradiction was resolved into a verdict"
-	put "$_t" '{"status":"findings","violations":2}'
+	put_observed "$_t" '{"status":"findings","violations":2}'
 	[ "$(f "$(run "$_t")" .status)" = "findings" ] \
 		&& pass "$_t: CONTROL — an AGREEING findings report is still findings" \
 		|| fail "$_t: CONTROL failed; the two rejections above prove nothing"
 done
 
-put mutation '{"status":"pass","violations":3}'
+put_observed mutation '{"status":"pass","violations":3}'
 out=$(run mutation)
 if [ "$(f "$out" .tool_report.health)" = "inconsistent-evidence" ]; then
 	pass "a contradiction is reported as inconsistent-evidence, not resolved into a verdict"
