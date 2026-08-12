@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "d442ad79daa5e8523fa694d4f27b0936e64a56d3",
+  "generated_for_master": "57962e8db4349f5629894e7a5bdea70941c30f82",
   "milestones": [
     {
       "key": "M0",
@@ -3197,24 +3197,6 @@
       "closure_evidence": [
         "all-children-closed",
         "milestone-exit-criteria-met"
-      ]
-    },
-    {
-      "issue": 310,
-      "primary_domain": "evidence",
-      "milestone": "M1",
-      "milestone_title": "M1 — Evidence Trust Foundation",
-      "priority": "p1",
-      "type": "security",
-      "status": "needs-verification",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "producer-envelope",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
       ]
     },
     {
