@@ -1,6 +1,6 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `57962e8db4349f5629894e7a5bdea70941c30f82` · 12 blocking workflows expected on `push` · **172 open issues** = **157 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `57962e8db4349f5629894e7a5bdea70941c30f82` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **172 open issues** = **157 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 

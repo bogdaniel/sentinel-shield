@@ -1,0 +1,115 @@
+# Sentinel Shield — backlog reconciliation governance check.
+#
+# WHY THIS EXISTS
+#
+# `tests/prod/112-remediation-plan.sh` has two halves. The structural half validates the plan
+# against itself — vocabularies, reference resolution, `blocks` as the exact inverse of
+# `blocked_by`, acyclicity. The live half reconciles it against the REAL backlog, and that is
+# the half that detects drift: an issue closed last week still validates perfectly as
+# scheduled work.
+#
+# The live half needs an authenticated `gh`, and when it does not have one it reports SKIP.
+# That is the correct behaviour on a laptop and in `ci-production-readiness`, which
+# deliberately carries no `issues: read` scope — injecting a token into a ~40-minute sweep of
+# 94 suites to serve one check would widen the credential surface of the whole sweep.
+#
+# The consequence, though, is that plan drift reached master GREEN twice: nothing in CI ever
+# ran the half that would have caught it. A check that skips under exactly the condition it
+# exists for is not a check.
+#
+# So: a dedicated job, narrowly scoped, that supplies the credential AND REFUSES TO PROCEED
+# WITHOUT IT. `SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG=1` turns 112's skip into a failure, and
+# the authentication is PROVEN by a real authenticated API call before 112 runs at all —
+# `gh auth status` alone can succeed against a token that cannot read issues, which would put
+# us back to a green check over an unexecuted half.
+name: ci-backlog-reconciliation
+
+on:
+  pull_request:
+    paths:
+      - 'config/remediation-plan.json'
+      - 'docs/remediation-roadmap.md'
+      - 'tests/prod/112-remediation-plan.sh'
+      - 'scripts/backlog-report.sh'
+      - '.github/workflows/ci-backlog-reconciliation.yml'
+  push:
+    branches:
+      - master
+  schedule:
+    # Drift is not only introduced by commits: closing an issue in the GitHub UI desynchronises
+    # the plan without any repository change, so a purely event-driven check cannot see it.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: ci-backlog-reconciliation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backlog-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ensure jq
+        run: |
+          command -v jq >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y jq; }
+
+      - name: Prove the token can actually read issues (BLOCKING)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          # NOT `gh auth status`. That proves a credential exists, not that it carries the
+          # `issues: read` scope this check depends on — and a token that authenticates but
+          # cannot list issues would send 112 down its failure path for the wrong reason,
+          # or (worse, before this job existed) down its skip path silently.
+          #
+          # A real query is the only proof. An empty result is also refused: this repository
+          # has open issues, so zero would mean the query was answered by something that is
+          # not the backlog.
+          n=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number -q '.[].number' | wc -l | tr -d ' ')
+          echo "authenticated issue query returned $n open issue(s)"
+          [ "$n" -gt 0 ] || { echo "FAIL: the issue query returned nothing — refusing to reconcile against an empty backlog"; exit 1; }
+
+      - name: Reconcile the plan against the live backlog (BLOCKING, never SKIP)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG: '1'
+        run: |
+          set -eu
+          sh tests/prod/112-remediation-plan.sh
+
+      - name: The live half must have executed (BLOCKING)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG: '1'
+        run: |
+          set -eu
+          # Belt and braces, and not redundant: the step above passes if 112 exits 0, and 112
+          # would exit 0 while SKIPPING the live half if the flag were ever dropped or renamed.
+          # This asserts the two live assertions are present in the OUTPUT, so the check cannot
+          # decay into a structural-only pass without failing here first.
+          out=$(sh tests/prod/112-remediation-plan.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'every open issue in .* appears in the plan' \
+            || { echo "FAIL: the live reconciliation assertion did not run"; exit 1; }
+          printf '%s\n' "$out" | grep -q 'no closed issue appears in the plan as active work' \
+            || { echo "FAIL: the closed-issue assertion did not run"; exit 1; }
+          # `printf ... | grep -q '^SKIP' && { exit 1; }` would be WRONG here: under `set -e` a
+          # trailing `&&` list whose left side fails makes the list fail, so the happy path —
+          # no SKIP found — would abort the step. That is #324's shape, and writing it in the
+          # check built to stop this class of defect would have been its own punchline.
+          if printf '%s\n' "$out" | grep -q '^SKIP'; then
+            echo "FAIL: 112 reported a SKIP under the governance flag"
+            exit 1
+          fi
+          echo "live backlog reconciliation executed and passed"
