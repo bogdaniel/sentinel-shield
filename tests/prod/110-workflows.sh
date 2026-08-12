@@ -130,6 +130,52 @@ for _wf in "$WF_DIR"/*.yml "$ROOT"/.github/workflows/*.yml; do
 done
 [ "$_latest" -eq 0 ] && pass "no workflow uses a mutable :latest scanner image"
 
+# --- the backlog-reconciliation governance check ---------------------------
+#
+# tests/prod/112's live half is the only thing that detects plan drift, and it reports SKIP
+# without an authenticated `gh`. Drift reached master green twice that way. The fix is a
+# dedicated workflow that supplies the credential and refuses to proceed without it — so the
+# properties that make it worth having are asserted here rather than assumed.
+_BR="$ROOT/.github/workflows/ci-backlog-reconciliation.yml"
+if [ ! -f "$_BR" ]; then
+	fail "ci-backlog-reconciliation.yml is missing — nothing in CI runs 112's live half"
+else
+	pass "ci-backlog-reconciliation workflow exists"
+
+	grep -qE '^[[:space:]]+issues:[[:space:]]*read' "$_BR" \
+		&& pass "backlog-reconciliation declares issues: read" \
+		|| fail "backlog-reconciliation does not declare issues: read — 112's live half cannot run"
+
+	# The flag is the whole point: without it 112 SKIPs and the job passes over an unexecuted
+	# half, which is the state this workflow exists to end.
+	# Anchored on the exact YAML key. A substring match passes for a RENAMED variable —
+	# `SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG_TYPO` contains the name — and a mutation proved
+	# this assertion green against exactly that, which is the defect class it is meant to stop.
+	grep -qE '^[[:space:]]+SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG:[[:space:]]*.?1' "$_BR" \
+		&& pass "backlog-reconciliation sets SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG=1" \
+		|| fail "backlog-reconciliation does not set the flag to 1 — 112 would SKIP and the job would pass"
+
+	# Authentication must be PROVEN by a real query. `gh auth status` succeeds for a token with
+	# no `issues` scope, which would fail 112 for the wrong reason.
+	grep -q 'gh issue list' "$_BR" \
+		&& pass "backlog-reconciliation proves issue-read access with a real query" \
+		|| fail "backlog-reconciliation does not prove issue-read access before reconciling"
+
+	# The credential must NOT have been added to the general production sweep instead.
+	if grep -qE '^[[:space:]]+issues:[[:space:]]*read' "$ROOT/.github/workflows/ci-production-readiness.yml" 2>/dev/null; then
+		fail "ci-production-readiness now declares issues: read — the token surface of a 94-suite sweep was widened to serve one check"
+	else
+		pass "ci-production-readiness still carries no issues: read scope"
+	fi
+
+	# 112 must actually honour the flag. A workflow that sets a variable no test reads is
+	# theatre, so the contract is asserted from the consuming side too.
+	# Anchored on the parameter expansion 112 actually reads, for the same reason.
+	grep -qE '\$\{SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG:-' "$ROOT/tests/prod/112-remediation-plan.sh" \
+		&& pass "112 reads SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG" \
+		|| fail "112 does not read the flag — the workflow sets a variable nothing consumes"
+fi
+
 if [ "$FAILS" -gt 0 ]; then
 	printf '\n%d assertion(s) failed\n' "$FAILS" >&2
 	exit 1

@@ -241,6 +241,17 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
 	else
 		fail "gh is authenticated but the issue query for $REPO failed — this check must not pass on an error"
 	fi
+elif [ "${SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG:-0}" = "1" ]; then
+	# The governance path. `ci-backlog-reconciliation` sets this, so an unauthenticated run
+	# there is a FAILURE rather than a skip.
+	#
+	# Why this flag exists: the skip below is correct for a developer laptop and for the general
+	# production sweep, which deliberately carries no `issues: read` scope. But it means plan
+	# drift is invisible to any CI that runs this suite unauthenticated — and drift reached
+	# master green exactly that way twice (#310 left in the plan after it closed, and the same
+	# class before it). A check that reports SKIP under the one condition that matters is not a
+	# check; the fix is a workflow that supplies the credential and refuses to proceed without.
+	fail "SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG=1 but gh is not authenticated — the governance check must not pass structurally while the half that detects drift did not run"
 else
 	skip "live backlog reconciliation (no authenticated gh); structural checks above still ran"
 fi

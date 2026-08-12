@@ -269,6 +269,14 @@
           "classification": "release-only"
         }
       ]
+    },
+    "ci-backlog-reconciliation.yml": {
+      "checks": [
+        {
+          "name": "backlog-reconciliation",
+          "classification": "conditional-heavy"
+        }
+      ]
     }
   }
 }
