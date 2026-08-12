@@ -1,18 +1,34 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `d442ad79daa5e8523fa694d4f27b0936e64a56d3` · 12 blocking workflows expected on `push` · **173 open issues** = **158 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `57962e8db4349f5629894e7a5bdea70941c30f82` · 12 blocking workflows expected on `push` · **172 open issues** = **157 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
-**Closed on full acceptance evidence:** #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
+**Closed on full acceptance evidence:** #284, #285, #306, #326, #151, #259, #260, #264, #182, #310 — see the closure comment on each.
 
-**Open, filed from findings surfaced BY the work:** #310, #315, #316, #317, #318, #320, #323, #324. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Open, filed from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
-**#310 has been closed three times and reopened three times.** First on a criterion that was false (the enforcement gate could never fire). Second on an acceptance criterion audited as a whole rather than item by item, which missed the "non-zero exit with no report" case. Third **by accident**: #330's body contained the sentence "I closed #310 twice", and GitHub's linked-issue parser reads `closed #310` as a closing keyword regardless of the surrounding prose — so merging that PR closed the issue with no audit behind it at all.
+### #310 — closed four times, and only the audit makes the last one legitimate
 
-It is open, P1, `status:needs-verification`. The full item-by-item ledger — all six criteria, with criterion 5 split into its five enumerated cases — is [comment 5244140836](https://github.com/bogdaniel/sentinel-shield/issues/310#issuecomment-5244140836), and closure awaits review of it. Criteria 4 and 6 were **not** met at either deliberate closure; 4 was fixed by #328 and 6 by #331.
+The transitions, in order:
 
-Recorded here rather than smoothed over: the same reasoning error produced the first two closures, and the third is a reminder that an issue reference in prose must never be preceded by close/fix/resolve.
+| # | how it closed | why it was wrong |
+| --- | --- | --- |
+| 1 | deliberate | rested on a criterion that was **false** — the enforcement gate could never fire |
+| 2 | deliberate | criterion 5 audited **as a whole** rather than case by case, missing "non-zero exit with no report" |
+| 3 | **accidental** | #330's body said *"I closed #310 twice"*; GitHub reads `closed #310` as a closing keyword regardless of prose |
+| 4 | **accidental** | #333, a PR **describing** trap 3, repeated the keyword and closed the issue again |
+
+It is now **CLOSED, `status:verified`** — but the closing *event* was still accidental. What makes the state legitimate is the item-by-item ledger ([comment 5244140836](https://github.com/bogdaniel/sentinel-shield/issues/310#issuecomment-5244140836)): all six criteria, criterion 5 split into its five enumerated cases, audited against `4a7a2349`, and independently reviewed since.
+
+**Criteria 4 and 6 were not met at either deliberate closure.** 4 was a gate that could never fire — `(.observed // true) == false` is unsatisfiable — repaired in #328. 6 had no regression at all, because `tests/prod/117` drove grype alone; repaired in #331.
+
+The issue was **not** reopened in order to be re-closed. Doing so would replace a true record — *closed accidentally, subsequently ratified* — with a false one implying a deliberate closing act that never happened.
+
+Two rules came out of this, and both are worth more than the issue itself:
+
+- An issue reference in prose must never be preceded by close/closed/closes/fix/fixed/fixes/resolve/resolved/resolves — **including in a PR that is explaining the trap.**
+- A criterion that demands a test is not satisfied by reasoning about the behaviour. Traps 1 and 2 were the same substitution, made twice.
 
 **Machine-readable source of truth:** [`config/remediation-plan.json`](../config/remediation-plan.json).
 **Validated by:** `tests/prod/112-remediation-plan.sh`.
@@ -37,7 +53,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
-| M1 — Evidence Trust Foundation | #287 | 18 | 15 | #182 **done**; **#310 audited, awaiting review** (all six criteria met on `d442ad79`; 4 and 6 only after #328/#331); **#204 partial** — all six producers now emit the envelope, but envelope migration ≠ completed-producer guarantee, PR C required |
+| M1 — Evidence Trust Foundation | #287 | 17 | 15 | #182 **done**; #310 **done** (audited item by item; 4 and 6 only after #328/#331); **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 17 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 65 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
@@ -67,9 +83,46 @@ This is the single most important sequencing decision in the programme, and the 
 | Blocker | Blocks | What it is |
 | --- | --- | --- |
 | ~~#182~~ ✓ | ~~65~~ | trusted producer identity — **DONE**, PR #309. M4 ready work went from **10 to 61** the moment it landed |
-| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one. PRs A (#321) and B (#327) have landed: all six producers emit the shared envelope. That is **structural** compliance. PR C — real execution records, no `unobserved → completed=true` escape, load-bearing scope binding, producer inventory — is the **semantic** half, and #204 requires both |
+| **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one. PRs A (#321) and B (#327) have landed: all six producers emit the shared envelope — **structural** compliance. C1 and C2 are the **semantic** half, and #204 requires both |
 | #146 | 8 | bounded safe-integer limits for all collector counts |
 | #147 | 5 | atomic, symlink-safe publication primitive |
+
+#### What #204's remaining half actually is
+
+The residual has been described as the collectors "promoting unobserved execution to `completed: true`". That wording is wrong in a way that matters, and it is corrected here rather than quietly reworded. **The normalized envelope truthfully records `observed: false`, `completed: null`, `status: "unobserved"`.** Verified on `57962e8d`. The evidence record has integrity.
+
+The defect is downstream of it. Each of the six quality collectors carries:
+
+```sh
+[ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+```
+
+immediately before calling `ne_status_consistency`, whose contract states *completion first: nothing is clean over a producer that did not finish*. So:
+
+```
+truthful evidence            observed=false, completed=null
+        ↓
+collector-local conversion   completed=true          ← the fiction enters here
+        ↓
+consistency matrix           valid-clean
+        ↓
+emitted status               pass
+        ↓
+emitted envelope             observed=false, completed=null   (still truthful)
+```
+
+This is a **decision-input integrity** defect, not an evidence-record integrity defect. A producer that never ran can reach `pass`, while the envelope beside that verdict honestly says nobody watched it run.
+
+The split follows from that:
+
+- **C1** — the live false-clean route. `ne_status_consistency` stops taking a boolean and takes an explicit execution state (`observed-complete` / `observed-incomplete` / `unobserved`), so no caller can convert unobserved into complete. An unobserved zero-result report must never be `valid-clean`; an unobserved report *with* findings may surface them as a lower-bound signal without representing the scan as complete. No guesses about tool exit semantics are required, which is why it goes first.
+- **C2** — observation itself. All six runners currently discard the exit status (`|| true`; `php-coverage.sh` captures it and only logs it). The record must preserve the **raw** observation — exit code, signal, timeout, duration — while a **producer-specific contract** decides whether that invocation completed a meaningful analysis. `exit_code != 0` does not mean "did not complete": PHPMD documents non-zero as the normal findings case, Infection is run with `--min-msi=0` precisely so Sentinel and not Infection's process exit decides the threshold, and PHP coverage keeps the test runner's exit code separately while still accepting a finalized Clover report. Mapping non-zero to "failed" would turn valid findings evidence into `execution-error`, and the tempting repair would be to loosen the collector.
+
+Three facts that this codebase has historically conflated, and which C1/C2 separate:
+
+```
+process success  ≠  producer completion  ≠  policy pass
+```
 
 #182 alone gated 65 of the 83 M4 issues — **and closing it moved M4 from 10 ready to 61 ready in one step**, which is the sequencing argument settled by measurement rather than assertion. Repairing collectors first means writing 65 producer-identity checks that each have to be revisited when the real contract lands — and, in the interim, ten subtly different implementations of the same trust boundary, which is how the current state was reached.
 
