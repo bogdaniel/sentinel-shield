@@ -129,10 +129,19 @@ done
 # This is the defect the prerequisite removes. While it is present, the assertion documents it
 # at the point it lives; when the prerequisite lands, this assertion is what must be updated,
 # so the two cannot silently disagree.
+# BOTH BRANCHES USED TO `pass`. That made this assertion a false green: removing the overload —
+# the single change it exists to notice — left the suite exiting 0 while the document went on
+# describing an architecture the code no longer had. It is the same class of defect this
+# inventory was written to expose, committed inside the test that exposes it.
+#
+# The inventoried condition is now enforced in one direction only: while the overload is
+# present, this passes; the moment it is removed, this FAILS, and the identity-repair PR must
+# update this assertion and the document in the same change. That is the point — the two
+# cannot silently disagree.
 if grep -qE '^\s*--tool-name\) TOOL=' "$ROOT/scripts/collectors/coverage.sh"; then
-	pass "coverage.sh: --tool-name still sets TOOL (the identity/channel overload is present, as documented)"
+	pass "coverage.sh: --tool-name still sets TOOL — the identity/channel overload is present, as inventoried"
 else
-	pass "coverage.sh: --tool-name no longer sets TOOL directly — the identity split has landed; update this suite and the inventory together"
+	fail "coverage.sh: --tool-name no longer sets TOOL — the identity contract changed without updating docs/producer-identity-inventory.md and this suite"
 fi
 
 # The many-to-one case: one collector serving several producer keys is real today, so channel
