@@ -106,22 +106,55 @@ _seen=$( [ -f "$TMP/count" ] && grep -c x "$TMP/count" || printf '0')
 	&& pass "every inventory row was evaluated" \
 	|| fail "only $_seen of $_rows inventory rows were evaluated"
 
+# --- the DOCUMENT must match the inventory too ----------------------------------------------
+# $DOC was only checked for existence, so a documentation-only mapping change passed every
+# assertion in this suite: the code checks above compare INVENTORY to the code, and nothing
+# compared the published table to either. The table is what a reader acts on, so it is held to
+# the same standard.
+#
+# Parsed from the markdown table: runner | backend | producer key | report | collector | channel.
+# The backend column is prose (`knip _or_ ts-prune`) and is deliberately NOT compared — it is
+# asserted structurally by the multi-backend section below.
+awk -F'|' '
+	/^\| `[a-z0-9-]+\.sh` \|/ {
+		for (i = 2; i <= 7; i++) { gsub(/^[ \t]+|[ \t]+$/, "", $i); gsub(/`|\*\*/, "", $i) }
+		sub(/\.sh$/, "", $2)
+		print $2 "|" $4 "|" $5 "|" $6 "|" $7
+	}
+' "$DOC" | sort > "$TMP/doc-rows"
+awk -F'|' '{print $1 "|" $2 "|" $3 "|" $4 "|" $5}' "$TMP/inventory" | sort > "$TMP/inv-rows"
+
+_docn=$(grep -c . "$TMP/doc-rows" || true)
+if [ "$_docn" -eq 0 ]; then
+	fail "no rows parsed from $DOC — the table shape changed and this check silently validated nothing"
+elif cmp -s "$TMP/doc-rows" "$TMP/inv-rows"; then
+	pass "the published table in producer-identity-inventory.md matches the inventory exactly ($_docn rows)"
+else
+	fail "the published table and the inventory disagree: only-in-doc=[$(comm -23 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')] only-in-inventory=[$(comm -13 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')]"
+fi
+
 # --- the multi-backend runners -------------------------------------------------------------
 # knip.sh and the coverage runners select their backend AT RUNTIME, so one producer key can
 # describe two tools with different counting semantics. That is the reason the record must
 # carry the backend separately from the verified identity, and it is asserted rather than
 # assumed because a refactor could quietly collapse the fallback.
-if grep -q 'ts-prune' "$ROOT/scripts/runners/knip.sh"; then
-	pass "knip.sh still has its ts-prune fallback — one producer key, two counting semantics"
+# These assertions used to grep for the backend NAME. That is not enough: knip.sh mentions
+# ts-prune in its "no dead-code tool found" message, so the fallback could be deleted entirely
+# and the grep would still match. The same applies to the coverage runners, which name both
+# binaries in a warning. Assert the SELECTION — an executable test that binds the backend — and
+# for knip that the fallback is actually invoked.
+if grep -qE '^[[:space:]]*elif \[ -x node_modules/\.bin/ts-prune \]' "$ROOT/scripts/runners/knip.sh" \
+	&& grep -qE '^[[:space:]]*_tp_out=\$\("\$_TP"' "$ROOT/scripts/runners/knip.sh"; then
+	pass "knip.sh selects AND invokes the ts-prune fallback — one producer key, two counting semantics"
 else
-	fail "knip.sh no longer falls back to ts-prune — the inventory's multi-backend finding is stale"
+	fail "knip.sh no longer selects and invokes a ts-prune fallback — the inventory's multi-backend finding is stale"
 fi
 for _cov in php-coverage php-diff-coverage; do
-	if grep -q 'vendor/bin/pest' "$ROOT/scripts/runners/$_cov.sh" \
-		&& grep -q 'vendor/bin/phpunit' "$ROOT/scripts/runners/$_cov.sh"; then
-		pass "$_cov.sh selects pest or phpunit at runtime"
+	if grep -qE '^[[:space:]]*if \[ -x vendor/bin/pest \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh" \
+		&& grep -qE '^[[:space:]]*elif \[ -x vendor/bin/phpunit \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh"; then
+		pass "$_cov.sh BINDS pest or phpunit by executable test at runtime"
 	else
-		fail "$_cov.sh no longer selects between pest and phpunit — the inventory is stale"
+		fail "$_cov.sh no longer binds a backend by executable test — the inventory is stale"
 	fi
 done
 
@@ -144,11 +177,32 @@ else
 	fail "coverage.sh: --tool-name no longer sets TOOL — the identity contract changed without updating docs/producer-identity-inventory.md and this suite"
 fi
 
-# The many-to-one case: one collector serving several producer keys is real today, so channel
-# identity cannot be used for provenance without making those producers indistinguishable.
-_cov_keys=$(grep -cE '^(php-|js-)?coverage\|[^|]*\|coverage\.sh\|' "$BUILD")
+# --- the many-to-one CHANNEL case ----------------------------------------------------------
+# This assertion previously counted producer keys served by coverage.sh and called that
+# many-to-one. It is not: coverage, php-coverage and js-coverage each emit a DIFFERENT channel
+# (coverage, php_coverage, js_coverage), so it demonstrated collector FAN-IN and would have
+# passed even if no two producers ever shared a channel — leaving the documented invariant
+# untested.
+#
+# The real case is two distinct producer keys emitting ONE channel. If channel identity were
+# used for provenance, those two producers would be indistinguishable in the evidence, which is
+# the precise opposite of what execution provenance exists to provide.
+_shared=$(awk -F'|' 'NF>=4 && $1 !~ /^#/ && $4 != "" {print $4}' "$BUILD" | sort | uniq -d | grep -E '^[a-z0-9_]+$' || true)
+if [ -n "$_shared" ]; then
+	for _ch in $_shared; do
+		_producers=$(awk -F'|' -v c="$_ch" '$4==c {printf "%s ", $1}' "$BUILD")
+		_n=$(printf '%s' "$_producers" | wc -w | tr -d ' ')
+		[ "$_n" -ge 2 ] \
+			&& pass "channel '$_ch' is emitted by $_n distinct producer keys ($_producers) — channel identity cannot be provenance" \
+			|| fail "channel '$_ch' appeared shared but resolves to $_n producer key(s)"
+	done
+else
+	fail "no emitted channel is shared by two producer keys — the many-to-one claim in the inventory is unsupported by TOOL_TABLE"
+fi
+# Collector fan-in is a SEPARATE, weaker property. Kept, but named honestly.
+_cov_keys=$(awk -F'|' '$3=="coverage.sh"' "$BUILD" | wc -l | tr -d ' ')
 [ "$_cov_keys" -ge 3 ] \
-	&& pass "coverage.sh serves $_cov_keys producer keys — channel identity cannot be provenance" \
+	&& pass "coverage.sh serves $_cov_keys producer keys (collector fan-in, not channel sharing)" \
 	|| fail "expected coverage.sh to serve at least 3 producer keys, found $_cov_keys"
 
 if [ "$FAILS" -gt 0 ]; then

@@ -90,11 +90,23 @@ is what an operator needs in order to interpret the numbers.
 
 ### 3. Many-to-one channels already exist
 
-`coverage.sh` serves `coverage`, `php-coverage` and `js-coverage`; the generic channel can
-coexist with the per-stack ones, and the builder supports intentional many-to-one composition
-elsewhere (`php_style`). If channel identity were used for provenance, two real producers
-feeding one channel would become indistinguishable — the exact opposite of what execution
-provenance is for.
+Two **distinct producer keys** emit one channel:
+
+```
+php-style      ─┐
+                ├─>  php_style
+php-cs-fixer   ─┘
+```
+
+If channel identity were used for provenance, those two producers would be **indistinguishable
+in the evidence** — the exact opposite of what execution provenance is for.
+
+`coverage.sh` is a different and weaker property: it serves `coverage`, `php-coverage` and
+`js-coverage`, but each emits its own channel (`coverage`, `php_coverage`, `js_coverage`). That
+is collector **fan-in**, not channel sharing, and it does not on its own establish the
+many-to-one case. The first draft of this section cited it as if it did, and `tests/prod/303`
+asserted the fan-in count accordingly — an assertion that would have passed even if no two
+producers ever shared a channel. Both now assert `php_style`.
 
 ---
 
