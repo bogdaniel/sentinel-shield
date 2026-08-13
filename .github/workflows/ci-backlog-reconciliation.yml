@@ -35,9 +35,21 @@ on:
   push:
     branches:
       - master
+  # Drift is not only introduced by commits. Closing an issue in the GitHub UI desynchronises
+  # the plan with no repository change at all — which is exactly how #310's drift arose — so
+  # the ISSUE ITSELF has to be a trigger. An earlier comment here claimed an event-driven
+  # workflow could not see such a change; that was wrong. GitHub emits `issues` events for
+  # precisely these transitions, and reconciling on them detects drift in seconds rather than
+  # at the next scheduled run.
+  #
+  # `deleted` and `transferred` matter as much as `closed`: both remove an issue from this
+  # repository's open set while leaving it in the plan.
+  issues:
+    types: [opened, closed, reopened, deleted, transferred]
   schedule:
-    # Drift is not only introduced by commits: closing an issue in the GitHub UI desynchronises
-    # the plan without any repository change, so a purely event-driven check cannot see it.
+    # Kept as a BACKSTOP, not as the primary mechanism. It still covers what no event reaches:
+    # a plan edited on a branch that never merged, a missed webhook, or an `issues` event that
+    # fired while the workflow file was broken.
     - cron: '17 6 * * *'
   workflow_dispatch:
 
@@ -73,12 +85,29 @@ jobs:
           # cannot list issues would send 112 down its failure path for the wrong reason,
           # or (worse, before this job existed) down its skip path silently.
           #
-          # A real query is the only proof. An empty result is also refused: this repository
-          # has open issues, so zero would mean the query was answered by something that is
-          # not the backlog.
-          n=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number -q '.[].number' | wc -l | tr -d ' ')
-          echo "authenticated issue query returned $n open issue(s)"
-          [ "$n" -gt 0 ] || { echo "FAIL: the issue query returned nothing — refusing to reconcile against an empty backlog"; exit 1; }
+          # WHAT IS BEING PROVEN is that the API call SUCCEEDED and returned a well-formed
+          # answer — not that the answer is non-empty.
+          #
+          # The first version of this step required `n > 0`, on the reasoning that this
+          # repository has open issues so zero would mean the query was answered by something
+          # other than the backlog. That conflates two different things. A repository whose
+          # backlog is legitimately empty — the state this whole programme is working toward —
+          # would fail its own governance check while the query succeeded and the plan was
+          # correctly empty. `[]` is a valid backlog.
+          #
+          # So the assertion is on the SHAPE: the command must exit 0 and emit a JSON array.
+          # A failed call cannot satisfy it, because `set -e` aborts on the non-zero exit and
+          # an error payload is not an array.
+          issues_json=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 1000 --json number)
+          printf '%s' "$issues_json" | jq -e 'type == "array"' >/dev/null || {
+            echo "FAIL: the issue query did not return a JSON array — the API answer is not a backlog"
+            exit 1
+          }
+          n=$(printf '%s' "$issues_json" | jq 'length')
+          echo "authenticated issue query succeeded and returned a JSON array of $n open issue(s)"
+          if [ "$n" -eq 0 ]; then
+            echo "NOTE: the live backlog is empty. That is a valid state, and the plan must be empty too — tests/prod/112 asserts exactly that below."
+          fi
 
       - name: Reconcile the plan against the live backlog (BLOCKING, never SKIP)
         env:
