@@ -514,7 +514,16 @@ for row in $TOOL_TABLE; do
 		die_cfg "collector not found: $collector"
 	fi
 
-	out=$(sh "$collector" --input "$raw" --tool-name "$emit") || {
+	# TWO IDENTITIES, PASSED SEPARATELY (#310/#204).
+	#   --tool-name  "$emit"  the CHANNEL this evidence aggregates under; renamed per stack
+	#                         (php-coverage -> php_coverage) and legitimately shared by several
+	#                         producers (php-style and php-cs-fixer both emit php_style).
+	#   --producer-key "$key" the PRODUCER that actually ran; the identity an execution record
+	#                         names and ne_execution_verify checks against.
+	# This loop already distinguished them for row identity (see #235 below); collapsing them at
+	# the collector boundary is what made osv-scanner and dependency-check reject their own real
+	# execution records — the audit wrote "osv-scanner", the collector was told "osv_scanner".
+	out=$(sh "$collector" --input "$raw" --tool-name "$emit" --producer-key "$key") || {
 		log_error "collector failed for '$key' ($collector)"
 		exit 1
 	}

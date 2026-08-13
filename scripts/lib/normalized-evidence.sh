@@ -268,6 +268,13 @@ ne_execution_verify() {
 # #182 stamped `{completed:true, exit_code:0}` unconditionally, which asserted a clean process
 # the collector had never observed. When no record exists the default is explicitly
 # UNOBSERVED — `completed: null` — never a confident success.
+# ne_envelope <producer-key> <source> <format> <trust> <payload>
+#
+# The first argument is the PRODUCER KEY — the identity of what actually ran — and never the
+# presentation channel. It is stamped into `producer.tool`, so passing the channel here would
+# leave verification correct while the emitted evidence carried the wrong identity: two
+# producers sharing a channel (php-style and php-cs-fixer both emit php_style) would become
+# indistinguishable in the evidence, which is the opposite of what provenance is for.
 ne_envelope() {
 	_ne_tool=$1
 	_ne_src=$2

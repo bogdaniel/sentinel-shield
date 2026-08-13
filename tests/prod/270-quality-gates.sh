@@ -47,15 +47,12 @@ COLL="$ROOT/scripts/collectors"
 # error are left unobserved deliberately — that is the honest default, and it keeps the
 # observed/unobserved distinction visible in this suite rather than blanket-applied.
 #
-# NOTE the tool name these records carry. build-security-summary.sh invokes the collector as
-#   sh coverage.sh --input php-coverage.json --tool-name php_coverage
-# and ne_execution_verify compares the record's producer.tool against THAT emitted name, not
-# against the collector or the runner. So a record written by scripts/runners/php-coverage.sh
-# — which can only name itself — would be refused here with
-#   "execution record names tool 'php-coverage', not 'php_coverage'"
-# That gap is not C1's to close (C1 changes no identity rule), but C2 cannot wire real runner
-# provenance until it is resolved: either the record carries the emit identity, or the identity
-# check compares against the producer rather than the per-stack label.
+# NOTE the tool name these records carry: the PRODUCER KEY (php-coverage), not the emitted
+# channel (php_coverage). Those were the same argument until the identity split; while they
+# were, these fixtures had to name the CHANNEL to be accepted — which meant a record written by
+# scripts/runners/php-coverage.sh, which can only name itself, was refused in production.
+# The builder now passes both identities separately, so a fixture written the way a real runner
+# writes one is accepted. tests/prod/304 asserts that through the builder.
 
 QUALITY_GATES="coverage_threshold_violations coverage_regression mutation_score_violations complexity_violations duplication_violations dead_code_violations"
 
@@ -158,7 +155,7 @@ echo '{"dead_code_count":7}' > "$CT/dc.json"; [ "$(sh "$COLL/dead-code.sh" --inp
 
 # --- (4) builder aggregation (PHP + JS coverage) ------------------------------
 RAW="$WORK/build/reports/raw"; mkdir -p "$RAW"
-echo '{"tool":"coverage","status":"pass","line_percent":92,"branch_percent":88,"violations":0,"regression":false}' > "$RAW/php-coverage.json"; qer_write php_coverage "$RAW/php-coverage.json"
+echo '{"tool":"coverage","status":"pass","line_percent":92,"branch_percent":88,"violations":0,"regression":false}' > "$RAW/php-coverage.json"; qer_write php-coverage "$RAW/php-coverage.json"
 echo '{"tool":"coverage","status":"findings","line_percent":48,"branch_percent":40,"violations":2,"regression":true}' > "$RAW/js-coverage.json"
 sh "$BUILD" --raw-dir "$RAW" --output "$WORK/build/reports/security-summary.json" >/dev/null 2>&1
 S="$WORK/build/reports/security-summary.json"
@@ -268,7 +265,7 @@ if command -v php >/dev/null 2>&1; then
 	[ "$(jq -r '.summary.missing_coverage_evidence' "$MT/reports/security-summary.json")" = "true" ] \
 		&& pass "builder: missing_coverage_evidence=true when applicable coverage report absent" \
 		|| fail "builder should flag missing coverage evidence"
-	echo '{"tool":"coverage","status":"pass","line_percent":95,"branch_percent":90,"violations":0,"regression":false}' > "$MT/reports/raw/php-coverage.json"; qer_write php_coverage "$MT/reports/raw/php-coverage.json"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"branch_percent":90,"violations":0,"regression":false}' > "$MT/reports/raw/php-coverage.json"; qer_write php-coverage "$MT/reports/raw/php-coverage.json"
 	( cd "$MT" && sh "$BUILD" --profile laravel --target "$MT" --raw-dir "$MT/reports/raw" --output "$MT/reports/security-summary.json" ) >/dev/null 2>&1
 	[ "$(jq -r '.summary.missing_coverage_evidence' "$MT/reports/security-summary.json")" = "false" ] \
 		&& pass "builder: missing_coverage_evidence=false once coverage report present" \
@@ -476,12 +473,12 @@ if command -v php >/dev/null 2>&1; then
 	printf '{"name":"x/y"}\n' > "$C/composer.json"; printf '{"name":"x","version":"1.0.0"}\n' > "$C/package.json"
 	bmce() { ( cd "$C" && sh "$BUILD" --profile laravel-react-docker --target "$C" --raw-dir "$CR" --output "$C/s.json" ) >/dev/null 2>&1; jq -r '.summary.missing_coverage_evidence' "$C/s.json"; }
 	rm -f "$CR"/*coverage.json 2>/dev/null || true
-	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"; qer_write php_coverage "$CR/php-coverage.json"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"; qer_write php-coverage "$CR/php-coverage.json"
 	[ "$(bmce)" = "true" ] && pass "combined: only PHP coverage present -> missing_coverage_evidence true (JS missing)" || fail "combined PHP-only should flag missing JS coverage"
 	rm -f "$CR/php-coverage.json"
-	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/js-coverage.json"; qer_write js_coverage "$CR/js-coverage.json"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/js-coverage.json"; qer_write js-coverage "$CR/js-coverage.json"
 	[ "$(bmce)" = "true" ] && pass "combined: only JS coverage present -> missing_coverage_evidence true (PHP missing)" || fail "combined JS-only should flag missing PHP coverage"
-	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"; qer_write php_coverage "$CR/php-coverage.json"
+	echo '{"tool":"coverage","status":"pass","line_percent":95,"violations":0,"regression":false}' > "$CR/php-coverage.json"; qer_write php-coverage "$CR/php-coverage.json"
 	[ "$(bmce)" = "false" ] && pass "combined: both PHP + JS coverage present -> missing_coverage_evidence false" || fail "combined both-present should clear missing coverage"
 else
 	fail "combined-profile coverage independence: php REQUIRED but unavailable"

@@ -158,23 +158,28 @@ for _cov in php-coverage php-diff-coverage; do
 	fi
 done
 
-# --- the overload itself --------------------------------------------------------------------
-# This is the defect the prerequisite removes. While it is present, the assertion documents it
-# at the point it lives; when the prerequisite lands, this assertion is what must be updated,
-# so the two cannot silently disagree.
-# BOTH BRANCHES USED TO `pass`. That made this assertion a false green: removing the overload —
-# the single change it exists to notice — left the suite exiting 0 while the document went on
-# describing an architecture the code no longer had. It is the same class of defect this
-# inventory was written to expose, committed inside the test that exposes it.
-#
-# The inventoried condition is now enforced in one direction only: while the overload is
-# present, this passes; the moment it is removed, this FAILS, and the identity-repair PR must
-# update this assertion and the document in the same change. That is the point — the two
-# cannot silently disagree.
-if grep -qE '^\s*--tool-name\) TOOL=' "$ROOT/scripts/collectors/coverage.sh"; then
-	pass "coverage.sh: --tool-name still sets TOOL — the identity/channel overload is present, as inventoried"
+# --- the identity SPLIT (was: the overload) --------------------------------------------------
+# This assertion pinned the overload while it existed and required that removing it be a
+# deliberate change made together with the document. The split has now landed, so it inverts:
+# the overload must not come back.
+if grep -qE '^\s*--tool-name\) TOOL=[^;]*PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"; then
+	fail "coverage.sh: --tool-name writes PRODUCER again — the channel can overwrite provenance identity"
 else
-	fail "coverage.sh: --tool-name no longer sets TOOL — the identity contract changed without updating docs/producer-identity-inventory.md and this suite"
+	pass "coverage.sh: --tool-name sets the CHANNEL only"
+fi
+if grep -qE '^\s*--producer-key\) PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"; then
+	pass "coverage.sh: --producer-key sets the verified producer identity"
+else
+	fail "coverage.sh: no --producer-key parameter — the identity split is not present"
+fi
+# The default must be established BEFORE argument parsing, so no ordering of channel arguments
+# can influence it.
+_pl=$(grep -n '^PRODUCER=' "$ROOT/scripts/collectors/coverage.sh" | head -1 | cut -d: -f1)
+_al=$(grep -n 'while \[ $# -gt 0 \]' "$ROOT/scripts/collectors/coverage.sh" | head -1 | cut -d: -f1)
+if [ -n "$_pl" ] && [ -n "$_al" ] && [ "$_pl" -lt "$_al" ]; then
+	pass "coverage.sh: PRODUCER is captured before argument parsing (line $_pl < $_al)"
+else
+	fail "coverage.sh: PRODUCER is not established before argument parsing (producer=$_pl parse=$_al)"
 fi
 
 # --- the many-to-one CHANNEL case ----------------------------------------------------------

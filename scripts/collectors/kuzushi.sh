@@ -9,6 +9,7 @@ INPUT="reports/raw/kuzushi.json"
 while [ $# -gt 0 ]; do case "$1" in
   --input) INPUT="${2:?--input requires a value}"; shift 2 ;;
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+  --producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   -h|--help) echo "Usage: kuzushi.sh [--input <path>] [--tool-name <name>]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done

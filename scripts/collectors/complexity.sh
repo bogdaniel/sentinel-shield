@@ -14,6 +14,18 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 
 TOOL="complexity"
+# #310/#204: PRODUCER is the VERIFIED EXECUTION IDENTITY and is captured HERE, before any
+# argument is parsed, so no presentation argument can overwrite or influence it.
+#
+# TOOL is the CHANNEL — the summary key this evidence is aggregated under. The builder renames
+# it per stack (complexity -> complexity), and several producers may legitimately share one
+# channel (php-style and php-cs-fixer both emit php_style). PRODUCER is what actually ran.
+#
+# These were ONE variable. `--tool-name` set both, so build-security-summary.sh — which invokes
+# collectors with the channel — made ne_execution_verify demand a record naming the channel,
+# while the audit that wrote the record named the producer. osv-scanner and dependency-check
+# rejected their own real execution records in production for exactly that reason.
+PRODUCER="complexity"
 INPUT="reports/raw/complexity.json"
 
 usage() {
@@ -29,6 +41,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--input) INPUT="${2:?--input requires a value}"; shift 2 ;;
 		--tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; log_error "unknown argument: $1"; exit 2 ;;
 	esac
@@ -83,7 +96,7 @@ MAXC=$(num max_complexity); AVGC=$(num average_complexity)
 # picks which field Sentinel privileges.
 #
 # Contradictory evidence is not clean evidence and not finding evidence. It is INVALID.
-ne_quality_verify "$TOOL" "$INPUT" || {
+ne_quality_verify "$PRODUCER" "$INPUT" || {
 	log_warn "$TOOL: $NE_EXEC_REASON; status=execution-error"
 	ss_emit_collector "$TOOL" "execution-error" \
 		"$(jq -n --arg r "$NE_EXEC_REASON" '{status:"execution-error", health:"untrusted-evidence", reason:$r}')" \
@@ -123,7 +136,7 @@ OV=$(jq -n --argjson v "$V" --argjson mx "$MAXC" --argjson av "$AVGC" \
 # and the configuration digest — above the shared core. Both are LOAD-BEARING: ne_quality_verify
 # recomputes the configuration digest from the file on disk, so a threshold change invalidates
 # evidence produced under the old thresholds rather than merely annotating it.
-ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "sentinel-quality-json" "$NE_TRUST_NATIVE" \
+ENVELOPE=$(ne_envelope "$PRODUCER" "$INPUT" "sentinel-quality-json" "$NE_TRUST_NATIVE" \
 	"$(printf '%s' "${NE_QUALITY_JSON:-$NE_QUALITY_EMPTY}" | jq --argjson v "$V" '{quality:{violations:$v}} + .')")
 
 REPORT=$(jq -n --arg s "$STATUS" --argjson v "$V" --argjson mx "$MAXC" --argjson av "$AVGC" \
