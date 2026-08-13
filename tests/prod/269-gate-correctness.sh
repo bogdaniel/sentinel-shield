@@ -16,8 +16,26 @@ WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ss269)
 trap 'rm -rf -- "$WORK"' EXIT INT TERM
 COLL="$ROOT/scripts/collectors"
 
+# shellcheck source=tests/lib/quality-execution-record.sh
+. "$ROOT/tests/lib/quality-execution-record.sh"
+
 # c <collector> <json> — run a collector over inline JSON, echo its status.
-c() { printf '%s' "$2" > "$WORK/i.json"; sh "$COLL/$1" --input "$WORK/i.json" 2>/dev/null | jq -r '.status'; }
+#
+# Deliberately writes NO execution record, so every case using it describes a producer nobody
+# watched. That is the honest default for a fixture: the report exists, the process was never
+# observed. Under #204 C1 such a producer can never be `valid-clean`, which is why the
+# clean-path controls below use `co()` instead.
+c() { qer_clear "$WORK/i.json"; printf '%s' "$2" > "$WORK/i.json"; sh "$COLL/$1" --input "$WORK/i.json" 2>/dev/null | jq -r '.status'; }
+
+# co <collector> <json> — the same report, plus a matching OBSERVED-COMPLETE execution record.
+#
+# The record is bound to the report's digest, so it is the provenance a real invoker would
+# have written. `${1%.sh}` is the producer name the collector declares.
+co() {
+	printf '%s' "$2" > "$WORK/i.json"
+	qer_write "${1%.sh}" "$WORK/i.json"
+	sh "$COLL/$1" --input "$WORK/i.json" 2>/dev/null | jq -r '.status'
+}
 
 # --- malformed GATING counts are never coerced to a clean 0 ------------------
 # docs/raw-report-contract.md states this rule; these collectors did the opposite, so a
@@ -48,9 +66,22 @@ done
 
 # The CONTROL for the line above. Without it, "absent is rejected" is satisfied by a collector
 # that rejects everything — including one that is simply broken.
+# #204 C1 pairs this control with its own negative, over ONE report and ONE variable.
+#
+# A declared zero is a clean pass only when the producer was OBSERVED to complete. The same
+# report with no execution record describes a producer nobody watched, and a zero from an
+# unwatched producer is the absence of a measurement, not a measured clean — the same rule
+# that made a missing count not a measured zero, applied one layer up.
+#
+# The control was NOT rewritten from `pass` to `execution-error`. Rewriting it would have
+# asserted only that the collector refuses things, which a collector that refuses everything
+# satisfies. Giving it the provenance it was always implicitly claiming keeps it a positive
+# control and makes the pair the evidence.
 for _c in coverage mutation complexity duplication diff-coverage; do
-	check "$_c: a DECLARED zero is still a clean pass" \
-		"$(c "$_c.sh" '{"status":"pass","violations":0}')" "pass"
+	check "$_c: a DECLARED zero + observed-complete execution is a clean pass" \
+		"$(co "$_c.sh" '{"status":"pass","violations":0}')" "pass"
+	check "$_c: the SAME declared zero with NO execution observation is not clean" \
+		"$(c "$_c.sh" '{"status":"pass","violations":0}')" "execution-error"
 done
 
 # #204 status agreement: a declared status that contradicts the derived count is INVALID
@@ -81,9 +112,13 @@ check "dead-code: malformed .dead_code_count fails closed (no clean-pass coercio
 check "dead-code: negative .dead_code_count fails closed" \
 	"$(c dead-code.sh '{"dead_code_count":-1}')" "execution-error"
 # A declared count of 0 is still a legitimate clean result — the distinction #204 draws is
-# between MEASURED zero and ABSENT, not between zero and non-zero.
-check "dead-code: a DECLARED zero count is still a clean pass" \
-	"$(c dead-code.sh '{"status":"pass","violations":0,"dead_code_count":0}')" "pass"
+# between MEASURED zero and ABSENT, not between zero and non-zero. #204 C1 adds a second
+# condition: the producer must also have been OBSERVED to complete, so the same report is
+# paired with and without provenance.
+check "dead-code: a DECLARED zero + observed-complete execution is a clean pass" \
+	"$(co dead-code.sh '{"status":"pass","violations":0,"dead_code_count":0}')" "pass"
+check "dead-code: the SAME declared zero with NO execution observation is not clean" \
+	"$(c dead-code.sh '{"status":"pass","violations":0,"dead_code_count":0}')" "execution-error"
 
 # --- --strict-summary must accept the schema's own status values ------------
 # The enforcer allowed 5 values; the schema (and every v1.10+ collector) emits 10. So the

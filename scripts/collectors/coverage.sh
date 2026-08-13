@@ -90,17 +90,27 @@ ne_quality_verify "$TOOL" "$INPUT" || {
 		'{"coverage_threshold_violations":0}'
 	exit 0
 }
-NE_COMPLETED=$(printf '%s' "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}" | jq -r '[.completed] | .[0] | if . == null then "unobserved" else tostring end')
-[ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+# #204 C1: the execution STATE is derived from the evidence, never asserted by this script.
+# The line that used to sit here was
+#     [ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+# which told the consistency matrix the producer had finished on the strength of nobody having
+# watched it. The envelope was always truthful; the decision input was not.
+NE_EXEC_STATE=$(ne_execution_state "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}")
 NE_TOTAL=$((V + REG))
-VERDICT=$(ne_status_consistency "$RS" "$NE_TOTAL" "$NE_COMPLETED")
+VERDICT=$(ne_status_consistency "$RS" "$NE_TOTAL" "$NE_EXEC_STATE")
 case "$VERDICT" in
 	valid-clean)    STATUS="pass" ;;
 	valid-findings) STATUS="findings" ;;
+	# Findings from a producer nobody watched are REAL — something was found. What the run
+	# cannot support is the claim that this is all there was, so the public status is the
+	# ordinary `findings` and the weakness is carried by the envelope's own execution record,
+	# which still says observed:false. Widening the public status vocabulary is a schema
+	# decision, deliberately not taken here.
+	valid-findings-unobserved) STATUS="findings" ;;
 	*)
-		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' countable=$NE_TOTAL completed=$NE_COMPLETED; status=execution-error"
+		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' countable=$NE_TOTAL execution=$NE_EXEC_STATE; status=execution-error"
 		ss_emit_collector "$TOOL" "execution-error" \
-			"$(jq -n --arg r "$VERDICT" --arg raw "$RS" --argjson v "$NE_TOTAL" '{status:"execution-error", health:"inconsistent-evidence", reason:$r, raw_status:$raw, violations:$v}')" \
+			"$(jq -n --arg h "$(ne_verdict_health "$VERDICT")" --arg r "$VERDICT" --arg raw "$RS" --argjson v "$NE_TOTAL" '{status:"execution-error", health:$h, reason:$r, raw_status:$raw, violations:$v}')" \
 			'{"coverage_threshold_violations":0}'
 		exit 0 ;;
 esac

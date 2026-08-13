@@ -105,19 +105,26 @@ ne_quality_verify "$TOOL" "$INPUT" || {
 # NOT "${NE_EXEC_JSON:-{}}": the `}` closing the inline JSON also closes the parameter
 # expansion, so jq receives truncated text and the collector emits nothing at all. Named
 # constant instead — this exact trap has now bitten three times in this library.
-NE_COMPLETED=$(printf '%s' "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}" | jq -r '[.completed] | .[0] | if . == null then "unobserved" else tostring end')
-# An UNOBSERVED execution cannot contradict anything, so consistency is judged on the two
-# fields that do exist. #310 already records observed=false honestly; enforcing modes may
-# refuse it, which is where that decision belongs.
-[ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
-VERDICT=$(ne_status_consistency "$RS" "$V" "$NE_COMPLETED")
+# #204 C1: the execution STATE is derived from the evidence, never asserted by this script.
+# The line that used to sit here was
+#     [ "$NE_COMPLETED" = "unobserved" ] && NE_COMPLETED=true
+# which told the consistency matrix the producer had finished on the strength of nobody having
+# watched it. The envelope was always truthful; the decision input was not.
+NE_EXEC_STATE=$(ne_execution_state "${NE_EXEC_JSON:-$NE_EXEC_UNOBSERVED}")
+VERDICT=$(ne_status_consistency "$RS" "$V" "$NE_EXEC_STATE")
 case "$VERDICT" in
 	valid-clean)    STATUS="pass" ;;
 	valid-findings) STATUS="findings" ;;
+	# Findings from a producer nobody watched are REAL — something was found. What the run
+	# cannot support is the claim that this is all there was, so the public status is the
+	# ordinary `findings` and the weakness is carried by the envelope's own execution record,
+	# which still says observed:false. Widening the public status vocabulary is a schema
+	# decision, deliberately not taken here.
+	valid-findings-unobserved) STATUS="findings" ;;
 	*)
-		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' violations=$V completed=$NE_COMPLETED; status=execution-error"
+		log_warn "$TOOL: inconsistent evidence ($VERDICT); raw status='"'"'$RS'"'"' violations=$V execution=$NE_EXEC_STATE; status=execution-error"
 		ss_emit_collector "$TOOL" "execution-error" \
-			"$(jq -n --arg r "$VERDICT" --arg raw "$RS" --argjson v "$V" '{status:"execution-error", health:"inconsistent-evidence", reason:$r, raw_status:$raw, violations:$v}')" \
+			"$(jq -n --arg h "$(ne_verdict_health "$VERDICT")" --arg r "$VERDICT" --arg raw "$RS" --argjson v "$V" '{status:"execution-error", health:$h, reason:$r, raw_status:$raw, violations:$v}')" \
 			'{"dead_code_violations":0}'
 		exit 0 ;;
 esac
