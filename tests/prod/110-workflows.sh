@@ -174,6 +174,55 @@ else
 	grep -qE '\$\{SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG:-' "$ROOT/tests/prod/112-remediation-plan.sh" \
 		&& pass "112 reads SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG" \
 		|| fail "112 does not read the flag — the workflow sets a variable nothing consumes"
+
+	# The probe must judge the API call on SUCCESS AND SHAPE, not on the answer being
+	# non-empty. Its first version required `n > 0`, which would fail a repository whose
+	# backlog is legitimately empty — the state this whole programme is working toward.
+	if grep -qE '\[ "\$n" -gt 0 \]' "$_BR"; then
+		fail "backlog-reconciliation still requires a NON-EMPTY backlog — an empty backlog is a valid state, not a failed query"
+	else
+		pass "backlog-reconciliation does not require a non-empty backlog"
+	fi
+	grep -q 'type == "array"' "$_BR" \
+		&& pass "backlog-reconciliation judges the query on JSON-array shape" \
+		|| fail "backlog-reconciliation does not assert the response shape — a failed query could read as an empty backlog"
+
+	# Drift is introduced by ISSUE events, not only by commits. The schedule stays as a
+	# backstop and is asserted separately: if the events were removed, a 24h-latency check
+	# must not silently become the only one.
+	grep -qE '^[[:space:]]+issues:' "$_BR" \
+		&& pass "backlog-reconciliation is triggered by issue events" \
+		|| fail "backlog-reconciliation has no issues: trigger — a GitHub-UI closure would wait for the daily run"
+	grep -qE '^[[:space:]]+schedule:' "$_BR" \
+		&& pass "backlog-reconciliation keeps the daily schedule as a backstop" \
+		|| fail "backlog-reconciliation lost its schedule — nothing then covers a missed webhook"
+	for _ev in closed deleted transferred; do
+		grep -qE "types:.*$_ev" "$_BR" \
+			&& pass "backlog-reconciliation reconciles on issue '$_ev'" \
+			|| fail "backlog-reconciliation ignores issue '$_ev' — that transition removes an issue from the open set"
+	done
+
+	# DYNAMIC: the finished state must actually pass, and corruption must still fail. A static
+	# grep proves a guard was reworded; only running it proves the state is reachable.
+	_bt=$(mktemp -d)
+	printf '#!/bin/sh\ncase "$1 $2" in\n"auth status") exit 0 ;;\n"issue list") printf "[]\\n"; exit 0 ;;\nesac\nexit 0\n' > "$_bt/gh"
+	chmod +x "$_bt/gh"
+	jq '.issues = [] | .milestones = []' "$ROOT/config/remediation-plan.json" > "$_bt/empty-plan.json"
+	if PATH="$_bt:$PATH" SENTINEL_PLAN_FILE="$_bt/empty-plan.json" \
+		sh "$ROOT/tests/prod/112-remediation-plan.sh" >/dev/null 2>&1; then
+		pass "DYNAMIC: an empty live backlog with an empty plan PASSES — the finished state is reachable"
+	else
+		fail "DYNAMIC: a finished programme (no open issues, empty plan) fails its own governance check"
+	fi
+	# CONTROL: without this, the assertion above is satisfied by a check that passes anything.
+	jq '.issues = "not-an-array"' "$ROOT/config/remediation-plan.json" > "$_bt/broken-plan.json"
+	if PATH="$_bt:$PATH" SENTINEL_PLAN_FILE="$_bt/broken-plan.json" \
+		sh "$ROOT/tests/prod/112-remediation-plan.sh" >/dev/null 2>&1; then
+		fail "DYNAMIC CONTROL: a malformed .issues was accepted — 'empty is valid' was widened into 'anything is valid'"
+	else
+		pass "DYNAMIC CONTROL: a malformed .issues is still fatal"
+	fi
+	rm -rf "$_bt"
 fi
 
 if [ "$FAILS" -gt 0 ]; then

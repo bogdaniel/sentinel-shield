@@ -20,7 +20,9 @@
 # defaults to off, because a drift check nobody runs is not a check.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-PLAN="$ROOT/config/remediation-plan.json"
+# Overridable so the empty-plan end state can be exercised by a regression without mutating
+# the real plan. Defaults to the shipped file, which is what every ordinary invocation uses.
+PLAN="${SENTINEL_PLAN_FILE:-$ROOT/config/remediation-plan.json}"
 
 FAILS=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -61,8 +63,20 @@ else
 	exit 1
 fi
 
+# `.issues` must be an ARRAY. Its length is not the test.
+#
+# This guard used to be `[ "$TOTAL" -gt 0 ] || fail "plan contains no issue records"`, which is
+# the same defect as the two above it and the one in ci-backlog-reconciliation: it conflates
+# "the file is truncated or malformed" with "the programme finished". A plan with zero records
+# is the SUCCESS state of this entire effort, and the check that is supposed to prove the plan
+# agrees with reality would have been the last thing to refuse it.
+#
+# A missing or non-array `.issues` is still fatal — that is the corruption this was guarding
+# against, and jq can tell the two apart.
+jq -e '(.issues | type) == "array"' "$PLAN" >/dev/null 2>&1 \
+	|| { fail "plan has no .issues array — the file is malformed, not merely empty"; exit 1; }
 TOTAL=$(jq '.issues | length' "$PLAN")
-[ "$TOTAL" -gt 0 ] || { fail "plan contains no issue records"; exit 1; }
+[ "$TOTAL" -gt 0 ] || pass "plan is empty and well-formed — every issue is closed, which is a valid end state"
 pass "plan contains $TOTAL issue records"
 
 # --- 2. every record carries every required field, non-empty ---------------
@@ -223,23 +237,34 @@ fi
 # validates perfectly as "ready" work.
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
 	REPO=${SENTINEL_PLAN_REPO:-bogdaniel/sentinel-shield}
-	if gh issue list -R "$REPO" --state open --limit 1000 --json number -q '.[].number' \
-		2>/dev/null | sort -n > "$TMP/live"; then
+	# The query is run WITHOUT `-q`, so its success is judged on the exit status and on the
+	# response being a JSON array — not on the response being non-empty.
+	#
+	# This guard used to read `[ ! -s "$TMP/live" ] && fail "... an empty result ... would make
+	# this check vacuous"`. The fear was right — a silently-failed query must never read as
+	# agreement — but the test was wrong: it also fails a repository whose backlog is
+	# LEGITIMATELY EMPTY, which is the state this programme is working toward. An empty backlog
+	# with an empty plan is perfect agreement, and the comm comparison below already says so.
+	#
+	# Failure and emptiness are separated instead: a failed call cannot produce an array, and
+	# an array of length zero is a valid answer.
+	if _live_json=$(gh issue list -R "$REPO" --state open --limit 1000 --json number 2>/dev/null) \
+		&& printf '%s' "$_live_json" | jq -e 'type == "array"' >/dev/null 2>&1; then
+		printf '%s' "$_live_json" | jq -r '.[].number' | sort -n > "$TMP/live"
 		jq -r '.issues[].issue' "$PLAN" | sort -n > "$TMP/planned"
-		if [ ! -s "$TMP/live" ]; then
-			fail "live issue query returned nothing for $REPO — treating an empty result as agreement would make this check vacuous"
-		else
-			_unplanned=$(comm -23 "$TMP/live" "$TMP/planned" | tr '\n' ' ')
-			_stale=$(comm -13 "$TMP/live" "$TMP/planned" | tr '\n' ' ')
-			[ -z "$_unplanned" ] && pass "every open issue in $REPO appears in the plan" \
-				|| fail "open issue(s) missing from the plan: $_unplanned"
-			# A closed issue left in the plan is the dangerous direction: it
-			# presents finished or abandoned work as scheduled work.
-			[ -z "$_stale" ] && pass "no closed issue appears in the plan as active work" \
-				|| fail "plan lists issue(s) that are not open: $_stale"
+		_unplanned=$(comm -23 "$TMP/live" "$TMP/planned" | tr '\n' ' ')
+		_stale=$(comm -13 "$TMP/live" "$TMP/planned" | tr '\n' ' ')
+		[ -z "$_unplanned" ] && pass "every open issue in $REPO appears in the plan" \
+			|| fail "open issue(s) missing from the plan: $_unplanned"
+		# A closed issue left in the plan is the dangerous direction: it
+		# presents finished or abandoned work as scheduled work.
+		[ -z "$_stale" ] && pass "no closed issue appears in the plan as active work" \
+			|| fail "plan lists issue(s) that are not open: $_stale"
+		if [ ! -s "$TMP/live" ] && [ ! -s "$TMP/planned" ]; then
+			pass "live backlog and plan are both empty — a valid state, not a vacuous check"
 		fi
 	else
-		fail "gh is authenticated but the issue query for $REPO failed — this check must not pass on an error"
+		fail "gh is authenticated but the issue query for $REPO did not return a JSON array — this check must not pass on an error"
 	fi
 elif [ "${SENTINEL_SHIELD_REQUIRE_LIVE_BACKLOG:-0}" = "1" ]; then
 	# The governance path. `ci-backlog-reconciliation` sets this, so an unauthenticated run
