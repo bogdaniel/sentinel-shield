@@ -15,7 +15,7 @@ INPUT="reports/raw/focused-tests.json"
 
 usage() {
 	cat <<'EOF'
-Usage: focused-tests.sh [--input <path>] [--tool-name <name>]
+Usage: focused-tests.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized focused-tests report.
 Maps .focused_test_violations -> focused_test_violations and
 .skipped_test_marker_violations -> skipped_test_marker_violations.

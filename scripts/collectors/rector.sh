@@ -25,7 +25,7 @@ INPUT="reports/raw/rector.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: rector.sh [--input <path>] [--tool-name <name>]
+Usage: rector.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a Rector JSON report.
 Advisory: reports suggestion counts, contributes 0 to all gated counters.
 EOF

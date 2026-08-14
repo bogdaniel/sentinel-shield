@@ -28,7 +28,7 @@ INPUT="reports/raw/dead-code.json"
 
 usage() {
 	cat <<'EOF'
-Usage: dead-code.sh [--input <path>] [--tool-name <name>]
+Usage: dead-code.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized dead-code report.
 Maps .violations (or .dead_code_count) -> dead_code_violations; .dead_code_count ->
 informational dead_code_count.

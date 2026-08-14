@@ -35,7 +35,7 @@ INPUT="reports/raw/acceptance-tests.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: acceptance-tests.sh [--input <path>] [--tool-name <name>]
+Usage: acceptance-tests.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized acceptance-tests report.
 EOF
 }

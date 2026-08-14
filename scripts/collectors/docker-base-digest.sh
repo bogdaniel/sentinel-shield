@@ -15,7 +15,7 @@ INPUT="reports/raw/docker-base-digest.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: docker-base-digest.sh [--input <path>] [--tool-name <name>]
+Usage: docker-base-digest.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object for the Docker base-image digest audit.
 Input: array of un-digested base findings. Count -> unsafe_docker.
 EOF

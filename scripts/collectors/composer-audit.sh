@@ -17,7 +17,7 @@ INPUT="reports/raw/composer-audit.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: composer-audit.sh [--input <path>] [--tool-name <name>]
+Usage: composer-audit.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for `composer audit --format=json`.
 EOF
 }

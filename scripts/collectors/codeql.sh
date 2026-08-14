@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
 		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --fixture-evidence) FIXTURE=1; shift ;;
-  -h|--help) echo "Usage: codeql.sh [--input <path>] [--tool-name <name>] [--fixture-evidence]"; exit 0 ;;
+  -h|--help) echo "Usage: codeql.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_collector_guard "$TOOL" "$INPUT"

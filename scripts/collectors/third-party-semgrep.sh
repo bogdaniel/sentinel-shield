@@ -24,7 +24,7 @@ INPUT="reports/raw/third-party-semgrep.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: third-party-semgrep.sh [--input <path>] [--tool-name <name>]
+Usage: third-party-semgrep.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object for a third-party suspicious-code Semgrep
 report (.results[]), counting by metadata.sentinel_shield_category.
 EOF

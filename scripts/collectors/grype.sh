@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do case "$1" in
 		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
   --fixture-evidence) FIXTURE=1; shift ;;
-  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
+  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq

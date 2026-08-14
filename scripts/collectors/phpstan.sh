@@ -12,7 +12,7 @@ INPUT="reports/raw/phpstan.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: phpstan.sh [--input <path>] [--tool-name <name>]
+Usage: phpstan.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for PHPStan JSON output.
 EOF
 }

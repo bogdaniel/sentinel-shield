@@ -14,7 +14,7 @@ INPUT="reports/raw/npm-audit.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: npm-audit.sh [--input <path>] [--tool-name <name>]
+Usage: npm-audit.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for `npm audit --json`.
 EOF
 }

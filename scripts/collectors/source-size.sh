@@ -18,7 +18,7 @@ INPUT="reports/raw/source-size.json"
 
 usage() {
 	cat <<'EOF'
-Usage: source-size.sh [--input <path>] [--tool-name <name>]
+Usage: source-size.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized source-size report.
 Maps .large_file_violations -> large_file_violations and .large_function_violations ->
 large_function_violations; .max_file_lines / .max_function_lines -> informational keys.

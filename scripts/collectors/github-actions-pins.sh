@@ -15,7 +15,7 @@ INPUT="reports/raw/github-actions-pins.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: github-actions-pins.sh [--input <path>] [--tool-name <name>]
+Usage: github-actions-pins.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object for the GitHub Actions pin audit.
 Input: array of unpinned-ref findings. Count -> unsafe_github_actions.
 EOF

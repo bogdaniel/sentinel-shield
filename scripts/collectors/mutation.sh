@@ -28,7 +28,7 @@ INPUT="reports/raw/mutation.json"
 
 usage() {
 	cat <<'EOF'
-Usage: mutation.sh [--input <path>] [--tool-name <name>]
+Usage: mutation.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized mutation report.
 Maps .violations -> mutation_score_violations, .score_percent -> informational
 mutation_score_percent.

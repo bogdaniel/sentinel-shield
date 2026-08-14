@@ -30,7 +30,7 @@ INPUT="reports/raw/test-change-evidence.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: test-change-evidence.sh [--input <path>] [--tool-name <name>]
+Usage: test-change-evidence.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized test-change-evidence report.
 EOF
 }

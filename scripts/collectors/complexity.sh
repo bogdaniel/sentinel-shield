@@ -30,7 +30,7 @@ INPUT="reports/raw/complexity.json"
 
 usage() {
 	cat <<'EOF'
-Usage: complexity.sh [--input <path>] [--tool-name <name>]
+Usage: complexity.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized complexity report.
 Maps .violations -> complexity_violations; .max_complexity/.average_complexity ->
 informational complexity_max / complexity_average.

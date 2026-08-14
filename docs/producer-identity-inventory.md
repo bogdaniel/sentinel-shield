@@ -18,14 +18,14 @@ and `TOOL_TABLE` in `scripts/build-security-summary.sh` at master `99054cc4`.
 record's `.producer.tool`. The collectors pass `$TOOL`, which `--tool-name` sets — and
 `build-security-summary.sh` invokes them with the **emitted channel name**:
 
-```
+```text
 sh coverage.sh --input php-coverage.json --tool-name php_coverage
 ```
 
 So a record written by `scripts/runners/php-coverage.sh` — which can only name itself — is
 refused:
 
-```
+```text
 execution record names tool 'php-coverage', not 'php_coverage'
 ```
 
@@ -37,7 +37,7 @@ builder chooses to name or merge its channel.
 **Resolved.** Collectors now take two independent parameters, and the builder passes both
 because it already holds both:
 
-```
+```text
 --tool-name    "$emit"   the CHANNEL      presentation, renamable, shareable
 --producer-key "$key"    the PRODUCER     verified identity, stamped into producer.tool
 ```
@@ -77,7 +77,7 @@ The prerequisite was framed as *producer identity vs channel identity*. The inve
 third axis: **the runner script name is not the producer key**, except for the three
 `*-coverage` runners.
 
-```
+```text
 infection.sh   →  runs Infection  →  produces tkey php-mutation  →  channel php_mutation
    script            backend              producer key                 channel
 ```
@@ -110,7 +110,7 @@ is what an operator needs in order to interpret the numbers.
 
 Two **distinct producer keys** emit one channel:
 
-```
+```text
 php-style      ─┐
                 ├─>  php_style
 php-cs-fixer   ─┘
@@ -130,7 +130,7 @@ producers ever shared a channel. Both now assert `php_style`.
 
 ## The invariant this establishes
 
-```
+```text
 Presentation normalization may merge or rename channels.
 It must never rewrite execution identity.
 ```

@@ -186,6 +186,26 @@ _shared=$(awk -F'|' 'NF>=4 && $1 !~ /^#/ && $4 != "" {print $4}' "$BUILD" | sort
 if [ -n "$_shared" ]; then
 	_keys=$(awk -F'|' -v c="$_shared" '$4==c{printf "%s ", $1}' "$BUILD")
 	pass "channel '$_shared' is emitted by distinct producers ($_keys) — provenance must not use it"
+
+	# Reading TOOL_TABLE proves the CONFIGURATION allows a shared channel. It does not prove the
+	# builder keeps those producers distinguishable in the EVIDENCE, which is the actual claim.
+	# So run both producers together through the builder and inspect what it emits.
+	_sd="$TMP/shared/reports/raw"; rm -rf "$TMP/shared"; mkdir -p "$_sd"
+	printf '%s' '{"totals":{"errors":0}}' > "$_sd/php-style.json"
+	printf '%s' '[]' > "$_sd/php-cs-fixer.json"
+	( cd "$TMP/shared" && sh "$BUILD" --raw-dir "$_sd" --output "$TMP/shared/s.json" ) >/dev/null 2>&1 || true
+	_got=$(jq -r '[.tools.php_style.producers[]?.producer] | sort | join(",")' "$TMP/shared/s.json" 2>/dev/null || printf '')
+	if [ "$_got" = "php-cs-fixer,php-style" ]; then
+		pass "builder keeps both producers distinguishable under one channel (php_style -> $_got)"
+	else
+		fail "php_style did not retain both producer identities through the builder (got '${_got:-absent}')"
+	fi
+	# One entry per producer, each carrying its own report digest: the collapse this prevents is
+	# a later report silently overwriting an earlier one while its counts stay in the aggregate.
+	_ndig=$(jq -r '[.tools.php_style.producers[]?.sha256] | unique | length' "$TMP/shared/s.json" 2>/dev/null || printf 0)
+	[ "$_ndig" -ge 2 ] \
+		&& pass "each producer under the shared channel carries its own report digest ($_ndig distinct)" \
+		|| fail "the shared channel collapsed its producers to $_ndig distinct digest(s)"
 else
 	fail "no shared channel found in TOOL_TABLE — the many-to-one premise is unsupported"
 fi
@@ -260,6 +280,10 @@ for k in $SECURITY; do
 	_st=$(f "$(build "$k")" ".tools.$_ch.status")
 	case "$_st" in
 	pass | fail | findings) fail "AC2 $k: a partial report after exit 3 produced a verdict ($_st)" ;;
+	# An EMPTY status also matches `*`. A missing TOOL_TABLE entry or absent builder output
+	# would therefore satisfy this criterion by producing nothing at all — the same vacuity
+	# guarded in AC1, which this case originally lacked.
+	"") fail "AC2 $k: channel '$_ch' is absent from the summary — this assertion would pass vacuously" ;;
 	*) pass "AC2 $k: partial report + exit 3 -> $_st" ;;
 	esac
 done
@@ -370,12 +394,21 @@ for k in $SECURITY; do
 	stage "$k" "$(native_report "$k")"
 	record "$k" "$TMP/staging/$k.json" timed-out 124
 	out=$(build "$k")
-	_s="$(f "$out" ".tools.$_ch.status")/$(f "$out" ".tools.$_ch.evidence.execution.completed")"
+	_cs=$(f "$out" ".tools.$_ch.status")
+	_s="$_cs/$(f "$out" ".tools.$_ch.evidence.execution.completed")"
 	printf '    %-18s timed-out -> %s\n' "$k" "$_s"
+	# Four ABSENT channels all produce the identical shape "/", so consistency would hold
+	# vacuously across collectors that emitted nothing. Require presence first.
+	if [ -z "$_cs" ]; then
+		fail "AC6 $k: channel '$_ch' is absent from the summary — consistency cannot be judged"
+		continue
+	fi
 	[ -z "$_shape" ] && _shape="$_s"
 	[ "$_s" = "$_shape" ] || fail "AC6 $k answers a timed-out scan as '$_s'; the first collector answered '$_shape'"
 done
-[ -n "$_shape" ] && pass "AC6: all four migrated collectors answer identically through the builder ($_shape)"
+[ -n "$_shape" ] \
+	&& pass "AC6: all four migrated collectors answer identically through the builder ($_shape)" \
+	|| fail "AC6: no collector produced a status — the consistency claim is untested"
 
 printf '\n--- a quality producer through the builder ---\n'
 _qk=php-coverage; _qch=$(channel_of "$_qk")

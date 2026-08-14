@@ -13,7 +13,7 @@ INPUT="reports/raw/debug-code.json"
 
 usage() {
 	cat <<'EOF'
-Usage: debug-code.sh [--input <path>] [--tool-name <name>]
+Usage: debug-code.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized debug-code report.
 Maps .debug_code_violations -> debug_code_violations.
 EOF

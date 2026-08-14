@@ -29,7 +29,7 @@ INPUT="reports/raw/diff-coverage.json"
 
 usage() {
 	cat <<'EOF'
-Usage: diff-coverage.sh [--input <path>] [--tool-name <name>]
+Usage: diff-coverage.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized diff-coverage report.
 Maps .violations -> changed_lines_coverage_violations; .changed_lines_coverage_percent ->
 informational.

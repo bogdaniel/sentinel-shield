@@ -14,7 +14,7 @@ INPUT="reports/raw/hadolint.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: hadolint.sh [--input <path>] [--tool-name <name>]
+Usage: hadolint.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a Hadolint JSON report.
 EOF
 }

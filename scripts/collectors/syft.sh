@@ -26,7 +26,7 @@ INPUT="reports/raw/syft.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: syft.sh [--input <path>] [--tool-name <name>]
+Usage: syft.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a Syft SBOM report.
 Reports package inventory size; contributes 0 to all vulnerability counters.
 EOF

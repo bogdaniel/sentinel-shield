@@ -15,7 +15,7 @@ INPUT="reports/raw/actionlint.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: actionlint.sh [--input <path>] [--tool-name <name>]
+Usage: actionlint.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for actionlint output.
 Canonical input: { "errors": N, "warnings": N }. A native error array is also accepted.
 EOF

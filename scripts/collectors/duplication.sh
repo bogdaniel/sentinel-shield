@@ -29,7 +29,7 @@ INPUT="reports/raw/duplication.json"
 
 usage() {
 	cat <<'EOF'
-Usage: duplication.sh [--input <path>] [--tool-name <name>]
+Usage: duplication.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized duplication report.
 Maps .violations -> duplication_violations; .duplication_percent -> informational.
 EOF

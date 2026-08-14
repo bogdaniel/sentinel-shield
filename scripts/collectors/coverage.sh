@@ -30,7 +30,7 @@ INPUT="reports/raw/coverage.json"
 
 usage() {
 	cat <<'EOF'
-Usage: coverage.sh [--input <path>] [--tool-name <name>]
+Usage: coverage.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized coverage report.
 Maps threshold violations -> coverage_threshold_violations, regression ->
 coverage_regression, and percentages -> informational coverage_*_percent keys.

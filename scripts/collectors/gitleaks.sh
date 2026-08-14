@@ -12,7 +12,7 @@ INPUT="reports/raw/gitleaks.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: gitleaks.sh [--input <path>] [--tool-name <name>]
+Usage: gitleaks.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a Gitleaks JSON report.
 EOF
 }

@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
   --producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --report-kind) KIND="${2:?--report-kind requires a value}"; shift 2 ;;
-  -h|--help) echo "Usage: zap.sh [--input <path>] [--report-kind baseline|full] [--tool-name <name>]"; exit 0 ;;
+  -h|--help) echo "Usage: zap.sh [--input <path>] [--report-kind baseline|full] [--tool-name <name>] [--producer-key <key>]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 # Resolve the report kind: explicit --report-kind wins; else auto-detect from the input
