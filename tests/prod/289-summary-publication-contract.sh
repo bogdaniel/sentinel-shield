@@ -205,6 +205,8 @@ sh "$SELECT" --mode report-only --summary "$CX2/security-summary.json" --example
 	>"$CX2/log" 2>&1 || true
 check "an existing NON-summary file is not replaced by the fallback" \
 	"$(cat "$CX2/security-summary.json")" "not json at all"
+# sentinel-shield-harness: observation-only — the invariant is asserted by the `check` above;
+# this only reports which refusal message the fallback emitted.
 if grep -q 'never replaces an existing summary' "$CX2/log"; then
 	pass "  and the refusal says the fallback never replaces an existing file"
 else

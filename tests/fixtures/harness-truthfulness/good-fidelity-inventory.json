@@ -1,0 +1,33 @@
+{
+  "schema": "sentinel-shield/invocation-fidelity@1",
+  "purpose": "VALID CONTROL for tests/prod/306 detector D5. Every mandatory subject names a covering suite that exists, and no direct-only suite names itself.",
+  "rule": "(fixture)",
+  "suites": [
+    {
+      "suite": "tests/prod/fixture-a.sh",
+      "subject": "a mandatory subject covered elsewhere",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "direct-only",
+      "named_gap": "none",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    },
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "covered through the builder by itself",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    }
+  ]
+}

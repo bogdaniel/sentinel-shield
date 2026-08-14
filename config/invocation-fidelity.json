@@ -1,0 +1,116 @@
+{
+  "schema": "sentinel-shield/invocation-fidelity@1",
+  "purpose": "Which evidence-critical suites exercise the PRODUCTION invocation path, and which exercise a component directly. Required by #345: a component test is insufficient when production wraps that component with a transformation.",
+  "transform_vocabulary": {
+    "identity": "the orchestrator renames or remaps the identity passed to the component (build-security-summary.sh passes the channel as --tool-name and the producer as --producer-key)",
+    "configuration": "the orchestrator resolves or overrides configuration the component would otherwise read",
+    "scope": "the orchestrator changes what the component analyses",
+    "aggregation": "the orchestrator merges several producers into one channel or summary field",
+    "none": "no shipped orchestrator materially transforms this contract"
+  },
+  "rule": "When orchestrator_transforms is anything other than 'none' AND production_path_mandatory is true, the SUBJECT must be exercised through that orchestrator by at least one suite, named in subject_covered_through_orchestrator_by. A suite whose own coverage_status is 'direct-only' may NOT name itself; a suite that does drive the production layer may.",
+  "suites": [
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "the four #310 security collectors (codeql, dependency-check, grype, osv-scanner)",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none for identity. Backend provenance is not covered because it is not implemented (#204 C2).",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    },
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "php-coverage as an engineering-quality producer",
+      "direct_collector_coverage": false,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "only one quality producer is driven through the builder; the other five are covered directly only.",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    },
+    {
+      "suite": "tests/prod/117-execution-provenance.sh",
+      "subject": "grype execution provenance, and the four collectors' parity (section C)",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "direct-only",
+      "named_gap": "This suite invokes collectors directly. It was the suite that let #310 ship with AC6 unmet, because the builder renames the identity it passes. Its cases are now ALSO covered through the builder by 304; this row records that the direct coverage remains and is a supplement.",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    },
+    {
+      "suite": "tests/prod/118-quality-evidence.sh",
+      "subject": "all six engineering-quality producers: missing counts, contradictions, scope/config binding",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": false,
+      "coverage_status": "direct-only",
+      "named_gap": "The builder does not transform the count/contradiction contract, only identity \u2014 which 304 covers. Promoting 118 to the builder path is not required by that reasoning, and is recorded rather than assumed."
+    },
+    {
+      "suite": "tests/prod/269-gate-correctness.sh",
+      "subject": "collector gate correctness across quality producers",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": false,
+      "coverage_status": "direct-only",
+      "named_gap": "Same reasoning as 118."
+    },
+    {
+      "suite": "tests/prod/270-quality-gates.sh",
+      "subject": "builder aggregation of quality evidence, per-stack coverage, missing-evidence flags",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity",
+        "aggregation"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none known.",
+      "subject_covered_through_orchestrator_by": "tests/prod/270-quality-gates.sh"
+    },
+    {
+      "suite": "tests/prod/116-normalized-evidence.sh",
+      "subject": "the normalized-evidence trust boundary and the C1 tri-state matrix",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": false,
+      "coverage_status": "direct-only",
+      "named_gap": "The matrix is a library contract with no orchestrator transformation; 116 calls ne_status_consistency directly, which is the only place its strictness arm is observable."
+    },
+    {
+      "suite": "tests/prod/302-dead-gate-reachability.sh",
+      "subject": "the observed-execution enforcement gate in strict/regulated",
+      "direct_collector_coverage": false,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "none"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered-at-enforcer",
+      "named_gap": "The layer that transforms this contract is enforce-gates, not the builder; 302 and 304 both drive it with controls.",
+      "subject_covered_through_orchestrator_by": "tests/prod/302-dead-gate-reachability.sh"
+    }
+  ]
+}
