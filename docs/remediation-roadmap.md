@@ -1,14 +1,14 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `c190386e051b7bc407ec835721f884096c927473` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **175 open issues** = **160 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `6380e3b2ff8d01d6f421397fd84dc6bee7a2795c` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **174 open issues** = **159 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
-**Full acceptance evidence recorded for:** #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
+**Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
 
-**Open or reopened from findings surfaced BY the work:** #310 (reopened), #315, #316, #317, #318, #320, #323, #324, #344, #345. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
-### #310 — closed four times, reopened five, and the fifth reopening is the important one
+### #310 — closed six times; only the sixth rests on production-path evidence
 
 The transitions, in order:
 
@@ -16,12 +16,17 @@ The transitions, in order:
 | --- | --- | --- |
 | 1 | deliberate | rested on a criterion that was **false** — the enforcement gate could never fire |
 | 2 | deliberate | criterion 5 audited **as a whole** rather than case by case, missing "non-zero exit with no report" |
-| 3 | **accidental** | #330's body said *"I closed #310 twice"*; GitHub reads `closed #310` as a closing keyword regardless of prose |
+| 3 | **accidental** | #330's body used the phrase *"I clos&#8203;ed #310 twice"*; GitHub reads that keyword-plus-reference as a directive regardless of the surrounding prose |
 | 4 | **accidental** | #333, a PR **describing** trap 3, repeated the keyword and closed the issue again |
+| 5 | **accidental** | #343, the PR restoring the issue as open work, wrote a hyphenated form of the keyword before the reference in its Rollback section — GitHub matched it **inside the hyphenated word** |
 
-It is now **OPEN again, `status:partial`** — and this time not because of a prose accident.
+It is now **CLOSED, `status:verified`**, on the sixth closure and the first that rests on production-path evidence.
 
-**The production path fails AC6.** `build-security-summary.sh` invokes collectors with the emitted channel name, and the collectors let `--tool-name` overwrite the identity they hand to `ne_execution_verify`:
+Closures 3, 4 and 5 were all the prose trap, and each taught a narrower rule than the last: the keyword need not be a standalone word, and a PR *describing* the trap is not exempt from it. Publication now runs a mechanical scan of the diff, commit messages, PR body and branch name for a closing keyword before an issue reference, including hyphenated and embedded forms. It refused a draft of #346's body for exactly that reason.
+
+Closures 1 and 2 were audit failures. So was the state after them: the issue was **verified as unmet again** after closure 4, because AC6 failed on the production path — `--tool-name` set both the presentation channel and the verified provenance identity, so `osv-scanner` and `dependency-check` rejected their own observed execution records while every test passed. The producer/channel identity split repaired it, and the six-criterion audit was redone through `build-security-summary.sh` on merged master.
+
+**What closure 4 missed — the production path failed AC6.** `build-security-summary.sh` invokes collectors with the emitted channel name, and the collectors let `--tool-name` overwrite the identity they hand to `ne_execution_verify`:
 
 ```
 audits/osv-scanner.sh   ->  record producer.tool = "osv-scanner"
@@ -57,7 +62,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **160 findings remain open, 123 of them P0.** Nine have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345). The two newest are self-directed: #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **159 findings remain open, 123 of them P0.** Nine have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345). The two newest are self-directed: #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -68,7 +73,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
-| M1 — Evidence Trust Foundation | #287 | 20 | 14 | #182 **done**; **#310 REOPENED** — AC6 fails on the production path (`--tool-name` overwrites provenance identity for osv-scanner and dependency-check); **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
+| M1 — Evidence Trust Foundation | #287 | 19 | 14 | #182 **done**; #310 **done** — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 16 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 63 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
