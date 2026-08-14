@@ -15,7 +15,7 @@ INPUT="reports/raw/focused-tests.json"
 
 usage() {
 	cat <<'EOF'
-Usage: focused-tests.sh [--input <path>] [--tool-name <name>]
+Usage: focused-tests.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized focused-tests report.
 Maps .focused_test_violations -> focused_test_violations and
 .skipped_test_marker_violations -> skipped_test_marker_violations.
@@ -26,6 +26,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--input) INPUT="${2:?--input requires a value}"; shift 2 ;;
 		--tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; log_error "unknown argument: $1"; exit 2 ;;
 	esac

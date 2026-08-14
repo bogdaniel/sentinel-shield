@@ -18,7 +18,7 @@ INPUT="reports/raw/source-size.json"
 
 usage() {
 	cat <<'EOF'
-Usage: source-size.sh [--input <path>] [--tool-name <name>]
+Usage: source-size.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized source-size report.
 Maps .large_file_violations -> large_file_violations and .large_function_violations ->
 large_function_violations; .max_file_lines / .max_function_lines -> informational keys.
@@ -29,6 +29,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--input) INPUT="${2:?--input requires a value}"; shift 2 ;;
 		--tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; log_error "unknown argument: $1"; exit 2 ;;
 	esac

@@ -35,7 +35,7 @@ INPUT="reports/raw/acceptance-tests.json"
 # usage — print CLI usage/help to stdout.
 usage() {
 	cat <<'EOF'
-Usage: acceptance-tests.sh [--input <path>] [--tool-name <name>]
+Usage: acceptance-tests.sh [--input <path>] [--tool-name <name>] [--producer-key <key>]
 Emit a Sentinel Shield collector object (stdout) for a normalized acceptance-tests report.
 EOF
 }
@@ -44,6 +44,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--input) INPUT="${2:?--input requires a value}"; shift 2 ;;
 		--tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
 		-h | --help) usage; exit 0 ;;
 		*) usage >&2; log_error "unknown argument: $1"; exit 2 ;;
 	esac

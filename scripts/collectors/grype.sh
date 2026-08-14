@@ -20,15 +20,28 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/normalized-evidence.sh
 . "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="grype"
+# #310/#204: PRODUCER is the VERIFIED EXECUTION IDENTITY and is captured HERE, before any
+# argument is parsed, so no presentation argument can overwrite or influence it.
+#
+# TOOL is the CHANNEL — the summary key this evidence is aggregated under. The builder renames
+# it per stack (grype -> grype), and several producers may legitimately share one
+# channel (php-style and php-cs-fixer both emit php_style). PRODUCER is what actually ran.
+#
+# These were ONE variable. `--tool-name` set both, so build-security-summary.sh — which invokes
+# collectors with the channel — made ne_execution_verify demand a record naming the channel,
+# while the audit that wrote the record named the producer. osv-scanner and dependency-check
+# rejected their own real execution records in production for exactly that reason.
+PRODUCER="grype"
 INPUT="reports/raw/grype.json"
 PROVENANCE=""
 FIXTURE=0
 while [ $# -gt 0 ]; do case "$1" in
   --input) INPUT="${2:?--input requires a value}"; shift 2 ;;
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
+		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
   --fixture-evidence) FIXTURE=1; shift ;;
-  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
+  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq
@@ -98,7 +111,7 @@ fi
 # report's digest, so a non-zero exit, a timeout, a kill, or stale output from an earlier
 # successful run are all refused here rather than normalized into clean evidence.
 if [ "$NE_KIND" != fixture ]; then
-	if ! ne_execution_verify "$TOOL" "$INPUT"; then
+	if ! ne_execution_verify "$PRODUCER" "$INPUT"; then
 		log_warn "$TOOL: $NE_EXEC_REASON; status=execution-error"
 		ss_emit_collector "$TOOL" "execution-error" \
 			"$(jq -n --arg r "$NE_EXEC_REASON" '{status:"execution-error", health:"untrusted-evidence", reason:$r, critical:0, high:0, medium:0}')" \
@@ -116,7 +129,7 @@ if [ "$NE_KIND" = fixture ]; then
 else
 	NE_TRUST_TYPE="$NE_TRUST_NATIVE"
 fi
-ENVELOPE=$(ne_envelope "$TOOL" "$INPUT" "grype-json" "$NE_TRUST_TYPE" \
+ENVELOPE=$(ne_envelope "$PRODUCER" "$INPUT" "grype-json" "$NE_TRUST_TYPE" \
 	"$(printf '%s' "$OV" | jq '{counts:{critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}}')")
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --arg h "$HEALTH" --argjson p "$PROV" \
 	--argjson e "$ENVELOPE" --argjson np "$([ "$NE_KIND" = fixture ] && echo true || echo false)" \
