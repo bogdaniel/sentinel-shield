@@ -83,12 +83,12 @@ render() {
 
 # Exactly two accepted forms. Any other argument is refused BEFORE anything is written, so a
 # typo cannot silently regenerate or truncate the document.
+[ $# -le 1 ] || { echo "usage: render-producer-contracts.sh [--check]" >&2; exit 2; }
 case "${1:-}" in
 "")      : ;;
 --check) render; exit 0 ;;
 *)       echo "usage: render-producer-contracts.sh [--check]" >&2; exit 2 ;;
 esac
-[ $# -le 1 ] || { echo "usage: render-producer-contracts.sh [--check]" >&2; exit 2; }
 
 # Render to a temporary file and replace atomically. A failed render must leave the existing
 # document byte-identical rather than truncating it, which `render > "$OUT"` would do.

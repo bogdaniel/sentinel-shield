@@ -31,7 +31,7 @@
 #  D2   pipeline-fed loop mutates verdict state    bad-pipeline-loop.sh               good-pipeline-loop.sh
 #  D3   pass in BOTH arms of one conditional       bad-both-branches-pass.sh          good-both-branches-pass.sh
 #  D4   unanchored identity grep                   bad-loose-substring.sh             good-loose-substring.sh
-#  D5   mandatory subject covered only directly    bad-fidelity-inventory.json        good-fidelity-inventory.json
+#  D5   direct-only entry citing itself            bad-fidelity-inventory.json        good-fidelity-inventory.json
 #  D6   status taken from a downstream consumer    bad-pipeline-status.sh             good-pipeline-status.sh
 #  D7   rejection with no acceptance control       bad-rejection-without-control.sh   good-rejection-without-control.sh
 #  D8   detector accepts zero targets              bad-zero-targets.sh                good-zero-targets.sh
@@ -168,20 +168,6 @@ done
 # ===========================================================================
 # Bounded: comment lines are stripped first, and only the arms of the SAME conditional at the
 # same nesting are compared. A nested branch inside one arm is not treated as the other arm.
-# BOUNDED GRAMMAR, stated precisely. Recognised as structure only when a keyword stands as a
-# WORD at a command position:
-#
-#   `if ` opening a frame            at line start, or after `; ` / `then ` / `else ` / `do `
-#   `else` / `elif` closing an arm   as a bare word
-#   `fi` closing a frame             as a bare word, anywhere on the line
-#
-# Comments are stripped except the observation-only marker. Quoted prose is NOT parsed away —
-# instead the tokens must appear as words at command positions, so `pass "... if ... else ..."`
-# contributes nothing. A single-line conditional opens and closes within the same line and must
-# leave the persistent depth unchanged. EOF with an open frame is a FAILURE, not a silent pass.
-#
-# NOT SUPPORTED, and rejected rather than misread: two independent conditionals on one physical
-# line. That form is reported so it cannot be silently misinterpreted.
 # BOUNDED GRAMMAR — MULTILINE ONLY. Single-line conditionals are NOT analysed, and the reason
 # is recorded here rather than left as a preference.
 #
@@ -213,19 +199,27 @@ done
 # CONSEQUENCE: a both-branches-pass conditional written entirely on one line is NOT detected.
 # The bypass fixture is retained so the gap stays visible and testable.
 #
-# An inline `if ...; then pass "a"; else pass "b"; fi` is NOT detected. Extending the grammar to
-# cover it was attempted and reverted: every version that detected the inline fixture also
-# flagged eight real suites, and I could not establish within this pass whether those were
-# genuine inline both-pass instances or artefacts of the tokenizer. Shipping a security-relevant
-# detector whose findings I cannot classify would be worse than the gap it closes.
+# SELF-CLOSING LINES ARE SKIPPED, NOT OPENED. A line-start `if ...; fi` previously incremented
+# depth and never decremented it, so every later assertion in that file attached to a stale
+# frame and was never evaluated — silent under-analysis, not a reported gap. Skipping such lines
+# outright removes the leak: measured across tests/prod, files carrying a leaked frame at EOF
+# fall from 53 to 29. It cannot create a finding, only stop losing them.
 #
-# Recorded rather than silently misread, which is the failure mode this suite exists to prevent.
-# The gap is: a both-branches-pass conditional written entirely on one line passes D3 today.
+# THE REMAINING 29 are the irreducible case above: an `if` inside a multi-line single-quoted
+# awk/jq program, which has no `fi` at all. Closing those needs multi-line quote state, which is
+# real shell parsing and outside this grammar. The detector is therefore SILENT on the tail of
+# those files, not immune — stated so the number is auditable rather than implied to be zero.
+#
+# THE STANDING GAP, unchanged: a both-branches-pass conditional written entirely on one line is
+# NOT detected. The bypass fixture is retained so it stays visible and testable.
 d3() { # d3 <script> -> 1 when an if/else calls pass in both arms
 	# Comments are stripped EXCEPT the observation-only marker, which is itself a comment: a
 	# plain comment filter removed the very declaration this detector must read.
 	awk '!/^[[:space:]]*#/ || /sentinel-shield-harness/' "$1" | awk '
 		/sentinel-shield-harness: observation-only/ { obs = 1 }
+		# A conditional that opens and closes on the same line is skipped entirely: it is outside
+		# this grammar, and opening a frame for it would leak depth for the rest of the file.
+		/^[[:space:]]*if / && /(^|;|[[:space:]])fi([[:space:]]*;|[[:space:]]*$)/ { next }
 		/^[[:space:]]*if / { depth++; a[depth] = 0; b[depth] = 0; fa[depth] = 0; fb[depth] = 0; inelse[depth] = 0; ob[depth] = obs; obs = 0 }
 		depth > 0 && /^[[:space:]]*else[[:space:]]*$/ { inelse[depth] = 1 }
 		depth > 0 && /(^|[^_[:alnum:]])pass[[:space:]]+"/ {
@@ -250,12 +244,17 @@ d3 "$FIX/bad-both-branches-pass.sh" && fail "D3: an if/else calling pass in both
 	|| pass "D3: an if/else calling pass in both arms is rejected"
 d3 "$FIX/good-both-branches-pass.sh" && pass "D3 CONTROL: pass/fail arms are accepted" \
 	|| fail "D3 CONTROL: the pass/fail conditional was rejected — D3 proves nothing"
-# Single-line conditionals are outside the bounded grammar. The fixture is retained so the gap
-# is visible and testable when the grammar is extended; it is NOT asserted as detected, because
-# it is not.
-d3 "$FIX/bad-inline-both-branches-pass.sh" \
-	&& pass "D3: the single-line form is documented as out of scope and is not claimed as detected" \
-	|| pass "D3: the single-line form was detected (grammar has since been extended)"
+# THE DOCUMENTED BYPASS, asserted as a fact rather than accommodated.
+#
+# This was briefly written as `d3 ... && pass ... || pass ...` — `pass` in both branches, which
+# is precisely the defect D3 detects, committed inside D3's own test. It asserts the CURRENT
+# state instead: the single-line form is NOT detected. When the grammar is extended this
+# assertion fails, which is the correct signal to update it and the claim together.
+if d3 "$FIX/bad-inline-both-branches-pass.sh"; then
+	pass "D3: the single-line bypass is present and documented — the fixture is not detected"
+else
+	fail "D3 now detects the single-line form; update this assertion, tests/prod/306's grammar note, the fixture README and the PR claim together"
+fi
 for _g in good-inline-conditional good-nested-conditional good-keywords-in-prose good-inline-then-multiline; do
 	d3 "$FIX/$_g.sh" && pass "D3 CONTROL: $_g is accepted" \
 		|| fail "D3 CONTROL: $_g was rejected — the detector misreads a legitimate form"
@@ -372,8 +371,11 @@ d5_resolve() {
 }
 
 d5 "$FIX/bad-fidelity-inventory.json" \
-	&& fail "D5: an inventory with an uncovered mandatory subject was accepted" \
-	|| pass "D5: an uncovered mandatory subject, and a direct-only entry citing itself, are rejected"
+	&& fail "D5: a direct-only entry citing itself as its own orchestrator coverage was accepted" \
+	|| pass "D5: a direct-only entry citing itself as its own orchestrator coverage is rejected"
+d5 "$FIX/bad-fidelity-missing-citation.json" \
+	&& fail "D5: a mandatory subject naming no covering suite was accepted" \
+	|| pass "D5: a mandatory subject naming no covering suite is rejected"
 d5 "$FIX/bad-fidelity-duplicate-pair.json" \
 	&& fail "D5: a duplicate (suite, subject) pair was accepted" \
 	|| pass "D5: a duplicate composite pair is rejected"

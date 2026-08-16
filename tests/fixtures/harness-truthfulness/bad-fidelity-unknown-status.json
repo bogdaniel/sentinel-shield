@@ -1,6 +1,6 @@
 {
   "schema": "sentinel-shield/invocation-fidelity@1",
-  "purpose": "BROKEN FIXTURE for D5: coverage_status outside the closed vocabulary.",
+  "purpose": "BROKEN FIXTURE for D5, SINGLE FAULT: coverage_status is outside the closed vocabulary. Every other rule is satisfied.",
   "rule": "(fixture)",
   "suites": [
     {

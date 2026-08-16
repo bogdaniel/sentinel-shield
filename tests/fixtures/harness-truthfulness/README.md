@@ -16,13 +16,26 @@ Each detector has a `bad-*` fixture it must reject and a `good-*` control it mus
 entirely on one line. **D3 does not detect it.** The fixture is retained so the bypass stays
 visible and testable rather than forgotten.
 
-An inline grammar was attempted and reverted. It flagged eight real suites; all eight were
-classified as tokenizer artefacts — `if` inside multi-line single-quoted awk/jq programs, which
-have no `fi`, leaking frames that later assertions attached to. Line-based quote stripping
-cannot see that a line sits inside a program quoted from an earlier line.
+An inline grammar was attempted and reverted. It flagged eight real suites, classified before
+any further parser change: seven were tokenizer artefacts — `if` inside multi-line single-quoted
+awk/jq programs, which have no `fi`, leaking frames that later assertions attached to — and the
+eighth was `301`'s two `observation-only` sites, which the real detector exempts and the probe
+did not. None was a genuine inline both-branches-pass. Line-based quote stripping cannot see
+that a line sits inside a program quoted from an earlier line.
 
-The multiline detector shares that latent weakness. It reports zero findings today, but it is
-silent rather than immune.
+D3 now **skips** a line that opens and closes a conditional by itself instead of opening a frame
+for it. That is not detection — the gap above is unchanged — but it stops the leak: across
+`tests/prod`, files carrying a leaked frame at EOF fall from 53 to 29. The remaining 29 are the
+quoted-program case, which needs multi-line quote state. The multiline detector is therefore
+silent on the tail of those files rather than immune, and reports zero findings today.
+
+## D5 negative fixtures are single-fault
+
+Each `bad-fidelity-*.json` violates exactly one rule and satisfies every other, so a rejection
+is attributable to the fault under test. A fixture carrying two faults would still be rejected
+if the rule it was named for stopped working. Rule (d) has two limbs and therefore two fixtures:
+`bad-fidelity-inventory.json` (a direct-only entry citing itself) and
+`bad-fidelity-missing-citation.json` (a mandatory subject naming no covering suite).
 
 ## Known gap: D9 does not resolve the diagnostic-argument boundary
 
