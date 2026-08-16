@@ -43,7 +43,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/php-mutation.json` |
 | backends | `infection` |
 | backend selection | executable probe: SENTINEL_SHIELD_INFECTION_BIN, else vendor/bin/infection, else infection on PATH |
-| current process observation | **unobserved** — the invocation ends in `\\|\\| true`; the process status is discarded at the call site |
+| current process observation | **unobserved** — the invocation ends in `\|\| true`; the process status is discarded at the call site |
 | current report observation | proves **report-readable** when the Infection JSON logger parses and .stats.msi is numeric. Does NOT prove: that the mutation run covered the full target, or that it terminated normally |
 | upstream exit semantics | **partially-known** — known: the runner passes --min-msi=0 SPECIFICALLY so Infection never fails the process on a low score; the threshold decision belongs to Sentinel via quality.mutation.min_score. Established from shipped code, so this part is a repository-owned contract.; unknown: which exit codes Infection uses for infrastructure failure versus completion; missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited |
 | normative completion requirement | An observed process outcome separating a completed mutation run from one aborted, killed or timed out after flushing a partial JSON logger. A present .stats.msi is NOT sufficient. |
@@ -70,7 +70,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/js-mutation.json` |
 | backends | `stryker` |
 | backend selection | executable probe: SENTINEL_SHIELD_STRYKER_BIN, else node_modules/.bin/stryker |
-| current process observation | **unobserved** — the invocation ends in `\\|\\| true` |
+| current process observation | **unobserved** — the invocation ends in `\|\| true` |
 | current report observation | proves **report-readable** when the Stryker JSON report parses and yields a mutation score. Does NOT prove: completion of the mutation run |
 | upstream exit semantics | **unknown** — missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited |
 | normative completion requirement | An observed outcome separating a completed Stryker run from one aborted after emitting a partial JSON report. |
@@ -97,7 +97,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/php-complexity.json` |
 | backends | `phpmd` |
 | backend selection | executable probe: SENTINEL_SHIELD_PHPMD_BIN, else vendor/bin/phpmd, else phpmd on PATH |
-| current process observation | **unobserved** — the invocation ends in `\\|\\| true` |
+| current process observation | **unobserved** — the invocation ends in `\|\| true` |
 | current report observation | proves **report-readable** when the PHPMD JSON parses and a violation count can be derived. Does NOT prove: that PHPMD analysed every file in scope |
 | upstream exit semantics | **unknown** — suspected: PHPMD is widely understood to exit non-zero when violations are found, which would make a non-zero exit a FINDINGS signal rather than a failure; missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited; caution: recording the suspicion as a rule would be the invention this inventory forbids; C2 must establish it against the version an adopter pins |
 | normative completion requirement | An observed outcome separating 'analysis completed and found violations' from 'analysis failed'. For this producer that CANNOT be exit_code==0 without first establishing the exit table. |
@@ -124,7 +124,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/php-duplication.json` |
 | backends | `phpcpd` |
 | backend selection | executable probe: SENTINEL_SHIELD_PHPCPD_BIN, else vendor/bin/phpcpd, else phpcpd on PATH |
-| current process observation | **unobserved** — the invocation ends in `\\|\\| true` |
+| current process observation | **unobserved** — the invocation ends in `\|\| true` |
 | current report observation | proves **report-readable** when the phpcpd output parses into a duplication percentage. Does NOT prove: full-scope analysis |
 | upstream exit semantics | **unknown** — missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited |
 | normative completion requirement | An observed outcome separating completion-with-duplication from analysis failure. |
@@ -151,7 +151,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/js-duplication.json` |
 | backends | `jscpd` |
 | backend selection | executable probe: SENTINEL_SHIELD_JSCPD_BIN, else node_modules/.bin/jscpd |
-| current process observation | **unobserved** — the invocation ends in `\\|\\| true` |
+| current process observation | **unobserved** — the invocation ends in `\|\| true` |
 | current report observation | proves **report-readable** when .statistics.total.percentage is numeric in the jscpd JSON report. Does NOT prove: that every file in scope was compared |
 | upstream exit semantics | **unknown** — missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited |
 | normative completion requirement | An observed outcome separating a completed comparison from an aborted one that still wrote statistics. |
@@ -178,7 +178,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/js-dead-code.json` |
 | backends | `knip`, `ts-prune` |
 | backend selection | knip first when node_modules/.bin/knip is executable; otherwise ts-prune from node_modules/.bin or PATH. Selected at run time, and the choice CHANGES THE COUNTING SEMANTICS. |
-| current process observation | **mixed** — unobserved - the knip invocation ends in `\\|\\| true` OBSERVED - a ts-prune failure is caught and leaves the report absent rather than producing a clean one |
+| current process observation | **mixed** — unobserved - the knip invocation ends in `\|\| true` OBSERVED - a ts-prune failure is caught and leaves the report absent rather than producing a clean one |
 | current report observation | proves **report-readable** when knip: .files and .issues arrays present, every issue category summed. ts-prune: line count excluding '(used in module)'.. Does NOT prove: comparability between the two backends - knip sums issue categories, ts-prune counts output lines, so one producer key can carry two non-comparable numbers |
 | upstream exit semantics | **unknown** — missing_source: no composer.lock / package-lock.json in this repository: these are consumer-side dev dependencies, so no pinned version exists here whose documented exit table could be cited |
 | normative completion requirement | An observed outcome per backend, AND the backend identity recorded in the evidence: a knip->ts-prune switch changes what the number means and can happen between CI runs purely by dependency installation. |
@@ -232,7 +232,7 @@ Canonical, machine-readable completion semantics for the nine engineering-qualit
 | native report | `reports/raw/js-coverage.json` |
 | backends | `consumer package.json coverage script` |
 | backend selection | the package.json script 'test:coverage' then 'coverage', run through the detected package manager. The BACKEND IS THE CONSUMER'S SCRIPT and is not knowable from this repository. |
-| current process observation | **unobserved** — the package-manager invocation ends in `\\|\\| true` |
+| current process observation | **unobserved** — the package-manager invocation ends in `\|\| true` |
 | current report observation | proves **report-readable-and-non-empty** when an Istanbul json-summary exists and is non-empty; the runner clears any stale summary FIRST so a previous run cannot be normalized as current evidence. Does NOT prove: that the coverage run completed |
 | upstream exit semantics | **unknown** — reason: the backend is an arbitrary consumer-defined npm script, so there is no exit table to cite; missing_source: by construction - the script is defined in the adopter's package.json |
 | normative completion requirement | An observed outcome for the consumer's script, plus the identity of the script actually run. Completion is a property of the Istanbul summary being finalized, not of the script's exit status. |

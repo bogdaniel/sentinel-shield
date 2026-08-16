@@ -1,6 +1,6 @@
 {
   "schema": "sentinel-shield/invocation-fidelity@1",
-  "purpose": "VALID CONTROL for D5. One suite carries two distinct subjects \u2014 legitimate \u2014 and every mandatory subject names a covering suite that exists. No direct-only entry cites itself.",
+  "purpose": "BROKEN FIXTURE for D5: the same (suite, subject) pair appears twice, so a lookup cannot resolve one entry.",
   "rule": "(fixture)",
   "suites": [
     {
@@ -18,20 +18,7 @@
     },
     {
       "suite": "tests/prod/304-producer-identity-production-path.sh",
-      "subject": "a quality producer",
-      "direct_collector_coverage": true,
-      "builder_orchestrator_coverage": true,
-      "orchestrator_transforms": [
-        "identity"
-      ],
-      "production_path_mandatory": true,
-      "coverage_status": "covered",
-      "named_gap": "none",
-      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
-    },
-    {
-      "suite": "tests/prod/117-execution-provenance.sh",
-      "subject": "grype execution provenance",
+      "subject": "the four security collectors",
       "direct_collector_coverage": true,
       "builder_orchestrator_coverage": false,
       "orchestrator_transforms": [

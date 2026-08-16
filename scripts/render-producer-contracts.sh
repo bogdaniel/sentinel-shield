@@ -17,7 +17,9 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
 
 render() {
 	jq -r '
-	def esc: gsub("\\|"; "\\\\|") | gsub("\n"; " ");
+	# ONE backslash before a cell pipe. The previous replacement emitted two, which renders a
+	# literal backslash beside a pipe that still breaks the cell.
+	def esc: gsub("\\|"; "\\|") | gsub("\n"; " ");
 	"<!-- GENERATED FILE — DO NOT EDIT.",
 	"     Source: config/producer-completion-contracts.json",
 	"     Render: scripts/render-producer-contracts.sh",
@@ -79,4 +81,27 @@ render() {
 	' "$SRC"
 }
 
-if [ "${1:-}" = "--check" ]; then render; else render > "$OUT"; echo "wrote $OUT"; fi
+# Exactly two accepted forms. Any other argument is refused BEFORE anything is written, so a
+# typo cannot silently regenerate or truncate the document.
+case "${1:-}" in
+"")      : ;;
+--check) render; exit 0 ;;
+*)       echo "usage: render-producer-contracts.sh [--check]" >&2; exit 2 ;;
+esac
+[ $# -le 1 ] || { echo "usage: render-producer-contracts.sh [--check]" >&2; exit 2; }
+
+# Render to a temporary file and replace atomically. A failed render must leave the existing
+# document byte-identical rather than truncating it, which `render > "$OUT"` would do.
+_tmp="$OUT.tmp.$$"
+if ! render > "$_tmp" 2>/dev/null; then
+	rm -f "$_tmp"
+	echo "render failed; $OUT left unchanged" >&2
+	exit 1
+fi
+if [ ! -s "$_tmp" ]; then
+	rm -f "$_tmp"
+	echo "render produced an empty document; $OUT left unchanged" >&2
+	exit 1
+fi
+mv "$_tmp" "$OUT"
+echo "wrote $OUT"

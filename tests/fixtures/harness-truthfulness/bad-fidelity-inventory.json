@@ -1,6 +1,6 @@
 {
   "schema": "sentinel-shield/invocation-fidelity@1",
-  "purpose": "BROKEN FIXTURE for tests/prod/306 detector D5. A mandatory production-path subject with no named covering suite, and a direct-only suite naming itself.",
+  "purpose": "BROKEN FIXTURE for D5: a mandatory subject with no covering suite named, and a direct-only entry citing itself.",
   "rule": "(fixture)",
   "suites": [
     {
@@ -13,11 +13,11 @@
       ],
       "production_path_mandatory": true,
       "coverage_status": "direct-only",
-      "named_gap": "none declared"
+      "named_gap": "none"
     },
     {
       "suite": "tests/prod/fixture-b.sh",
-      "subject": "a direct-only suite naming itself",
+      "subject": "a direct-only entry citing itself",
       "direct_collector_coverage": true,
       "builder_orchestrator_coverage": false,
       "orchestrator_transforms": [

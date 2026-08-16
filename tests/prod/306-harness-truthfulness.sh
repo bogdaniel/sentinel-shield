@@ -133,7 +133,15 @@ d2() { # d2 <script> -> 1 when a pipeline-fed loop mutates verdict state
 	# `sentinel-shield-harness: observation-only` on the line above the `if`. Declaring beats
 	# inferring: 301 reports locale and filesystem behaviour this way, and 289 reports which
 	# refusal message appeared, in each case with a `check` doing the actual work.
-	grep -vE '^[[:space:]]*#[^s]' "$1" | awk '
+	# POLICY B, chosen deliberately: D2 has NO observation-only exemption. A pipeline-fed loop
+	# that mutates verdict state is never a legitimate pattern here — the parent never sees the
+	# mutation, so the suite's verdict is wrong regardless of intent. An exemption would be a
+	# hole, not a convenience, so none exists and no comment claims one.
+	#
+	# The filter was `#[^s]`, which is wrong in both directions: it discarded a marker comment
+	# (the character after `#` is a space, not `s`) and preserved any comment whose second
+	# character happened to be `s`. Plain comment stripping is what this detector needs.
+	awk '!/^[[:space:]]*#/' "$1" | awk '
 		/\|[[:space:]]*while /            { inloop = 1 }
 		inloop && /(FAILS|FAILED|RC|_rc|VERDICT)[[:space:]]*=/ { found = 1 }
 		inloop && /^[[:space:]]*done/     { inloop = 0 }
@@ -160,6 +168,59 @@ done
 # ===========================================================================
 # Bounded: comment lines are stripped first, and only the arms of the SAME conditional at the
 # same nesting are compared. A nested branch inside one arm is not treated as the other arm.
+# BOUNDED GRAMMAR, stated precisely. Recognised as structure only when a keyword stands as a
+# WORD at a command position:
+#
+#   `if ` opening a frame            at line start, or after `; ` / `then ` / `else ` / `do `
+#   `else` / `elif` closing an arm   as a bare word
+#   `fi` closing a frame             as a bare word, anywhere on the line
+#
+# Comments are stripped except the observation-only marker. Quoted prose is NOT parsed away —
+# instead the tokens must appear as words at command positions, so `pass "... if ... else ..."`
+# contributes nothing. A single-line conditional opens and closes within the same line and must
+# leave the persistent depth unchanged. EOF with an open frame is a FAILURE, not a silent pass.
+#
+# NOT SUPPORTED, and rejected rather than misread: two independent conditionals on one physical
+# line. That form is reported so it cannot be silently misinterpreted.
+# BOUNDED GRAMMAR — MULTILINE ONLY. Single-line conditionals are NOT analysed, and the reason
+# is recorded here rather than left as a preference.
+#
+# THE EIGHT FLAGGED SITES, CLASSIFIED. An experimental inline grammar flagged eight real suites.
+# All eight were classified before any further parser change, by tracing frame depth rather than
+# reading matched lines:
+#
+#   110, 111, 113, 261, 287, 292, 306   TOKENIZER ARTEFACT — unbalanced frames (depth 1..6 at EOF)
+#   301                                 EXPECTED — the two `observation-only` sites, which the
+#                                       real detector exempts and the probe did not
+#
+#   Not one was a genuine both-branches-pass.
+#
+# THE MECHANISM. tests/prod/113 line 27 is
+#
+#     if (line != "all" && line != "ci-core") print line
+#
+# which is AWK syntax inside a single-quoted awk program spanning many lines. awk's `if` has no
+# `fi`, so the frame opens and never closes, and every later assertion attaches to a stale
+# frame. Line-based quote stripping cannot see that a line sits inside a quoted program that
+# began on an earlier line — detecting that requires multi-line quote-state tracking, which is
+# real shell parsing and outside this bounded grammar.
+#
+# WHAT THIS MEANS FOR THE MULTILINE DETECTOR BELOW, stated plainly: it shares the same latent
+# weakness. It currently reports zero findings across the repository, but that is because the
+# stale frames it also accumulates happen not to produce the pass/pass-without-fail combination
+# — it is SILENT here, not immune.
+#
+# CONSEQUENCE: a both-branches-pass conditional written entirely on one line is NOT detected.
+# The bypass fixture is retained so the gap stays visible and testable.
+#
+# An inline `if ...; then pass "a"; else pass "b"; fi` is NOT detected. Extending the grammar to
+# cover it was attempted and reverted: every version that detected the inline fixture also
+# flagged eight real suites, and I could not establish within this pass whether those were
+# genuine inline both-pass instances or artefacts of the tokenizer. Shipping a security-relevant
+# detector whose findings I cannot classify would be worse than the gap it closes.
+#
+# Recorded rather than silently misread, which is the failure mode this suite exists to prevent.
+# The gap is: a both-branches-pass conditional written entirely on one line passes D3 today.
 d3() { # d3 <script> -> 1 when an if/else calls pass in both arms
 	# Comments are stripped EXCEPT the observation-only marker, which is itself a comment: a
 	# plain comment filter removed the very declaration this detector must read.
@@ -189,6 +250,20 @@ d3 "$FIX/bad-both-branches-pass.sh" && fail "D3: an if/else calling pass in both
 	|| pass "D3: an if/else calling pass in both arms is rejected"
 d3 "$FIX/good-both-branches-pass.sh" && pass "D3 CONTROL: pass/fail arms are accepted" \
 	|| fail "D3 CONTROL: the pass/fail conditional was rejected — D3 proves nothing"
+# Single-line conditionals are outside the bounded grammar. The fixture is retained so the gap
+# is visible and testable when the grammar is extended; it is NOT asserted as detected, because
+# it is not.
+d3 "$FIX/bad-inline-both-branches-pass.sh" \
+	&& pass "D3: the single-line form is documented as out of scope and is not claimed as detected" \
+	|| pass "D3: the single-line form was detected (grammar has since been extended)"
+for _g in good-inline-conditional good-nested-conditional good-keywords-in-prose good-inline-then-multiline; do
+	d3 "$FIX/$_g.sh" && pass "D3 CONTROL: $_g is accepted" \
+		|| fail "D3 CONTROL: $_g was rejected — the detector misreads a legitimate form"
+done
+# EOF with an open frame is a failure, not a silent pass.
+# `cmd; rc=$?` would terminate this suite under `set -e` before rc is read — the same
+# status-capture family D6 detects. Captured with an if instead.
+
 _d3_bad=""; _d3_n=0
 for _s in "$PRODDIR"/*.sh; do
 	[ -e "$_s" ] || continue
@@ -262,25 +337,81 @@ done < "$TMP/fid"
 	&& pass "D5: every named covering suite exists" \
 	|| fail "D5: named covering suite(s) do not exist:$_d5_missing"
 
-# D5's own broken input and valid control. Without these the detector is only ever run against
-# a passing inventory, so a detector that accepted anything would look identical.
-d5() { # d5 <inventory> -> 1 when a mandatory subject has no valid covering suite
+# D5 keys entries by the COMPOSITE (suite, subject). A lookup by suite alone is ambiguous:
+# one suite legitimately carries several subjects — 304 covers both the security collectors and
+# a quality producer — so "first matching suite" would resolve the wrong row and could report a
+# covered subject as uncovered, or the reverse.
+D5_STATUSES="covered direct-only covered-at-enforcer"
+
+d5() { # d5 <inventory> -> 1 when any rule is violated
+	_inv=$1
+	# (a) suite and subject must both be present and non-empty.
+	jq -e '[.suites[] | select(((.suite // "") == "") or ((.subject // "") == ""))] | length == 0' \
+		"$_inv" >/dev/null 2>&1 || return 1
+	# (b) the composite pair must be unique. Duplicates make a lookup unresolvable.
+	jq -e '[.suites[] | .suite + "\u0000" + .subject] | (length == (unique | length))' \
+		"$_inv" >/dev/null 2>&1 || return 1
+	# (c) coverage_status must be exactly one of the closed vocabulary.
+	jq -e --arg v "$D5_STATUSES" '[.suites[] | select((.coverage_status // "") | IN($v | split(" ")[]) | not)] | length == 0' \
+		"$_inv" >/dev/null 2>&1 || return 1
+	# (d) a mandatory subject must name a covering suite, and a DIRECT-ONLY entry may not cite
+	#     itself as sufficient orchestrator coverage.
 	jq -e '[.suites[]
 		| select(.production_path_mandatory == true)
 		| select(((.subject_covered_through_orchestrator_by // "") == "")
 		         or (.coverage_status == "direct-only" and .subject_covered_through_orchestrator_by == .suite))
-		] | length == 0' "$1" >/dev/null 2>&1 || return 1
+		] | length == 0' "$_inv" >/dev/null 2>&1 || return 1
 	return 0
 }
+
+# d5_resolve <inventory> <suite> <subject> — echo the count of entries matching BOTH keys.
+# Used to prove the composite lookup: with a suite-only lookup the duplicate-suite case returns
+# 2 and the wrong-subject case returns 1, both of which are wrong answers.
+d5_resolve() {
+	jq -r --arg s "$2" --arg j "$3" '[.suites[] | select(.suite == $s and .subject == $j)] | length' "$1"
+}
+
 d5 "$FIX/bad-fidelity-inventory.json" \
 	&& fail "D5: an inventory with an uncovered mandatory subject was accepted" \
-	|| pass "D5: an inventory with an uncovered mandatory subject is rejected"
+	|| pass "D5: an uncovered mandatory subject, and a direct-only entry citing itself, are rejected"
+d5 "$FIX/bad-fidelity-duplicate-pair.json" \
+	&& fail "D5: a duplicate (suite, subject) pair was accepted" \
+	|| pass "D5: a duplicate composite pair is rejected"
+d5 "$FIX/bad-fidelity-unknown-status.json" \
+	&& fail "D5: an unknown coverage_status was accepted" \
+	|| pass "D5: a coverage_status outside the closed vocabulary is rejected"
+d5 "$FIX/bad-fidelity-empty-subject.json" \
+	&& fail "D5: an entry with an empty subject was accepted" \
+	|| pass "D5: an empty subject is rejected — it cannot form a composite key"
 d5 "$FIX/good-fidelity-inventory.json" \
-	&& pass "D5 CONTROL: a fully-covered inventory is accepted" \
-	|| fail "D5 CONTROL: the valid inventory was rejected — D5 proves nothing"
+	&& pass "D5 CONTROL: one suite with several subjects is accepted" \
+	|| fail "D5 CONTROL: the valid inventory was rejected — the rejections above prove nothing"
 d5 "$FIDELITY" \
-	&& pass "D5: the shipped invocation-fidelity inventory satisfies the rule" \
-	|| fail "D5: the shipped inventory has an uncovered mandatory subject"
+	&& pass "D5: the shipped invocation-fidelity inventory satisfies every rule" \
+	|| fail "D5: the shipped inventory violates a D5 rule"
+
+# COMPOSITE LOOKUP, proven rather than asserted.
+_n_ok=$(d5_resolve "$FIX/good-fidelity-inventory.json" "tests/prod/304-producer-identity-production-path.sh" "a quality producer")
+[ "$_n_ok" = "1" ] \
+	&& pass "D5: (suite, subject) resolves exactly one entry where the suite carries several" \
+	|| fail "D5: the composite lookup resolved $_n_ok entries, expected 1"
+_n_wrong=$(d5_resolve "$FIX/good-fidelity-inventory.json" "tests/prod/304-producer-identity-production-path.sh" "a subject that does not exist")
+[ "$_n_wrong" = "0" ] \
+	&& pass "D5: a correct suite with the wrong subject resolves nothing" \
+	|| fail "D5: a wrong subject still resolved $_n_wrong entries"
+_n_suite_only=$(jq -r '[.suites[] | select(.suite == "tests/prod/304-producer-identity-production-path.sh")] | length' "$FIX/good-fidelity-inventory.json")
+[ "$_n_suite_only" -ge 2 ] \
+	&& pass "D5: a suite-only lookup would resolve $_n_suite_only entries — which is why the key is composite" \
+	|| fail "D5: the control inventory no longer has a suite with several subjects, so the composite key is untested"
+# A lookup with no subject must not silently resolve anything.
+_n_nosubj=$(d5_resolve "$FIX/good-fidelity-inventory.json" "tests/prod/304-producer-identity-production-path.sh" "")
+[ "$_n_nosubj" = "0" ] \
+	&& pass "D5: a lookup without a subject resolves nothing" \
+	|| fail "D5: an empty subject resolved $_n_nosubj entries"
+_n_zero=$(d5_resolve "$FIX/good-fidelity-inventory.json" "tests/prod/does-not-exist.sh" "nothing")
+[ "$_n_zero" = "0" ] \
+	&& pass "D5: an unknown (suite, subject) resolves zero entries" \
+	|| fail "D5: an unknown pair resolved $_n_zero entries"
 
 # ===========================================================================
 # DETECTOR 6 (executable) — pipeline status taken from a downstream consumer
@@ -412,7 +543,30 @@ fail 'a jq/awk program in single quotes is program text, not a diagnostic'"
 # Both subchecks use awk with index() rather than a regex containing the dangerous characters.
 # `$` is an ERE anchor, so a naive pattern silently never matched — and escaping the sequence
 # into a double-quoted regex would have put the hazard back into this file.
-_d9_scan() { # _d9_scan <file> <2-char-sequence> -> 1 when found unescaped in a diagnostic arg
+# BOUNDED GRAMMAR — the diagnostic argument boundary is NOT resolved. Recorded, not implied.
+#
+# The detector begins at the FIRST double quote on a line carrying a helper call. If an
+# unrelated quoted expression precedes the diagnostic, that earlier string is scanned instead.
+# `bad-d9-earlier-quote.sh` demonstrates the bypass and is retained for that reason.
+#
+# AN ANCHORED VERSION WAS IMPLEMENTED AND REVERTED. It located the helper token, then that
+# token's first quote, then its closing unescaped quote. It flagged 19 shipped files where the
+# previous version reported zero. All were classified before reverting:
+#
+#   tests/prod/116 line 273   case "$(_sc pass 0 observed-incomplete)" in
+#                             `pass` is an ARGUMENT WORD to _sc, not a helper call
+#   scripts/doctor.sh line 543  warn "... (pass --profile or add a 'profiles:' list) ..."
+#                             `pass` is PROSE inside a double-quoted message
+#
+# Every flag was an artefact of the same root cause: deciding whether a `pass`/`fail` token is a
+# CALL requires knowing whether that position is inside a double-quoted string, and quotes open
+# on one line and close on another. That is multi-line quote-state tracking — real shell
+# parsing, and the same limit that stopped D3.
+#
+# So the claim is narrowed rather than the parser replaced: D9 detects a live backtick in the
+# first quoted string on a helper-call line, which covers the defect that occurred, and does not
+# claim argument-boundary precision it cannot demonstrate.
+_d9_scan() { # _d9_scan <file> <sequence> -> 1 when found unescaped in a diagnostic argument
 	awk -v seq="$2" '
 		/^[[:space:]]*#/ { next }
 		/(^|[^_[:alnum:]])(pass|fail|log_error|log_warn|log_info)[[:space:]]+"/ {
