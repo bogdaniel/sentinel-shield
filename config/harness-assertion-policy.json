@@ -1,0 +1,229 @@
+{
+  "schema": "sentinel-shield/harness-assertion-policy@1",
+  "purpose": "The canonical assertion syntax policy for the evidence-critical test harness (#345 Part C). tests/prod/307 enforces it over the registered suites only.",
+  "why": "tests/prod/306's D3 and D9 both fail for one reason: they must interpret arbitrary shell. D3 cannot see a both-branches-pass conditional written on one line, and D9 cannot resolve a helper's argument boundary when an unrelated quoted expression precedes it. Two line-oriented AWK extensions were attempted and reverted; each flagged eight real suites and classification found zero genuine defects. The answer is not a third parser. It is to remove the ambiguous syntax from the assertion surface so the properties become checkable without parsing.",
+  "library": "tests/lib/assert.sh",
+  "canonical_helpers": [
+    {
+      "name": "assert_true",
+      "signature": "assert_true <label> <command...>",
+      "semantics": "the command must exit 0"
+    },
+    {
+      "name": "assert_false",
+      "signature": "assert_false <label> <command...>",
+      "semantics": "the command must exit non-zero"
+    },
+    {
+      "name": "assert_accept",
+      "signature": "assert_accept <label> <command...>",
+      "semantics": "a component ACCEPTS valid input; counted as a control"
+    },
+    {
+      "name": "assert_reject",
+      "signature": "assert_reject <label> <command...>",
+      "semantics": "a component REFUSES bad input; permitted for non-security assertions only"
+    },
+    {
+      "name": "assert_rejection_with_control",
+      "signature": "assert_rejection_with_control <label> -- <reject-command...> -- <accept-command...>",
+      "semantics": "proves the refusal AND that valid input is still accepted, in one call. The required form for a security-critical rejection: a rejection whose control is missing cannot be expressed."
+    },
+    {
+      "name": "assert_equal",
+      "signature": "assert_equal <label> <expected> <actual>",
+      "semantics": "string equality; reports expected-versus-got itself"
+    },
+    {
+      "name": "assert_contains_exact",
+      "signature": "assert_contains_exact <label> <needle> <file>",
+      "semantics": "a WHOLE-LINE fixed-string match (grep -qxF), never a substring — the #345 defect 4 family"
+    },
+    {
+      "name": "assert_precondition",
+      "signature": "assert_precondition <label> <command...>",
+      "semantics": "a missing tool or file aborts immediately; not an assertion about the subject"
+    },
+    {
+      "name": "assert_summary",
+      "signature": "assert_summary <suite label>",
+      "semantics": "the epilogue: non-zero on any failure, and non-zero when zero assertions ran"
+    }
+  ],
+  "rules": [
+    {
+      "id": "P1",
+      "rule": "A registered suite defines no pass()/fail() of its own and calls neither directly. Every verdict comes from a canonical helper.",
+      "removes": "the D3 class. With no conditional able to reach a verdict, a both-branches-pass assertion is not detected better — it becomes unwritable.",
+      "enforcement": "grep for a pass/fail definition or call at a command position in the registered suite; the count must be zero. No parsing."
+    },
+    {
+      "id": "P2",
+      "rule": "A line carrying a canonical helper call contains no command substitution at all — neither $( ) nor a backtick.",
+      "removes": "the D9 class. D9 had to guess where argument one ended; this rule needs no boundary at all, because the prohibition covers the whole line.",
+      "enforcement": "a line matching a registered helper name at a command position must not contain `$(` or a backtick. No parsing, and no false negatives: a substitution anywhere on the line fails.",
+      "cost": "a diagnostic detail must be computed into a variable before the helper call. Three real sites needed this — two in 305 and one in 303 — and each was a genuine instance of the pattern D9 exists to find.",
+      "no_exception_decision": "P2 flagged an ESCAPED backtick in one of tests/prod/307's own labels. The text was inert -- the shell would never have executed it. The label was reworded rather than the rule relaxed, because an escape-aware exception recreates exactly the parsing ambiguity D9 died of: deciding whether a backtick is live requires knowing the quoting context it sits in. Rewording costs a few words; the exception would cost the mechanical absoluteness that makes the rule checkable at all. This decision is scoped to canonical helper lines in registered suites and is NOT generalised to arbitrary legacy prose."
+    },
+    {
+      "id": "P3",
+      "rule": "In a suite declared security_critical, a rejection uses assert_rejection_with_control. Bare assert_reject is refused there.",
+      "removes": "the D7 class for registered suites: a rejection satisfied by a component that refuses everything, which is how #310's enforcement gate shipped dead.",
+      "enforcement": "grep for assert_reject at a command position in a security-critical registered suite; the count must be zero."
+    },
+    {
+      "id": "P4",
+      "rule": "A registered suite sources the library and ends with assert_summary.",
+      "removes": "the #345 defect 1 family: the counter lives in the library, so a suite cannot lose its verdict state in a subshell, and the zero-assertion case exits non-zero.",
+      "enforcement": "grep for the source line and for the assert_summary call."
+    },
+    {
+      "id": "P5",
+      "rule": "Embedded awk, jq, sed or any other language is NOT assertion logic and is never inspected as shell.",
+      "removes": "the fragility that broke both previous attempts. A line is assertion logic only if it begins with a registered helper name; an `if` inside a multi-line single-quoted awk program does not begin with one, so it is excluded structurally rather than by quote stripping.",
+      "enforcement": "structural: the helper-name anchor is the only thing that makes a line in scope. No quote state is tracked anywhere in this policy."
+    },
+    {
+      "id": "P6",
+      "rule": "The library itself must not eval, and must never place a label into a command position.",
+      "removes": "the possibility that the canonical path reintroduces what P2 forbids.",
+      "enforcement": "grep the library for eval and for the label variable in a command position."
+    },
+    {
+      "id": "P7",
+      "rule": "An inline conditional may still choose WHICH assertion applies, or report an observation. It may not reach a verdict.",
+      "removes": "the masquerade case: setup and observation logic is legitimate and is not banned, but it cannot produce a PASS.",
+      "enforcement": "implied by P1 — a conditional has no verdict primitive available to it in a registered suite."
+    },
+    {
+      "id": "P8",
+      "rule": "The registered set is enumerated here and is non-empty; every registered suite must exist.",
+      "removes": "the zero-target case, in which the policy is enforced over nothing and reports success.",
+      "enforcement": "tests/prod/307 asserts a non-zero registered count and the existence of each entry."
+    }
+  ],
+  "not_banned": [
+    {
+      "what": "inline conditionals repository-wide",
+      "why": "105 inline conditionals exist across 36 of 98 suites. Converting them wholesale was not proven safe or proportionate, and most are setup or observation rather than assertions. The policy applies to the registered set only."
+    },
+    {
+      "what": "`if` inside awk/jq programs",
+      "why": "those are separate languages. They are excluded structurally by P5, not by quote stripping — which is precisely what made the previous detector attempts fragile."
+    }
+  ],
+  "registered_suites": [
+    {
+      "suite": "tests/prod/303-producer-identity-inventory.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the producer/channel identity boundary — the #310 defect surface",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/305-producer-completion-contracts.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the canonical producer-completion contract behind #204 C2",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the enforcement suite is subject to its own policy; a policy its own suite could not satisfy would not be enforceable",
+      "residual_gap": "none"
+    }
+  ],
+  "excluded_suites": [
+    {
+      "suite": "tests/prod/306-harness-truthfulness.sh",
+      "migration_status": "excluded-by-design",
+      "security_critical": true,
+      "reason": "306's SUBJECT is bare pass/fail text. Its detectors read `pass`/`fail` occurrences in fixtures and in the corpus, and its own fixtures must call them. Registering it would forbid the very syntax it exists to inspect.",
+      "residual_gap": "306 keeps the legacy bounded detectors, including the retained D3 inline bypass and D9 earlier-quote bypass. Those gaps remain exactly as recorded on #345."
+    },
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "migration_status": "pending",
+      "security_critical": true,
+      "reason": "56 verdict sites driving build-security-summary.sh end to end. Not migrated in this PR: it is the largest evidence-critical suite and converting it alongside two others in one change was not judged low-risk.",
+      "residual_gap": "legacy syntax; the D3 and D9 bounded detectors still apply, and its rejection assertions are not yet control-paired by construction."
+    },
+    {
+      "suite": "tests/prod/117-execution-provenance.sh",
+      "migration_status": "pending",
+      "security_critical": true,
+      "reason": "45 verdict sites. Same reasoning as 304.",
+      "residual_gap": "legacy syntax; covered only by the bounded detectors."
+    }
+  ],
+  "corpus_census": {
+    "measured_on_master": "7eb02d21f6485a251a9ae04a72bf31896c2b7a71",
+    "suites": 98,
+    "verdict_sites": 3247,
+    "inline_conditionals": 105,
+    "suites_with_inline_conditionals": 36,
+    "multiline_if_openings": 1033,
+    "suites_embedding_awk_or_jq": 84,
+    "note": "Two different counts, kept separate on purpose. 3247 and 56 are both STATIC counts of call sites, so they compare directly: 56 of 3247 verdict sites are canonical. The 180 figure is RUNTIME assertions, higher because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered.",
+    "migrated_static_call_sites_this_pr": 118,
+    "runtime_assertions_executed_by_migrated_suites": 180,
+    "canonical_coverage_percent": 3.63,
+    "coverage_statement": "118 canonical static verdict sites of 3247 total = 3.63% canonical coverage. The policy is NOT repository-wide."
+  },
+  "migration_findings": {
+    "why": "These are DEFECTS the migration surfaced, not formatting it tidied. Each is recorded with the shape it had, the shape it now has, a control, a runnable mutation proving the canonical form notices the regression, and the rule that catches it.",
+    "findings": [
+      {
+        "id": "MF1",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P2",
+        "prior_shape": "fail \"the rendered document and the committed document differ — one of them was hand-edited: $(diff \"$TMP/rendered.md\" \"$DOC\" | head -3 | tr '\\n' ' ')\"",
+        "canonical_replacement": "_render_diff=$(diff ...) computed first, then assert_equal \"...\" \"\" \"$_render_diff\"",
+        "why_it_mattered": "a command substitution inside a diagnostic argument — the exact shape D9 exists to find and could not reliably see, because an earlier quoted string on the line defeats its boundary inference",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-305-diff-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF2",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P2",
+        "prior_shape": "pass \"multi-backend producers are present in the inventory ($(printf '%s' \"$_multi\" | tr '\\n' ' '))\"",
+        "canonical_replacement": "_multi_list=$(printf '%s' \"$_multi\" | tr '\\n' ' ') computed first, then assert_true \"... ($_multi_list)\" test -n \"$_multi\"",
+        "why_it_mattered": "same class as MF1, and in a PASS message rather than a failure one — so it executed on every successful run",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-305-printf-tr-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF3",
+        "suite": "tests/prod/303-producer-identity-inventory.sh",
+        "rule": "P2",
+        "prior_shape": "fail \"the published table and the inventory disagree: only-in-doc=[$(comm -23 ...)] only-in-inventory=[$(comm -13 ...)]\"",
+        "canonical_replacement": "_only_doc and _only_inv computed first, then two assert_equal calls comparing each against the empty string",
+        "why_it_mattered": "TWO substitutions in one diagnostic. The legacy detector scans the first quoted string on the line, so neither was reachable by it.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-303-comm-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF4",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P1 (verdict visibility)",
+        "prior_shape": "[ \"$_b\" = \"$_key\" ] && fail \"$_key: backend '$_b' is the producer key\"",
+        "canonical_replacement": "assert_false \"$_key: backend '$_b' is not the producer key\" test \"$_b\" = \"$_key\"",
+        "why_it_mattered": "a ONE-ARMED assertion. It produced a verdict only on failure, so every passing row emitted nothing and was counted by nothing — a reader could not tell the check had run at all, and a loop that silently iterated zero rows was indistinguishable from one that passed.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/legacy-one-armed-fail.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/canonical-one-armed-replacement.sh",
+        "mutation_expectation": "over three correct rows the legacy fixture emits 0 PASS lines and exits 0; the canonical replacement emits 3 and is counted by the library epilogue"
+      }
+    ],
+    "runtime_assertion_counts": {
+      "tests/prod/303-producer-identity-inventory.sh": 65,
+      "tests/prod/305-producer-completion-contracts.sh": 115,
+      "note": "Runtime counts, higher than the static call-site counts because both suites assert inside loops over nine producer rows. Recorded as MINIMUMS in tests/prod/307: passing rows are now individually visible, so a regression that silences them lowers the count."
+    }
+  }
+}
