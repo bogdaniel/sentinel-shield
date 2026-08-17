@@ -1,12 +1,12 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `6380e3b2ff8d01d6f421397fd84dc6bee7a2795c` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **174 open issues** = **159 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `6380e3b2ff8d01d6f421397fd84dc6bee7a2795c` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **175 open issues** = **160 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
 **Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
 
-**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
 ### #310 — closed six times; only the sixth rests on production-path evidence
 
@@ -62,7 +62,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **159 findings remain open, 123 of them P0.** Nine have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345). The two newest are self-directed: #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **160 findings remain open, 123 of them P0.** Ten have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345, #348). The three newest are self-directed: #348 records an e2e harness that returned different verdicts for identical inputs, #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -73,7 +73,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
-| M1 — Evidence Trust Foundation | #287 | 19 | 14 | #182 **done**; #310 **done** — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
+| M1 — Evidence Trust Foundation | #287 | 20 | 14 | #182 **done**; #310 **done** — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 16 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
 | M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 63 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |

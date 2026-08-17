@@ -1,0 +1,20 @@
+{
+  "schema": "sentinel-shield/invocation-fidelity@1",
+  "purpose": "BROKEN FIXTURE for D5, SINGLE FAULT: a direct-only entry cites itself as its own orchestrator coverage. Every other rule is satisfied.",
+  "rule": "(fixture)",
+  "suites": [
+    {
+      "suite": "tests/prod/fixture-b.sh",
+      "subject": "a direct-only entry citing itself",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": false,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "direct-only",
+      "named_gap": "none",
+      "subject_covered_through_orchestrator_by": "tests/prod/fixture-b.sh"
+    }
+  ]
+}

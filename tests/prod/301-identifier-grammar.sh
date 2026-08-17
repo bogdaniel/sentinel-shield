@@ -226,6 +226,8 @@ for _sh in sh dash bash; do
 	command -v "$_sh" >/dev/null 2>&1 || continue
 	_pre=$("$_sh" -c 'case "$1" in *[!a-z0-9-]*) printf reject ;; *) printf accept ;; esac' _ 'Laravel')
 	_post=$("$_sh" -c '. "$1/scripts/lib/sentinel-shield-common.sh"; . "$1/scripts/lib/profile-schema.sh"; if ps_valid_id "$2"; then printf accept; else printf reject; fi' _ "$ROOT" 'Laravel' 2>/dev/null)
+	# sentinel-shield-harness: observation-only — locale-dependent pre-fix behaviour is reported,
+	# not asserted; the invariant is the `check` on the next line.
 	if [ "$_pre" = "accept" ]; then
 		pass "pre-#251 under $_sh: the ranged gate ACCEPTS 'Laravel' (locale collation)"
 	else
@@ -414,6 +416,8 @@ check "mutation applied: the on-disk directory is 'Mixed'" \
 	"$(ls -a "$S/profiles" | grep -Fx 'Mixed' || printf missing)" "Mixed"
 # Is this filesystem case-insensitive? Recorded either way; the dirent check is
 # correct on both, but the DIFFERENTIAL against `[ -f ]` only exists on one.
+# sentinel-shield-harness: observation-only — filesystem case sensitivity is reported, not
+# asserted; the invariant is the `check` on the next line.
 if [ -f "$S/profiles/mixed/profile.manifest.json" ]; then
 	pass "observation: this filesystem is case-INsensitive — pre-#251 [ -f ] matched 'Mixed' for 'mixed'"
 else

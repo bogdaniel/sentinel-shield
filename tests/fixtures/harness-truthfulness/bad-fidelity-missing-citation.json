@@ -1,0 +1,19 @@
+{
+  "schema": "sentinel-shield/invocation-fidelity@1",
+  "purpose": "BROKEN FIXTURE for D5, SINGLE FAULT: a mandatory subject names no covering suite at all. Every other rule is satisfied, so a rejection can only be attributed to the missing citation.",
+  "rule": "(fixture)",
+  "suites": [
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "a mandatory subject naming no covering suite",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none"
+    }
+  ]
+}

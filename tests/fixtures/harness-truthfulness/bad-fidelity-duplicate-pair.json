@@ -1,0 +1,33 @@
+{
+  "schema": "sentinel-shield/invocation-fidelity@1",
+  "purpose": "BROKEN FIXTURE for D5, SINGLE FAULT: the same (suite, subject) pair appears twice. Every other rule is satisfied, so a rejection can only be attributed to the duplicate key.",
+  "rule": "(fixture)",
+  "suites": [
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "the four security collectors",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    },
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "subject": "the four security collectors",
+      "direct_collector_coverage": true,
+      "builder_orchestrator_coverage": true,
+      "orchestrator_transforms": [
+        "identity"
+      ],
+      "production_path_mandatory": true,
+      "coverage_status": "covered",
+      "named_gap": "none",
+      "subject_covered_through_orchestrator_by": "tests/prod/304-producer-identity-production-path.sh"
+    }
+  ]
+}
