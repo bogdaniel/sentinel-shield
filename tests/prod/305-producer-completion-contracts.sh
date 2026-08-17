@@ -27,13 +27,15 @@ DOC="$ROOT/docs/producer-completion-contracts.md"
 RENDER="$ROOT/scripts/render-producer-contracts.sh"
 BUILD="$ROOT/scripts/build-security-summary.sh"
 
-FAILS=0
-pass() { printf 'PASS: %s\n' "$1"; }
-fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
+# CANONICAL ASSERTION SUITE (#345 Part C). Registered in config/harness-assertion-policy.json.
+# Every verdict comes from a declared helper, and no helper line carries a command substitution
+# — the two diagnostics that used to build their detail with `$(diff ...)` and `$(printf ... |
+# tr ...)` now compute it into a variable first. tests/prod/307 enforces both over this file.
+. "$ROOT/tests/lib/assert.sh"
 
-command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
+assert_precondition "jq is available" command -v jq
 for _f in "$SRC" "$DOC" "$RENDER" "$BUILD"; do
-	[ -f "$_f" ] || { fail "missing ${_f#"$ROOT"/}"; exit 1; }
+	assert_precondition "${_f#"$ROOT"/} exists" test -f "$_f"
 done
 
 TMP=$(mktemp -d)
@@ -45,30 +47,24 @@ EXPECTED_PRODUCERS=9
 # --- 0. the document is GENERATED, not maintained ------------------------------------------
 # Regenerate and compare. A hand edit to either side fails here, which is the only thing that
 # makes "canonical source" true rather than aspirational.
-sh "$RENDER" --check > "$TMP/rendered.md" 2>/dev/null || fail "the renderer failed to run"
-if cmp -s "$TMP/rendered.md" "$DOC"; then
-	pass "docs/producer-completion-contracts.md is exactly what the renderer produces from the JSON"
-else
-	fail "the rendered document and the committed document differ — one of them was hand-edited: $(diff "$TMP/rendered.md" "$DOC" | head -3 | tr '\n' ' ')"
-fi
-grep -q 'GENERATED FILE' "$DOC" \
-	&& pass "the document declares itself generated" \
-	|| fail "the document does not warn that it is generated"
+assert_true "the renderer runs" sh "$RENDER" --check
+sh "$RENDER" --check > "$TMP/rendered.md" 2>/dev/null || :
+_render_diff=$(diff "$TMP/rendered.md" "$DOC" 2>/dev/null | head -3 | tr '\n' ' ')
+assert_equal "docs/producer-completion-contracts.md is exactly what the renderer produces from the JSON" \
+	"" "$_render_diff"
+assert_true "the document declares itself generated" grep -q 'GENERATED FILE' "$DOC"
 
 # --- 1. exactly nine rows, and the parser is not vacuous ------------------------------------
 N=$(jq -r '.producers | length' "$SRC")
-[ "$N" -eq "$EXPECTED_PRODUCERS" ] \
-	&& pass "the inventory holds exactly $EXPECTED_PRODUCERS producer rows" \
-	|| fail "the inventory holds $N rows, expected $EXPECTED_PRODUCERS"
+assert_equal "the inventory holds exactly $EXPECTED_PRODUCERS producer rows" "$EXPECTED_PRODUCERS" "$N"
 # A parser that finds nothing must FAIL, never pass vacuously. Everything below iterates the
 # rows, so a zero-row source would otherwise satisfy every loop silently.
-[ "$N" -gt 0 ] || { fail "zero producer rows parsed — every check below would pass vacuously"; exit 1; }
+assert_precondition "at least one producer row parsed — a zero-row source would satisfy every loop below" \
+	test "$N" -gt 0
 
 # --- 2. duplicate producer keys are rejected ------------------------------------------------
 _dupes=$(jq -r '[.producers[].producer_key] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$SRC")
-[ -z "$_dupes" ] \
-	&& pass "producer keys are unique" \
-	|| fail "duplicate producer key(s): $_dupes"
+assert_equal "producer keys are unique" "" "$_dupes"
 
 # --- 3. every row agrees with PRODUCTION CODE ------------------------------------------------
 jq -r '.producers[] | [.producer_key, .runner, .channel, .native_report, (.backends|join(","))] | @tsv' "$SRC" > "$TMP/rows"
@@ -77,47 +73,38 @@ while IFS="$(printf '\t')" read -r _key _runner _chan _report _backends; do
 	[ -n "$_key" ] || continue
 	_rows_seen=$((_rows_seen + 1))
 
-	[ -f "$ROOT/$_runner" ] \
-		&& pass "$_key: runner $_runner exists" \
-		|| fail "$_key: declared runner $_runner does not exist"
+	assert_true "$_key: runner $_runner exists" test -f "$ROOT/$_runner"
 
 	# The runner must declare the report this row claims.
 	_base=${_report#reports/raw/}
-	if grep -qE "^OUTPUT=\"reports/raw/$_base\"" "$ROOT/$_runner" 2>/dev/null; then
-		pass "$_key: the runner writes $_base"
-	else
-		fail "$_key: $_runner does not declare OUTPUT=reports/raw/$_base"
-	fi
+	assert_true "$_key: the runner writes $_base" \
+		grep -qE "^OUTPUT=\"reports/raw/$_base\"" "$ROOT/$_runner"
 
 	# The builder must map this producer key to that report and that channel.
 	_row=$(grep -E "^$_key\|" "$BUILD" | head -1)
-	if [ -z "$_row" ]; then
-		fail "$_key: no TOOL_TABLE row — the producer key does not exist in the builder"
-	else
+	assert_true "$_key: TOOL_TABLE has a row — the producer key exists in the builder" test -n "$_row"
+	if [ -n "$_row" ]; then
 		_t_report=$(printf '%s' "$_row" | awk -F'|' '{print $2}')
 		_t_emit=$(printf '%s' "$_row" | awk -F'|' '{print $4}')
-		[ "$_t_report" = "$_base" ] \
-			&& pass "$_key: builder maps it to $_base" \
-			|| fail "$_key: builder maps it to '$_t_report', the contract says '$_base'"
-		[ "$_t_emit" = "$_chan" ] \
-			&& pass "$_key: builder emits channel $_chan" \
-			|| fail "$_key: builder emits '$_t_emit', the contract says '$_chan'"
+		assert_equal "$_key: builder maps it to $_base" "$_base" "$_t_report"
+		assert_equal "$_key: builder emits channel $_chan" "$_chan" "$_t_emit"
 	fi
 
 	# CHANNEL MUST NOT BE THE PRODUCER. If a row ever declared them equal for a producer the
 	# builder renames, provenance and presentation would have collapsed again.
-	if [ "$_key" = "$_chan" ]; then
-		fail "$_key: producer key and channel are identical in the contract — they are different identities"
-	fi
+	assert_false "$_key: producer key and channel are distinct identities in the contract" \
+		test "$_key" = "$_chan"
 
 	# BACKEND MUST NOT BE THE PRODUCER either.
-	for _b in $(printf '%s' "$_backends" | tr ',' ' '); do
-		[ "$_b" = "$_key" ] && fail "$_key: backend '$_b' is the producer key — a backend cannot stand in for producer identity"
+	# The one-armed `[ ... ] && fail` form is gone: it produced a verdict only on failure, so a
+	# passing row was invisible in the output and uncounted.
+	_blist=$(printf '%s' "$_backends" | tr ',' ' ')
+	for _b in $_blist; do
+		assert_false "$_key: backend '$_b' is not the producer key — a backend cannot stand in for producer identity" \
+			test "$_b" = "$_key"
 	done
 done < "$TMP/rows"
-[ "$_rows_seen" -eq "$N" ] \
-	&& pass "every one of the $N rows was evaluated" \
-	|| fail "only $_rows_seen of $N rows were evaluated"
+assert_equal "every one of the $N rows was evaluated" "$N" "$_rows_seen"
 
 # --- 4. every declared backend is reachable through a real selection branch -------------------
 # Not a name search: knip.sh mentions ts-prune in a 'no tool found' message, so a name grep
@@ -127,41 +114,38 @@ _backend_bad=0
 jq -r '.producers[] | .producer_key as $k | .runner as $r | .backends[] | [$k, $r, .] | @tsv' "$SRC" > "$TMP/backends"
 while IFS="$(printf '\t')" read -r _k _r _b; do
 	[ -n "$_b" ] || continue
+	# The `case` selects WHICH PROPERTY applies to this backend; it does not decide a verdict.
+	# That distinction is the policy: control flow may choose the assertion, only a helper may
+	# reach a conclusion.
+	_rbase=$(basename "$_r")
 	case "$_b" in
 	"consumer package.json coverage script")
 		# The backend is the adopter's script; the reachable evidence is the script probe.
-		grep -qE "for _s in test:coverage coverage" "$ROOT/$_r" \
-			&& pass "$_k: the consumer coverage script is selected by an explicit probe" \
-			|| { fail "$_k: no coverage-script probe found in $_r"; _backend_bad=1; }
+		assert_true "$_k: the consumer coverage script is selected by an explicit probe" \
+			grep -qE "for _s in test:coverage coverage" "$ROOT/$_r"
+		grep -qE "for _s in test:coverage coverage" "$ROOT/$_r" || _backend_bad=1
 		;;
 	*)
-		if grep -qE "(-x [^ ]*$_b\]|-x [^ ]*$_b |command_exists $_b|BIN=\"[^\"]*$_b\"|/$_b\b)" "$ROOT/$_r"; then
-			pass "$_k: backend '$_b' is reachable through a selection branch in $(basename "$_r")"
-		else
-			fail "$_k: backend '$_b' is declared but no selection branch in $_r reaches it"
-			_backend_bad=1
-		fi
+		assert_true "$_k: backend '$_b' is reachable through a selection branch in $_rbase" \
+			grep -qE "(-x [^ ]*$_b\]|-x [^ ]*$_b |command_exists $_b|BIN=\"[^\"]*$_b\"|/$_b\b)" "$ROOT/$_r"
+		grep -qE "(-x [^ ]*$_b\]|-x [^ ]*$_b |command_exists $_b|BIN=\"[^\"]*$_b\"|/$_b\b)" "$ROOT/$_r" || _backend_bad=1
 		;;
 	esac
 done < "$TMP/backends"
-[ "$_backend_bad" -eq 0 ] && pass "every declared backend is reachable"
+assert_equal "every declared backend is reachable" 0 "$_backend_bad"
 
 # --- 5. completion semantics must be present or explicitly unresolved -----------------------
 # A row may say "unknown" — that is a truthful state. What it may NOT do is omit the field, or
 # claim an implementation status the rest of the row contradicts.
 _vocab='implemented partial unobserved unknown'
 _bad_status=$(jq -r --arg v "$_vocab" '.producers[] | select((.implementation_status | IN($v | split(" ")[]))|not) | .producer_key' "$SRC")
-[ -z "$_bad_status" ] \
-	&& pass "every implementation_status is in vocabulary ($_vocab)" \
-	|| fail "out-of-vocabulary implementation_status on: $_bad_status"
+assert_equal "every implementation_status is in vocabulary ($_vocab)" "" "$_bad_status"
 
 for _field in current_process_observation current_report_observation upstream_exit_semantics \
 	normative_completion_requirement report_finalization_condition record_report_binding \
 	no_observation_behavior enforcing_mode_requirement residual_gap; do
 	_missing=$(jq -r --arg f "$_field" '.producers[] | select(has($f)|not) | .producer_key' "$SRC")
-	[ -z "$_missing" ] \
-		&& pass "every row declares $_field" \
-		|| fail "rows missing $_field: $_missing"
+	assert_equal "every row declares $_field" "" "$_missing"
 done
 
 # An UNKNOWN upstream exit table must name what is missing. "unknown" without a reason is a
@@ -170,23 +154,17 @@ _unknown_no_source=$(jq -r '.producers[]
 	| select(.upstream_exit_semantics.status == "unknown")
 	| select((.upstream_exit_semantics.missing_source // "") == "")
 	| .producer_key' "$SRC")
-[ -z "$_unknown_no_source" ] \
-	&& pass "every unknown upstream exit table names its missing source" \
-	|| fail "unknown exit semantics with no missing_source named: $_unknown_no_source"
+assert_equal "every unknown upstream exit table names its missing source" "" "$_unknown_no_source"
 
 # --- 6. a parseable report is never recorded as proof of completion --------------------------
 # This is the #310 lesson in contract form. Every row must state what its report observation
 # does NOT prove.
 _no_caveat=$(jq -r '.producers[] | select((.current_report_observation.does_not_prove // "") == "") | .producer_key' "$SRC")
-[ -z "$_no_caveat" ] \
-	&& pass "every row states what its report observation does NOT prove" \
-	|| fail "rows claiming a report observation with no stated limit: $_no_caveat"
+assert_equal "every row states what its report observation does NOT prove" "" "$_no_caveat"
 _overclaim=$(jq -r '.producers[]
 	| select(.current_report_observation.proves | test("complet|full|success"; "i"))
 	| .producer_key' "$SRC")
-[ -z "$_overclaim" ] \
-	&& pass "no row claims its report observation proves completion or success" \
-	|| fail "row(s) claiming a report proves completion: $_overclaim"
+assert_equal "no row claims its report observation proves completion or success" "" "$_overclaim"
 
 # --- 7. findings exits are not classified as execution failure ------------------------------
 # The producers whose non-zero exit is a FINDINGS or TEST-FAILURE signal must not be described
@@ -200,43 +178,31 @@ _naive=$(jq -r '.producers[]
 	| select(.normative_completion_requirement | test("CANNOT|cannot|must not|never|not be") | not)
 	| select((.upstream_exit_semantics.status // "") != "known")
 	| .producer_key' "$SRC")
-[ -z "$_naive" ] \
-	&& pass "no row asserts exit_code==0 as completion without an established exit table" \
-	|| fail "row(s) asserting a naive exit_code==0 completion rule: $_naive"
+assert_equal "no row asserts exit_code==0 as completion without an established exit table" "" "$_naive"
 
 # The coverage producers must keep the test-runner result separate from report finalization.
 for _cov in php-coverage php-diff-coverage; do
-	_req=$(jq -r --arg k "$_cov" '.producers[] | select(.producer_key == $k) | .normative_completion_requirement' "$SRC")
-	case "$_req" in
-	*"not of the test-runner exit status"*) pass "$_cov: completion is bound to the report, not the test-runner exit" ;;
-	*) fail "$_cov: the contract does not separate report finalization from the test-runner exit status" ;;
-	esac
+	# A `case` glob deciding a verdict is replaced by a fixed-string match over the value as
+	# DATA. grep -qF also removes the glob-metacharacter question the pattern raised.
+	jq -r --arg k "$_cov" '.producers[] | select(.producer_key == $k) | .normative_completion_requirement' "$SRC" > "$TMP/req"
+	assert_true "$_cov: completion is bound to the report, not the test-runner exit" \
+		grep -qF "not of the test-runner exit status" "$TMP/req"
 done
 
 # --- 8. execution failure is never classified as completed analysis -------------------------
 _bad_noobs=$(jq -r '.producers[]
 	| select((.no_observation_behavior.matrix // "") | test("never valid-clean") | not)
 	| .producer_key' "$SRC")
-[ -z "$_bad_noobs" ] \
-	&& pass "every row states that an unobserved producer can never be clean" \
-	|| fail "rows without the unobserved-is-never-clean rule: $_bad_noobs"
+assert_equal "every row states that an unobserved producer can never be clean" "" "$_bad_noobs"
 
 # --- 9. the multi-backend rows must say the backend changes the meaning ---------------------
 _multi=$(jq -r '.producers[] | select((.backends | length) > 1) | .producer_key' "$SRC")
-[ -n "$_multi" ] \
-	&& pass "multi-backend producers are present in the inventory ($(printf '%s' "$_multi" | tr '\n' ' '))" \
-	|| fail "no multi-backend producer recorded — knip/ts-prune and pest/phpunit both exist in the runners"
+_multi_list=$(printf '%s' "$_multi" | tr '\n' ' ')
+assert_true "multi-backend producers are present in the inventory ($_multi_list)" test -n "$_multi"
 for _m in $_multi; do
-	_note=$(jq -r --arg k "$_m" '.producers[] | select(.producer_key == $k) | .record_report_binding.required' "$SRC")
-	case "$_note" in
-	*backend*) pass "$_m: the record must carry the backend that produced the report" ;;
-	*) fail "$_m: multi-backend producer whose record binding does not require the backend identity" ;;
-	esac
+	jq -r --arg k "$_m" '.producers[] | select(.producer_key == $k) | .record_report_binding.required' "$SRC" > "$TMP/note"
+	assert_true "$_m: the record must carry the backend that produced the report" \
+		grep -qF backend "$TMP/note"
 done
 
-if [ "$FAILS" -gt 0 ]; then
-	printf '\n%d producer-completion-contract check(s) failed\n' "$FAILS" >&2
-	exit 1
-fi
-printf '\nproducer-completion-contracts: OK (%d producers; document generated, not maintained)\n' "$N"
-exit 0
+assert_summary "producer-completion-contracts ($N producers; document generated, not maintained)"
