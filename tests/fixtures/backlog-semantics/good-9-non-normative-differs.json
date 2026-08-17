@@ -1,0 +1,71 @@
+[
+  {
+    "number": 1,
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "status:ready"
+      },
+      {
+        "name": "priority:p1"
+      },
+      {
+        "name": "type:defect"
+      },
+      {
+        "name": "area:ci"
+      },
+      {
+        "name": "needs-discussion"
+      }
+    ],
+    "milestone": {
+      "title": "M1 — Fixture Milestone"
+    },
+    "title": "a completely rewritten title"
+  },
+  {
+    "number": 2,
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "status:partial"
+      },
+      {
+        "name": "priority:p1"
+      },
+      {
+        "name": "type:defect"
+      },
+      {
+        "name": "area:ci"
+      }
+    ],
+    "milestone": {
+      "title": "M1 — Fixture Milestone"
+    },
+    "title": "fixture issue"
+  },
+  {
+    "number": 3,
+    "state": "OPEN",
+    "labels": [
+      {
+        "name": "status:blocked"
+      },
+      {
+        "name": "priority:p1"
+      },
+      {
+        "name": "type:defect"
+      },
+      {
+        "name": "area:ci"
+      }
+    ],
+    "milestone": {
+      "title": "M1 — Fixture Milestone"
+    },
+    "title": "fixture issue"
+  }
+]

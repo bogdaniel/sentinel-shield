@@ -1,0 +1,792 @@
+{
+  "schema": "sentinel-shield/backlog-semantics@1",
+  "purpose": "The single declared mapping between the GitHub label taxonomy and config/remediation-plan.json. tests/prod/112 reads ONLY this file to decide what agreement means; no label-to-plan translation is written into shell conditionals.",
+  "why": "The live half of 112 compared MEMBERSHIP alone — every open issue appears in the plan, no closed issue is listed as active work. It never compared status, so the authenticated backlog lane stayed green while #345 was status:partial live and status ready in the plan. Membership agreement is not semantic agreement, and this file is what makes the difference assertable.",
+  "field_mapping": [
+    {
+      "field": "status",
+      "live": "label",
+      "label_prefix": "status:",
+      "plan_key": "status",
+      "normative": true,
+      "note": "exactly one status label is required; the mapping below decides which plan status it means"
+    },
+    {
+      "field": "priority",
+      "live": "label",
+      "label_prefix": "priority:",
+      "plan_key": "priority",
+      "normative": true
+    },
+    {
+      "field": "type",
+      "live": "label",
+      "label_prefix": "type:",
+      "plan_key": "type",
+      "normative": true
+    },
+    {
+      "field": "primary_domain",
+      "live": "label",
+      "label_prefix": "area:",
+      "plan_key": "primary_domain",
+      "normative": true,
+      "note": "agrees for 175/175 planned open issues on master 7eb02d21, so it is enforced rather than merely recorded"
+    },
+    {
+      "field": "milestone",
+      "live": "milestone.title",
+      "plan_key": "milestone_title",
+      "normative": true,
+      "note": "the plan carries both the short key and the title; the title is what GitHub exposes"
+    }
+  ],
+  "non_normative": [
+    {
+      "field": "title",
+      "reason": "editorial; the plan deliberately does not mirror issue prose"
+    },
+    {
+      "field": "body",
+      "reason": "editorial"
+    },
+    {
+      "field": "assignees",
+      "reason": "ownership is not modelled in the plan"
+    },
+    {
+      "field": "labels with any other prefix",
+      "reason": "not part of the plan schema; a new label prefix must be added here before it can be enforced"
+    }
+  ],
+  "status_labels": {
+    "status:ready": {
+      "plan_status": "ready",
+      "valid_for_open_planned_work": true
+    },
+    "status:blocked": {
+      "plan_status": "blocked",
+      "valid_for_open_planned_work": true
+    },
+    "status:partial": {
+      "plan_status": "partial",
+      "valid_for_open_planned_work": true
+    },
+    "status:in-progress": {
+      "plan_status": "in-progress",
+      "valid_for_open_planned_work": true
+    },
+    "status:needs-verification": {
+      "plan_status": "needs-verification",
+      "valid_for_open_planned_work": true
+    },
+    "status:deferred": {
+      "plan_status": "deferred",
+      "valid_for_open_planned_work": true
+    },
+    "status:verified": {
+      "plan_status": null,
+      "valid_for_open_planned_work": false,
+      "reason": "verified work is CLOSED. The label on an open planned issue is itself drift, so it maps to no plan status rather than being silently accepted."
+    }
+  },
+  "reconciliation_debt": {
+    "why": "54 M4 records disagree in one direction only: the plan says ready, the label says blocked. Which side is authoritative is a RELEASE-OWNER decision, not a mechanical one, and it is not being guessed here. The plan's status is derived -- 112 already asserts that a record declaring blocked_by cannot be ready, and all 54 declare no blocked_by. The label is curated. So either the labels are stale, or the plan's blocked_by is incomplete for these records; parent epics 291 and 293 each appear on BOTH sides of the split, so no rule explains it.",
+    "rules": [
+      "An entry permits ONE named issue to disagree on ONE named field, and only for the exact (plan_value, live_value) pair recorded.",
+      "An entry whose issue no longer disagrees on that field is STALE and fails, so the list can only shrink.",
+      "An entry whose observed pair differs from the recorded pair fails, so drift changing shape is not absorbed.",
+      "Drift on any (issue, field) not listed here fails. This list is not a policy, it is a named debt.",
+      "Every entry carries a machine-readable reason, so the two debt classes below cannot be conflated."
+    ],
+    "surfaced_as": "#350",
+    "entries": [
+      {
+        "issue": 91,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 92,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 93,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 94,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 95,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 96,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 97,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 98,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 99,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 100,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 101,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 102,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 103,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 104,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 105,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 109,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 111,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 113,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 114,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 115,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 116,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 118,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 123,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 124,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 125,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 128,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 135,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 136,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 137,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 138,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 139,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 140,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 141,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 142,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 183,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 184,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 185,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 186,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 187,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 188,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 189,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 190,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 192,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 193,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 194,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 195,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 196,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 197,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 198,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 199,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 200,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 201,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 202,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      },
+      {
+        "issue": 203,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "blocked",
+        "reason": "authority-undetermined-m4-ready-vs-blocked",
+        "owner": "release-owner",
+        "remediation": "decide which side is authoritative for this issue, then reconcile it in one change",
+        "created": "2026-08-17",
+        "review_by": "2026-09-30",
+        "source": "#350"
+      }
+    ],
+    "classes": {
+      "authority-undetermined-m4-ready-vs-blocked": {
+        "count": 54,
+        "why": "54 M4 records disagree in one direction only: the plan says ready, the label says blocked. Which side is authoritative is a RELEASE-OWNER decision and is not being guessed. The plan's status is derived -- 112 already asserts that a record declaring blocked_by cannot be ready, and all 54 declare no blocked_by. The label is curated. So either the labels are stale, or the plan's blocked_by is incomplete for these records; parent epics 291 and 293 each appear on BOTH sides of the split, so no rule explains it.",
+        "resolution": "a release-owner decision on which side is authoritative, tracked in #350, then a single reconciling change after which every entry in this class becomes stale and must be removed"
+      }
+    },
+    "entry_contract": {
+      "keyed_by": [
+        "issue",
+        "field"
+      ],
+      "required_fields": [
+        "issue",
+        "field",
+        "plan_value",
+        "live_value",
+        "reason",
+        "owner",
+        "remediation",
+        "created",
+        "review_by",
+        "source"
+      ],
+      "fails_when": [
+        "the observed live value changes (debt-shape-changed)",
+        "the plan value changes (debt-shape-changed)",
+        "the mismatch disappears (debt-stale)",
+        "the issue is no longer open (debt-not-live)",
+        "the issue is no longer in the plan (debt-not-planned)",
+        "the field is no longer normative (debt-field-not-normative)",
+        "the review boundary is passed (debt-expired)",
+        "a required field is absent (debt-incomplete)",
+        "the reason names no declared class (debt-unknown-class)",
+        "a declared class has no entries (debt-class-empty) — a discharged class is removed with its last entry, not kept as a slot"
+      ],
+      "why": "Debt must not behave as a permanent allowlist. Every failure mode above turns an entry from an exception into an error, so an entry survives only while it remains exactly the mismatch it was written for, and only until its review boundary."
+    }
+  }
+}

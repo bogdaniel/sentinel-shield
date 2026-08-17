@@ -3199,60 +3199,6 @@
         "milestone-exit-criteria-met"
       ]
     },
-        {
-      "issue": 344,
-      "primary_domain": "ci",
-      "milestone": "M1",
-      "milestone_title": "M1 — Evidence Trust Foundation",
-      "priority": "p1",
-      "type": "ci",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "merge-evidence-durability",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 345,
-      "primary_domain": "ci",
-      "milestone": "M1",
-      "milestone_title": "M1 — Evidence Trust Foundation",
-      "priority": "p1",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "test-harness-truthfulness",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 348,
-      "primary_domain": "ci",
-      "milestone": "M1",
-      "milestone_title": "M1 — Evidence Trust Foundation",
-      "priority": "p2",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "test-harness-truthfulness",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
     {
       "issue": 315,
       "primary_domain": "evidence",
@@ -3373,6 +3319,78 @@
       "blocked_by": [],
       "blocks": [],
       "implementation_group": "shell-idiom-guards",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 344,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p1",
+      "type": "ci",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "merge-evidence-durability",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 345,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p1",
+      "type": "defect",
+      "status": "partial",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "test-harness-truthfulness",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 348,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p2",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "test-harness-truthfulness",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
+    },
+    {
+      "issue": 350,
+      "primary_domain": "governance",
+      "milestone": "M1",
+      "milestone_title": "M1 — Evidence Trust Foundation",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "backlog-semantic-reconciliation",
       "closure_evidence": [
         "implementation",
         "negative-regression",

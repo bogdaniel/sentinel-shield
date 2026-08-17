@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "generated_for_master": "0000000000000000000000000000000000000000",
+  "issues": [
+    {
+      "issue": 1,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Fixture Milestone",
+      "priority": "p1",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": null,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fixture",
+      "closure_evidence": [
+        "implementation"
+      ]
+    },
+    {
+      "issue": 2,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Fixture Milestone",
+      "priority": "p1",
+      "type": "defect",
+      "status": "partial",
+      "parent_epic": null,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fixture",
+      "closure_evidence": [
+        "implementation"
+      ]
+    },
+    {
+      "issue": 3,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 — Fixture Milestone",
+      "priority": "p1",
+      "type": "defect",
+      "status": "blocked",
+      "parent_epic": null,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "fixture",
+      "closure_evidence": [
+        "implementation"
+      ]
+    }
+  ],
+  "milestones": []
+}
