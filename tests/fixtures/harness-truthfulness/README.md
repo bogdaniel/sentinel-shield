@@ -54,7 +54,7 @@ registered there — a registered suite has no `pass`/`fail` to call, and no hel
 a command substitution. `tests/prod/307` proves each rule against its own broken fixture,
 including the earlier-quote shape that defeats D9 here.
 
-That does **not** narrow the gaps below. 130 of 3,247 static verdict sites are canonical (~4.0%); the
+That does **not** narrow the gaps below. 131 of 3,247 static verdict sites are canonical (~4.03%); the
 other 95 suites are carried by the detectors in `tests/prod/306`, with these bypasses exactly as
 wide as before. The fixtures stay for that reason.
 

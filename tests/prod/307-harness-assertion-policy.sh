@@ -22,7 +22,7 @@
 #
 # WHAT IS NOT CLAIMED
 #
-# 130 of 3247 static verdict sites are canonical (4.0%). The policy is enforced over the registered
+# 131 of 3247 static verdict sites are canonical (4.03%). The policy is enforced over the registered
 # suites ONLY; 306, 304 and 117 are named in config/harness-assertion-policy.json with their
 # reasons and residual gaps. The legacy detectors in 306 still carry the corpus, still with the
 # gaps recorded on #345. Nothing here migrates the corpus or claims it is covered.
@@ -160,7 +160,11 @@ assert_true "P4 CONTROL: a suite that sources the library and calls the epilogue
 # a substitution and an uncontrolled rejection from all three rules at once, which handed back
 # the D3 and D9 classes inside a suite still counted as canonical. Each is now a named mutation
 # with its control, so the closure is proven rather than asserted.
-assert_false "P1 rejects a spaced pass() definition and a verdict inside a command group" \
+# SINGLE FAULT EACH. These were one fixture carrying two independent P1 violations, so a
+# rejection was not attributable to either. Split, per the same discipline the D5 negatives use.
+assert_false "P1 rejects a SPACED verdict-primitive definition" \
+	p1 "$FIX/bad-p1-spaced-definition.sh"
+assert_false "P1 rejects a verdict reached inside a command group" \
 	p1 "$FIX/bad-p1-compound-verdict.sh"
 assert_false "P2 rejects a command substitution on a helper line inside a command group" \
 	p2 "$FIX/bad-p2-compound-substitution.sh"

@@ -1,12 +1,12 @@
 #!/bin/sh
-# FIXTURE for tests/prod/307. BROKEN, SINGLE FAULT: a spaced pass() definition and a verdict inside a command group (P1).
+# FIXTURE for tests/prod/307. BROKEN, SINGLE FAULT: a verdict reached inside a command group (P1).
+#
+# The command position was line start or `; && || then`, so a verdict inside `{ ... }` was never
+# examined. The primitive is supplied by the library here, NOT redefined, so the only fault is
+# where the call sits -- a rejection is attributable to the command group and to nothing else.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
-pass () { printf 'PASS: %s\n' "$1"; }
 . "$ROOT/tests/lib/assert.sh"
 assert_true 'a genuine canonical assertion' true
-# TWO bypasses in one line: a SPACED function definition, and a verdict reached inside a command
-# group. Neither was at a recognised command position, so P1 looked straight past both and the
-# D3 class was available again inside a "canonical" suite.
-{ pass "both arms would pass, and nothing could see it"; }
-assert_summary 'bad-p1-compound'
+{ pass "a verdict nothing could see"; }
+assert_summary 'bad-p1-compound-verdict'

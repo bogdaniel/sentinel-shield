@@ -167,11 +167,11 @@
     "suites_with_inline_conditionals": 36,
     "multiline_if_openings": 1033,
     "suites_embedding_awk_or_jq": 84,
-    "note": "Two counts, kept separate on purpose. 3247 and 130 are both STATIC counts of call sites, so they compare directly: 130 of 3247 verdict sites are canonical (4.0%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
-    "migrated_static_call_sites_this_pr": 130,
+    "note": "Two counts, kept separate on purpose. 3247 and 131 are both STATIC counts of call sites, so they compare directly: 131 of 3247 verdict sites are canonical (4.03%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
+    "migrated_static_call_sites_this_pr": 131,
     "runtime_assertions_executed_by_migrated_suites": 180,
-    "canonical_coverage_percent": 4.0,
-    "coverage_statement": "130 canonical static verdict sites of 3247 total = 4.0% canonical coverage. The policy is NOT repository-wide."
+    "canonical_coverage_percent": 4.03,
+    "coverage_statement": "131 canonical static verdict sites of 3247 total = 4.03% canonical coverage. The policy is NOT repository-wide."
   },
   "migration_findings": {
     "why": "These are DEFECTS the migration surfaced, not formatting it tidied. Each is recorded with the shape it had, the shape it now has, a control, a runnable mutation proving the canonical form notices the regression, and the rule that catches it.",
