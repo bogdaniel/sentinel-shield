@@ -4,11 +4,11 @@
   "note": "GENERATED FILE — edit the suites or the policy, then regenerate. tests/prod/307 regenerates and compares byte for byte.",
   "policy": "config/harness-assertion-policy.json",
   "totals": {
-    "canonical_sites": 118,
+    "canonical_sites": 130,
     "legacy_suites_named": 3,
     "corpus_verdict_sites": 3247,
     "corpus_suites": 98,
-    "uncovered_sites": 3129
+    "uncovered_sites": 3117
   },
   "rows": [
     {
@@ -23,7 +23,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: TOOL_TABLE report is $_report",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: TOOL_TABLE report is $_report\" \"$_report\" \"$_t_report\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -33,7 +33,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: collector is $_collector",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: collector is $_collector\" \"$_collector\" \"$_t_coll\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -43,7 +43,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: emitted channel is $_emit",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:$_tkey: emitted channel is $_emit\" \"$_emit\" \"$_t_emit\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -53,7 +53,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:every inventory row was evaluated",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:every inventory row was evaluated\" \"$_rows\" \"$_seen\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -63,7 +63,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the inventory covers exactly the nine engineering-quality runner paths",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the inventory covers exactly the nine engineering-quality runner paths\" 9 \"$_rows\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -73,7 +73,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the published table matches the inventory exactly ($_docn rows): only-in-doc",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the published table matches the inventory exactly ($_docn rows): only-in-doc\" \"\" \"$_only_doc\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -83,7 +83,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the published table matches the inventory exactly ($_docn rows): only-in-inventory",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_equal:the published table matches the inventory exactly ($_docn rows): only-in-inventory\" \"\" \"$_only_inv\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -93,7 +93,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:$_tkey != $_emit — producer key and channel are distinct identities",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:$_tkey != $_emit — producer key and channel are distinct identities\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -103,7 +103,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:coverage.sh: --tool-name sets the CHANNEL only, never PRODUCER",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:coverage.sh: --tool-name sets the CHANNEL only, never PRODUCER\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -113,7 +113,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:rows were parsed from producer-identity-inventory.md",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_false:rows were parsed from producer-identity-inventory.md\" test \"$_docn\" -eq 0",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -123,7 +123,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:docs/producer-identity-inventory.md exists",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:docs/producer-identity-inventory.md exists\" test -f \"$DOC\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -133,7 +133,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:jq is available",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:jq is available\" command -v jq",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -143,7 +143,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:scripts/build-security-summary.sh exists",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_precondition:scripts/build-security-summary.sh exists\" test -f \"$BUILD\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -153,7 +153,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_summary:producer-identity-inventory (9 runner paths; producer key, backend and channel are distinct)",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_summary:producer-identity-inventory (9 runner paths; producer key, backend and channel are distinct)\"",
       "helper": "assert_summary",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -163,7 +163,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_cov.sh binds pest by executable test at runtime",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_cov.sh binds pest by executable test at runtime\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -173,7 +173,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_cov.sh binds phpunit by executable test at runtime",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_cov.sh binds phpunit by executable test at runtime\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -183,7 +183,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_runner -> $_report (runner declares OUTPUT=reports/raw/$_report)",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_runner -> $_report (runner declares OUTPUT=reports/raw/$_report)\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -193,7 +193,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_runner: scripts/runners/$_runner.sh exists",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_runner: scripts/runners/$_runner.sh exists\" false",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -203,7 +203,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_tkey: TOOL_TABLE has a row — the producer key in the inventory exists",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:$_tkey: TOOL_TABLE has a row — the producer key in the inventory exists\" false",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -213,7 +213,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:at least one emitted channel is shared by two producer keys — the many-to-one claim is supported by TOOL_TABLE",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:at least one emitted channel is shared by two producer keys — the many-to-one claim is supported by TOOL_TABLE\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -223,7 +223,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:channel '$_ch' is emitted by $_n distinct producer keys ($_producers) — channel identity cannot be provenance",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:channel '$_ch' is emitted by $_n distinct producer keys ($_producers) — channel identity cannot be provenance\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -233,7 +233,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh serves $_cov_keys producer keys (collector fan-in, not channel sharing)",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh serves $_cov_keys producer keys (collector fan-in, not channel sharing)\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -243,7 +243,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh: --producer-key sets the verified producer identity",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh: --producer-key sets the verified producer identity\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -253,7 +253,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh: PRODUCER is captured before argument parsing (line $_pl < $_al)",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:coverage.sh: PRODUCER is captured before argument parsing (line $_pl < $_al)\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -263,7 +263,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:knip.sh INVOKES the ts-prune fallback it selects",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:knip.sh INVOKES the ts-prune fallback it selects\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -273,7 +273,7 @@
     },
     {
       "suite": "tests/prod/303-producer-identity-inventory.sh",
-      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:knip.sh SELECTS the ts-prune fallback — one producer key, two counting semantics",
+      "site": "tests/prod/303-producer-identity-inventory.sh#assert_true:knip.sh SELECTS the ts-prune fallback — one producer key, two counting semantics\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -293,7 +293,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:$_key: builder emits channel $_chan",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:$_key: builder emits channel $_chan\" \"$_chan\" \"$_t_emit\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -303,7 +303,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:$_key: builder maps it to $_base",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:$_key: builder maps it to $_base\" \"$_base\" \"$_t_report\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -313,7 +313,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:docs/producer-completion-contracts.md is exactly what the renderer produces from the JSON",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:docs/producer-completion-contracts.md is exactly what the renderer produces from the JSON\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -323,7 +323,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every declared backend is reachable",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every declared backend is reachable\" 0 \"$_backend_bad\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -333,7 +333,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every implementation_status is in vocabulary ($_vocab)",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every implementation_status is in vocabulary ($_vocab)\" \"\" \"$_bad_status\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -343,7 +343,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every one of the $N rows was evaluated",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every one of the $N rows was evaluated\" \"$N\" \"$_rows_seen\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -353,7 +353,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row declares $_field",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row declares $_field\" \"\" \"$_missing\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -363,7 +363,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row states that an unobserved producer can never be clean",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row states that an unobserved producer can never be clean\" \"\" \"$_bad_noobs\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -373,7 +373,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row states what its report observation does NOT prove",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every row states what its report observation does NOT prove\" \"\" \"$_no_caveat\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -383,7 +383,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every unknown upstream exit table names its missing source",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:every unknown upstream exit table names its missing source\" \"\" \"$_unknown_no_source\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -393,7 +393,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:no row asserts exit_code==0 as completion without an established exit table",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:no row asserts exit_code==0 as completion without an established exit table\" \"\" \"$_naive\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -403,7 +403,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:no row claims its report observation proves completion or success",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:no row claims its report observation proves completion or success\" \"\" \"$_overclaim\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -413,7 +413,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:producer keys are unique",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:producer keys are unique\" \"\" \"$_dupes\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -423,7 +423,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:the inventory holds exactly $EXPECTED_PRODUCERS producer rows",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_equal:the inventory holds exactly $EXPECTED_PRODUCERS producer rows\" \"$EXPECTED_PRODUCERS\" \"$N\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -433,7 +433,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_false:$_key: backend '$_b' is not the producer key — a backend cannot stand in for producer identity",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_false:$_key: backend '$_b' is not the producer key — a backend cannot stand in for producer identity\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -443,7 +443,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_false:$_key: producer key and channel are distinct identities in the contract",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_false:$_key: producer key and channel are distinct identities in the contract\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -453,7 +453,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:${_f#",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:${_f#\"$ROOT\"/} exists\" test -f \"$_f\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -463,7 +463,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:at least one producer row parsed — a zero-row source would satisfy every loop below",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:at least one producer row parsed — a zero-row source would satisfy every loop below\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -473,7 +473,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:jq is available",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_precondition:jq is available\" command -v jq",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -483,7 +483,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_summary:producer-completion-contracts ($N producers; document generated, not maintained)",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_summary:producer-completion-contracts ($N producers; document generated, not maintained)\"",
       "helper": "assert_summary",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -493,7 +493,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_cov: completion is bound to the report, not the test-runner exit",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_cov: completion is bound to the report, not the test-runner exit\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -503,7 +503,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_k: backend '$_b' is reachable through a selection branch in $_rbase",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_k: backend '$_b' is reachable through a selection branch in $_rbase\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -513,7 +513,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_k: the consumer coverage script is selected by an explicit probe",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_k: the consumer coverage script is selected by an explicit probe\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -523,7 +523,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: TOOL_TABLE has a row — the producer key exists in the builder",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: TOOL_TABLE has a row — the producer key exists in the builder\" test -n \"$_row\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -533,7 +533,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: runner $_runner exists",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: runner $_runner exists\" test -f \"$ROOT/$_runner\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -543,7 +543,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: the runner writes $_base",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_key: the runner writes $_base\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -553,7 +553,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_m: the record must carry the backend that produced the report",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:$_m: the record must carry the backend that produced the report\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -563,7 +563,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:multi-backend producers are present in the inventory ($_multi_list)",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:multi-backend producers are present in the inventory ($_multi_list)\" test -n \"$_multi\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -573,7 +573,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:the document declares itself generated",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:the document declares itself generated\" grep -q 'GENERATED FILE' \"$DOC\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -583,7 +583,7 @@
     },
     {
       "suite": "tests/prod/305-producer-completion-contracts.sh",
-      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:the renderer runs",
+      "site": "tests/prod/305-producer-completion-contracts.sh#assert_true:the renderer runs\" sh \"$RENDER\" --check",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -603,7 +603,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:306 is excluded by design, not by omission",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:306 is excluded by design, not by omission\" \"excluded-by-design\" \"$_306_status\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -613,7 +613,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF4: the canonical replacement emits one verdict per row",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF4: the canonical replacement emits one verdict per row\" 3 \"$_canon_pass\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -623,7 +623,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF4: the one-armed shape emits NO verdict for three correct rows",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF4: the one-armed shape emits NO verdict for three correct rows\" 0 \"$_legacy_pass\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -633,7 +633,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P6 every declared helper exists in the library",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF5: the canonical shape keeps it as one record\" 1 \"$_ws_canon\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -643,7 +643,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every excluded suite is named in the inventory",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:MF5: the word-splitting shape shatters one declared backend into four records\" 4 \"$_ws_legacy\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -653,7 +653,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every excluded suite names its residual gap",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P6 every declared helper exists in the library\" \"\" \"$_missing_helper\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -663,7 +663,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every migration finding records shape, replacement, control, mutation and expectation",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every excluded suite is named in the inventory, by identity\" \"$_excl_ids\" \"$_inv_ids\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -673,7 +673,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every migration finding was evaluated",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every excluded suite names its residual gap\" \"\" \"$_excl_no_gap\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -683,7 +683,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every registered suite was evaluated",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every migration finding records shape, replacement, control, mutation and expectation\" \"\" \"$_mf_bad\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -693,7 +693,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:no inventory row records a rejection with a missing control",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every migration finding was evaluated\" \"$_mf_n\" \"$_mf_checked\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -703,7 +703,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:the census migrated count equals the inventory's canonical count",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every registered suite was evaluated\" \"$_reg_n\" \"$_checked\"",
       "helper": "assert_equal",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -713,7 +713,37 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:$_id: P2 rejects the pre-migration shape",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:no inventory row records a rejection with a missing control\" \"\" \"$_inv_missing\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:the census migrated count equals the inventory's canonical count\" \"$_inv_canon\" \"$_census_migrated\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:the excluded-suite count agrees too\" \"$_excl_n\" \"$_inv_legacy\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:$_id: P2 rejects the pre-migration shape\" p2 \"$ROOT/$_mut\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -723,7 +753,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P1 rejects a fixture that defines and calls pass/fail",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:MF5: the legacy shape never produces the declared value\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -733,7 +763,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 refuses an escaped backtick on a helper line, inert or not",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P1 rejects a fixture that defines and calls pass/fail\" p1 \"$FIX/bad-p1-bare-pass-fail.sh\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -743,7 +773,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a backtick substitution on a helper line",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P1 rejects a spaced pass() definition and a verdict inside a command group\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -753,7 +783,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a command substitution inside a diagnostic",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 refuses an escaped backtick on a helper line, inert or not\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -763,7 +793,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a substitution preceded by an unrelated safe quote — the retained D9 bypass",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a backtick substitution on a helper line\" p2 \"$FIX/bad-p2-backtick.sh\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -773,7 +803,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P3 rejects a bare assert_reject",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a command substitution inside a diagnostic\" p2 \"$FIX/bad-p2-substitution-in-diagnostic.sh\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -783,7 +813,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects a suite with no epilogue",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a command substitution on a helper line inside a command group\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -793,7 +823,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P6 the library never evals",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a substitution on the CONTINUATION line of a helper call\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -803,7 +833,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P6 the library never places a label variable in a command position",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P2 rejects a substitution preceded by an unrelated safe quote — the retained D9 bypass\" p2 \"$FIX/bad-p2-earlier-quote-then-substitution.sh\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -813,7 +843,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:the epilogue refuses to report success when zero assertions ran",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P3 rejects a bare assert_reject inside a command group\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -823,7 +853,57 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:config/harness-assertion-policy.json exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P3 rejects a bare assert_reject\" p3 \"$FIX/bad-p3-bare-reject.sh\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects a suite with no epilogue\" p4 \"$FIX/bad-p4-no-summary.sh\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P6 the library never evals\" grep -qE '(^|[^_[:alnum:]])eval[[:space:]]' \"$TMP/lib-code\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P6 the library never places a label variable in a command position\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:the epilogue refuses to report success when zero assertions ran\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:config/harness-assertion-policy.json exists\" test -f \"$POLICY\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -833,7 +913,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:jq is available",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:jq is available\" command -v jq",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -843,7 +923,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:scripts/render-assertion-inventory.sh exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:scripts/render-assertion-inventory.sh exists\" test -f \"$RENDER\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -853,7 +933,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:tests/lib/assert.sh exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_precondition:tests/lib/assert.sh exists\" test -f \"$LIB\"",
       "helper": "assert_precondition",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -863,7 +943,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_summary:harness-assertion-policy ($_reg_n registered suite(s), $_inv_canon canonical site(s), $_uncovered site(s) uncovered)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_summary:harness-assertion-policy ($_reg_n registered suite(s), $_inv_canon canonical site(s), $_uncovered site(s) uncovered)\"",
       "helper": "assert_summary",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -873,7 +953,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: P2 CONTROL accepts the canonical replacement",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: P2 CONTROL accepts the canonical replacement\" p2 \"$ROOT/$_ctl\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -883,7 +963,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: the control fixture exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: the control fixture exists\" test -f \"$ROOT/$_ctl\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -893,7 +973,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: the mutation fixture exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_id: the mutation fixture exists\" test -f \"$ROOT/$_mut\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -903,7 +983,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_suite: the registered suite exists",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:$_suite: the registered suite exists\" test -f \"$_f\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -913,7 +993,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:303 emits at least its recorded $_c303 runtime verdicts (observed $_r303)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:303 emits at least its recorded $_c303 runtime verdicts (observed $_r303)\" test \"$_r303\" -ge \"$_c303\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -923,7 +1003,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:305 emits at least its recorded $_c305 runtime verdicts (observed $_r305)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:305 emits at least its recorded $_c305 runtime verdicts (observed $_r305)\" test \"$_r305\" -ge \"$_c305\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -933,7 +1013,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: a fixture with real assertions and an epilogue exits 0",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: a fixture with real assertions and an epilogue exits 0\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -943,7 +1023,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: the awk/jq fixture exits 0",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: the awk/jq fixture exits 0\" sh \"$FIX/good-p5-awk-if-not-shell.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -953,7 +1033,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: the control-paired rejection fixture exits 0",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:CONTROL: the control-paired rejection fixture exits 0\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -963,7 +1043,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:MF4: the legacy shape exits 0 while saying nothing — which is why it was invisible",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:MF4: the legacy shape exits 0 while saying nothing — which is why it was invisible\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -973,7 +1053,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P1 $_suite: no pass/fail of its own — no conditional can reach a verdict",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:MF5: the canonical record is the declared value, not a fragment\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -983,7 +1063,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P1 CONTROL: canonical verdicts plus a selecting conditional are accepted",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P1 $_suite: no pass/fail of its own — no conditional can reach a verdict\" p1 \"$_f\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -993,7 +1073,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P2 $_suite: no command substitution on any helper line",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P1 CONTROL: canonical verdicts plus a selecting conditional are accepted\" p1 \"$FIX/good-p1-canonical-only.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1003,7 +1083,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P2 CONTROL: a precomputed detail passed as data is accepted",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P1 CONTROL: the command-group rules do not reject the canonical control\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1013,7 +1093,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P3 $_suite: no bare rejection — every rejection carries its control",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P2 $_suite: no command substitution on any helper line\" p2 \"$_f\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1023,7 +1103,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P3 CONTROL: a control-paired rejection is accepted",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P2 CONTROL: a multi-line call whose detail is data is accepted\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1033,7 +1113,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 $_suite: sources the library and ends with the epilogue",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P2 CONTROL: a precomputed detail passed as data is accepted\" p2 \"$FIX/good-p2-precomputed-diagnostic.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1043,7 +1123,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a suite that sources the library and calls the epilogue is accepted",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P3 $_suite: no bare rejection — every rejection carries its control\" p3 \"$_f\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1053,7 +1133,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P5 CONTROL: embedded awk and jq conditionals are out of scope, not handled",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P3 CONTROL: a control-paired rejection is accepted\" p3 \"$FIX/good-p3-paired-rejection.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1063,7 +1143,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P5 CONTROL: the same fixture satisfies P1 — an awk conditional is not a shell verdict",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P3 CONTROL: the command-group rules do not reject a control-paired rejection\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1073,7 +1153,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P6 the library defines every helper the policy declares",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 $_suite: sources the library and ends with the epilogue\" p4 \"$_f\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1083,7 +1163,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:config/harness-assertion-inventory.json is exactly what the renderer produces",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a suite that sources the library and calls the epilogue is accepted\" p4 \"$FIX/good-p1-canonical-only.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1093,7 +1173,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the D3 inline bypass fixture is retained",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P5 CONTROL: embedded awk and jq conditionals are out of scope, not handled\" p2 \"$FIX/good-p5-awk-if-not-shell.sh\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1103,7 +1183,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the D9 earlier-quote bypass fixture is retained for legacy syntax",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P5 CONTROL: the same fixture satisfies P1 — an awk conditional is not a shell verdict\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1113,7 +1193,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the census records more corpus sites than migrated ones — no coverage claim is implied",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P6 the library defines every helper the policy declares\" test -n \"$HELPERS\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1123,7 +1203,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory declares itself generated",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:config/harness-assertion-inventory.json is exactly what the renderer produces\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1133,7 +1213,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory names the unmigrated evidence-critical suites (legacy=$_inv_legacy)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the D3 inline bypass fixture is retained\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1143,7 +1223,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory records canonical sites (canonical=$_inv_canon)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the D9 earlier-quote bypass fixture is retained for legacy syntax\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1153,7 +1233,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory renderer runs",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the census records more corpus sites than migrated ones — no coverage claim is implied\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1163,7 +1243,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory states how many sites remain uncovered ($_uncovered)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory declares itself generated\" grep -q 'GENERATED FILE' \"$INVENTORY\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1173,7 +1253,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy declares at least one canonical helper",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory names the unmigrated evidence-critical suites (legacy=$_inv_legacy)\" test \"$_inv_legacy\" -gt 0",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1183,7 +1263,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy records the migration findings (findings=$_mf_n)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory records canonical sites (canonical=$_inv_canon)\" test \"$_inv_canon\" -gt 0",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1193,7 +1273,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy records why P2 takes no exception for an inert escaped backtick",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory renderer runs\" sh \"$RENDER\" --check",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1203,7 +1283,7 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy registers at least one suite (registered=$_reg_n)",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the inventory states how many sites remain uncovered ($_uncovered)\" test \"$_uncovered\" -gt 0",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1213,7 +1293,47 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
-      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the substitution fixture DOES execute its diagnostic — the risk is real, not stylistic",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy declares at least one canonical helper\" test -n \"$HELPERS\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy records the migration findings (findings=$_mf_n)\" test \"$_mf_n\" -gt 0",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy records why P2 takes no exception for an inert escaped backtick\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the policy registers at least one suite (registered=$_reg_n)\" test \"$_reg_n\" -gt 0",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:the substitution fixture DOES execute its diagnostic — the risk is real, not stylistic\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",

@@ -59,6 +59,28 @@ case $AS_OF in
 *) rb_die "--as-of expects YYYY-MM-DD, got: $AS_OF" ;;
 esac
 
+# THE DECLARED MAPPING IS FIXED, AND SAYING SO IS THE POINT.
+#
+# The jq below hard-codes each label prefix and plan key. field_mapping supplies the FIELD NAMES
+# and which of them are normative; it does not drive extraction. That is a deliberate bound --
+# deriving extraction from configuration would mean building a general accessor -- but a config
+# surface that looks editable and is silently ignored is worse than one that refuses.
+#
+# So the supported mapping is pinned here. Change label_prefix or plan_key in the semantics file
+# and this refuses to run rather than comparing the wrong thing.
+_supported='status|status:|status
+priority|priority:|priority
+type|type:|type
+primary_domain|area:|primary_domain
+milestone||milestone_title'
+_declared=$(jq -r '.field_mapping[]? | [.field, (.label_prefix // ""), (.plan_key // "")] | join("|")' "$SEMANTICS" | sort)
+_pinned=$(printf '%s\n' "$_supported" | sort)
+if [ "$_declared" != "$_pinned" ]; then
+	printf 'reconcile-backlog: the declared field mapping is not the one this implementation supports.\n' >&2
+	printf 'declared:\n%s\nsupported:\n%s\n' "$_declared" "$_pinned" >&2
+	rb_die "refusing to compare against a mapping that would be ignored"
+fi
+
 # The whole comparison is ONE jq program taking three documents. Written as a single filter on
 # purpose: a per-issue shell loop invoking jq is where the "translate the label here, and
 # slightly differently over there" family of defects comes from.
@@ -116,6 +138,10 @@ _out=$(jq -n \
 	              { issue: $r.issue, rule: "type-label-missing", detail: "no single type:* label" } else empty end),
 	           (if ($NORM | index("primary_domain")) and $ar != null and $ar != $r.primary_domain then
 	              { issue: $r.issue, rule: "domain-drift", detail: "plan says \($r.primary_domain), live says \($ar)" } else empty end),
+	           # `one()` yields null for BOTH zero and several area labels, so the drift test above
+	           # cannot see either. An unresolvable normative field is reported, not skipped.
+	           (if ($NORM | index("primary_domain")) and $ar == null then
+	              { issue: $r.issue, rule: "domain-label-unresolvable", detail: "\(labels($i; "area:") | length) area:* label(s); exactly one is required to compare against primary_domain \($r.primary_domain)" } else empty end),
 	           (if ($NORM | index("milestone")) and $ms != $r.milestone_title then
 	              (if ([$DEBT[] | select(.issue == $r.issue and .field == "milestone" and .plan_value == $r.milestone_title and .live_value == $ms)] | length) > 0
 	               then empty
@@ -129,8 +155,14 @@ _out=$(jq -n \
 	     | ($d.issue | tostring) as $k
 	     | ($LI[$k]) as $i
 	     | ([$P[] | select(.issue == $d.issue)] | first) as $r
-     | ([ "issue", "field", "plan_value", "reason", "owner", "remediation", "created", "review_by", "source" ]
-	         | map(select((($d[.]) == null) and (. != "plan_value"))) ) as $absent
+     # PRESENCE, not truthiness. `plan_value` and `live_value` may legitimately be null -- an
+	     # unassigned milestone is recorded as null -- so they are checked with has(). The
+	     # remaining fields must additionally be non-empty: an owner of "" excuses nothing.
+	     | (([ "issue", "field", "plan_value", "live_value", "reason", "owner", "remediation", "created", "review_by", "source" ]
+	         | map(. as $f | select(($d | has($f)) | not)))
+	        + ([ "issue", "field", "reason", "owner", "remediation", "created", "review_by", "source" ]
+	         | map(. as $f | select(($d | has($f)) and (($d[$f]) == null or ($d[$f]) == ""))))
+	        | unique) as $absent
 	     | if ($absent | length) > 0 then
 	         { issue: $d.issue, rule: "debt-incomplete", detail: "\($d.field // "?"): missing required field(s): \($absent | join(", "))" }
 	       elif (($S.field_mapping // []) | map(select(.normative == true) | .field) | index($d.field)) == null then
@@ -170,9 +202,10 @@ _out=$(jq -n \
 	       end ]) as $debt_v
 	| (# A declared class with no entries is stale in the same way an entry is: it has nothing
 	   # left to excuse, and it survives only as a slot for the next exemption.
+	   # `.key` inside the array below would rebind `.` to each DEBT ENTRY, which has no `key`,
+	   # so the comparison would never match. The class key is bound to $ck FIRST, outside the
+	   # array, and only $ck is used.
 	   [ ($S.reconciliation_debt.classes // {}) | to_entries[]
-	     | select(([$DEBT[] | select(.reason == .key)] | length) == 0)
-	     | select(([$DEBT[] | select(.reason == ($DEBT[0].reason // ""))] | length) >= 0)
 	     | .key as $ck
 	     | if ([$DEBT[] | select(.reason == $ck)] | length) == 0 then
 	         { issue: 0, rule: "debt-class-empty", detail: "declared debt class \($ck) has no entries — remove the class with its last entry" }

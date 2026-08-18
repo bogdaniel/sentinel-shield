@@ -431,6 +431,33 @@ if [ -x "$RECON" ] || [ -f "$RECON" ]; then
 	_recf bad-1-plan-ready-live-partial.json "an entry for a field that is no longer normative" semantics-debt-not-normative.json
 	_recf bad-1-plan-ready-live-partial.json "an entry whose review boundary has passed" semantics-debt-expired.json
 	_recf bad-1-plan-ready-live-partial.json "a declared class with no entries — a discharged category kept as a slot" semantics-debt-empty-class.json
+
+	# --- REVIEW CORRECTIONS: three rules that were absent or unenforced ------------------
+	# Each was found by review and confirmed by mutation before anything changed.
+	#
+	# (i) live_value is required by the contract but was never in the absent-field list, so an
+	#     entry that omitted it was accepted. Presence is now tested with has(), because a JSON
+	#     null is a LEGITIMATE recorded value -- an unassigned milestone -- and `== null` cannot
+	#     tell the two apart.
+	_recf bad-milestone-unassigned-issue1.json "a debt entry that omits live_value entirely" semantics-debt-no-live-value.json
+	_rec bad-milestone-unassigned-issue1.json semantics-debt-milestone.json \
+		&& pass "debt CONTROL: live_value recorded as null is a value, not an omission" \
+		|| fail "debt CONTROL: a legitimately null live_value was rejected as missing"
+
+	# (ii) the declared field mapping is NOT consumed for extraction. Rather than leave a config
+	#      surface that looks editable and is ignored, the supported mapping is pinned and any
+	#      deviation refuses to run.
+	_recf good-all-agree.json "a mapping whose label_prefix the implementation cannot honour" semantics-mapping-bad-prefix.json
+	_recf good-all-agree.json "a mapping whose plan_key the implementation cannot honour" semantics-mapping-bad-plankey.json
+
+	# (iii) `one()` yields null for BOTH zero and several area labels, so a missing or ambiguous
+	#       normative domain passed silently while priority and type were both checked.
+	_rec good-area-one.json \
+		&& pass "reconciler CONTROL: exactly one area label matching primary_domain is accepted" \
+		|| fail "reconciler CONTROL: a correct single area label was rejected"
+	_recf bad-area-none.json "an issue with no area label — an unresolvable normative field"
+	_recf bad-area-two.json "an issue with two area labels — an ambiguous normative field"
+	_recf bad-domain-differs.json "an area label that differs from primary_domain"
 	# The boundary is a DATE, so it is proven in both directions rather than left to the calendar.
 	_rec bad-1-plan-ready-live-partial.json semantics-debt-expired.json plan.json 2026-01-01 \
 		&& pass "debt: the same entry is honoured BEFORE its review boundary — expiry is a date, not a state" \

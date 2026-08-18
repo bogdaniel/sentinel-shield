@@ -55,15 +55,16 @@
       "id": "P1",
       "rule": "A registered suite defines no pass()/fail() of its own and calls neither directly. Every verdict comes from a canonical helper.",
       "removes": "the D3 class. With no conditional able to reach a verdict, a both-branches-pass assertion is not detected better — it becomes unwritable.",
-      "enforcement": "grep for a pass/fail definition or call at a command position in the registered suite; the count must be zero. No parsing."
+      "enforcement": "grep for a pass/fail definition or call at a command position in the registered suite; the count must be zero. No parsing. Both a bare `pass()` and a spaced `pass ()` definition are recognised, and a call inside `{ ... }` or `( ... )` counts as a command position — grouping was a bypass for all three rules until review found it."
     },
     {
       "id": "P2",
-      "rule": "A line carrying a canonical helper call contains no command substitution at all — neither $( ) nor a backtick.",
+      "rule": "A canonical helper CALL contains no command substitution at all — neither $( ) nor a backtick. The unit is the logical call, not the physical line: a call continued with a trailing backslash carries the prohibition onto its continuation lines.",
       "removes": "the D9 class. D9 had to guess where argument one ended; this rule needs no boundary at all, because the prohibition covers the whole line.",
-      "enforcement": "a line matching a registered helper name at a command position must not contain `$(` or a backtick. No parsing, and no false negatives: a substitution anywhere on the line fails.",
+      "enforcement": "A line whose first word (after leading whitespace and any `{`/`(` group openers) is a registered helper name opens a call; the call continues while lines end in a backslash. No `$(` or backtick may appear on any line of that call. Continuation is followed because a trailing backslash is unambiguous — it is the last character of the line — which is precisely what quote state is not. No quote state is tracked.",
       "cost": "a diagnostic detail must be computed into a variable before the helper call. Three real sites needed this — two in 305 and one in 303 — and each was a genuine instance of the pattern D9 exists to find.",
-      "no_exception_decision": "P2 flagged an ESCAPED backtick in one of tests/prod/307's own labels. The text was inert -- the shell would never have executed it. The label was reworded rather than the rule relaxed, because an escape-aware exception recreates exactly the parsing ambiguity D9 died of: deciding whether a backtick is live requires knowing the quoting context it sits in. Rewording costs a few words; the exception would cost the mechanical absoluteness that makes the rule checkable at all. This decision is scoped to canonical helper lines in registered suites and is NOT generalised to arbitrary legacy prose."
+      "no_exception_decision": "P2 flagged an ESCAPED backtick in one of tests/prod/307's own labels. The text was inert -- the shell would never have executed it. The label was reworded rather than the rule relaxed, because an escape-aware exception recreates exactly the parsing ambiguity D9 died of: deciding whether a backtick is live requires knowing the quoting context it sits in. Rewording costs a few words; the exception would cost the mechanical absoluteness that makes the rule checkable at all. This decision is scoped to canonical helper lines in registered suites and is NOT generalised to arbitrary legacy prose.",
+      "scope_limit": "The claim is bounded to REGISTERED suites and to calls whose helper name appears at a recognised command position: line start, or after `;` `&&` `||` `then` `else` `do` `{` `(`. A helper reached through eval, a variable, or a shell construct not in that list is outside the rule. Review found the command-group case, and it is now inside; the list is the claim, and it is enumerated rather than implied."
     },
     {
       "id": "P3",
@@ -166,11 +167,11 @@
     "suites_with_inline_conditionals": 36,
     "multiline_if_openings": 1033,
     "suites_embedding_awk_or_jq": 84,
-    "note": "Two different counts, kept separate on purpose. 3247 and 56 are both STATIC counts of call sites, so they compare directly: 56 of 3247 verdict sites are canonical. The 180 figure is RUNTIME assertions, higher because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered.",
-    "migrated_static_call_sites_this_pr": 118,
+    "note": "Two counts, kept separate on purpose. 3247 and 130 are both STATIC counts of call sites, so they compare directly: 130 of 3247 verdict sites are canonical (4.0%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
+    "migrated_static_call_sites_this_pr": 130,
     "runtime_assertions_executed_by_migrated_suites": 180,
-    "canonical_coverage_percent": 3.63,
-    "coverage_statement": "118 canonical static verdict sites of 3247 total = 3.63% canonical coverage. The policy is NOT repository-wide."
+    "canonical_coverage_percent": 4.0,
+    "coverage_statement": "130 canonical static verdict sites of 3247 total = 4.0% canonical coverage. The policy is NOT repository-wide."
   },
   "migration_findings": {
     "why": "These are DEFECTS the migration surfaced, not formatting it tidied. Each is recorded with the shape it had, the shape it now has, a control, a runnable mutation proving the canonical form notices the regression, and the rule that catches it.",
@@ -218,12 +219,23 @@
         "mutation_fixture": "tests/fixtures/harness-assertion/legacy-one-armed-fail.sh",
         "control_fixture": "tests/fixtures/harness-assertion/canonical-one-armed-replacement.sh",
         "mutation_expectation": "over three correct rows the legacy fixture emits 0 PASS lines and exits 0; the canonical replacement emits 3 and is counted by the library epilogue"
+      },
+      {
+        "id": "MF5",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P-runtime (verdict integrity)",
+        "prior_shape": "_blist=$(printf '%s' \"$_backends\" | tr ',' ' '); for _b in $_blist; do ... done",
+        "canonical_replacement": "jq -r '... | .backends[]' > \"$TMP/blist\"; while IFS= read -r _b; do ... done < \"$TMP/blist\"",
+        "why_it_mattered": "Under POSIX sh the loop split on IFS, so the single declared backend 'consumer package.json coverage script' became FOUR iterations. The matching case branch could never run, and the generic branch asserted against fragments -- 'consumer', 'package.json', 'coverage', 'script' -- which happened to match text in the runner, so the suite passed for the wrong reason. Found by review; confirmed only after re-testing under sh, because the interactive shell here is zsh and does not word-split.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/legacy-word-split-backend.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/canonical-whole-record-backend.sh",
+        "mutation_expectation": "over the real multi-word backend the legacy shape yields 4 records and never matches the declared value; the canonical shape yields 1 record equal to it"
       }
     ],
     "runtime_assertion_counts": {
       "tests/prod/303-producer-identity-inventory.sh": 65,
-      "tests/prod/305-producer-completion-contracts.sh": 115,
-      "note": "Runtime counts, higher than the static call-site counts because both suites assert inside loops over nine producer rows. Recorded as MINIMUMS in tests/prod/307: passing rows are now individually visible, so a regression that silences them lowers the count."
+      "tests/prod/305-producer-completion-contracts.sh": 112,
+      "note": "Runtime counts, higher than the static call-site counts because both suites assert inside loops over nine producer rows. Recorded as MINIMUMS in tests/prod/307: passing rows are individually visible, so a regression that silences them lowers the count. 305's figure FELL from 115 to 112 in the review-correction pass, and that is the fix working: MF5 showed the single declared backend 'consumer package.json coverage script' was being split into four words, so three of the old verdicts were assertions about fragments that do not exist."
     }
   }
 }

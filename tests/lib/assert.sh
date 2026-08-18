@@ -33,7 +33,7 @@
 # WHAT THIS IS NOT
 #
 # It is not a shell parser, and it does not migrate the corpus. 3247 static verdict sites exist
-# across 98 suites and 118 are canonical (3.63%); the registered set is bounded and named in
+# across 98 suites and 130 are canonical (4.0%); the registered set is bounded and named in
 # config/harness-assertion-policy.json,
 # and tests/prod/307 asserts the policy only over that set. Unregistered suites keep the legacy
 # detectors, and their residual gaps stay recorded rather than implied away.
@@ -108,10 +108,16 @@ assert_reject() {
 # assert_equal <label> <expected> <actual>
 assert_equal() {
 	_ssa_label="${1:?assert_equal: label required}"
-	if [ "${2-}" = "${3-}" ]; then
+	# ARITY FIRST. `assert_equal "label" ""` used to pass: the missing operand defaulted to the
+	# empty string and compared equal to it. A malformed assertion must fail, not agree.
+	if [ $# -ne 3 ]; then
+		_ss_fail "$_ssa_label [assert_equal needs a label, an expected value and an actual value; got $# argument(s)]"
+		return 0
+	fi
+	if [ "$2" = "$3" ]; then
 		_ss_pass "$_ssa_label"
 	else
-		_ss_fail "$_ssa_label [expected '${2-}', got '${3-}']"
+		_ss_fail "$_ssa_label [expected '$2', got '$3']"
 	fi
 }
 

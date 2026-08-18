@@ -98,11 +98,17 @@ while IFS="$(printf '\t')" read -r _key _runner _chan _report _backends; do
 	# BACKEND MUST NOT BE THE PRODUCER either.
 	# The one-armed `[ ... ] && fail` form is gone: it produced a verdict only on failure, so a
 	# passing row was invisible in the output and uncounted.
-	_blist=$(printf '%s' "$_backends" | tr ',' ' ')
-	for _b in $_blist; do
+	#
+	# ONE RECORD PER BACKEND, NEWLINE-DELIMITED. `for _b in $_blist` split on IFS, so the single
+	# declared backend `consumer package.json coverage script` became FOUR iterations and the
+	# assertion compared fragments. Backends are read as whole lines instead. (The comma join is
+	# gone too: a name containing a comma would have had the same problem one level up.)
+	jq -r --arg k "$_key" '.producers[] | select(.producer_key == $k) | .backends[]' "$SRC" > "$TMP/blist"
+	while IFS= read -r _b; do
+		[ -n "$_b" ] || continue
 		assert_false "$_key: backend '$_b' is not the producer key — a backend cannot stand in for producer identity" \
 			test "$_b" = "$_key"
-	done
+	done < "$TMP/blist"
 done < "$TMP/rows"
 assert_equal "every one of the $N rows was evaluated" "$N" "$_rows_seen"
 

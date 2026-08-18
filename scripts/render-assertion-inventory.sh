@@ -43,13 +43,18 @@ jq -r '.registered_suites[] | [.suite, (.security_critical|tostring), .migration
 while IFS="$(printf '\t')" read -r _suite _sec _mig; do
 	[ -n "$_suite" ] || continue
 	[ -f "$ROOT/$_suite" ] || continue
-	# A helper name at a COMMAND position: line start, or after `; ` / `&& ` / `|| ` / `then `.
+	# A helper name at LINE START, after leading whitespace and any command-group openers. The
+	# comment previously promised `; ` / `&& ` / `|| ` / `then ` as well, which the pattern never
+	# matched: an inventory row was silently absent for any call written that way. The claim is
+	# narrowed to what the pattern does, and tests/prod/307 enforces the policy independently.
 	# The label is argument one, so it is taken as the rest of the line after the helper name;
 	# the identifier only has to be stable, not shell-accurate.
 	awk -v suite="$_suite" -v sec="$_sec" -v mig="$_mig" -v helpers="$_helpers" '
+		BEGIN { BS = sprintf("%c", 92); BS2 = BS BS; BSQ = BS "\"" }
 		{
 			line = $0
 			sub(/^[ \t]+/, "", line)
+			while (line ~ /^[{(][ \t]*/) { sub(/^[{(][ \t]*/, "", line) }
 			if (line !~ "^(" helpers ")[ \t]") next
 			h = line
 			sub(/[ \t].*$/, "", h)
@@ -58,11 +63,24 @@ while IFS="$(printf '\t')" read -r _suite _sec _mig; do
 			# The label is the first quoted argument. Taken as text: this is an inventory
 			# identifier, not a security decision, and the policy has already forbidden any
 			# command substitution on this line.
+			# THE WHOLE REMAINDER OF THE CALL, deliberately.
+			#
+			# Cutting at the first inner `"` truncated `"${_f#"$ROOT"/} exists"` to `${_f#` —
+			# neither stable against edits nor unique. Cutting at the LAST quote overshot into the
+			# command. Finding the true end of argument one needs shell quoting rules, which is
+			# exactly the parsing this policy exists to avoid.
+			#
+			# So no cut is made. The identifier is the full text after the helper name, with the
+			# outer quote and any trailing continuation removed. It is longer than the label, and
+			# it is what the header actually asks for: stable, and unique per call site.
 			label = rest
-			if (substr(label, 1, 1) == "\"") { label = substr(label, 2); sub(/".*$/, "", label) }
-			else if (substr(label, 1, 1) == "\047") { label = substr(label, 2); sub(/\047.*$/, "", label) }
-			else { sub(/[ \t].*$/, "", label) }
-			gsub(/\\/, "\\\\", label); gsub(/"/, "\\\"", label)
+			sub(/[ \t]*\\$/, "", label)
+			q = substr(label, 1, 1)
+			if (q == "\"" || q == "\047") { label = substr(label, 2) }
+			sub(/[ \t]*$/, "", label)
+			# Portable JSON escaping: awk implementations disagree on how a backslash in the
+			# REPLACEMENT text is expanded, so the replacement is held in a variable instead.
+			gsub(/\\/, BS2, label); gsub(/"/, BSQ, label)
 			control = (h == "assert_rejection_with_control") ? "in-call" : \
 			          ((h == "assert_accept") ? "is-a-control" : "not-a-rejection")
 			if (h == "assert_reject") control = "MISSING"

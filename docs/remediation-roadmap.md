@@ -6,7 +6,7 @@
 
 **Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
 
-**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348, #350. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
 **Partially landed, still open:** #345 is `status:partial` — ten harness-truthfulness detectors shipped, three of seven acceptance criteria satisfied and four bounded. Its remaining gaps are named in the issue and in `tests/prod/306`, and closing them is a design decision (parser-backed shell analysis versus a canonical harness syntax policy), not an outstanding patch. #204 is `status:partial` on the same basis. Neither is described here as implemented.
 
@@ -269,7 +269,7 @@ Two detector gaps in `tests/prod/306` — a both-branches-`pass` conditional wri
 
 `config/harness-assertion-policy.json` takes the other route: remove the ambiguous syntax from the assertion surface so the properties need no parser. In a **registered** suite every verdict comes from a helper in `tests/lib/assert.sh`, so no conditional can reach a verdict and the single-line form becomes unwritable; and no helper line may carry a command substitution, so no argument boundary must be resolved. Embedded `awk`/`jq` is excluded structurally — a line is assertion logic only if it begins with a helper name — which is why nothing in the policy tracks quote state.
 
-The policy is enforced by `tests/prod/307` over the registered set only. **118 of 3,247 static verdict sites are canonical — about 3.6%.** The policy is not repository-wide. `tests/prod/306` is excluded by design, because its subject *is* bare `pass`/`fail` text; `304` and `117` are named as pending with their residual gaps. For the 95 unregistered suites the legacy detectors and their documented bypasses stand unchanged, and both bypass fixtures are retained for that reason.
+The policy is enforced by `tests/prod/307` over the registered set only. **130 of 3,247 static verdict sites are canonical — about 4.0%.** The policy is not repository-wide. `tests/prod/306` is excluded by design, because its subject *is* bare `pass`/`fail` text; `304` and `117` are named as pending with their residual gaps. For the 95 unregistered suites the legacy detectors and their documented bypasses stand unchanged, and both bypass fixtures are retained for that reason.
 
 ### Repository hygiene
 

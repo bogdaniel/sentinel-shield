@@ -22,7 +22,7 @@
 #
 # WHAT IS NOT CLAIMED
 #
-# 118 of 3247 static verdict sites are canonical (3.63%). The policy is enforced over the registered
+# 130 of 3247 static verdict sites are canonical (4.0%). The policy is enforced over the registered
 # suites ONLY; 306, 304 and 117 are named in config/harness-assertion-policy.json with their
 # reasons and residual gaps. The legacy detectors in 306 still carry the corpus, still with the
 # gaps recorded on #345. Nothing here migrates the corpus or claims it is covered.
@@ -62,8 +62,11 @@ _strip() { grep -vE '^[[:space:]]*#' "$1"; }
 
 # P1 — no verdict primitive of the suite's own, defined or called.
 p1() { # p1 <file> -> 1 when the file defines or calls pass/fail directly
-	_strip "$1" | grep -qE '^[[:space:]]*(pass|fail)\(\)' && return 1
-	_strip "$1" | grep -qE '(^|;|&&|\|\||[[:space:]](then|else|do))[[:space:]]*(pass|fail)[[:space:]]+["'"'"']' && return 1
+	# `pass ()` with a space is the same definition as `pass()`; only the second was recognised.
+	_strip "$1" | grep -qE '^[[:space:]]*(pass|fail)[[:space:]]*\(\)' && return 1
+	# `{` and `(` open a command position. Without them `{ pass "a"; }` reached a verdict inside
+	# a registered suite while every detector looked away — the D3 class, restored by grouping.
+	_strip "$1" | grep -qE '(^|;|&&|\|\||\{|\(|[[:space:]](then|else|do))[[:space:]]*(pass|fail)[[:space:]]+["'"'"']' && return 1
 	return 0
 }
 
@@ -79,6 +82,10 @@ p2() { # p2 <file> -> 1 when a helper line carries $( or a backtick
 		{
 			line = $0
 			sub(/^[ \t]+/, "", line)
+			# Peel any command-group openers so a helper inside `{ ... }` or `( ... )` is still
+			# seen at a command position. Purely lexical: `{` and `(` are only ever removed from
+			# the START of a line, so nothing inside a quoted program is touched.
+			while (line ~ /^[{(][ \t]*/) { sub(/^[{(][ \t]*/, "", line) }
 			if (incall) {
 				if (unsafe(line)) { bad = 1 }
 				incall = (line ~ /\\$/)
@@ -96,7 +103,7 @@ p2() { # p2 <file> -> 1 when a helper line carries $( or a backtick
 
 # P3 — a security-critical rejection must carry its control in the call.
 p3() { # p3 <file> -> 1 when a bare assert_reject is present
-	_strip "$1" | grep -qE '(^|;|&&|\|\||[[:space:]](then|else|do))[[:space:]]*assert_reject[[:space:]]' && return 1
+	_strip "$1" | grep -qE '(^|;|&&|\|\||\{|\(|[[:space:]](then|else|do))[[:space:]]*assert_reject[[:space:]]' && return 1
 	return 0
 }
 
@@ -148,6 +155,29 @@ assert_true "P3 CONTROL: a control-paired rejection is accepted" p3 "$FIX/good-p
 
 assert_false "P4 rejects a suite with no epilogue" p4 "$FIX/bad-p4-no-summary.sh"
 assert_true "P4 CONTROL: a suite that sources the library and calls the epilogue is accepted" p4 "$FIX/good-p1-canonical-only.sh"
+
+# COMMAND GROUPS ARE COMMAND POSITIONS. Review found that `{ ... }` and `( ... )` hid a verdict,
+# a substitution and an uncontrolled rejection from all three rules at once, which handed back
+# the D3 and D9 classes inside a suite still counted as canonical. Each is now a named mutation
+# with its control, so the closure is proven rather than asserted.
+assert_false "P1 rejects a spaced pass() definition and a verdict inside a command group" \
+	p1 "$FIX/bad-p1-compound-verdict.sh"
+assert_false "P2 rejects a command substitution on a helper line inside a command group" \
+	p2 "$FIX/bad-p2-compound-substitution.sh"
+assert_false "P3 rejects a bare assert_reject inside a command group" \
+	p3 "$FIX/bad-p3-compound-reject.sh"
+# CONTINUATION LINES belong to the call that opened them. This was already true; it is now
+# proven in both directions rather than left to inspection.
+assert_false "P2 rejects a substitution on the CONTINUATION line of a helper call" \
+	p2 "$FIX/bad-p2-continued-substitution.sh"
+assert_true "P2 CONTROL: a multi-line call whose detail is data is accepted" \
+	p2 "$FIX/good-p2-continued-call.sh"
+# The group openers must not swallow legitimate code: the controls above still pass, and so does
+# the awk/jq fixture, whose embedded program contains braces of its own.
+assert_true "P1 CONTROL: the command-group rules do not reject the canonical control" \
+	p1 "$FIX/good-p1-canonical-only.sh"
+assert_true "P3 CONTROL: the command-group rules do not reject a control-paired rejection" \
+	p3 "$FIX/good-p3-paired-rejection.sh"
 
 assert_true "P5 CONTROL: embedded awk and jq conditionals are out of scope, not handled" p2 "$FIX/good-p5-awk-if-not-shell.sh"
 # P2 has NO exception for an escaped backtick. This label originally spelled `if` in backticks
@@ -206,8 +236,13 @@ _inv_canon=$(jq -r '.totals.canonical_sites' "$INVENTORY")
 _inv_legacy=$(jq -r '.totals.legacy_suites_named' "$INVENTORY")
 assert_true "the inventory records canonical sites (canonical=$_inv_canon)" test "$_inv_canon" -gt 0
 assert_true "the inventory names the unmigrated evidence-critical suites (legacy=$_inv_legacy)" test "$_inv_legacy" -gt 0
+# Equal counts are satisfied by an inventory that drops one excluded suite and names another.
+# The sorted identity sets are compared, and the count is kept only as a zero-target guard.
 _excl_n=$(jq -r '.excluded_suites | length' "$POLICY")
-assert_equal "every excluded suite is named in the inventory" "$_excl_n" "$_inv_legacy"
+_excl_ids=$(jq -r '[.excluded_suites[].suite] | sort | join(" ")' "$POLICY")
+_inv_ids=$(jq -r '[.rows[] | select(.syntax == "legacy") | .suite] | sort | join(" ")' "$INVENTORY")
+assert_equal "every excluded suite is named in the inventory, by identity" "$_excl_ids" "$_inv_ids"
+assert_equal "the excluded-suite count agrees too" "$_excl_n" "$_inv_legacy"
 
 # No row may claim a rejection without a control. `MISSING` is what the renderer writes for a
 # bare assert_reject, so this is the inventory-side counterpart of P3.
@@ -294,6 +329,21 @@ _r303=$(grep -c '^PASS' "$TMP/303.out" || true)
 _r305=$(grep -c '^PASS' "$TMP/305.out" || true)
 assert_true "303 emits at least its recorded $_c303 runtime verdicts (observed $_r303)" test "$_r303" -ge "$_c303"
 assert_true "305 emits at least its recorded $_c305 runtime verdicts (observed $_r305)" test "$_r305" -ge "$_c305"
+
+# MF5 is a RECORD-INTEGRITY defect, proven by running both shapes over the real multi-word
+# backend value and counting records. It is the one finding here that only reproduces under
+# POSIX sh: the interactive shell used during development is zsh, which does not word-split, so
+# the legacy shape looked correct until it was re-run under the shell CI actually uses.
+sh "$ROOT/tests/fixtures/harness-assertion/legacy-word-split-backend.sh" > "$TMP/ws-legacy.out" 2>&1 || :
+sh "$ROOT/tests/fixtures/harness-assertion/canonical-whole-record-backend.sh" > "$TMP/ws-canon.out" 2>&1 || :
+_ws_legacy=$(grep -c '^RECORD:' "$TMP/ws-legacy.out" || true)
+_ws_canon=$(grep -c '^RECORD:' "$TMP/ws-canon.out" || true)
+assert_equal "MF5: the word-splitting shape shatters one declared backend into four records" 4 "$_ws_legacy"
+assert_equal "MF5: the canonical shape keeps it as one record" 1 "$_ws_canon"
+assert_true "MF5: the canonical record is the declared value, not a fragment" \
+	grep -qxF 'RECORD: consumer package.json coverage script' "$TMP/ws-canon.out"
+assert_false "MF5: the legacy shape never produces the declared value" \
+	grep -qxF 'RECORD: consumer package.json coverage script' "$TMP/ws-legacy.out"
 
 # ============================================================================
 # P2 HAS NO ESCAPED-BACKTICK EXCEPTION. Recorded as a decision, with its reasoning, because the

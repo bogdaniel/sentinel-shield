@@ -752,7 +752,6 @@
     ],
     "classes": {
       "authority-undetermined-m4-ready-vs-blocked": {
-        "count": 54,
         "why": "54 M4 records disagree in one direction only: the plan says ready, the label says blocked. Which side is authoritative is a RELEASE-OWNER decision and is not being guessed. The plan's status is derived -- 112 already asserts that a record declaring blocked_by cannot be ready, and all 54 declare no blocked_by. The label is curated. So either the labels are stale, or the plan's blocked_by is incomplete for these records; parent epics 291 and 293 each appear on BOTH sides of the split, so no rule explains it.",
         "resolution": "a release-owner decision on which side is authoritative, tracked in #350, then a single reconciling change after which every entry in this class becomes stale and must be removed"
       }
@@ -784,7 +783,8 @@
         "the review boundary is passed (debt-expired)",
         "a required field is absent (debt-incomplete)",
         "the reason names no declared class (debt-unknown-class)",
-        "a declared class has no entries (debt-class-empty) — a discharged class is removed with its last entry, not kept as a slot"
+        "a declared class has no entries (debt-class-empty) — a discharged class is removed with its last entry, not kept as a slot",
+        "NOTE: a class carries no `count`. It was derived data that nothing asserted, so it could go stale silently; the entry list is the only source."
       ],
       "why": "Debt must not behave as a permanent allowlist. Every failure mode above turns an entry from an exception into an error, so an entry survives only while it remains exactly the mismatch it was written for, and only until its review boundary."
     }
