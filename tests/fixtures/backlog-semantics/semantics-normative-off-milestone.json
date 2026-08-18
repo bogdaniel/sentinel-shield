@@ -1,12 +1,12 @@
 {
   "schema": "sentinel-shield/backlog-semantics@1",
-  "purpose": "BROKEN FIXTURE, SINGLE FAULT: plan_key for status is changed. Same contract as the prefix mutation.",
+  "purpose": "BROKEN FIXTURE, SINGLE FAULT: `normative` is flipped to false on milestone. The reconciler gates that comparison on the flag, so accepting this file would silently stop comparing the field while reporting agreement. The pin must refuse it.",
   "field_mapping": [
     {
       "field": "status",
       "live": "label",
       "label_prefix": "status:",
-      "plan_key": "status_XX",
+      "plan_key": "status",
       "normative": true
     },
     {
@@ -34,7 +34,7 @@
       "field": "milestone",
       "live": "milestone.title",
       "plan_key": "milestone_title",
-      "normative": true
+      "normative": false
     }
   ],
   "non_normative": [

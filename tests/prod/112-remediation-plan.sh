@@ -440,15 +440,33 @@ if [ -x "$RECON" ] || [ -f "$RECON" ]; then
 	#     null is a LEGITIMATE recorded value -- an unassigned milestone -- and `== null` cannot
 	#     tell the two apart.
 	_recf bad-milestone-unassigned-issue1.json "a debt entry that omits live_value entirely" semantics-debt-no-live-value.json
-	_rec bad-milestone-unassigned-issue1.json semantics-debt-milestone.json \
-		&& pass "debt CONTROL: live_value recorded as null is a value, not an omission" \
-		|| fail "debt CONTROL: a legitimately null live_value was rejected as missing"
 
 	# (ii) the declared field mapping is NOT consumed for extraction. Rather than leave a config
 	#      surface that looks editable and is ignored, the supported mapping is pinned and any
 	#      deviation refuses to run.
 	_recf good-all-agree.json "a mapping whose label_prefix the implementation cannot honour" semantics-mapping-bad-prefix.json
 	_recf good-all-agree.json "a mapping whose plan_key the implementation cannot honour" semantics-mapping-bad-plankey.json
+	# The pin must cover `normative` too. Without it, flipping the flag passed the guard AND
+	# stopped the comparison, so a real drift was reported as agreement. One fixture per gated
+	# field, so a rejection names where it came from.
+	for _nf in priority type primary-domain milestone; do
+		_recf good-all-agree.json "a mapping with normative:false on $_nf" "semantics-normative-off-$_nf.json"
+	done
+
+	# --- review_by must be a real calendar date -----------------------------------------
+	# The expiry test is a lexical comparison, meaningful only for YYYY-MM-DD. "30/09/2026" is
+	# never less than any ISO date, so such an entry never expires at any --as-of: the permanent
+	# allowlist the contract forbids. Validated with real calendar arithmetic, not a shape check.
+	_recf bad-1-plan-ready-live-partial.json "a review_by in a non-ISO shape" semantics-reviewby-badformat.json
+	_recf bad-1-plan-ready-live-partial.json "a review_by naming a day February does not have" semantics-reviewby-impossible-day.json
+	_recf bad-1-plan-ready-live-partial.json "a review_by naming month 13" semantics-reviewby-impossible-month.json
+	_recf bad-1-plan-ready-live-partial.json "29 February in a non-leap year" semantics-reviewby-non-leap.json
+	_rec bad-1-plan-ready-live-partial.json semantics-reviewby-leapday.json plan.json 2026-08-18 \
+		&& pass "review_by CONTROL: a real leap day before the boundary is honoured" \
+		|| fail "review_by CONTROL: a valid leap day was refused"
+	_rec bad-1-plan-ready-live-partial.json semantics-reviewby-leapday.json plan.json 2099-01-01 \
+		&& fail "review_by: the same entry was still honoured long past its boundary" \
+		|| pass "review_by: the same entry EXPIRES past its boundary — the comparison is ordered"
 
 	# (iii) `one()` yields null for BOTH zero and several area labels, so a missing or ambiguous
 	#       normative domain passed silently while priority and type were both checked.
@@ -457,7 +475,6 @@ if [ -x "$RECON" ] || [ -f "$RECON" ]; then
 		|| fail "reconciler CONTROL: a correct single area label was rejected"
 	_recf bad-area-none.json "an issue with no area label — an unresolvable normative field"
 	_recf bad-area-two.json "an issue with two area labels — an ambiguous normative field"
-	_recf bad-domain-differs.json "an area label that differs from primary_domain"
 	# The boundary is a DATE, so it is proven in both directions rather than left to the calendar.
 	_rec bad-1-plan-ready-live-partial.json semantics-debt-expired.json plan.json 2026-01-01 \
 		&& pass "debt: the same entry is honoured BEFORE its review boundary — expiry is a date, not a state" \

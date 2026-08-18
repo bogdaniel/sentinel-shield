@@ -60,6 +60,18 @@
       "plan_status": "partial",
       "valid_for_open_planned_work": true
     },
+    "status:in-progress": {
+      "plan_status": "in-progress",
+      "valid_for_open_planned_work": true
+    },
+    "status:needs-verification": {
+      "plan_status": "needs-verification",
+      "valid_for_open_planned_work": true
+    },
+    "status:deferred": {
+      "plan_status": "deferred",
+      "valid_for_open_planned_work": true
+    },
     "status:verified": {
       "plan_status": null,
       "valid_for_open_planned_work": false,

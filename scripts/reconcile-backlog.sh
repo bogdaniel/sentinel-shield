@@ -68,17 +68,48 @@ esac
 #
 # So the supported mapping is pinned here. Change label_prefix or plan_key in the semantics file
 # and this refuses to run rather than comparing the wrong thing.
-_supported='status|status:|status
-priority|priority:|priority
-type|type:|type
-primary_domain|area:|primary_domain
-milestone||milestone_title'
-_declared=$(jq -r '.field_mapping[]? | [.field, (.label_prefix // ""), (.plan_key // "")] | join("|")' "$SEMANTICS" | sort)
+# `normative` IS PART OF THE PIN. It was omitted, and that reopened the hole the pin exists to
+# close: $NORM is built from `normative == true`, and the priority, type, primary_domain and
+# milestone comparisons are all gated on membership. Flipping one flag to false passed this
+# guard and made the reconciler report agreement over a real drift. (status is not gated, so it
+# stayed enforced -- which is exactly why the gap was invisible.)
+_supported='status|status:|status|true
+priority|priority:|priority|true
+type|type:|type|true
+primary_domain|area:|primary_domain|true
+milestone||milestone_title|true'
+_declared=$(jq -r '.field_mapping[]? | [.field, (.label_prefix // ""), (.plan_key // ""), ((.normative // false) | tostring)] | join("|")' "$SEMANTICS" | sort)
 _pinned=$(printf '%s\n' "$_supported" | sort)
 if [ "$_declared" != "$_pinned" ]; then
 	printf 'reconcile-backlog: the declared field mapping is not the one this implementation supports.\n' >&2
 	printf 'declared:\n%s\nsupported:\n%s\n' "$_declared" "$_pinned" >&2
 	rb_die "refusing to compare against a mapping that would be ignored"
+fi
+
+# EVERY review_by MUST BE A REAL DATE, validated here rather than only in the suite.
+#
+# The expiry test is a lexical string comparison, which is correct for YYYY-MM-DD and meaningless
+# for anything else: "30/09/2026" < "2026-08-18" is false, so such an entry never expires at any
+# --as-of. That is the unbounded exception config/backlog-semantics.json forbids.
+#
+# The grammar is exact and fully checked: four-digit year, month 01-12, day within that month's
+# real length, leap years by the 4/100/400 rule. Plain integer arithmetic, so it is portable --
+# no strptime, whose behaviour varies by platform.
+_bad_dates=$(jq -r '
+	def is_leap($y): ($y % 4 == 0) and (($y % 100 != 0) or ($y % 400 == 0));
+	def dim($y; $m): [31, (if is_leap($y) then 29 else 28 end), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][$m - 1];
+	def valid($d):
+		($d | type == "string")
+		and ($d | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
+		and (($d[0:4] | tonumber) as $y | ($d[5:7] | tonumber) as $m | ($d[8:10] | tonumber) as $day
+		     | ($m >= 1 and $m <= 12) and ($day >= 1 and $day <= dim($y; $m)));
+	[ .reconciliation_debt.entries[]?
+	  | select((.review_by | valid(.)) | not)
+	  | "#\(.issue)/\(.field // "?")=\(.review_by // "absent")" ] | join(" ")
+	' "$SEMANTICS" 2>/dev/null) || rb_die "could not read review_by values from $SEMANTICS"
+if [ -n "$_bad_dates" ]; then
+	printf 'reconcile-backlog: debt entry(ies) whose review_by is not a real YYYY-MM-DD date: %s\n' "$_bad_dates" >&2
+	rb_die "a debt entry whose review boundary cannot be compared would never expire"
 fi
 
 # The whole comparison is ONE jq program taking three documents. Written as a single filter on

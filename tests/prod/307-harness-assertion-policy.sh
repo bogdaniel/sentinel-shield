@@ -22,7 +22,7 @@
 #
 # WHAT IS NOT CLAIMED
 #
-# 131 of 3247 static verdict sites are canonical (4.03%). The policy is enforced over the registered
+# 139 of 3247 static verdict sites are canonical (4.28%). The policy is enforced over the registered
 # suites ONLY; 306, 304 and 117 are named in config/harness-assertion-policy.json with their
 # reasons and residual gaps. The legacy detectors in 306 still carry the corpus, still with the
 # gaps recorded on #345. Nothing here migrates the corpus or claims it is covered.
@@ -114,6 +114,40 @@ p4() { # p4 <file> -> 1 when the library or the epilogue is missing
 	return 0
 }
 
+# P9 — a verdict primitive must run in the PARENT shell.
+#
+# THE DEFECT THIS EXISTS FOR, demonstrated before it was written:
+#
+#     PASS: a real passing assertion in the parent
+#     FAIL: this one FAILS, in a subshell
+#     subshell-demo: OK (1 assertions)        <- suite exited 0
+#
+# A forked shell gets a COPY of SS_ASSERT_FAILS. The failure increments the copy, the copy dies
+# with the child, and the epilogue reads an unchanged parent counter. That is #345 defect 1 --
+# "the suite reports success under the exact condition it exists to detect" -- reappearing inside
+# the mechanism written to make it unwritable.
+#
+# It also corrects an error one head earlier: `{` and `(` were peeled together as "command
+# groups". `{ ...; }` runs in the current shell; `( ... )` forks. Conflating them is what let
+# this through.
+#
+# POSITIONS ARE ENUMERATED, NOT PARSED. Parent: line start, `;` `&&` `||` `then` `else` `do` `{`.
+# Rejected child positions: after `(`, and either side of a single `|`. No quote state is
+# tracked and no claim is made about subshells this list does not name -- `$( )` bodies, `&`
+# backgrounding, or a primitive reached through a variable are OUT OF SCOPE and stay so.
+_VERD='pass|fail|assert_true|assert_false|assert_accept|assert_reject|assert_rejection_with_control|assert_equal|assert_contains_exact|assert_precondition'
+p9() { # p9 <file> -> 1 when a verdict primitive sits in a recognised child-shell position
+	# (a) immediately inside a subshell.
+	_strip "$1" | grep -qE "\([[:space:]]*($_VERD)[[:space:]]" && return 1
+	# (b) the RIGHT segment of a pipeline, optionally wrapped in a group. `||` is excluded: it is
+	#     a parent-shell separator, not a pipe.
+	_strip "$1" | grep -qE "(^|[^|])\|[[:space:]]*(\{[[:space:]]*)?($_VERD)[[:space:]]" && return 1
+	# (c) the LEFT segment of a pipeline: a primitive at a parent position whose command is then
+	#     piped. Requires a spaced ` | ` that is not part of `||`.
+	_strip "$1" | grep -qE "(^|;|&&|\{|[[:space:]](then|else|do))[[:space:]]*($_VERD)[[:space:]].*[^|][[:space:]]\|[[:space:]][^|]" && return 1
+	return 0
+}
+
 # ============================================================================
 # P8 first: a policy enforced over an empty set reports success over nothing.
 # ============================================================================
@@ -162,6 +196,31 @@ assert_true "P4 CONTROL: a suite that sources the library and calls the epilogue
 # with its control, so the closure is proven rather than asserted.
 # SINGLE FAULT EACH. These were one fixture carrying two independent P1 violations, so a
 # rejection was not attributable to either. Split, per the same discipline the D5 negatives use.
+# --- P9: verdicts must run in the parent shell -------------------------------------
+assert_false "P9 rejects a verdict primitive inside a subshell" \
+	p9 "$FIX/bad-p9-subshell-verdict.sh"
+assert_false "P9 rejects a verdict primitive in the RIGHT pipeline segment" \
+	p9 "$FIX/bad-p9-right-pipeline-verdict.sh"
+assert_false "P9 rejects a verdict primitive in the LEFT pipeline segment" \
+	p9 "$FIX/bad-p9-left-pipeline-verdict.sh"
+assert_true "P9 CONTROL: parent-shell verdicts with non-verdict subshell and pipeline are accepted" \
+	p9 "$FIX/good-p9-parent-shell-only.sh"
+# EXECUTABLE: the reason P9 exists. The subshell fixture PRINTS A FAIL AND EXITS 0, because the
+# child incremented a copy of the counter. The control proves an equivalent top-level failure
+# does reach the parent verdict.
+sh "$FIX/bad-p9-subshell-verdict.sh" > "$TMP/p9.out" 2>&1 && _p9_rc=0 || _p9_rc=$?
+assert_true "P9: the subshell fixture prints a FAIL line" grep -q '^FAIL' "$TMP/p9.out"
+assert_equal "P9: and still exits 0 — the false green this rule prevents" 0 "$_p9_rc"
+sh "$FIX/good-p9-parent-shell-only.sh" > "$TMP/p9c.out" 2>&1 && _p9c_rc=0 || _p9c_rc=$?
+assert_true "P9 CONTROL: an equivalent TOP-LEVEL failure reaches the parent verdict" test "$_p9c_rc" -ne 0
+# Every registered suite is clean under P9 today, asserted rather than assumed.
+_p9_bad=""
+while IFS="$(printf '\t')" read -r _suite _sec; do
+	[ -n "$_suite" ] || continue
+	p9 "$ROOT/$_suite" || _p9_bad="$_p9_bad $_suite"
+done < "$TMP/registered"
+assert_equal "P9: no registered suite places a verdict in a child shell" "" "$_p9_bad"
+
 assert_false "P1 rejects a SPACED verdict-primitive definition" \
 	p1 "$FIX/bad-p1-spaced-definition.sh"
 assert_false "P1 rejects a verdict reached inside a command group" \

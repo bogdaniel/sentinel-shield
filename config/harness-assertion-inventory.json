@@ -4,11 +4,11 @@
   "note": "GENERATED FILE — edit the suites or the policy, then regenerate. tests/prod/307 regenerates and compares byte for byte.",
   "policy": "config/harness-assertion-policy.json",
   "totals": {
-    "canonical_sites": 131,
+    "canonical_sites": 139,
     "legacy_suites_named": 3,
     "corpus_verdict_sites": 3247,
     "corpus_suites": 98,
-    "uncovered_sites": 3116
+    "uncovered_sites": 3108
   },
   "rows": [
     {
@@ -663,6 +663,26 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P9: and still exits 0 — the false green this rule prevents\" 0 \"$_p9_rc\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P9: no registered suite places a verdict in a child shell\" \"\" \"$_p9_bad\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:every excluded suite is named in the inventory, by identity\" \"$_excl_ids\" \"$_inv_ids\"",
       "helper": "assert_equal",
       "syntax": "canonical",
@@ -894,6 +914,36 @@
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P6 the library never places a label variable in a command position\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P9 rejects a verdict primitive in the LEFT pipeline segment\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P9 rejects a verdict primitive in the RIGHT pipeline segment\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P9 rejects a verdict primitive inside a subshell\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1204,6 +1254,36 @@
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P6 the library defines every helper the policy declares\" test -n \"$HELPERS\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P9 CONTROL: an equivalent TOP-LEVEL failure reaches the parent verdict\" test \"$_p9c_rc\" -ne 0",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P9 CONTROL: parent-shell verdicts with non-verdict subshell and pipeline are accepted\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P9: the subshell fixture prints a FAIL line\" grep -q '^FAIL' \"$TMP/p9.out\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
