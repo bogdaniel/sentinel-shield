@@ -210,8 +210,15 @@ done
 # real shell parsing and outside this grammar. The detector is therefore SILENT on the tail of
 # those files, not immune — stated so the number is auditable rather than implied to be zero.
 #
-# THE STANDING GAP, unchanged: a both-branches-pass conditional written entirely on one line is
-# NOT detected. The bypass fixture is retained so it stays visible and testable.
+# THE STANDING GAP, unchanged FOR LEGACY SYNTAX: a both-branches-pass conditional written
+# entirely on one line is NOT detected. The bypass fixture is retained so it stays visible and
+# testable.
+#
+# WHAT CHANGED AROUND IT. config/harness-assertion-policy.json now removes this class by
+# CONSTRUCTION for the suites registered there: a registered suite has no `pass`/`fail` of its
+# own, so no conditional — single-line or otherwise — can reach a verdict. tests/prod/307
+# enforces that. This detector remains the safeguard for the 95 unregistered suites, and the gap
+# above is exactly as wide for them as it was. Nothing here is claimed to have narrowed.
 d3() { # d3 <script> -> 1 when an if/else calls pass in both arms
 	# Comments are stripped EXCEPT the observation-only marker, which is itself a comment: a
 	# plain comment filter removed the very declaration this detector must read.
@@ -546,6 +553,9 @@ fail 'a jq/awk program in single quotes is program text, not a diagnostic'"
 # `$` is an ERE anchor, so a naive pattern silently never matched — and escaping the sequence
 # into a double-quoted regex would have put the hazard back into this file.
 # BOUNDED GRAMMAR — the diagnostic argument boundary is NOT resolved. Recorded, not implied.
+# For REGISTERED suites the boundary question is gone rather than answered: policy rule P2
+# forbids a command substitution anywhere on a helper line, so there is nothing to resolve.
+# Unregistered suites keep this detector and keep its bypass.
 #
 # The detector begins at the FIRST double quote on a line carrying a helper call. If an
 # unrelated quoted expression precedes the diagnostic, that earlier string is scanned instead.

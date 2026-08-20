@@ -208,7 +208,16 @@ else
 	printf '#!/bin/sh\ncase "$1 $2" in\n"auth status") exit 0 ;;\n"issue list") printf "[]\\n"; exit 0 ;;\nesac\nexit 0\n' > "$_bt/gh"
 	chmod +x "$_bt/gh"
 	jq '.issues = [] | .milestones = []' "$ROOT/config/remediation-plan.json" > "$_bt/empty-plan.json"
+	# A FINISHED PROGRAMME IS FINISHED ON BOTH DOCUMENTS. Emptying the plan alone left the
+	# semantic reconciliation debt list populated, and every entry then named an issue the plan no
+	# longer contains — which is stale debt, and correctly fatal. That state is not "finished", it
+	# is inconsistent. The simulation supplies an empty debt list for the same reason it supplies
+	# an empty plan: the end state has no outstanding exceptions, and no exemption CATEGORIES either
+	# — a class with no members is a slot for the next thing that wants excusing.
+	jq '.reconciliation_debt.entries = [] | .reconciliation_debt.classes = {}' \
+		"$ROOT/config/backlog-semantics.json" > "$_bt/empty-semantics.json"
 	if PATH="$_bt:$PATH" SENTINEL_PLAN_FILE="$_bt/empty-plan.json" \
+		SENTINEL_SEMANTICS_FILE="$_bt/empty-semantics.json" \
 		sh "$ROOT/tests/prod/112-remediation-plan.sh" >/dev/null 2>&1; then
 		pass "DYNAMIC: an empty live backlog with an empty plan PASSES — the finished state is reachable"
 	else

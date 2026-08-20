@@ -1,12 +1,14 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `6380e3b2ff8d01d6f421397fd84dc6bee7a2795c` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **175 open issues** = **160 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `6380e3b2ff8d01d6f421397fd84dc6bee7a2795c` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **176 open issues** = **161 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
 **Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182 — see the closure comment on each.
 
-**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+**Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348, #350. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
+
+**Partially landed, still open:** #345 is `status:partial` — ten harness-truthfulness detectors shipped, three of seven acceptance criteria satisfied and four bounded. Its remaining gaps are named in the issue and in `tests/prod/306`, and closing them is a design decision (parser-backed shell analysis versus a canonical harness syntax policy), not an outstanding patch. #204 is `status:partial` on the same basis. Neither is described here as implemented.
 
 ### #310 — closed six times; only the sixth rests on production-path evidence
 
@@ -62,7 +64,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **160 findings remain open, 123 of them P0.** Ten have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345, #348). The three newest are self-directed: #348 records an e2e harness that returned different verdicts for identical inputs, #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **161 findings remain open, 129 of them P0.** Eleven have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345, #348, #350). The newest, #350, is the backlog itself: 54 M4 records where the plan says `ready` and the label says `blocked`, surfaced the moment reconciliation began comparing semantics instead of membership. Which side is authoritative is undecided, and the more serious possibility is that the plan's `blocked_by` is incomplete — that would invalidate the wave ordering these milestones are derived from. The three before it are self-directed: #348 records an e2e harness that returned different verdicts for identical inputs, #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -248,6 +250,26 @@ Never call a PR green on a head-only run query, `gh pr checks`, a rerun, a run w
 A **cancelled** workflow is a terminal non-verdict — not success, and not necessarily a product failure. A timeout kill is reported by GitHub as cancelled, which is why an under-budgeted job looked for days like concurrency cancellation.
 
 For normal independent PRs, exact-head completed successful CI remains authoritative. For stacked or serial-base-sensitive PRs, follow the trigger-bound contract in #285.
+
+### Backlog agreement is semantic, not membership
+
+`ci-backlog-reconciliation` ran green for months while the plan and the live backlog disagreed, because its live half compared **membership only** — every open issue appears in the plan, no closed issue is listed as active work. It never compared a status label against the plan's `status`, so #345 could be `status:partial` live and `ready` in the plan with nothing to notice.
+
+`config/backlog-semantics.json` is now the single declared mapping — which label prefixes are normative, which plan key each maps to, and what every `status:*` label means. `tests/prod/112` reads only that file; no label-to-plan translation lives in a shell conditional. Agreement on `status`, `priority`, `type`, `primary_domain` and `milestone` is asserted for every planned open issue.
+
+Fifty-four M4 records disagree in one direction — the plan says `ready`, the label says `blocked` — and which side is authoritative is a release-owner decision, tracked in #350. They are carried as an enumerated `reconciliation_debt` list, keyed by `(issue, field)`, that can only shrink.
+
+An entry is an exception with an expiry, not an allowlist line. Each names its expected plan value, its observed live value, a reason belonging to a declared class, an owner, a remediation, a creation date, a dated review boundary and a source reference — and it **fails** when the live value changes, the plan value changes, the mismatch disappears, the issue closes, the issue leaves the plan, the field stops being normative, a required field is absent, or the review boundary passes. A class whose last entry goes is removed with it, because a category with no members is a slot for the next thing that wants excusing.
+
+That mechanism has been exercised for real, not only by fixture. Three entries recorded that #344, #345 and #348 carried no live milestone while the plan assigned them M1. Once the milestones were assigned, reconciliation **refused to pass** — naming each issue, the field, the value the entry had recorded, the value now observed, the value the plan expects, and why the exception was obsolete — until the three entries were deleted. Discharged debt cannot be left lying around.
+
+### Assertion syntax in the evidence-critical harness
+
+Two detector gaps in `tests/prod/306` — a both-branches-`pass` conditional written on one line, and an unsafe diagnostic hidden behind an earlier quoted expression — share one cause: the detectors must interpret arbitrary shell. Two line-oriented AWK extensions were attempted and reverted. Each flagged eight real suites; classification found **zero** genuine defects among them. Do not attempt a third.
+
+`config/harness-assertion-policy.json` takes the other route: remove the ambiguous syntax from the assertion surface so the properties need no parser. In a **registered** suite every verdict comes from a helper in `tests/lib/assert.sh`, so no conditional can reach a verdict and the single-line form becomes unwritable; and no helper line may carry a command substitution, so no argument boundary must be resolved. Embedded `awk`/`jq` is excluded structurally — a line is assertion logic only if it begins with a helper name — which is why nothing in the policy tracks quote state.
+
+The policy is enforced by `tests/prod/307` over the registered set only. **153 of 3,247 static verdict sites are canonical — about 4.71%.** The policy is not repository-wide. `tests/prod/306` is excluded by design, because its subject *is* bare `pass`/`fail` text; `304` and `117` are named as pending with their residual gaps. For the 95 unregistered suites the legacy detectors and their documented bypasses stand unchanged, and both bypass fixtures are retained for that reason.
 
 ### Repository hygiene
 

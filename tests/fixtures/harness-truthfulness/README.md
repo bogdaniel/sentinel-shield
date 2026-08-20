@@ -46,3 +46,15 @@ one. The fixture is retained so the bypass stays visible.
 An anchored version was implemented and reverted: it flagged 19 shipped files, every one an
 artefact of `pass`/`fail` appearing as prose inside a double-quoted message or as an argument
 word. Deciding whether such a token is a CALL needs double-quote state that spans lines.
+
+## Both retained bypasses are LEGACY-SYNTAX gaps
+
+`config/harness-assertion-policy.json` removes both classes by construction for the suites
+registered there — a registered suite has no `pass`/`fail` to call, and no helper line may carry
+a command substitution. `tests/prod/307` proves each rule against its own broken fixture,
+including the earlier-quote shape that defeats D9 here.
+
+That does **not** narrow the gaps below. 153 of 3,247 static verdict sites are canonical (~4.71%); the
+other 95 suites are carried by the detectors in `tests/prod/306`, with these bypasses exactly as
+wide as before. The fixtures stay for that reason.
+

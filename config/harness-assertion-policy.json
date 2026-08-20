@@ -1,0 +1,292 @@
+{
+  "schema": "sentinel-shield/harness-assertion-policy@1",
+  "purpose": "The canonical assertion syntax policy for the evidence-critical test harness (#345 Part C). tests/prod/307 enforces it over the registered suites only.",
+  "why": "tests/prod/306's D3 and D9 both fail for one reason: they must interpret arbitrary shell. D3 cannot see a both-branches-pass conditional written on one line, and D9 cannot resolve a helper's argument boundary when an unrelated quoted expression precedes it. Two line-oriented AWK extensions were attempted and reverted; each flagged eight real suites and classification found zero genuine defects. The answer is not a third parser. It is to remove the ambiguous syntax from the assertion surface so the properties become checkable without parsing.",
+  "library": "tests/lib/assert.sh",
+  "canonical_helpers": [
+    {
+      "name": "assert_true",
+      "signature": "assert_true <label> <command...>",
+      "semantics": "the command must exit 0"
+    },
+    {
+      "name": "assert_false",
+      "signature": "assert_false <label> <command...>",
+      "semantics": "the command must exit non-zero"
+    },
+    {
+      "name": "assert_accept",
+      "signature": "assert_accept <label> <command...>",
+      "semantics": "a component ACCEPTS valid input; counted as a control"
+    },
+    {
+      "name": "assert_reject",
+      "signature": "assert_reject <label> <command...>",
+      "semantics": "a component REFUSES bad input; permitted for non-security assertions only"
+    },
+    {
+      "name": "assert_rejection_with_control",
+      "signature": "assert_rejection_with_control <label> -- <reject-command...> -- <accept-command...>",
+      "semantics": "proves the refusal AND that valid input is still accepted, in one call. The required form for a security-critical rejection: a rejection whose control is missing cannot be expressed."
+    },
+    {
+      "name": "assert_equal",
+      "signature": "assert_equal <label> <expected> <actual>",
+      "semantics": "string equality; reports expected-versus-got itself"
+    },
+    {
+      "name": "assert_contains_exact",
+      "signature": "assert_contains_exact <label> <needle> <file>",
+      "semantics": "a WHOLE-LINE fixed-string match (grep -qxF), never a substring — the #345 defect 4 family"
+    },
+    {
+      "name": "assert_precondition",
+      "signature": "assert_precondition <label> <command...>",
+      "semantics": "a missing tool or file aborts immediately; not an assertion about the subject"
+    },
+    {
+      "name": "assert_summary",
+      "signature": "assert_summary <suite label>",
+      "semantics": "the epilogue: non-zero on any failure, and non-zero when zero assertions ran"
+    }
+  ],
+  "rules": [
+    {
+      "id": "P1",
+      "rule": "A registered suite defines no pass()/fail() of its own and calls neither directly. Every verdict comes from a canonical helper.",
+      "removes": "the D3 class. With no conditional able to reach a verdict, a both-branches-pass assertion is not detected better — it becomes unwritable.",
+      "enforcement": "grep for a pass/fail definition or call at a command position in the registered suite; the count must be zero. No parsing. Both a bare `pass()` and a spaced `pass ()` definition are recognised, and a call inside `{ ... }` counts as a command position, while `( ... )` is a CHILD shell governed by P9 — grouping was a bypass for all three rules until review found it."
+    },
+    {
+      "id": "P2",
+      "rule": "A canonical helper CALL contains no command substitution at all — neither $( ) nor a backtick. The unit is the logical call, not the physical line: a call continued with a trailing backslash carries the prohibition onto its continuation lines.",
+      "removes": "the D9 class. D9 had to guess where argument one ended; this rule needs no boundary at all, because the prohibition covers the whole line.",
+      "enforcement": "A line whose first word (after leading whitespace and any `{`/`(` group openers) is a registered helper name opens a call; the call continues while lines end in a backslash. No `$(` or backtick may appear on any line of that call. Continuation is followed because a trailing backslash is unambiguous — it is the last character of the line — which is precisely what quote state is not. No quote state is tracked.",
+      "cost": "a diagnostic detail must be computed into a variable before the helper call. Three real sites needed this — two in 305 and one in 303 — and each was a genuine instance of the pattern D9 exists to find.",
+      "no_exception_decision": "P2 flagged an ESCAPED backtick in one of tests/prod/307's own labels. The text was inert -- the shell would never have executed it. The label was reworded rather than the rule relaxed, because an escape-aware exception recreates exactly the parsing ambiguity D9 died of: deciding whether a backtick is live requires knowing the quoting context it sits in. Rewording costs a few words; the exception would cost the mechanical absoluteness that makes the rule checkable at all. This decision is scoped to canonical helper lines in registered suites and is NOT generalised to arbitrary legacy prose.",
+      "scope_limit": "The claim is bounded to REGISTERED suites and to calls whose helper name appears at a recognised command position: line start, or after `;` `&&` `||` `then` `else` `do` `{` `(`. A helper reached through eval, a variable, or a shell construct not in that list is outside the rule. Review found the command-group case, and it is now inside; the list is the claim, and it is enumerated rather than implied."
+    },
+    {
+      "id": "P3",
+      "rule": "In a suite declared security_critical, a rejection uses assert_rejection_with_control. Bare assert_reject is refused there.",
+      "removes": "the D7 class for registered suites: a rejection satisfied by a component that refuses everything, which is how #310's enforcement gate shipped dead.",
+      "enforcement": "grep for assert_reject at a command position in a security-critical registered suite; the count must be zero."
+    },
+    {
+      "id": "P4",
+      "rule": "A registered suite sources tests/lib/assert.sh and its FINAL significant command is a single standalone assert_summary running in the parent shell.",
+      "removes": "a false green in the guarantee itself. The rule used to test for the TOKEN `assert_summary` at any command separator, so `printf '%s\\n' 'x; assert_summary fake'` satisfied it while no epilogue ever ran — the suite printed a FAIL and exited 0. That is #345 defect 1 inside the rule written to prevent it.",
+      "enforcement": "POSITION, NOT PRESENCE. After stripping comments and blank lines, the LAST remaining line must begin with `assert_summary`, must contain no pipe, and exactly one line in the file may begin with it. A token inside single or double quotes never begins its line, a comment is stripped, a trailing command becomes the last line, and `( ... )` begins with `(` — so none of these needs quote analysis.",
+      "scope_limit": "RESIDUAL: a heredoc whose final BODY line is `assert_summary ...` would satisfy the position test, except the heredoc terminator is then the last significant line, so the case self-protects; an unterminated heredoc is a syntax error dash -n already rejects. No claim of general shell parsing. A runtime EXIT-trap attestation was considered and rejected: 303, 305 and 307 each already install a cleanup trap, and a second would be silently overwritten."
+    },
+    {
+      "id": "P5",
+      "rule": "Embedded awk, jq, sed or any other language is NOT assertion logic and is never inspected as shell.",
+      "removes": "the fragility that broke both previous attempts. A line is assertion logic only if it begins with a registered helper name; an `if` inside a multi-line single-quoted awk program does not begin with one, so it is excluded structurally rather than by quote stripping.",
+      "enforcement": "structural: the helper-name anchor is the only thing that makes a line in scope. No quote state is tracked anywhere in this policy."
+    },
+    {
+      "id": "P6",
+      "rule": "The library itself must not eval, and must never place a label into a command position.",
+      "removes": "the possibility that the canonical path reintroduces what P2 forbids.",
+      "enforcement": "grep the library for eval and for the label variable in a command position."
+    },
+    {
+      "id": "P7",
+      "rule": "An inline conditional may still choose WHICH assertion applies, or report an observation. It may not reach a verdict.",
+      "removes": "the masquerade case: setup and observation logic is legitimate and is not banned, but it cannot produce a PASS.",
+      "enforcement": "implied by P1 — a conditional has no verdict primitive available to it in a registered suite."
+    },
+    {
+      "id": "P8",
+      "rule": "The registered set is enumerated here and is non-empty; every registered suite must exist.",
+      "removes": "the zero-target case, in which the policy is enforced over nothing and reports success.",
+      "enforcement": "tests/prod/307 asserts a non-zero registered count and the existence of each entry."
+    },
+    {
+      "id": "P9",
+      "rule": "In a registered suite a verdict or assertion primitive runs in the PARENT shell. It may not appear immediately inside a subshell, nor in either segment of a pipeline.",
+      "removes": "the #345 defect-1 family, reappearing inside this policy. A forked shell increments a COPY of the verdict counter; the copy dies with the child and the epilogue reads an unchanged parent total, so a FAIL can print while the suite exits 0. Demonstrated by a runnable fixture before the rule was written.",
+      "enforcement": "Positions are enumerated, not parsed. PARENT: line start, or after `;` `&&` `||` `then` `else` `do` `{`. REJECTED: after `(`, and either segment of a single `|` (`||` excluded, being a parent-shell separator). No quote state is tracked.",
+      "scope_limit": "No claim of complete shell parsing or universal subshell detection. A primitive inside a `$( )` body, after `&`, or reached through a variable is OUT OF SCOPE and is not detected. The rule is the enumerated list and nothing wider.",
+      "note": "This also corrects an error in an earlier correction head, where `{` and `(` were peeled together as command groups. `{ ...; }` runs in the current shell; `( ... )` forks. Conflating them is what admitted the defect."
+    }
+  ],
+  "not_banned": [
+    {
+      "what": "inline conditionals repository-wide",
+      "why": "105 inline conditionals exist across 36 of 98 suites. Converting them wholesale was not proven safe or proportionate, and most are setup or observation rather than assertions. The policy applies to the registered set only."
+    },
+    {
+      "what": "`if` inside awk/jq programs",
+      "why": "those are separate languages. They are excluded structurally by P5, not by quote stripping — which is precisely what made the previous detector attempts fragile."
+    }
+  ],
+  "registered_suites": [
+    {
+      "suite": "tests/prod/303-producer-identity-inventory.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the producer/channel identity boundary — the #310 defect surface",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/305-producer-completion-contracts.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the canonical producer-completion contract behind #204 C2",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "why_registered": "the enforcement suite is subject to its own policy; a policy its own suite could not satisfy would not be enforceable",
+      "residual_gap": "none"
+    }
+  ],
+  "excluded_suites": [
+    {
+      "suite": "tests/prod/306-harness-truthfulness.sh",
+      "migration_status": "excluded-by-design",
+      "security_critical": true,
+      "reason": "306's SUBJECT is bare pass/fail text. Its detectors read `pass`/`fail` occurrences in fixtures and in the corpus, and its own fixtures must call them. Registering it would forbid the very syntax it exists to inspect.",
+      "residual_gap": "306 keeps the legacy bounded detectors, including the retained D3 inline bypass and D9 earlier-quote bypass. Those gaps remain exactly as recorded on #345."
+    },
+    {
+      "suite": "tests/prod/304-producer-identity-production-path.sh",
+      "migration_status": "pending",
+      "security_critical": true,
+      "reason": "56 verdict sites driving build-security-summary.sh end to end. Not migrated in this PR: it is the largest evidence-critical suite and converting it alongside two others in one change was not judged low-risk.",
+      "residual_gap": "legacy syntax; the D3 and D9 bounded detectors still apply, and its rejection assertions are not yet control-paired by construction."
+    },
+    {
+      "suite": "tests/prod/117-execution-provenance.sh",
+      "migration_status": "pending",
+      "security_critical": true,
+      "reason": "45 verdict sites. Same reasoning as 304.",
+      "residual_gap": "legacy syntax; covered only by the bounded detectors."
+    }
+  ],
+  "corpus_census": {
+    "measured_on_master": "7eb02d21f6485a251a9ae04a72bf31896c2b7a71",
+    "suites": 98,
+    "verdict_sites": 3247,
+    "inline_conditionals": 105,
+    "suites_with_inline_conditionals": 36,
+    "multiline_if_openings": 1033,
+    "suites_embedding_awk_or_jq": 84,
+    "note": "Two counts, kept separate on purpose. 3247 and 153 are both STATIC counts of call sites, so they compare directly: 153 of 3247 verdict sites are canonical (4.71%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
+    "migrated_static_call_sites_this_pr": 153,
+    "runtime_assertions_executed_by_migrated_suites": 180,
+    "canonical_coverage_percent": 4.71,
+    "coverage_statement": "153 canonical static verdict sites of 3247 total = 4.71% canonical coverage. The policy is NOT repository-wide."
+  },
+  "migration_findings": {
+    "why": "These are DEFECTS the migration surfaced, not formatting it tidied. Each is recorded with the shape it had, the shape it now has, a control, a runnable mutation proving the canonical form notices the regression, and the rule that catches it.",
+    "findings": [
+      {
+        "id": "MF1",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P2",
+        "prior_shape": "fail \"the rendered document and the committed document differ — one of them was hand-edited: $(diff \"$TMP/rendered.md\" \"$DOC\" | head -3 | tr '\\n' ' ')\"",
+        "canonical_replacement": "_render_diff=$(diff ...) computed first, then assert_equal \"...\" \"\" \"$_render_diff\"",
+        "why_it_mattered": "a command substitution inside a diagnostic argument — the exact shape D9 exists to find and could not reliably see, because an earlier quoted string on the line defeats its boundary inference",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-305-diff-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF2",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P2",
+        "prior_shape": "pass \"multi-backend producers are present in the inventory ($(printf '%s' \"$_multi\" | tr '\\n' ' '))\"",
+        "canonical_replacement": "_multi_list=$(printf '%s' \"$_multi\" | tr '\\n' ' ') computed first, then assert_true \"... ($_multi_list)\" test -n \"$_multi\"",
+        "why_it_mattered": "same class as MF1, and in a PASS message rather than a failure one — so it executed on every successful run",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-305-printf-tr-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF3",
+        "suite": "tests/prod/303-producer-identity-inventory.sh",
+        "rule": "P2",
+        "prior_shape": "fail \"the published table and the inventory disagree: only-in-doc=[$(comm -23 ...)] only-in-inventory=[$(comm -13 ...)]\"",
+        "canonical_replacement": "_only_doc and _only_inv computed first, then two assert_equal calls comparing each against the empty string",
+        "why_it_mattered": "TWO substitutions in one diagnostic. The legacy detector scans the first quoted string on the line, so neither was reachable by it.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/bad-migration-303-comm-diagnostic.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/good-p2-precomputed-diagnostic.sh",
+        "mutation_expectation": "P2 rejects the mutation fixture and accepts the control"
+      },
+      {
+        "id": "MF4",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P1 (verdict visibility)",
+        "prior_shape": "[ \"$_b\" = \"$_key\" ] && fail \"$_key: backend '$_b' is the producer key\"",
+        "canonical_replacement": "assert_false \"$_key: backend '$_b' is not the producer key\" test \"$_b\" = \"$_key\"",
+        "why_it_mattered": "a ONE-ARMED assertion. It produced a verdict only on failure, so every passing row emitted nothing and was counted by nothing — a reader could not tell the check had run at all, and a loop that silently iterated zero rows was indistinguishable from one that passed.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/legacy-one-armed-fail.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/canonical-one-armed-replacement.sh",
+        "mutation_expectation": "over three correct rows the legacy fixture emits 0 PASS lines and exits 0; the canonical replacement emits 3 and is counted by the library epilogue"
+      },
+      {
+        "id": "MF5",
+        "suite": "tests/prod/305-producer-completion-contracts.sh",
+        "rule": "P-runtime (verdict integrity)",
+        "prior_shape": "_blist=$(printf '%s' \"$_backends\" | tr ',' ' '); for _b in $_blist; do ... done",
+        "canonical_replacement": "jq -r '... | .backends[]' > \"$TMP/blist\"; while IFS= read -r _b; do ... done < \"$TMP/blist\"",
+        "why_it_mattered": "Under POSIX sh the loop split on IFS, so the single declared backend 'consumer package.json coverage script' became FOUR iterations. The matching case branch could never run, and the generic branch asserted against fragments -- 'consumer', 'package.json', 'coverage', 'script' -- which happened to match text in the runner, so the suite passed for the wrong reason. Found by review; confirmed only after re-testing under sh, because the interactive shell here is zsh and does not word-split.",
+        "mutation_fixture": "tests/fixtures/harness-assertion/legacy-word-split-backend.sh",
+        "control_fixture": "tests/fixtures/harness-assertion/canonical-whole-record-backend.sh",
+        "mutation_expectation": "over the real multi-word backend the legacy shape yields 4 records and never matches the declared value; the canonical shape yields 1 record equal to it"
+      }
+    ],
+    "runtime_assertion_counts": {
+      "tests/prod/303-producer-identity-inventory.sh": 65,
+      "tests/prod/305-producer-completion-contracts.sh": 112,
+      "note": "Runtime counts, higher than the static call-site counts because both suites assert inside loops over nine producer rows. Recorded as MINIMUMS in tests/prod/307: passing rows are individually visible, so a regression that silences them lowers the count. 305's figure FELL from 115 to 112 in the review-correction pass, and that is the fix working: MF5 showed the single declared backend 'consumer package.json coverage script' was being split into four words, so three of the old verdicts were assertions about fragments that do not exist."
+    },
+    "runtime_assertions_executed_by_migrated_suites": 177
+  },
+  "deferred_findings": {
+    "why": "Reported by review, verified, and deliberately NOT corrected in this head under the convergence rule. Recorded here so they are visible rather than forgotten; no issue is filed during this PR.",
+    "items": [
+      {
+        "id": "DF1",
+        "where": "config/backlog-semantics.json",
+        "what": "`fails_when` does not list `debt-unresolvable`, which the reconciler emits when a status debt entry names an issue carrying zero or several status labels.",
+        "impact": "documentation completeness; the rule is enforced, only unlisted.",
+        "class": "wording/completeness"
+      },
+      {
+        "id": "DF2",
+        "where": "scripts/reconcile-backlog.sh",
+        "what": "A value-taking flag given as the final argument makes `shift 2` fail before rb_die runs, so the script exits 1 (backlog disagreement) instead of the documented 2 (usage error).",
+        "impact": "a usage error is reported in the exit code reserved for disagreement; fail-closed either way.",
+        "class": "usage-path exit semantics"
+      },
+      {
+        "id": "DF3",
+        "where": "tests/prod/307-harness-assertion-policy.sh",
+        "what": "P1 does not detect an UNQUOTED verdict label, e.g. `pass $msg`.",
+        "impact": "additional shell syntax beyond the enumerated positions; explicitly outside the bounded claim.",
+        "class": "additional unsupported syntax"
+      },
+      {
+        "id": "DF4",
+        "where": "tests/prod/305-producer-completion-contracts.sh",
+        "what": "`test()` applied to a null `.current_report_observation.proves` makes jq fail, and under `set -eu` the suite aborts before assert_summary.",
+        "impact": "fail-closed: the run exits non-zero, but without an assertion diagnostic.",
+        "class": "stability, fail-closed"
+      },
+      {
+        "id": "DF5",
+        "where": "scripts/render-assertion-inventory.sh",
+        "what": "The backslash escaping is INEFFECTIVE. RETRACTION: an earlier correction claimed a variable-held replacement was a portable fix. That was wrong. gsub expands replacement text at run time whether it comes from a literal or a variable, and POSIX defines `\\\\` in replacement text as one literal backslash, so BS2 replaces one backslash with one backslash and adds no JSON escape. BSQ is `\\\"`, not a defined replacement escape, so its expansion is implementation-dependent.",
+        "impact": "NO CURRENT CORRUPTION: no registered label contains a backslash, verified, so the generated inventory is valid JSON today and byte-checks pass. A label containing a backslash would produce invalid JSON and jq would fail on that row.",
+        "correction": "a scan-and-rebuild that does not pass the escape through replacement expansion",
+        "class": "latent correctness, deferred under the convergence rule"
+      }
+    ]
+  }
+}

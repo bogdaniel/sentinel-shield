@@ -1,0 +1,126 @@
+{
+  "schema": "sentinel-shield/backlog-semantics@1",
+  "purpose": "BROKEN FIXTURE, SINGLE FAULT: review_by is 2025-02-29 — 29 February in a non-leap year. Every other field is valid.",
+  "field_mapping": [
+    {
+      "field": "status",
+      "live": "label",
+      "label_prefix": "status:",
+      "plan_key": "status",
+      "normative": true
+    },
+    {
+      "field": "priority",
+      "live": "label",
+      "label_prefix": "priority:",
+      "plan_key": "priority",
+      "normative": true
+    },
+    {
+      "field": "type",
+      "live": "label",
+      "label_prefix": "type:",
+      "plan_key": "type",
+      "normative": true
+    },
+    {
+      "field": "primary_domain",
+      "live": "label",
+      "label_prefix": "area:",
+      "plan_key": "primary_domain",
+      "normative": true
+    },
+    {
+      "field": "milestone",
+      "live": "milestone.title",
+      "plan_key": "milestone_title",
+      "normative": true
+    }
+  ],
+  "non_normative": [
+    {
+      "field": "title",
+      "reason": "editorial"
+    },
+    {
+      "field": "assignees",
+      "reason": "not modelled"
+    }
+  ],
+  "status_labels": {
+    "status:ready": {
+      "plan_status": "ready",
+      "valid_for_open_planned_work": true
+    },
+    "status:blocked": {
+      "plan_status": "blocked",
+      "valid_for_open_planned_work": true
+    },
+    "status:partial": {
+      "plan_status": "partial",
+      "valid_for_open_planned_work": true
+    },
+    "status:in-progress": {
+      "plan_status": "in-progress",
+      "valid_for_open_planned_work": true
+    },
+    "status:needs-verification": {
+      "plan_status": "needs-verification",
+      "valid_for_open_planned_work": true
+    },
+    "status:deferred": {
+      "plan_status": "deferred",
+      "valid_for_open_planned_work": true
+    },
+    "status:verified": {
+      "plan_status": null,
+      "valid_for_open_planned_work": false,
+      "reason": "verified work is CLOSED; the label on an open planned issue is itself drift"
+    }
+  },
+  "reconciliation_debt": {
+    "why": "fixture",
+    "rules": [
+      "fixture"
+    ],
+    "classes": {
+      "fixture-declared-class": {
+        "count": 1,
+        "why": "fixture",
+        "resolution": "fixture"
+      }
+    },
+    "entries": [
+      {
+        "issue": 1,
+        "field": "status",
+        "plan_value": "ready",
+        "live_value": "partial",
+        "reason": "fixture-declared-class",
+        "owner": "maintainer",
+        "remediation": "reconcile the fixture",
+        "created": "2026-08-01",
+        "review_by": "2025-02-29",
+        "source": "#350"
+      }
+    ],
+    "entry_contract": {
+      "keyed_by": [
+        "issue",
+        "field"
+      ],
+      "required_fields": [
+        "issue",
+        "field",
+        "plan_value",
+        "live_value",
+        "reason",
+        "owner",
+        "remediation",
+        "created",
+        "review_by",
+        "source"
+      ]
+    }
+  }
+}

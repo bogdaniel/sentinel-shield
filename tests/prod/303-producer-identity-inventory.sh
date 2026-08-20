@@ -20,13 +20,18 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 DOC="$ROOT/docs/producer-identity-inventory.md"
 BUILD="$ROOT/scripts/build-security-summary.sh"
 
-FAILS=0
-pass() { printf 'PASS: %s\n' "$1"; }
-fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
+# CANONICAL ASSERTION SUITE (#345 Part C). Registered in config/harness-assertion-policy.json.
+#
+# Every verdict below comes from a declared helper, never from a conditional, so a
+# both-branches-pass assertion cannot be written here at all. Every diagnostic is argument one
+# of a helper call, and no such line may contain a command substitution — which is why the
+# published-table diagnostic further down computes its detail into a variable first.
+# tests/prod/307 enforces both properties over this file.
+. "$ROOT/tests/lib/assert.sh"
 
-command -v jq >/dev/null 2>&1 || { fail "jq is required"; exit 1; }
-[ -f "$DOC" ] || { fail "docs/producer-identity-inventory.md is missing"; exit 1; }
-[ -f "$BUILD" ] || { fail "scripts/build-security-summary.sh is missing"; exit 1; }
+assert_precondition "jq is available" command -v jq
+assert_precondition "docs/producer-identity-inventory.md exists" test -f "$DOC"
+assert_precondition "scripts/build-security-summary.sh exists" test -f "$BUILD"
 
 TMP=$(mktemp -d)
 # No `exit` in the trap: an aborted suite must keep its non-zero status.
@@ -57,54 +62,40 @@ while IFS='|' read -r _runner _tkey _report _collector _emit; do
 	# 1. the runner exists and writes the report this row claims.
 	_rs="$ROOT/scripts/runners/$_runner.sh"
 	if [ ! -f "$_rs" ]; then
-		fail "$_runner: scripts/runners/$_runner.sh does not exist"
+		assert_true "$_runner: scripts/runners/$_runner.sh exists" false
 		continue
 	fi
-	if grep -qE "^OUTPUT=\"reports/raw/$_report\"" "$_rs"; then
-		pass "$_runner -> $_report"
-	else
-		fail "$_runner does not declare OUTPUT=reports/raw/$_report (inventory is stale)"
-	fi
+	assert_true "$_runner -> $_report (runner declares OUTPUT=reports/raw/$_report)" \
+		grep -qE "^OUTPUT=\"reports/raw/$_report\"" "$_rs"
 
 	# 2. TOOL_TABLE maps the producer key to that report, that collector and that channel.
 	_row=$(grep -E "^$_tkey\|" "$BUILD" | head -1)
 	if [ -z "$_row" ]; then
-		fail "$_tkey: no TOOL_TABLE row — the producer key in the inventory does not exist"
+		assert_true "$_tkey: TOOL_TABLE has a row — the producer key in the inventory exists" false
 		continue
 	fi
 	_t_report=$(printf '%s' "$_row" | awk -F'|' '{print $2}')
 	_t_coll=$(printf '%s' "$_row" | awk -F'|' '{print $3}')
 	_t_emit=$(printf '%s' "$_row" | awk -F'|' '{print $4}')
-	[ "$_t_report" = "$_report" ] \
-		&& pass "$_tkey: TOOL_TABLE report is $_report" \
-		|| fail "$_tkey: TOOL_TABLE report is '$_t_report', inventory says '$_report'"
-	[ "$_t_coll" = "$_collector" ] \
-		&& pass "$_tkey: collector is $_collector" \
-		|| fail "$_tkey: TOOL_TABLE collector is '$_t_coll', inventory says '$_collector'"
-	[ "$_t_emit" = "$_emit" ] \
-		&& pass "$_tkey: emitted channel is $_emit" \
-		|| fail "$_tkey: TOOL_TABLE emit is '$_t_emit', inventory says '$_emit'"
+	# assert_equal reports expected-versus-got itself, so the two-armed form that used to spell
+	# the mismatch out by hand is gone along with its second label.
+	assert_equal "$_tkey: TOOL_TABLE report is $_report" "$_report" "$_t_report"
+	assert_equal "$_tkey: collector is $_collector" "$_collector" "$_t_coll"
+	assert_equal "$_tkey: emitted channel is $_emit" "$_emit" "$_t_emit"
 
 	# 3. THE FINDING THIS INVENTORY EXISTS FOR. Where the producer key differs from the
 	#    emitted channel, the two are NOT interchangeable, and any code that treats them as
 	#    one value is the overload the prerequisite must remove.
-	if [ "$_tkey" != "$_emit" ]; then
-		pass "$_tkey != $_emit — producer key and channel are distinct identities"
-	else
-		fail "$_tkey == $_emit — this row cannot demonstrate the distinction; the inventory needs a row that can"
-	fi
+	assert_false "$_tkey != $_emit — producer key and channel are distinct identities" \
+		test "$_tkey" = "$_emit"
 
 	printf 'x\n' >> "$TMP/count"
 done < "$TMP/inventory"
 
 _rows=$(grep -c '|' "$TMP/inventory")
 _seen=$( [ -f "$TMP/count" ] && grep -c x "$TMP/count" || printf '0')
-[ "$_rows" -eq 9 ] \
-	&& pass "the inventory covers exactly the nine engineering-quality runner paths" \
-	|| fail "the inventory has $_rows rows, expected 9"
-[ "$_seen" -eq "$_rows" ] \
-	&& pass "every inventory row was evaluated" \
-	|| fail "only $_seen of $_rows inventory rows were evaluated"
+assert_equal "the inventory covers exactly the nine engineering-quality runner paths" 9 "$_rows"
+assert_equal "every inventory row was evaluated" "$_rows" "$_seen"
 
 # --- the DOCUMENT must match the inventory too ----------------------------------------------
 # $DOC was only checked for existence, so a documentation-only mapping change passed every
@@ -125,13 +116,18 @@ awk -F'|' '
 awk -F'|' '{print $1 "|" $2 "|" $3 "|" $4 "|" $5}' "$TMP/inventory" | sort > "$TMP/inv-rows"
 
 _docn=$(grep -c . "$TMP/doc-rows" || true)
-if [ "$_docn" -eq 0 ]; then
-	fail "no rows parsed from $DOC — the table shape changed and this check silently validated nothing"
-elif cmp -s "$TMP/doc-rows" "$TMP/inv-rows"; then
-	pass "the published table in producer-identity-inventory.md matches the inventory exactly ($_docn rows)"
-else
-	fail "the published table and the inventory disagree: only-in-doc=[$(comm -23 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')] only-in-inventory=[$(comm -13 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')]"
-fi
+# The zero-rows case is its own assertion rather than a branch of the comparison: a table whose
+# shape changed parses to nothing, and nothing compares equal to nothing.
+assert_false "rows were parsed from producer-identity-inventory.md" test "$_docn" -eq 0
+# THE DIAGNOSTIC IS COMPUTED FIRST. This detail used to be built with two `$(comm ...)`
+# substitutions inside the failure message — a command substitution in a diagnostic argument,
+# which is exactly the shape D9 exists to find and could not reliably see. Under the canonical
+# policy the line carrying a helper call may contain no substitution at all, so the detail is
+# data by the time it reaches the helper.
+_only_doc=$(comm -23 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')
+_only_inv=$(comm -13 "$TMP/doc-rows" "$TMP/inv-rows" | tr '\n' ' ')
+assert_equal "the published table matches the inventory exactly ($_docn rows): only-in-doc" "" "$_only_doc"
+assert_equal "the published table matches the inventory exactly ($_docn rows): only-in-inventory" "" "$_only_inv"
 
 # --- the multi-backend runners -------------------------------------------------------------
 # knip.sh and the coverage runners select their backend AT RUNTIME, so one producer key can
@@ -143,44 +139,31 @@ fi
 # and the grep would still match. The same applies to the coverage runners, which name both
 # binaries in a warning. Assert the SELECTION — an executable test that binds the backend — and
 # for knip that the fallback is actually invoked.
-if grep -qE '^[[:space:]]*elif \[ -x node_modules/\.bin/ts-prune \]' "$ROOT/scripts/runners/knip.sh" \
-	&& grep -qE '^[[:space:]]*_tp_out=\$\("\$_TP"' "$ROOT/scripts/runners/knip.sh"; then
-	pass "knip.sh selects AND invokes the ts-prune fallback — one producer key, two counting semantics"
-else
-	fail "knip.sh no longer selects and invokes a ts-prune fallback — the inventory's multi-backend finding is stale"
-fi
+assert_true "knip.sh SELECTS the ts-prune fallback — one producer key, two counting semantics" \
+	grep -qE '^[[:space:]]*elif \[ -x node_modules/\.bin/ts-prune \]' "$ROOT/scripts/runners/knip.sh"
+assert_true "knip.sh INVOKES the ts-prune fallback it selects" \
+	grep -qE '^[[:space:]]*_tp_out=\$\("\$_TP"' "$ROOT/scripts/runners/knip.sh"
 for _cov in php-coverage php-diff-coverage; do
-	if grep -qE '^[[:space:]]*if \[ -x vendor/bin/pest \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh" \
-		&& grep -qE '^[[:space:]]*elif \[ -x vendor/bin/phpunit \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh"; then
-		pass "$_cov.sh BINDS pest or phpunit by executable test at runtime"
-	else
-		fail "$_cov.sh no longer binds a backend by executable test — the inventory is stale"
-	fi
+	assert_true "$_cov.sh binds pest by executable test at runtime" \
+		grep -qE '^[[:space:]]*if \[ -x vendor/bin/pest \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh"
+	assert_true "$_cov.sh binds phpunit by executable test at runtime" \
+		grep -qE '^[[:space:]]*elif \[ -x vendor/bin/phpunit \]; then BIN=' "$ROOT/scripts/runners/$_cov.sh"
 done
 
 # --- the identity SPLIT (was: the overload) --------------------------------------------------
 # This assertion pinned the overload while it existed and required that removing it be a
 # deliberate change made together with the document. The split has now landed, so it inverts:
 # the overload must not come back.
-if grep -qE '^\s*--tool-name\) TOOL=[^;]*PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"; then
-	fail "coverage.sh: --tool-name writes PRODUCER again — the channel can overwrite provenance identity"
-else
-	pass "coverage.sh: --tool-name sets the CHANNEL only"
-fi
-if grep -qE '^\s*--producer-key\) PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"; then
-	pass "coverage.sh: --producer-key sets the verified producer identity"
-else
-	fail "coverage.sh: no --producer-key parameter — the identity split is not present"
-fi
+assert_false "coverage.sh: --tool-name sets the CHANNEL only, never PRODUCER" \
+	grep -qE '^\s*--tool-name\) TOOL=[^;]*PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"
+assert_true "coverage.sh: --producer-key sets the verified producer identity" \
+	grep -qE '^\s*--producer-key\) PRODUCER=' "$ROOT/scripts/collectors/coverage.sh"
 # The default must be established BEFORE argument parsing, so no ordering of channel arguments
 # can influence it.
 _pl=$(grep -n '^PRODUCER=' "$ROOT/scripts/collectors/coverage.sh" | head -1 | cut -d: -f1)
 _al=$(grep -n 'while \[ $# -gt 0 \]' "$ROOT/scripts/collectors/coverage.sh" | head -1 | cut -d: -f1)
-if [ -n "$_pl" ] && [ -n "$_al" ] && [ "$_pl" -lt "$_al" ]; then
-	pass "coverage.sh: PRODUCER is captured before argument parsing (line $_pl < $_al)"
-else
-	fail "coverage.sh: PRODUCER is not established before argument parsing (producer=$_pl parse=$_al)"
-fi
+assert_true "coverage.sh: PRODUCER is captured before argument parsing (line $_pl < $_al)" \
+	test -n "$_pl" -a -n "$_al" -a "$_pl" -lt "$_al"
 
 # --- the many-to-one CHANNEL case ----------------------------------------------------------
 # This assertion previously counted producer keys served by coverage.sh and called that
@@ -193,26 +176,19 @@ fi
 # used for provenance, those two producers would be indistinguishable in the evidence, which is
 # the precise opposite of what execution provenance exists to provide.
 _shared=$(awk -F'|' 'NF>=4 && $1 !~ /^#/ && $4 != "" {print $4}' "$BUILD" | sort | uniq -d | grep -E '^[a-z0-9_]+$' || true)
-if [ -n "$_shared" ]; then
-	for _ch in $_shared; do
-		_producers=$(awk -F'|' -v c="$_ch" '$4==c {printf "%s ", $1}' "$BUILD")
-		_n=$(printf '%s' "$_producers" | wc -w | tr -d ' ')
-		[ "$_n" -ge 2 ] \
-			&& pass "channel '$_ch' is emitted by $_n distinct producer keys ($_producers) — channel identity cannot be provenance" \
-			|| fail "channel '$_ch' appeared shared but resolves to $_n producer key(s)"
-	done
-else
-	fail "no emitted channel is shared by two producer keys — the many-to-one claim in the inventory is unsupported by TOOL_TABLE"
-fi
+assert_true "at least one emitted channel is shared by two producer keys — the many-to-one claim is supported by TOOL_TABLE" \
+	test -n "$_shared"
+for _ch in $_shared; do
+	_producers=$(awk -F'|' -v c="$_ch" '$4==c {printf "%s ", $1}' "$BUILD")
+	_n=$(printf '%s' "$_producers" | wc -w | tr -d ' ')
+	assert_true "channel '$_ch' is emitted by $_n distinct producer keys ($_producers) — channel identity cannot be provenance" \
+		test "$_n" -ge 2
+done
 # Collector fan-in is a SEPARATE, weaker property. Kept, but named honestly.
 _cov_keys=$(awk -F'|' '$3=="coverage.sh"' "$BUILD" | wc -l | tr -d ' ')
-[ "$_cov_keys" -ge 3 ] \
-	&& pass "coverage.sh serves $_cov_keys producer keys (collector fan-in, not channel sharing)" \
-	|| fail "expected coverage.sh to serve at least 3 producer keys, found $_cov_keys"
+assert_true "coverage.sh serves $_cov_keys producer keys (collector fan-in, not channel sharing)" \
+	test "$_cov_keys" -ge 3
 
-if [ "$FAILS" -gt 0 ]; then
-	printf '\n%d producer-identity check(s) failed\n' "$FAILS" >&2
-	exit 1
-fi
-printf '\nproducer-identity-inventory: OK (9 runner paths; producer key, backend and channel are distinct)\n'
-exit 0
+# The epilogue lives in the library: non-zero on any failure, and non-zero when NOTHING ran, so
+# a suite whose assertions were globbed away cannot report success over an empty set.
+assert_summary "producer-identity-inventory (9 runner paths; producer key, backend and channel are distinct)"
