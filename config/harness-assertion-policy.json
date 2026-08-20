@@ -74,9 +74,10 @@
     },
     {
       "id": "P4",
-      "rule": "A registered suite sources the library and ends with assert_summary.",
-      "removes": "the #345 defect 1 family: the counter lives in the library, so a suite cannot lose its verdict state in a subshell, and the zero-assertion case exits non-zero.",
-      "enforcement": "grep for the source line and for the assert_summary call."
+      "rule": "A registered suite sources tests/lib/assert.sh and its FINAL significant command is a single standalone assert_summary running in the parent shell.",
+      "removes": "a false green in the guarantee itself. The rule used to test for the TOKEN `assert_summary` at any command separator, so `printf '%s\\n' 'x; assert_summary fake'` satisfied it while no epilogue ever ran — the suite printed a FAIL and exited 0. That is #345 defect 1 inside the rule written to prevent it.",
+      "enforcement": "POSITION, NOT PRESENCE. After stripping comments and blank lines, the LAST remaining line must begin with `assert_summary`, must contain no pipe, and exactly one line in the file may begin with it. A token inside single or double quotes never begins its line, a comment is stripped, a trailing command becomes the last line, and `( ... )` begins with `(` — so none of these needs quote analysis.",
+      "scope_limit": "RESIDUAL: a heredoc whose final BODY line is `assert_summary ...` would satisfy the position test, except the heredoc terminator is then the last significant line, so the case self-protects; an unterminated heredoc is a syntax error dash -n already rejects. No claim of general shell parsing. A runtime EXIT-trap attestation was considered and rejected: 303, 305 and 307 each already install a cleanup trap, and a second would be silently overwritten."
     },
     {
       "id": "P5",
@@ -175,11 +176,11 @@
     "suites_with_inline_conditionals": 36,
     "multiline_if_openings": 1033,
     "suites_embedding_awk_or_jq": 84,
-    "note": "Two counts, kept separate on purpose. 3247 and 139 are both STATIC counts of call sites, so they compare directly: 139 of 3247 verdict sites are canonical (4.28%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
-    "migrated_static_call_sites_this_pr": 139,
+    "note": "Two counts, kept separate on purpose. 3247 and 153 are both STATIC counts of call sites, so they compare directly: 153 of 3247 verdict sites are canonical (4.71%). The runtime figures under migration_findings are higher, because the migrated suites assert inside loops over nine producer rows. Neither number is a claim of corpus coverage; excluded_suites names what is not covered. Do not confuse either with the 56 site count of tests/prod/304, which is an EXCLUDED suite. This figure rose during the review-correction pass because tests/prod/307 is itself a registered suite, so proving each corrected rule added canonical call sites to it.",
+    "migrated_static_call_sites_this_pr": 153,
     "runtime_assertions_executed_by_migrated_suites": 180,
-    "canonical_coverage_percent": 4.28,
-    "coverage_statement": "139 canonical static verdict sites of 3247 total = 4.28% canonical coverage. The policy is NOT repository-wide."
+    "canonical_coverage_percent": 4.71,
+    "coverage_statement": "153 canonical static verdict sites of 3247 total = 4.71% canonical coverage. The policy is NOT repository-wide."
   },
   "migration_findings": {
     "why": "These are DEFECTS the migration surfaced, not formatting it tidied. Each is recorded with the shape it had, the shape it now has, a control, a runnable mutation proving the canonical form notices the regression, and the rule that catches it.",

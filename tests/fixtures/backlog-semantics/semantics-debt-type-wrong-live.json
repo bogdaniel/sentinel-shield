@@ -1,6 +1,6 @@
 {
   "schema": "sentinel-shield/backlog-semantics@1",
-  "purpose": "BROKEN FIXTURE, SINGLE FAULT: the entry's `reason` names a class that is not declared. The declared class DOES have a member, so debt-class-empty cannot also fire and the rejection is attributable to the unknown reason alone.",
+  "purpose": "BROKEN FIXTURE, SINGLE FAULT: the debt entry for `type` records a live value that is not the observed one, so the exemption must not apply.",
   "field_mapping": [
     {
       "field": "status",
@@ -92,21 +92,9 @@
     "entries": [
       {
         "issue": 1,
-        "field": "status",
-        "plan_value": "ready",
-        "live_value": "partial",
-        "reason": "not-a-declared-class",
-        "owner": "maintainer",
-        "remediation": "decide and reconcile",
-        "created": "2026-01-01",
-        "review_by": "2026-12-31",
-        "source": "#350"
-      },
-      {
-        "issue": 1,
-        "field": "priority",
-        "plan_value": "p1",
-        "live_value": "p0",
+        "field": "type",
+        "plan_value": "defect",
+        "live_value": "MISRECORDED",
         "reason": "fixture-declared-class",
         "owner": "maintainer",
         "remediation": "decide and reconcile",

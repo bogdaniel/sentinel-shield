@@ -132,6 +132,23 @@ _out=$(jq -n \
 	| (reduce $L[] as $i ({}; .[$i.number | tostring] = $i)) as $LI
 	| (def labels($i; $pfx): [$i.labels[]?.name | select(startswith($pfx)) | ltrimstr($pfx)];
 	   def one($a): if ($a | length) == 1 then $a[0] else null end;
+	   # ONE DEBT DECISION, USED BY EVERY NORMATIVE FIELD.
+	   #
+	   # This was two ad-hoc lookups, for status and milestone only. The contract accepts entries
+	   # keyed by (issue, field) for EVERY normative field, so a recorded priority, type or
+	   # primary_domain exemption was written down, validated by the hygiene rules, and then never
+	   # consulted -- the drift fired anyway. Fail-closed, but the contract promised a path that
+	   # did not exist. One function now serves all five, so a field cannot silently lack one.
+	   #
+	   # The match is EXACT on all four parts, which is what stops one debt suppressing another
+	   # field or another issue: a different issue, a different field, a changed plan value or a
+	   # changed live value all miss, and the drift is reported.
+	   def excused($issue; $field; $planv; $livev):
+	     ([$DEBT[] | select(.issue == $issue and .field == $field
+	                        and .plan_value == $planv and .live_value == $livev)] | length) > 0;
+	   def drift($issue; $field; $rule; $planv; $livev; $detail):
+	     if excused($issue; $field; $planv; $livev) then empty
+	     else { issue: $issue, rule: $rule, detail: $detail } end;
 	   # ---- per-issue semantic comparison -------------------------------------------------
 	   [ $P[] as $r
 	     | ($r.issue | tostring) as $k
@@ -153,31 +170,29 @@ _out=$(jq -n \
 	            elif ($SL["status:" + $st[0]].valid_for_open_planned_work != true) then
 	              { issue: $r.issue, rule: "status-label-not-valid-open", detail: "status:\($st[0]) is declared invalid for open planned work: \($SL["status:" + $st[0]].reason // "no reason recorded")" }
 	            elif ($SL["status:" + $st[0]].plan_status != $r.status) then
-	              # A named debt entry permits exactly this pair for exactly this issue.
-	              (if ([$DEBT[] | select(.issue == $r.issue and .field == "status" and .plan_value == $r.status and .live_value == $st[0])] | length) > 0
-	               then empty
-	               else { issue: $r.issue, rule: "status-drift", detail: "plan says \($r.status), live says \($st[0])" }
-	               end)
+	              drift($r.issue; "status"; "status-drift"; $r.status; $st[0];
+	                    "plan says \($r.status), live says \($st[0])")
 	            else empty end),
 	           (if ($NORM | index("priority")) and $pri != null and $pri != $r.priority then
-	              { issue: $r.issue, rule: "priority-drift", detail: "plan says \($r.priority), live says \($pri)" } else empty end),
+	              drift($r.issue; "priority"; "priority-drift"; $r.priority; $pri;
+	                    "plan says \($r.priority), live says \($pri)") else empty end),
 	           (if ($NORM | index("priority")) and $pri == null then
 	              { issue: $r.issue, rule: "priority-label-missing", detail: "no single priority:* label" } else empty end),
 	           (if ($NORM | index("type")) and $ty != null and $ty != $r.type then
-	              { issue: $r.issue, rule: "type-drift", detail: "plan says \($r.type), live says \($ty)" } else empty end),
+	              drift($r.issue; "type"; "type-drift"; $r.type; $ty;
+	                    "plan says \($r.type), live says \($ty)") else empty end),
 	           (if ($NORM | index("type")) and $ty == null then
 	              { issue: $r.issue, rule: "type-label-missing", detail: "no single type:* label" } else empty end),
 	           (if ($NORM | index("primary_domain")) and $ar != null and $ar != $r.primary_domain then
-	              { issue: $r.issue, rule: "domain-drift", detail: "plan says \($r.primary_domain), live says \($ar)" } else empty end),
+	              drift($r.issue; "primary_domain"; "domain-drift"; $r.primary_domain; $ar;
+	                    "plan says \($r.primary_domain), live says \($ar)") else empty end),
 	           # `one()` yields null for BOTH zero and several area labels, so the drift test above
 	           # cannot see either. An unresolvable normative field is reported, not skipped.
 	           (if ($NORM | index("primary_domain")) and $ar == null then
 	              { issue: $r.issue, rule: "domain-label-unresolvable", detail: "\(labels($i; "area:") | length) area:* label(s); exactly one is required to compare against primary_domain \($r.primary_domain)" } else empty end),
 	           (if ($NORM | index("milestone")) and $ms != $r.milestone_title then
-	              (if ([$DEBT[] | select(.issue == $r.issue and .field == "milestone" and .plan_value == $r.milestone_title and .live_value == $ms)] | length) > 0
-	               then empty
-	               else { issue: $r.issue, rule: "milestone-drift", detail: "plan says \($r.milestone_title // "none"), live says \($ms // "none")" }
-	               end) else empty end)
+	              drift($r.issue; "milestone"; "milestone-drift"; $r.milestone_title; $ms;
+	                    "plan says \($r.milestone_title // "none"), live says \($ms // "none")") else empty end)
 	       end ]) as $issue_v
 	| (# ---- debt hygiene: the list may only shrink ---------------------------------------
 	   # Each entry is judged on the value of ITS OWN field. An entry that no longer disagrees

@@ -417,7 +417,10 @@ if [ -x "$RECON" ] || [ -f "$RECON" ]; then
 		|| fail "reconciler: a named debt entry did not permit its own recorded pair"
 	_recf bad-debt-stale.json "a debt entry whose issue no longer drifts" semantics-with-debt.json
 	_recf bad-debt-shape-changed.json "a debt entry whose observed pair changed" semantics-with-debt.json
-	_recf bad-1-plan-ready-live-partial.json "a debt entry citing an undeclared class" semantics-debt-unknown-class.json
+	# SINGLE FAULT EACH. These two fixtures both used to trip debt-unknown-class AND
+	# debt-class-empty, so neither rejection was attributable: deleting either rule left the other
+	# still failing the test. Separated, and each verified to have exactly one cause.
+	_recf live-drift-status-and-priority.json "a debt entry citing an undeclared class" semantics-debt-unknown-class.json
 
 	# --- THE DEBT CONTRACT: an exception is not an allowlist ---------------------------
 	# Every entry is keyed by (issue, field) and must carry an expected plan value, an observed
@@ -452,6 +455,23 @@ if [ -x "$RECON" ] || [ -f "$RECON" ]; then
 	for _nf in priority type primary-domain milestone; do
 		_recf good-all-agree.json "a mapping with normative:false on $_nf" "semantics-normative-off-$_nf.json"
 	done
+
+	# --- ONE DEBT DECISION, PROVEN FOR EVERY NORMATIVE FIELD ----------------------------
+	# The contract is keyed by (issue, field) and accepts entries for every normative field, but
+	# only status and milestone were ever consulted: a recorded priority, type or primary_domain
+	# exemption was validated and then ignored, and the drift fired anyway. Fail-closed, and a
+	# promised path that did not exist. All five now share one decision, proven the same way.
+	for _f in status priority type primary-domain milestone; do
+		_recf "live-drift-$_f.json" "$_f: a disagreement with no debt entry"
+		_rec "live-drift-$_f.json" "semantics-debt-$_f-active.json" \
+			&& pass "reconciler: $_f: an active, exactly-matching debt entry honours the disagreement" \
+			|| fail "reconciler: $_f: a valid debt entry was not consulted — the exemption path does not exist"
+		_recf "live-drift-$_f.json" "$_f: a debt entry recording the wrong live value" "semantics-debt-$_f-wrong-live.json"
+		_recf "live-drift-$_f.json" "$_f: a debt entry recording the wrong plan value" "semantics-debt-$_f-wrong-plan.json"
+		_recf "live-agree-$_f.json" "$_f: a debt entry whose disagreement has been resolved" "semantics-debt-$_f-active.json"
+	done
+	# One debt must not suppress a second issue's drift on the same field.
+	_recf live-drift-status-and-priority.json "a debt naming issue 1 does not excuse another issue" semantics-debt-status-active.json
 
 	# --- review_by must be a real calendar date -----------------------------------------
 	# The expiry test is a lexical comparison, meaningful only for YYYY-MM-DD. "30/09/2026" is

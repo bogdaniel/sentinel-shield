@@ -4,11 +4,11 @@
   "note": "GENERATED FILE — edit the suites or the policy, then regenerate. tests/prod/307 regenerates and compares byte for byte.",
   "policy": "config/harness-assertion-policy.json",
   "totals": {
-    "canonical_sites": 139,
+    "canonical_sites": 153,
     "legacy_suites_named": 3,
     "corpus_verdict_sites": 3247,
     "corpus_suites": 98,
-    "uncovered_sites": 3108
+    "uncovered_sites": 3094
   },
   "rows": [
     {
@@ -653,6 +653,26 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P4: and exits 0 — the false green this rule now prevents\" 0 \"$_p4_rc\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P4: every registered suite ends with a standalone parent-shell epilogue\" \"\" \"$_p4_bad\"",
+      "helper": "assert_equal",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_equal:P6 every declared helper exists in the library\" \"\" \"$_missing_helper\"",
       "helper": "assert_equal",
       "syntax": "canonical",
@@ -893,7 +913,87 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects a real epilogue followed by another significant command\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects a suite with no epilogue at all\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects a suite with no epilogue\" p4 \"$FIX/bad-p4-no-summary.sh\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects an assert_summary token inside DOUBLE-quoted data\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects an assert_summary token inside SINGLE-quoted data\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects an assert_summary token that is only a comment\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects an epilogue in a pipeline segment\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects an epilogue that runs in a subshell\"",
+      "helper": "assert_false",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_false:P4 rejects two standalone epilogues — ambiguous execution semantics\"",
       "helper": "assert_false",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",
@@ -1223,7 +1323,47 @@
     },
     {
       "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a quoted occurrence plus a real final epilogue is accepted\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a single standalone epilogue as the final command is accepted\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
       "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a suite that sources the library and calls the epilogue is accepted\" p4 \"$FIX/good-p1-canonical-only.sh\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4 CONTROL: a top-level failure reaches the epilogue and exits non-zero\"",
+      "helper": "assert_true",
+      "syntax": "canonical",
+      "acceptance_control": "not-a-rejection",
+      "security_critical": true,
+      "migration_status": "canonical",
+      "residual_gap": "none"
+    },
+    {
+      "suite": "tests/prod/307-harness-assertion-policy.sh",
+      "site": "tests/prod/307-harness-assertion-policy.sh#assert_true:P4: the quoted-token fixture prints a FAIL line\" grep -q '^FAIL' \"$TMP/p4.out\"",
       "helper": "assert_true",
       "syntax": "canonical",
       "acceptance_control": "not-a-rejection",

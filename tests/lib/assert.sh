@@ -33,7 +33,7 @@
 # WHAT THIS IS NOT
 #
 # It is not a shell parser, and it does not migrate the corpus. 3247 static verdict sites exist
-# across 98 suites and 139 are canonical (4.28%); the registered set is bounded and named in
+# across 98 suites and 153 are canonical (4.71%); the registered set is bounded and named in
 # config/harness-assertion-policy.json,
 # and tests/prod/307 asserts the policy only over that set. Unregistered suites keep the legacy
 # detectors, and their residual gaps stay recorded rather than implied away.

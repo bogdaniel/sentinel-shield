@@ -22,7 +22,7 @@
 #
 # WHAT IS NOT CLAIMED
 #
-# 139 of 3247 static verdict sites are canonical (4.28%). The policy is enforced over the registered
+# 153 of 3247 static verdict sites are canonical (4.71%). The policy is enforced over the registered
 # suites ONLY; 306, 304 and 117 are named in config/harness-assertion-policy.json with their
 # reasons and residual gaps. The legacy detectors in 306 still carry the corpus, still with the
 # gaps recorded on #345. Nothing here migrates the corpus or claims it is covered.
@@ -107,10 +107,48 @@ p3() { # p3 <file> -> 1 when a bare assert_reject is present
 	return 0
 }
 
-# P4 — the library is sourced and the epilogue is called.
-p4() { # p4 <file> -> 1 when the library or the epilogue is missing
+# P4 — the library is sourced, and the epilogue IS THE FINAL COMMAND.
+#
+# THE DEFECT THIS REPLACES. P4 used to search for the token `assert_summary` at a command
+# separator anywhere in the file, so a suite could satisfy it without ever running one:
+#
+#     assert_true 'this FAILS and must sink the suite' false
+#     printf '%s\n' 'x; assert_summary fake'
+#
+# P4 accepted that, and the suite printed a FAIL and exited 0 — a failed verdict that never
+# sinks the run, which is #345 defect 1 inside the rule written to guarantee the epilogue.
+#
+# POSITION, NOT PRESENCE, and no quote analysis anywhere. The requirement is that the LAST
+# remaining line, after comments and blanks, BEGINS with `assert_summary`. A token inside single
+# or double quotes never begins its line; a comment is stripped; a trailing command becomes the
+# last line itself; `( ... )` begins with `(`; a pipeline is caught by an explicit pipe test.
+# None of that needs to know what is quoted.
+#
+# RESIDUAL, stated rather than implied: a heredoc whose final body line is `assert_summary ...`
+# would satisfy the position test — except the heredoc TERMINATOR is then the last significant
+# line, so the case self-protects, and an unterminated heredoc is a syntax error `dash -n`
+# already rejects. No claim of general shell parsing is made.
+#
+# NO RUNTIME TRAP. An EXIT trap in tests/lib/assert.sh was considered and rejected: 303, 305 and
+# 307 each already install `trap ... EXIT` for TMP cleanup, and a second would be silently
+# overwritten by whichever ran last. Structural enforcement carries no such hazard.
+p4() { # p4 <file> -> 1 when the epilogue guarantee is not met
+	# (a) the library must be sourced.
 	_strip "$1" | grep -qE '^[[:space:]]*\.[[:space:]]+"\$(ROOT|\{ROOT\})?/?[^"]*tests/lib/assert\.sh"' || return 1
-	_strip "$1" | grep -qE '(^|;|&&|\|\|)[[:space:]]*assert_summary[[:space:]]' || return 1
+	# (b) the final significant line must BE the epilogue call.
+	_p4_last=$(_strip "$1" | grep -vE '^[[:space:]]*$' | tail -1 | sed 's/^[[:space:]]*//')
+	case $_p4_last in
+	"assert_summary "*) : ;;
+	*) return 1 ;;
+	esac
+	# (c) it must run in the parent shell, so no pipeline on that line.
+	case $_p4_last in
+	*"|"*) return 1 ;;
+	esac
+	# (d) exactly one standalone epilogue. Two make the execution semantics ambiguous: which one
+	#     decides the exit status depends on what lies between them.
+	_p4_n=$(_strip "$1" | grep -cE '^[[:space:]]*assert_summary[[:space:]]' || true)
+	[ "$_p4_n" -eq 1 ] || return 1
 	return 0
 }
 
@@ -187,6 +225,44 @@ assert_true "P2 CONTROL: a precomputed detail passed as data is accepted" p2 "$F
 assert_false "P3 rejects a bare assert_reject" p3 "$FIX/bad-p3-bare-reject.sh"
 assert_true "P3 CONTROL: a control-paired rejection is accepted" p3 "$FIX/good-p3-paired-rejection.sh"
 
+# --- P4: the epilogue must BE the final command, not merely appear -----------------
+# Eight mutations, one per way the old presence test could be satisfied without an epilogue
+# actually running, plus the runnable proof of the false green itself.
+assert_false "P4 rejects an assert_summary token inside DOUBLE-quoted data" \
+	p4 "$FIX/bad-p4-token-in-double-quotes.sh"
+assert_false "P4 rejects an assert_summary token inside SINGLE-quoted data" \
+	p4 "$FIX/bad-p4-token-in-single-quotes.sh"
+assert_false "P4 rejects an assert_summary token that is only a comment" \
+	p4 "$FIX/bad-p4-token-in-comment.sh"
+assert_false "P4 rejects an epilogue that runs in a subshell" \
+	p4 "$FIX/bad-p4-call-in-subshell.sh"
+assert_false "P4 rejects an epilogue in a pipeline segment" \
+	p4 "$FIX/bad-p4-call-in-pipeline.sh"
+assert_false "P4 rejects a suite with no epilogue at all" \
+	p4 "$FIX/bad-p4-missing-call.sh"
+assert_false "P4 rejects a real epilogue followed by another significant command" \
+	p4 "$FIX/bad-p4-trailing-command.sh"
+assert_false "P4 rejects two standalone epilogues — ambiguous execution semantics" \
+	p4 "$FIX/bad-p4-duplicate-summaries.sh"
+# EXECUTABLE: the false green the old rule permitted. The quoted-data fixture has a FAILING
+# assertion and no epilogue, so it prints FAIL and exits 0.
+sh "$FIX/bad-p4-token-in-single-quotes.sh" > "$TMP/p4.out" 2>&1 && _p4_rc=0 || _p4_rc=$?
+assert_true "P4: the quoted-token fixture prints a FAIL line" grep -q '^FAIL' "$TMP/p4.out"
+assert_equal "P4: and exits 0 — the false green this rule now prevents" 0 "$_p4_rc"
+# CONTROLS.
+assert_true "P4 CONTROL: a single standalone epilogue as the final command is accepted" \
+	p4 "$FIX/good-p4-standalone-final.sh"
+assert_true "P4 CONTROL: a quoted occurrence plus a real final epilogue is accepted" \
+	p4 "$FIX/good-p4-harmless-quoted-occurrence.sh"
+sh "$FIX/good-p4-failure-reaches-summary.sh" > "$TMP/p4c.out" 2>&1 && _p4c_rc=0 || _p4c_rc=$?
+assert_true "P4 CONTROL: a top-level failure reaches the epilogue and exits non-zero" \
+	test "$_p4c_rc" -ne 0
+_p4_bad=""
+while IFS="$(printf '\t')" read -r _suite _sec; do
+	[ -n "$_suite" ] || continue
+	p4 "$ROOT/$_suite" || _p4_bad="$_p4_bad $_suite"
+done < "$TMP/registered"
+assert_equal "P4: every registered suite ends with a standalone parent-shell epilogue" "" "$_p4_bad"
 assert_false "P4 rejects a suite with no epilogue" p4 "$FIX/bad-p4-no-summary.sh"
 assert_true "P4 CONTROL: a suite that sources the library and calls the epilogue is accepted" p4 "$FIX/good-p1-canonical-only.sh"
 

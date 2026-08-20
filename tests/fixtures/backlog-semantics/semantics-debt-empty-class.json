@@ -1,6 +1,6 @@
 {
   "schema": "sentinel-shield/backlog-semantics@1",
-  "purpose": "FIXTURE semantics for tests/prod/112. Mirrors the shipped mapping so a rule proven here is the rule that runs live.",
+  "purpose": "BROKEN FIXTURE, SINGLE FAULT: a declared class with no members. Every entry cites a class that IS declared and populated, so debt-unknown-class cannot also fire.",
   "field_mapping": [
     {
       "field": "status",
@@ -85,12 +85,10 @@
     ],
     "classes": {
       "fixture-declared-class": {
-        "count": 1,
         "why": "fixture",
         "resolution": "fixture"
       },
       "orphaned-fixture-class": {
-        "count": 0,
         "why": "fixture",
         "resolution": "remove it"
       }
@@ -103,29 +101,11 @@
         "live_value": "partial",
         "reason": "fixture-declared-class",
         "owner": "maintainer",
-        "remediation": "reconcile the fixture",
-        "created": "2026-08-01",
+        "remediation": "decide and reconcile",
+        "created": "2026-01-01",
         "review_by": "2026-12-31",
         "source": "#350"
       }
-    ],
-    "entry_contract": {
-      "keyed_by": [
-        "issue",
-        "field"
-      ],
-      "required_fields": [
-        "issue",
-        "field",
-        "plan_value",
-        "live_value",
-        "reason",
-        "owner",
-        "remediation",
-        "created",
-        "review_by",
-        "source"
-      ]
-    }
+    ]
   }
 }

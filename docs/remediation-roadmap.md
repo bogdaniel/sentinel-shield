@@ -269,7 +269,7 @@ Two detector gaps in `tests/prod/306` — a both-branches-`pass` conditional wri
 
 `config/harness-assertion-policy.json` takes the other route: remove the ambiguous syntax from the assertion surface so the properties need no parser. In a **registered** suite every verdict comes from a helper in `tests/lib/assert.sh`, so no conditional can reach a verdict and the single-line form becomes unwritable; and no helper line may carry a command substitution, so no argument boundary must be resolved. Embedded `awk`/`jq` is excluded structurally — a line is assertion logic only if it begins with a helper name — which is why nothing in the policy tracks quote state.
 
-The policy is enforced by `tests/prod/307` over the registered set only. **139 of 3,247 static verdict sites are canonical — about 4.28%.** The policy is not repository-wide. `tests/prod/306` is excluded by design, because its subject *is* bare `pass`/`fail` text; `304` and `117` are named as pending with their residual gaps. For the 95 unregistered suites the legacy detectors and their documented bypasses stand unchanged, and both bypass fixtures are retained for that reason.
+The policy is enforced by `tests/prod/307` over the registered set only. **153 of 3,247 static verdict sites are canonical — about 4.71%.** The policy is not repository-wide. `tests/prod/306` is excluded by design, because its subject *is* bare `pass`/`fail` text; `304` and `117` are named as pending with their residual gaps. For the 95 unregistered suites the legacy detectors and their documented bypasses stand unchanged, and both bypass fixtures are retained for that reason.
 
 ### Repository hygiene
 
