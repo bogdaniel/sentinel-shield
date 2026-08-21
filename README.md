@@ -11,47 +11,36 @@ This repository is not a demo. It is intended for use in real production project
 
 ---
 
-## 1. Purpose
 
-> **Release status.** Latest release: **`v2.2.0` — engine-only feature release**, published
-> and marked **latest** (2026-07-24, tag target `99fcd276`). It supersedes **`v2.0.1`** (engine-only
-> maintenance, tag target `32812ed`) and **`v2.0.0`** (tag target `13be630`), both still intact
-> releases, and adds three additive engineering-governance gate families. Their gate keys are additive (an older summary stays valid), but "off by default" is not true of the whole families: in `baseline`, `acceptance_test_failures`, `architecture_violations`, `changed_lines_coverage_violations`, `missing_test_evidence`, `empty_test_suite` and `debug_code_violations` enforce once their evidence exists, and `focused_test_violations` enforces in every mode. The per-gate mode matrix is [`docs/gate-resolution.md`](docs/gate-resolution.md).
-> Canonical machine-readable status:
-> [`config/release-status.json`](config/release-status.json). The prior **v1.x**
-> line (`v1.9.2`) remains a supported prior stable line. v2 is an **engine-only** release: it is **not**
-> framework-validated and does **not** claim full-platform GA — **Laravel and Symfony are
-> supported by profiles, fixtures and engine tests but are not independently live-validated in
-> real consumer repositories.** STABLE surfaces follow
-> **semver** ([`docs/product-contract.md`](docs/product-contract.md) §1–§3, §6). The v2 line is
-> scoped **engine-only** — a reusable-engine/baseline release, **not** a claim of framework-specific
-> production proof. **Laravel and Symfony are supported by profiles, fixtures and engine tests but
-> are not independently live-validated in real consumer repositories.** Canonical status:
-> [`docs/product-status.md`](docs/product-status.md); scope: [`docs/v2-release-scope.md`](docs/v2-release-scope.md).
->
-> **📖 Start here → the documentation hub: [`docs/index.md`](docs/index.md)** (Start Here, reader
-> paths, canonical doc map). Fast paths: **install & run in <30 min** →
-> [`docs/quickstart.md`](docs/quickstart.md); **roll out across projects** →
-> [`docs/production-rollout.md`](docs/production-rollout.md); **harden for enterprise** →
-> [`docs/enterprise-hardening.md`](docs/enterprise-hardening.md); **debug** →
-> [`docs/troubleshooting.md`](docs/troubleshooting.md) / [`docs/faq.md`](docs/faq.md). Stability:
-> [`docs/product-contract.md`](docs/product-contract.md); readiness:
-> [`docs/v1-readiness.md`](docs/v1-readiness.md); canonical maturity:
-> [`docs/product-status.md`](docs/product-status.md). `v1.x` is **not** a claim that every optional
-> scanner is a production default — see the carried known limitations in `product-status.md`.
-> **Adopting / evaluating?** → [`docs/public-adoption-kit.md`](docs/public-adoption-kit.md) and
-> [`docs/enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md). **How evidence works** →
-> [`docs/evidence-platform.md`](docs/evidence-platform.md) +
-> [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`).
-> **Stuck?** `sh scripts/doctor.sh` (preflight) · `sh scripts/support-bundle.sh` (safe diagnostics) ·
-> `sh scripts/health.sh` (operational health verdict; `--policy` runs the compatibility gate) ·
-> `sh scripts/maturity-report.sh` (tool status) ·
-> [`docs/troubleshooting.md`](docs/troubleshooting.md) · [`docs/operations-runbook.md`](docs/operations-runbook.md)
-> (production health + opt-in JSONL operational events).
-> **Hardened enterprise** → opt-in `--profile hardened-enterprise`.
-> **Install with an AI agent (optional path)** → [`docs/ai-assisted-install.md`](docs/ai-assisted-install.md)
-> plus the copy-paste prompt [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md)
-> (`sh scripts/print-ai-install-prompt.sh`). The manual quickstart remains fully supported.
+## Status at a glance
+
+| | |
+| --- | --- |
+| **Latest release** | [`v2.2.0`](https://github.com/bogdaniel/sentinel-shield/releases) — engine-only feature release (2026-07-24) |
+| **Prior stable** | `v1.9.2` — supported prior line |
+| **Stability** | STABLE surfaces follow semver — [`docs/product-contract.md`](docs/product-contract.md) |
+| **Scope** | **Engine-only**: Laravel & Symfony are supported by profiles, fixtures, and engine tests, but are **not independently live-validated in real consumer repositories** |
+| **Canonical status** | [`docs/product-status.md`](docs/product-status.md) · machine-readable [`config/release-status.json`](config/release-status.json) · [`docs/v2-release-scope.md`](docs/v2-release-scope.md) |
+
+Gate semantics for v2.2.0 (which gate families enforce, in which mode) are in
+[`docs/gate-resolution.md`](docs/gate-resolution.md).
+
+## Where to start
+
+| You want to… | Go to |
+| --- | --- |
+| Understand the docs landscape | **[Documentation hub → `docs/index.md`](docs/index.md)** |
+| Install & run in under 30 minutes | [`docs/quickstart.md`](docs/quickstart.md) |
+| Roll out across many projects | [`docs/production-rollout.md`](docs/production-rollout.md) |
+| Harden for enterprise | [`docs/enterprise-hardening.md`](docs/enterprise-hardening.md) · opt-in `--profile hardened-enterprise` |
+| Evaluate or buy | [`docs/public-adoption-kit.md`](docs/public-adoption-kit.md) · [`docs/enterprise-buyer-pack.md`](docs/enterprise-buyer-pack.md) |
+| Understand the evidence model | [`docs/evidence-platform.md`](docs/evidence-platform.md) · [`docs/scanner-maturity-policy.md`](docs/scanner-maturity-policy.md) (`ci-validated` ≠ `live-validated`) |
+| Install with an AI agent | [`docs/ai-assisted-install.md`](docs/ai-assisted-install.md) · prompt: [`prompts/install-sentinel-shield.md`](prompts/install-sentinel-shield.md) |
+| Debug a problem | `sh scripts/doctor.sh` · [`docs/troubleshooting.md`](docs/troubleshooting.md) · [`docs/faq.md`](docs/faq.md) · [`docs/operations-runbook.md`](docs/operations-runbook.md) |
+
+---
+
+## 1. Purpose
 
 Engineering teams repeatedly re-solve the same problems: which static analysers to
 run, how strict the CI should be, how to handle Docker security, how to manage
