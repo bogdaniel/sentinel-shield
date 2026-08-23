@@ -1,0 +1,218 @@
+{
+  "schema": "sentinel-shield/scanner-contract-table@1",
+  "purpose": "The canonical description of every scanner adapter: its executor, output path, exit vocabulary and native report shapes. tests/prod/309 runs one data-driven conformance matrix over every row; tests/prod/308 proves the shared lifecycle once. A scanner is onboarded by adding a row, not by copying a suite.",
+  "why": "Ten adapters were drifting toward ten implementations of one trust boundary. Ten bespoke end-to-end suites would have repeated that mistake in the tests.",
+  "conformance_cases": [
+    "completed-clean",
+    "completed-findings",
+    "missing-binary",
+    "operational-failure",
+    "malformed-output",
+    "stale-cannot-survive",
+    "no-temp-artifacts"
+  ],
+  "scanners": [
+    {
+      "tool": "syft",
+      "adapter": "scripts/audits/syft.sh",
+      "binary": "syft",
+      "output": "reports/sbom.spdx.json",
+      "issue": 96,
+      "collector_issue": 135,
+      "validator": "sc_syft_validate",
+      "exit_vocabulary": {
+        "0": "completed",
+        "*": "operational"
+      },
+      "writes": "file-argument",
+      "fakes": {
+        "clean": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[]}",
+        "findings": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[{\"name\":\"p\"}]}",
+        "malformed": "{\"spdxVersion\":\"SPDX-2.3\",\"creat"
+      },
+      "findings_exit": 0
+    },
+    {
+      "tool": "checkov",
+      "adapter": "scripts/audits/checkov.sh",
+      "binary": "checkov",
+      "output": "reports/raw/checkov.json",
+      "issue": 97,
+      "validator": "sc_checkov_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "1": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "{\"check_type\":\"terraform\",\"results\":{\"failed_checks\":[]}}",
+        "findings": "{\"check_type\":\"terraform\",\"results\":{\"failed_checks\":[{\"check_id\":\"CKV_1\"}]}}",
+        "malformed": "{\"check_type\":\"terraform\",\"resu"
+      },
+      "findings_exit": 1
+    },
+    {
+      "tool": "conftest",
+      "adapter": "scripts/audits/conftest.sh",
+      "binary": "conftest",
+      "output": "reports/raw/conftest.json",
+      "issue": 98,
+      "validator": "sc_conftest_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "1": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "[{\"filename\":\"a.yaml\",\"successes\":1}]",
+        "findings": "[{\"filename\":\"a.yaml\",\"failures\":[{\"msg\":\"deny\"}]}]",
+        "malformed": "[{\"filena"
+      },
+      "findings_exit": 1
+    },
+    {
+      "tool": "trivy-fs",
+      "adapter": "scripts/audits/trivy-fs.sh",
+      "binary": "trivy",
+      "output": "reports/raw/trivy-fs.json",
+      "issue": 99,
+      "collector_issue": 136,
+      "validator": "sc_trivy_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "1": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "file-argument",
+      "fakes": {
+        "clean": "{\"SchemaVersion\":2,\"ArtifactName\":\"proj\",\"Results\":[]}",
+        "findings": "{\"SchemaVersion\":2,\"ArtifactName\":\"proj\",\"Results\":[{\"Target\":\"go.mod\",\"Class\":\"lang-pkgs\",\"Vulnerabilities\":[{\"VulnerabilityID\":\"CVE-1\",\"Severity\":\"HIGH\"}]}]}",
+        "malformed": "{\"SchemaVersion\":2,\"Resu"
+      },
+      "findings_exit": 1
+    },
+    {
+      "tool": "scorecard",
+      "adapter": "scripts/audits/scorecard.sh",
+      "binary": "scorecard",
+      "output": "reports/raw/scorecard.json",
+      "issue": 100,
+      "validator": "sc_scorecard_validate",
+      "exit_vocabulary": {
+        "0": "completed",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "{\"repo\":{\"name\":\"github.com/o/r\"},\"score\":9.1,\"checks\":[{\"name\":\"Pinned-Dependencies\",\"score\":10}]}",
+        "findings": "{\"repo\":{\"name\":\"github.com/o/r\"},\"score\":3.2,\"checks\":[{\"name\":\"Pinned-Dependencies\",\"score\":2}]}",
+        "malformed": "{\"repo\":{\"name\":\"github.com/o/r\"},\"chec"
+      },
+      "findings_exit": 0
+    },
+    {
+      "tool": "trufflehog",
+      "adapter": "scripts/audits/trufflehog.sh",
+      "binary": "trufflehog",
+      "output": "reports/raw/trufflehog.json",
+      "issue": 101,
+      "validator": "sc_trufflehog_validate_stream",
+      "exit_vocabulary": {
+        "0": "completed",
+        "183": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout-ndjson",
+      "fakes": {
+        "clean": "",
+        "findings": "{\"DetectorName\":\"AWS\",\"Verified\":false,\"SourceMetadata\":{\"Data\":{\"Filesystem\":{\"file\":\"a\"}}}}",
+        "malformed": "{\"DetectorName\":\"AWS\",\"Verif"
+      },
+      "findings_exit": 183
+    },
+    {
+      "tool": "terrascan",
+      "adapter": "scripts/audits/terrascan.sh",
+      "binary": "terrascan",
+      "output": "reports/raw/terrascan.json",
+      "issue": 102,
+      "validator": "sc_terrascan_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "3": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "{\"results\":{\"violations\":[],\"scan_summary\":{\"file/folder\":\".\"}}}",
+        "findings": "{\"results\":{\"violations\":[{\"rule_id\":\"AC_1\",\"severity\":\"HIGH\"}],\"scan_summary\":{\"file/folder\":\".\"}}}",
+        "malformed": "{\"resul"
+      },
+      "findings_exit": 3
+    },
+    {
+      "tool": "dockle",
+      "adapter": "scripts/audits/dockle.sh",
+      "binary": "dockle",
+      "output": "reports/raw/dockle.json",
+      "issue": 103,
+      "validator": "sc_dockle_validate",
+      "exit_vocabulary": {
+        "0": "completed",
+        "*": "operational"
+      },
+      "writes": "file-argument",
+      "requires_env": "SENTINEL_SHIELD_IMAGE",
+      "fakes": {
+        "clean": "{\"summary\":{\"fatal\":0},\"details\":[]}",
+        "findings": "{\"summary\":{\"fatal\":1},\"details\":[{\"code\":\"CIS-DI-0001\",\"level\":\"FATAL\"}]}",
+        "malformed": "{\"summ"
+      },
+      "findings_exit": 0
+    },
+    {
+      "tool": "grype",
+      "adapter": "scripts/audits/grype.sh",
+      "binary": "grype",
+      "output": "reports/raw/grype.json",
+      "issue": 104,
+      "collector_issue": 137,
+      "validator": "sc_grype_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "1": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "{\"matches\":[],\"source\":{\"type\":\"directory\",\"target\":\".\"},\"descriptor\":{\"name\":\"grype\",\"version\":\"0.74.0\",\"db\":{\"built\":\"2026-01-01T00:00:00Z\"}}}",
+        "findings": "{\"matches\":[{\"vulnerability\":{\"id\":\"CVE-1\",\"severity\":\"High\"}}],\"source\":{\"type\":\"directory\",\"target\":\".\"},\"descriptor\":{\"name\":\"grype\",\"version\":\"0.74.0\",\"db\":{\"built\":\"2026-01-01T00:00:00Z\"}}}",
+        "malformed": "{\"matches\":[]"
+      },
+      "findings_exit": 1
+    },
+    {
+      "tool": "osv-scanner",
+      "adapter": "scripts/audits/osv-scanner.sh",
+      "binary": "osv-scanner",
+      "output": "reports/raw/osv-scanner.json",
+      "issue": 105,
+      "collector_issue": 184,
+      "validator": "sc_osv_validate",
+      "exit_vocabulary": {
+        "0": "completed-clean",
+        "1": "completed-findings",
+        "*": "operational"
+      },
+      "writes": "stdout",
+      "fakes": {
+        "clean": "{\"results\":[{\"source\":{\"path\":\"go.mod\",\"type\":\"lockfile\"},\"packages\":[]}]}",
+        "findings": "{\"results\":[{\"source\":{\"path\":\"go.mod\",\"type\":\"lockfile\"},\"packages\":[{\"package\":{\"name\":\"p\"},\"vulnerabilities\":[{\"id\":\"GHSA-1\",\"database_specific\":{\"severity\":\"LOW\"}}]}]}]}",
+        "malformed": "{\"results\":["
+      },
+      "findings_exit": 1
+    }
+  ]
+}
