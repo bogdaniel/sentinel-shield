@@ -70,13 +70,15 @@
         "findings": "[{\"filename\":\"a.yaml\",\"failures\":[{\"msg\":\"deny\"}]}]",
         "malformed": "[{\"filena"
       },
-      "findings_exit": 1
+      "findings_exit": 1,
+      "no_targets_state": "completed-no-targets",
+      "semantics_note": "An empty result array means BOTH 'everything passed' and 'nothing was evaluated'. Zero results is published as no-targets, never as clean."
     },
     {
       "tool": "trivy-fs",
       "adapter": "scripts/audits/trivy-fs.sh",
       "binary": "trivy",
-      "output": "reports/raw/trivy-fs.json",
+      "output": "reports/raw/trivy.json",
       "issue": 99,
       "collector_issue": 136,
       "validator": "sc_trivy_validate",
@@ -91,7 +93,8 @@
         "findings": "{\"SchemaVersion\":2,\"ArtifactName\":\"proj\",\"Results\":[{\"Target\":\"go.mod\",\"Class\":\"lang-pkgs\",\"Vulnerabilities\":[{\"VulnerabilityID\":\"CVE-1\",\"Severity\":\"HIGH\"}]}]}",
         "malformed": "{\"SchemaVersion\":2,\"Resu"
       },
-      "findings_exit": 1
+      "findings_exit": 1,
+      "path_note": "PROVISIONAL. The repository carries two spellings for the filesystem report (reports/raw/trivy.json and reports/raw/trivy-fs.json). This row matches the shipped producer so every intermediate commit stays coherent; #99's canonical decision and all compatibility edits happen in one mechanical unification pass."
     },
     {
       "tool": "scorecard",
@@ -110,7 +113,8 @@
         "findings": "{\"repo\":{\"name\":\"github.com/o/r\"},\"score\":3.2,\"checks\":[{\"name\":\"Pinned-Dependencies\",\"score\":2}]}",
         "malformed": "{\"repo\":{\"name\":\"github.com/o/r\"},\"chec"
       },
-      "findings_exit": 0
+      "findings_exit": 0,
+      "semantics_note": "No findings exit: a weak repository still exits 0, so any non-zero is operational (auth, API, rate limit, unreachable repo). A low score is a FINDING."
     },
     {
       "tool": "trufflehog",
