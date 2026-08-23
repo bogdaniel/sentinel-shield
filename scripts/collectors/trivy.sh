@@ -10,7 +10,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
 
 TOOL="trivy"
-INPUT="reports/raw/trivy.json"
+INPUT="reports/raw/trivy-fs.json"
 
 # usage — print CLI usage/help to stdout.
 usage() {

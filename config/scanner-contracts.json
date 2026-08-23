@@ -109,7 +109,7 @@
       "tool": "trivy-fs",
       "adapter": "scripts/audits/trivy-fs.sh",
       "binary": "trivy",
-      "output": "reports/raw/trivy.json",
+      "output": "reports/raw/trivy-fs.json",
       "issue": 99,
       "collector_issue": 136,
       "validator": "sc_trivy_validate",
@@ -125,7 +125,7 @@
         "malformed": "{\"SchemaVersion\":2,\"Resu"
       },
       "findings_exit": 1,
-      "path_note": "PROVISIONAL. The repository carries two spellings for the filesystem report (reports/raw/trivy.json and reports/raw/trivy-fs.json). This row matches the shipped producer so every intermediate commit stays coherent; #99's canonical decision and all compatibility edits happen in one mechanical unification pass.",
+      "path_note": "CANONICAL. Decided from semantics, not reference count: scripts/audits/trivy-fs.sh and scripts/audits/trivy-image.sh BOTH defaulted to reports/raw/trivy.json, so a filesystem scan and an image scan overwrote each other and the collector could not tell which it was reading. Profiles, fixtures and the scheduled workflow already expected reports/raw/trivy-fs.json -- which no producer wrote. The filesystem scanner now writes reports/raw/trivy-fs.json and the image scanner reports/raw/trivy-image.json. The bare reports/raw/trivy.json spelling is abandoned: it cannot name which scan produced it.",
       "expected": {
         "clean": "completed-clean",
         "findings": "completed-findings",

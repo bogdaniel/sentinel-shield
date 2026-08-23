@@ -23,7 +23,7 @@ SS_LIB_DIR="$SCRIPT_DIR/../lib"
 # shellcheck source=scripts/lib/scanner-contracts.sh
 . "$SS_LIB_DIR/scanner-contracts.sh"
 
-OUT="${1:-reports/raw/trivy.json}"
+OUT="${1:-reports/raw/trivy-fs.json}"
 st_begin trivy-fs "$OUT" || exit 1
 ST_TARGET="${SENTINEL_SHIELD_TRIVY_TARGET:-.}"
 ST_TARGET_MODE="filesystem"

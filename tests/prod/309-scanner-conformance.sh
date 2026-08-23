@@ -142,4 +142,27 @@ while IFS="$(printf '\t')" read -r _tool _adapter _v _b _out; do
 done < "$TMP/rows"
 assert_equal "each adapter names its own row's output path" "" "$_wrong_path"
 
+# ===========================================================================
+# THE ABANDONED TRIVY SPELLING CANNOT SATISFY THE EVIDENCE CONTRACT (#99).
+#
+# scripts/audits/trivy-fs.sh and scripts/audits/trivy-image.sh BOTH defaulted to
+# reports/raw/trivy.json, so a filesystem scan and an image scan overwrote each other and no
+# consumer could tell which scan it was reading. Three CI workflows wrote fs results there while a
+# fourth wrote an image result to the same name. Meanwhile profiles and the scheduled workflow
+# expected reports/raw/trivy-fs.json -- a path no producer wrote.
+#
+# The two scanners now have two paths. These assertions keep it that way.
+_fs_out=$(jq -r '.scanners[] | select(.tool=="trivy-fs") | .output' "$TABLE")
+assert_equal "the filesystem scanner's canonical path names its scan type" "reports/raw/trivy-fs.json" "$_fs_out"
+assert_false "no active producer still writes the ambiguous bare spelling" \
+	grep -rq 'reports/raw/trivy\.json' "$ROOT/scripts/audits"
+assert_false "no active collector still reads it" \
+	grep -rq 'reports/raw/trivy\.json' "$ROOT/scripts/collectors"
+assert_false "no profile or workflow still names it" \
+	grep -rq 'reports/raw/trivy\.json' "$ROOT/profiles" "$ROOT/.github/workflows" "$ROOT/templates"
+# The two Trivy producers must not converge again. A shared path is what made the evidence
+# unattributable in the first place.
+_img_out=$(grep -oE 'reports/raw/trivy[a-z-]*\.json' "$ROOT/scripts/audits/trivy-image.sh" | head -1)
+assert_false "the filesystem and image scanners do not share an output path" test "$_fs_out" = "$_img_out"
+
 assert_summary "scanner-conformance ($ROWS rows x 5 scenarios, expectations derived from the contract table)"

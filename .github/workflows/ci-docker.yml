@@ -100,14 +100,14 @@ jobs:
 
       # (Hadolint raw report is already written by the lint-gate step above via
       # scripts/run-hadolint.sh — no separate single-Dockerfile step needed.)
-      - name: Trivy (JSON → reports/raw/trivy.json)
+      - name: Trivy (JSON → reports/raw/trivy-image.json)
         if: always()
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: sentinel-app:ci
           format: json
-          output: reports/raw/trivy.json
+          output: reports/raw/trivy-image.json
           severity: CRITICAL,HIGH,MEDIUM
         continue-on-error: true
 
