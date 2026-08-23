@@ -46,7 +46,13 @@ if ! sc_syft_validate "$(st_report_path)"; then
 	st_fail "$ST_STATE_ERROR" "SBOM rejected: ${SC_REASON:-unknown}"
 	exit 0
 fi
-# A zero-package SBOM is a legitimate completed scan, not an error: it is published as clean,
-# with the document metadata that proves it was produced by a real run (#135).
-if [ "${SC_COUNT:-0}" -gt 0 ]; then st_publish "$ST_STATE_CLEAN"; else st_publish "$ST_STATE_CLEAN"; fi
+# SYFT HAS NO FINDINGS STATE, and the conformance matrix made that explicit. An SBOM is an
+# INVENTORY, not a verdict: a document listing a hundred packages is a completed inventory exactly
+# like an empty one, and calling the populated case "findings" would invent a judgement Syft never
+# made. Vulnerability judgement belongs to Grype, downstream of this document.
+#
+# A zero-package SBOM is therefore legitimate rather than suspicious. What separates a real empty
+# inventory from the forged `{}` of #135 is document metadata -- spdxVersion, creationInfo, a named
+# source -- which sc_syft_validate has already required above, whatever the package count.
+st_publish "$ST_STATE_CLEAN"
 exit 0
