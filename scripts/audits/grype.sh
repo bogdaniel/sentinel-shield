@@ -1,113 +1,78 @@
 #!/bin/sh
-# Sentinel Shield audit wrapper — Grype (v0.1.19). Main-gate / nightly only (never PR-fast).
-# Modes (SENTINEL_SHIELD_GRYPE_MODE): sbom (default) | fs.
-#   sbom: scan an existing Syft SBOM (SENTINEL_SHIELD_GRYPE_SBOM_PATH, default reports/sbom.spdx.json).
-#         If the SBOM is missing this is UNAVAILABLE (no fake) — set MODE=fs to scan the tree instead.
-#   fs:   scan the project root (explicit opt-in).
-# Executor: local `grype` binary if present, else a Docker image (SENTINEL_SHIELD_GRYPE_IMAGE).
-# Missing binary AND no usable image -> unavailable (exit 0, NO file written, never fake-clean).
-# Output: reports/raw/grype.json (Grype native JSON; collector maps severities).
+# Sentinel Shield audit wrapper — Grype vulnerability scan (#104).
 #
-# PROVENANCE (v2 hardening): alongside the raw report this wrapper writes a sidecar
-# reports/raw/grype.provenance.json recording the resolved source (local-binary vs
-# docker-image), version, image ref/digest and platform, so the collector can tell
-# 'scanner did not run' from 'scanner ran, empty report'. When the Docker path is used
-# the image ref (and digest, if @sha256: pinned) is recorded. Best-effort: skipped only
-# if jq is unavailable.
+# This adapter had grown its own partial lifecycle: bounded probes and a provenance sidecar, but
+# assembled independently of the other nine. It now uses the shared transaction, so provenance is
+# finalized only AFTER the report validates rather than beside it.
+#
+# THE DEFECT #104 NAMES: the Docker path was built from a whitespace command string, so a project
+# path containing a space, tab or shell metacharacter was split into fragments, and a hostile image
+# value could inject options into the docker command line. Every execution below passes an explicit
+# argument vector, and the image reference is validated as a single non-option token before it is
+# used.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# shellcheck source=scripts/lib/sentinel-shield-common.sh
-. "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
-# shellcheck source=scripts/lib/isolated-tools.sh
-. "$SCRIPT_DIR/../lib/isolated-tools.sh"
-# shellcheck source=scripts/lib/bounded-process.sh
-. "$SCRIPT_DIR/../lib/bounded-process.sh"
-# shellcheck source=scripts/lib/normalized-evidence.sh
-. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
-
-BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
-trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
+SS_LIB_DIR="$SCRIPT_DIR/../lib"
+# shellcheck source=scripts/lib/redaction.sh
+. "$SS_LIB_DIR/redaction.sh"
+# shellcheck source=scripts/lib/scanner-transaction.sh
+. "$SS_LIB_DIR/scanner-transaction.sh"
+# shellcheck source=scripts/lib/scanner-contracts.sh
+. "$SS_LIB_DIR/scanner-contracts.sh"
 
 OUT="${1:-reports/raw/grype.json}"
-mkdir -p "$(dirname "$OUT")"
-PROV="${OUT%.json}.provenance.json"
-PLATFORM=$(isolated_tool_platform)
-
+st_begin grype "$OUT" || exit 1
 MODE="${SENTINEL_SHIELD_GRYPE_MODE:-sbom}"
 SBOM="${SENTINEL_SHIELD_GRYPE_SBOM_PATH:-reports/sbom.spdx.json}"
 IMAGE="${SENTINEL_SHIELD_GRYPE_IMAGE:-}"
-
-write_prov() { # write_prov <source> <version> <binpath> <imageref> <imagedigest>
-	command_exists jq || { log_warn "grype: jq unavailable; provenance sidecar not written"; return 0; }
-	isolated_tool_provenance_record "grype" "$1" "$2" "$4" "$5" "$3" "" "" "" "" "$PLATFORM" > "$PROV" \
-		|| log_warn "grype: could not write provenance sidecar '$PROV'"
-}
-
-unavailable() { echo "[sentinel-shield] grype unavailable: $1 (no report written; collector reports unavailable)." >&2; write_prov "unresolved" "" "" "" ""; exit 0; }
-
-# Resolve executor. The version probe and the docker-inspect digest resolution are BOUNDED
-# (scripts/lib/bounded-process.sh): a hung binary or a wedged Docker daemon can no longer
-# stall the scan indefinitely. SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS overrides the version
-# probe cap; SENTINEL_SHIELD_DOCKER_PROBE_TIMEOUT_SECONDS the docker inspect cap.
-if command -v grype >/dev/null 2>&1; then
-	EXEC="grype"
-	_gbin=$(command -v grype)
-	_gvto=$(bp_timeout scanner-version SENTINEL_SHIELD_GRYPE_TIMEOUT_SECONDS) || _gvto=30
-	if bp_run scanner-version "$_gvto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- grype version; then
-		_gver=$(awk '/[Vv]ersion:/{print $2; exit}' "$BP_TMP_OUT") || _gver=""
-	else
-		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: version probe exceeded ${_gvto}s; recording unknown version"
-		_gver=""
-	fi
-	write_prov "local-binary" "$_gver" "$_gbin" "" ""
-elif [ -n "$IMAGE" ] && command -v docker >/dev/null 2>&1; then
-	EXEC="docker run --rm -v $PWD:/src -w /src $IMAGE"
-	case "$IMAGE" in *@sha256:*) : ;; *) log_warn "grype: image '$IMAGE' is a mutable tag (not @sha256:); pin by digest for reproducible/gated runs" ;; esac
-	case "$IMAGE" in
-		*@sha256:*) _gdig="sha256:${IMAGE##*@sha256:}" ;;
-		*) _gpto=$(bp_timeout docker-probe) || _gpto=15
-		   if bp_run docker-probe "$_gpto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- \
-				docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE"; then
-				_gdig=$(head -n1 "$BP_TMP_OUT" 2>/dev/null) || _gdig=""
-		   else
-				[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: docker inspect exceeded ${_gpto}s (daemon unreachable); image digest unresolved"
-				_gdig=""
-		   fi
-		   case "$_gdig" in *@sha256:*) _gdig="sha256:${_gdig##*@sha256:}" ;; *) _gdig="" ;; esac ;;
-	esac
-	write_prov "docker-image" "" "" "$IMAGE" "$_gdig"
-else
-	unavailable "no local 'grype' binary and no SENTINEL_SHIELD_GRYPE_IMAGE+docker"
-fi
+ST_TARGET_MODE="$MODE"
 
 case "$MODE" in
-	sbom)
-		if [ ! -s "$SBOM" ]; then
-			unavailable "SBOM '$SBOM' not found (run Syft first, or set SENTINEL_SHIELD_GRYPE_MODE=fs)"
-		fi
-		echo "[sentinel-shield] grype: scanning SBOM $SBOM -> $OUT" >&2
-		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
-		# shellcheck disable=SC2086
-		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC sbom:"$SBOM" -o json --file "$OUT" || true
-		# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
-		# describe this run. `bp_run ... || true` used to discard it, and the collector then
-		# assumed a clean process from a parseable report. Written after the scan so the digest
-		# binds to the output as actually left on disk.
-		ne_execution_write "grype" "$OUT" || log_warn "grype: could not write the execution record"
-		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: SBOM scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
-		;;
-	fs)
-		echo "[sentinel-shield] grype: filesystem scan (.) -> $OUT" >&2
-		_gsto=$(bp_timeout scanner-run SENTINEL_SHIELD_GRYPE_SCAN_TIMEOUT_SECONDS) || _gsto=900
-		# shellcheck disable=SC2086
-		bp_run scanner-run "$_gsto" "$BP_TMP_OUT" "$BP_TMP_ERR" -- $EXEC dir:. -o json --file "$OUT" || true
-		# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
-		# describe this run. `bp_run ... || true` used to discard it, and the collector then
-		# assumed a clean process from a parseable report. Written after the scan so the digest
-		# binds to the output as actually left on disk.
-		ne_execution_write "grype" "$OUT" || log_warn "grype: could not write the execution record"
-		[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "grype: filesystem scan exceeded ${_gsto}s; report may be absent (collector reports unavailable)"
-		;;
-	*) unavailable "invalid SENTINEL_SHIELD_GRYPE_MODE='$MODE' (use sbom|fs)" ;;
+sbom)
+	# A missing SBOM is UNAVAILABLE, not clean: there is nothing to scan, and st_begin has already
+	# removed any previous report so nothing survives to imply otherwise.
+	[ -f "$SBOM" ] || { st_fail "$ST_STATE_UNAVAILABLE" "SBOM '$SBOM' is absent — nothing to scan (set MODE=fs to scan the tree)"; exit 0; }
+	ST_TARGET="$SBOM"; GRYPE_ARG="sbom:$SBOM" ;;
+fs)
+	ST_TARGET="${SENTINEL_SHIELD_GRYPE_TARGET:-.}"; GRYPE_ARG="dir:$ST_TARGET" ;;
+*)
+	st_fail "$ST_STATE_ERROR" "unknown SENTINEL_SHIELD_GRYPE_MODE '$MODE' (expected sbom|fs)"; exit 0 ;;
 esac
+
+if command_exists grype; then
+	ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v grype)
+	ST_VERSION=$(grype version 2>/dev/null | awk '/[Vv]ersion:/{print $2; exit}') || ST_VERSION=""
+	st_execute scanner-run grype "$GRYPE_ARG" -o json
+elif [ -n "$IMAGE" ] && command_exists docker; then
+	# THE IMAGE IS VALIDATED BEFORE IT REACHES A COMMAND LINE. A value carrying whitespace could
+	# become several docker arguments; one beginning with '-' could become an option.
+	case "$IMAGE" in
+	*[[:space:]]*) st_fail "$ST_STATE_ERROR" "grype image reference contains whitespace — refusing to build a command from it"; exit 0 ;;
+	-*)            st_fail "$ST_STATE_ERROR" "grype image reference begins with '-' — refusing an option-like value"; exit 0 ;;
+	esac
+	case "$IMAGE" in *@sha256:*) ST_IMAGE_DIGEST="${IMAGE#*@}" ;; *) log_warn "grype: scanner image '$IMAGE' is a mutable tag; pin by digest for reproducible evidence" ;; esac
+	ST_EXECUTOR="docker-image"; ST_IMAGE="$IMAGE"
+	# An explicit argument vector. The project is mounted at a fixed interior path, so a host path
+	# containing spaces, tabs or Unicode never has to survive word splitting.
+	_gy_host=$(CDPATH= cd -- "." && pwd)
+	st_execute scanner-run docker run --rm -v "$_gy_host:/src" -w /src "$IMAGE" "$GRYPE_ARG" -o json
+else
+	st_fail "$ST_STATE_UNAVAILABLE" "no local 'grype' binary and no SENTINEL_SHIELD_GRYPE_IMAGE with docker"
+	exit 0
+fi
+
+[ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "grype exceeded its bounded runtime"; exit 0; }
+case "$ST_EXIT" in
+0|1) : ;;
+*)   st_fail "$ST_STATE_ERROR" "grype exited $ST_EXIT — database, network, configuration or internal failure"; exit 0 ;;
+esac
+st_report_from_stdout || { st_fail "$ST_STATE_ERROR" "grype produced no report on stdout"; exit 0; }
+sc_grype_validate "$(st_report_path)" || { st_fail "$ST_STATE_ERROR" "grype report rejected: ${SC_REASON:-unknown}"; exit 0; }
+
+# The report must describe the target we asked for, and the database it used is recorded so a
+# clean result can be judged against the data behind it (#137 consumes both).
+ST_DB_ID=$(jq -r '(.descriptor.db.built // .descriptor.db.checksum // "") | tostring' "$(st_report_path)" 2>/dev/null) || ST_DB_ID=""
+_gy_src=$(jq -r '(.source.target // .source.userInput // "") | tostring' "$(st_report_path)" 2>/dev/null) || _gy_src=""
+_gy_matches=$(jq -r '.matches | length' "$(st_report_path)" 2>/dev/null) || _gy_matches=0
+if [ "${_gy_matches:-0}" -gt 0 ]; then st_publish "$ST_STATE_FINDINGS"; else st_publish "$ST_STATE_CLEAN"; fi
 exit 0

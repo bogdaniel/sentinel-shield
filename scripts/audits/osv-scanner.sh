@@ -1,61 +1,49 @@
 #!/bin/sh
-# Sentinel Shield audit wrapper — osv-scanner. Runs the tool if installed and writes
-# reports/raw/osv-scanner.json; if the binary is absent it does NOT fake a report (logs
-# 'unavailable' and exits 0; the collector then reports status=unavailable).
-# Many of these are better run via a pinned GitHub Action — see templates/workflows/.
+# Sentinel Shield audit wrapper — OSV-Scanner dependency vulnerabilities (#105).
 #
-# PROVENANCE (v2 hardening): alongside the raw report this wrapper writes a sidecar
-# reports/raw/osv-scanner.provenance.json recording the resolved source / version /
-# platform, so the collector can tell 'scanner did not run' (source=unresolved) from
-# 'scanner ran, empty report'. Best-effort: skipped only if jq is unavailable.
+# `{"results":[]}` is emitted BOTH when nothing was scanned and when everything scanned was clean.
+# The report alone cannot tell those apart, which is why this adapter records how many SOURCES were
+# discovered and publishes no-targets rather than clean when that count is zero (#184 consumes it).
+#
+# PROVENANCE IS FINALIZED ONLY AFTER VALIDATION — the transaction guarantees it. Previously the
+# sidecar could be written beside a report that had never been checked, so a failed scan could
+# leave a fresh-looking provenance next to stale results.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# shellcheck source=scripts/lib/sentinel-shield-common.sh
-. "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
-# shellcheck source=scripts/lib/isolated-tools.sh
-. "$SCRIPT_DIR/../lib/isolated-tools.sh"
-# shellcheck source=scripts/lib/bounded-process.sh
-. "$SCRIPT_DIR/../lib/bounded-process.sh"
-# shellcheck source=scripts/lib/normalized-evidence.sh
-. "$SCRIPT_DIR/../lib/normalized-evidence.sh"
-
-BP_TMP_OUT=$(mktemp); BP_TMP_ERR=$(mktemp)
-trap 'rm -f "$BP_TMP_OUT" "$BP_TMP_ERR"' EXIT INT TERM
+SS_LIB_DIR="$SCRIPT_DIR/../lib"
+# shellcheck source=scripts/lib/redaction.sh
+. "$SS_LIB_DIR/redaction.sh"
+# shellcheck source=scripts/lib/scanner-transaction.sh
+. "$SS_LIB_DIR/scanner-transaction.sh"
+# shellcheck source=scripts/lib/scanner-contracts.sh
+. "$SS_LIB_DIR/scanner-contracts.sh"
 
 OUT="${1:-reports/raw/osv-scanner.json}"
-mkdir -p "$(dirname "$OUT")"
-PROV="${OUT%.json}.provenance.json"
-PLATFORM=$(isolated_tool_platform)
+st_begin osv-scanner "$OUT" || exit 1
+ST_TARGET="${SENTINEL_SHIELD_OSV_TARGET:-.}"
+ST_TARGET_MODE="recursive-lockfile-discovery"
 
-write_prov() { # write_prov <source> <version> <binpath>
-	command_exists jq || { log_warn "osv-scanner: jq unavailable; provenance sidecar not written"; return 0; }
-	isolated_tool_provenance_record "osv-scanner" "$1" "$2" "" "" "$3" "" "" "" "" "$PLATFORM" > "$PROV" \
-		|| log_warn "osv-scanner: could not write provenance sidecar '$PROV'"
-}
+command_exists osv-scanner || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'osv-scanner' binary"; exit 0; }
+ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v osv-scanner)
+ST_VERSION=$(osv-scanner --version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
 
-if ! command -v osv-scanner >/dev/null 2>&1; then
-	echo "[sentinel-shield] osv-scanner not installed; skipping (collector will report unavailable). Prefer the pinned GitHub Action in CI." >&2
-	write_prov "unresolved" "" ""
-	exit 0
-fi
-BINPATH=$(command -v osv-scanner)
-# BOUNDED version probe (scripts/lib/bounded-process.sh): a hung binary cannot stall the
-# wrapper. SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS overrides the version-probe cap.
-VTO=$(bp_timeout scanner-version SENTINEL_SHIELD_OSV_SCANNER_TIMEOUT_SECONDS) || VTO=30
-if bp_run scanner-version "$VTO" "$BP_TMP_OUT" "$BP_TMP_ERR" -- osv-scanner --version; then
-	VER=$(head -n1 "$BP_TMP_OUT" 2>/dev/null) || VER=""
+st_execute scanner-run osv-scanner --format json --recursive "$ST_TARGET"
+[ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "osv-scanner exceeded its bounded runtime"; exit 0; }
+case "$ST_EXIT" in
+0|1) : ;;
+*)   st_fail "$ST_STATE_ERROR" "osv-scanner exited $ST_EXIT — network, database, parser or internal failure"; exit 0 ;;
+esac
+st_report_from_stdout || { st_fail "$ST_STATE_ERROR" "osv-scanner produced no report on stdout"; exit 0; }
+sc_osv_validate "$(st_report_path)" || { st_fail "$ST_STATE_ERROR" "osv-scanner report rejected: ${SC_REASON:-unknown}"; exit 0; }
+
+# DISCOVERY IS THE EVIDENCE. Zero sources means no lockfile was found: a truthful no-targets, not a
+# clean bill of health. One or more sources with zero vulnerabilities is a genuine clean scan, and
+# the two are published as different states.
+if [ "${SC_SOURCES:-0}" -eq 0 ]; then
+	st_publish "$ST_STATE_NOTARGETS"
+elif [ "${SC_COUNT:-0}" -gt 0 ]; then
+	st_publish "$ST_STATE_FINDINGS"
 else
-	[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "osv-scanner: version probe exceeded ${VTO}s; recording unknown version"
-	VER=""
+	st_publish "$ST_STATE_CLEAN"
 fi
-write_prov "local-binary" "$VER" "$BINPATH"
-# BOUNDED scan (not only the version probe): a wedged scan must not stall the wrapper.
-STO=$(bp_timeout scanner-run SENTINEL_SHIELD_OSV_SCANNER_SCAN_TIMEOUT_SECONDS) || STO=900
-bp_run scanner-run "$STO" "$BP_TMP_OUT" "$BP_TMP_ERR" -- osv-scanner --format json --output "$OUT" -r . || true
-# #310: persist the OBSERVED execution result immediately, while the BP_* globals still
-# describe this run. `bp_run ... || true` used to discard it, and the collector then
-# assumed a clean process from a parseable report. Written after the scan so the digest
-# binds to the output as actually left on disk.
-ne_execution_write "osv-scanner" "$OUT" || log_warn "osv-scanner: could not write the execution record"
-[ "${BP_STATUS:-}" = "timed-out" ] && log_warn "osv-scanner: scan exceeded ${STO}s; report may be absent (collector reports unavailable)"
 exit 0
