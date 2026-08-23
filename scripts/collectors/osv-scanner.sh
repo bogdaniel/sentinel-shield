@@ -153,14 +153,28 @@ OV=$(jq 'if has("results") then
 			         elif $anyhigh then "high"
 			         else "medium" end
 			     end ]) as $b
+			# LOW SURVIVES CONSTRUCTION (#185). The bucketing above has always produced "low";
+			# the object below simply never carried it, so every low finding vanished here --
+			# before any status logic could see it -- and a genuine vulnerability was reported
+			# as a clean scan.
+			#
+			# It is emitted as low_findings, NOT low_vulnerabilities, deliberately. The builder
+			# SUMS the *_vulnerabilities counters into the gating total, and #185 requires the
+			# opposite: low must be visible without becoming gating. Naming it differently is
+			# what keeps "present" and "gating" as two separate answers rather than one.
 			| {critical_vulnerabilities:([$b[]|select(.=="critical")]|length),
 			   high_vulnerabilities:([$b[]|select(.=="high")]|length),
 			   medium_vulnerabilities:([$b[]|select(.=="medium")]|length),
+			   low_findings:([$b[]|select(.=="low")]|length),
+			   _findings_detail:([ .results[]?.packages[]?.vulnerabilities[]?
+			                      | {id:(.id // "unknown"),
+			                         severity:(((.database_specific.severity // "") | ascii_upcase) // "")} ]),
 			   _results:([.results[]?]|length), _native:true}
 		 else
 			# Reachable only on the fixture path — the production gate guarantees `.results`.
 			# Counts come from the ENVELOPE payload, never from bare top-level keys.
 			{critical_vulnerabilities:(.counts.critical//0), high_vulnerabilities:(.counts.high//0), medium_vulnerabilities:(.counts.medium//0),
+			 low_findings:(.counts.low//0), _findings_detail:[],
 			 _results:null, _native:false}
 		 end' "$INPUT")
 # Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
@@ -182,8 +196,8 @@ RC=$(printf '%s' "$OV" | jq -r '._results')
 # Every numeric bucket in the overlay is summed, whatever it is named. Enumerating the keys by
 # hand is how `low` came to be forgotten in the first place: the gating sum listed three buckets
 # and the fourth simply never appeared in it.
-FOUND=$(printf '%s' "$OV" | jq '[to_entries[] | select(.key | startswith("_") | not)
-                                 | select(.value | type == "number") | .value] | add // 0')
+FOUND=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities, .high_vulnerabilities,
+                                 .medium_vulnerabilities, (.low_findings // 0)] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then
 	STATUS="fail"; HEALTH="findings"
 elif [ "${FOUND:-0}" -gt 0 ]; then
