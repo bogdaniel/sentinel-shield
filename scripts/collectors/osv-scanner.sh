@@ -243,7 +243,14 @@ ENVELOPE=$(ne_envelope "$PRODUCER" "$INPUT" "osv-scanner-json" "$NE_TRUST_TYPE" 
 	"$(printf '%s' "$OV" | jq '{counts:{critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities}}')")
 REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --arg h "$HEALTH" --argjson p "$PROV" \
 	--argjson e "$ENVELOPE" --argjson np "$([ "$NE_KIND" = fixture ] && echo true || echo false)" \
-	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities, provenance:$p, evidence:$e}
+	'{status:$s, health:$h, critical:.critical_vulnerabilities, high:.high_vulnerabilities, medium:.medium_vulnerabilities,
+	  low:(.low_findings // 0),
+	  findings_total:((.critical_vulnerabilities + .high_vulnerabilities + .medium_vulnerabilities + (.low_findings // 0))),
+	  provenance:$p, evidence:$e}
 	 + (if $np then {non_production:true} else {} end)')
+# THE GATING SUMMARY IS DELIBERATELY UNCHANGED. `low` reaches the TOOL REPORT above, where it is
+# observable downstream; it is kept out of the summary overrides because those feed the gate, and
+# #185 asks for preservation, not for gating on low. ss_emit_collector also validates every
+# override key against the canonical summary vocabulary, so a low key here would be refused.
 OVCOUNTS=$(printf '%s' "$OV" | jq '{critical_vulnerabilities,high_vulnerabilities,medium_vulnerabilities}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OVCOUNTS"
