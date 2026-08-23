@@ -17,6 +17,11 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+SS_LIB_DIR="$SCRIPT_DIR/../lib"
+# shellcheck source=scripts/lib/collector-evidence.sh
+. "$SCRIPT_DIR/../lib/collector-evidence.sh"
+# shellcheck source=scripts/lib/scanner-contracts.sh
+. "$SCRIPT_DIR/../lib/scanner-contracts.sh"
 # shellcheck source=scripts/lib/normalized-evidence.sh
 . "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="osv-scanner"
@@ -62,6 +67,39 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	ss_emit_collector "$TOOL" "execution-error" "$REPORT" '{}'
 	# fail-closed: unparseable scanner output is an error, not a clean result
 	exit 2
+fi
+
+# EVIDENCE BINDING (#184, #185). `{"results":[]}` is emitted BOTH when nothing was scanned and when
+# everything scanned was clean, so the report alone cannot decide between them. The producer
+# recorded which it was; this reads that decision rather than guessing from an empty array.
+if ! ce_bind "$INPUT" "osv-scanner" "${SENTINEL_SHIELD_OSV_SUBJECT:-}"; then
+	log_error "$TOOL: evidence rejected — ${CE_REASON:-unbound}"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg r "${CE_REASON:-unbound}" '{status:"execution-error", health:"unbound-evidence", reason:$r}')" '{}'
+	exit 0
+fi
+if ! sc_osv_validate "$INPUT"; then
+	log_error "$TOOL: not a valid OSV report — ${SC_REASON:-unknown}"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"invalid-output", health:"invalid-output", reason:$r}')" '{}'
+	exit 0
+fi
+
+# NO-TARGETS IS NOT CLEAN (#184). A scan that found no lockfile to examine has not cleared the
+# project; it has not examined it. The distinction comes from the producer's recorded completion
+# state and its source discovery, never from the empty array alone.
+OSV_COMPLETION="$CE_STATE"
+if [ "$OSV_COMPLETION" = "completed-no-targets" ]; then
+	if [ "${SC_SOURCES:-0}" -ne 0 ]; then
+		log_error "$TOOL: provenance says no-targets but the report lists ${SC_SOURCES} source(s) — contradictory evidence"
+		ss_emit_collector "$TOOL" "execution-error" \
+			"$(jq -n '{status:"execution-error", health:"contradictory-evidence"}')" '{}'
+		exit 0
+	fi
+	log_warn "$TOOL: completed with NO TARGETS — no lockfile was discovered; this is not a clean result"
+	ss_emit_collector "$TOOL" "no-targets" \
+		"$(jq -n '{status:"no-targets", health:"no-targets", critical:0, high:0, medium:0, low:0, sources:0}')" '{}'
+	exit 0
 fi
 
 # Fail closed on an unrecognized SHAPE (v2.0.2, #51). Without this the `else` branch of the
@@ -131,13 +169,42 @@ TOTAL=$(printf '%s' "$OV" | jq '[.critical_vulnerabilities,.high_vulnerabilities
 NATIVE=$(printf '%s' "$OV" | jq -r '._native')
 RC=$(printf '%s' "$OV" | jq -r '._results')
 
+# HEALTH, FINDING PRESENCE AND GATE OUTCOME ARE THREE DIFFERENT ANSWERS (#185).
+#
+# TOTAL sums the GATING buckets only — critical, high, medium — which is correct for deciding
+# whether to fail a gate, and wrong for deciding whether anything was found. A low-only report has
+# TOTAL 0, so it used to reach `health: ok`: a genuine vulnerability reported as a clean scan.
+#
+# FOUND counts every classified severity, low and informational included. Health follows FOUND;
+# the gate outcome follows TOTAL. A low-only result is therefore `health: findings` while still
+# passing a gate that does not gate on low — which is a policy decision, not a reason to forget
+# the finding.
+# Every numeric bucket in the overlay is summed, whatever it is named. Enumerating the keys by
+# hand is how `low` came to be forgotten in the first place: the gating sum listed three buckets
+# and the fourth simply never appeared in it.
+FOUND=$(printf '%s' "$OV" | jq '[to_entries[] | select(.key | startswith("_") | not)
+                                 | select(.value | type == "number") | .value] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then
 	STATUS="fail"; HEALTH="findings"
+elif [ "${FOUND:-0}" -gt 0 ]; then
+	# Findings exist, none of them in a gating bucket. The gate passes; the health does NOT claim
+	# the project is clean, and the counts survive into the emitted report.
+	STATUS="pass"; HEALTH="findings"
 elif [ "$NATIVE" = "true" ] && [ "$RC" = "0" ]; then
 	# results present but empty: nothing was scannable (no applicable targets).
 	STATUS="pass"; HEALTH="no-targets"
 else
 	STATUS="pass"; HEALTH="ok"
+fi
+
+# CONTRADICTORY EVIDENCE FAILS CLOSED (#184). The producer emits completed-clean only when it
+# discovered at least one source; a clean state beside zero sources means the report and its
+# provenance disagree about whether anything was examined.
+if [ "$CE_STATE" = "completed-clean" ] && [ "${SC_SOURCES:-0}" -eq 0 ]; then
+	log_error "$TOOL: provenance says completed-clean but no source was discovered — contradictory evidence"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n '{status:"execution-error", health:"contradictory-evidence"}')" '{}'
+	exit 0
 fi
 
 # #310: verify the EXECUTION RECORD before stamping anything. A parseable report is not a

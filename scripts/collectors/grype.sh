@@ -17,6 +17,11 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+SS_LIB_DIR="$SCRIPT_DIR/../lib"
+# shellcheck source=scripts/lib/collector-evidence.sh
+. "$SCRIPT_DIR/../lib/collector-evidence.sh"
+# shellcheck source=scripts/lib/scanner-contracts.sh
+. "$SCRIPT_DIR/../lib/scanner-contracts.sh"
 # shellcheck source=scripts/lib/normalized-evidence.sh
 . "$SCRIPT_DIR/../lib/normalized-evidence.sh"
 TOOL="grype"
@@ -63,6 +68,23 @@ if ! jq -e . "$INPUT" >/dev/null 2>&1; then
 	ss_emit_collector "$TOOL" "execution-error" "$REPORT" '{}'
 	# fail-closed: unparseable scanner output is an error, not a clean result
 	exit 2
+fi
+
+# EVIDENCE BINDING (#137). `{"matches":[]}` is the forgeable shape: two bytes of structure and a
+# reader concludes "clean". Binding runs before any match is counted -- the digest must be this
+# report's, the producer must be grype, the completion state must carry a scan result, and where a
+# subject was requested the provenance must describe that subject and no other.
+if ! ce_bind "$INPUT" "grype" "${SENTINEL_SHIELD_GRYPE_SUBJECT:-}"; then
+	log_error "$TOOL: evidence rejected — ${CE_REASON:-unbound}"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg r "${CE_REASON:-unbound}" '{status:"execution-error", health:"unbound-evidence", critical:0, high:0, medium:0, reason:$r}')" '{}'
+	exit 0
+fi
+if ! sc_grype_validate "$INPUT"; then
+	log_error "$TOOL: not a valid Grype report — ${SC_REASON:-unknown}"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"invalid-output", health:"invalid-output", critical:0, high:0, medium:0, reason:$r}')" '{}'
+	exit 0
 fi
 
 # Native provenance fallback: Grype embeds its own version and DB build time.
