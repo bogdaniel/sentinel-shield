@@ -40,6 +40,14 @@ probe_tool() { # <workdir> <mode>
 	malformed) printf '#!/bin/sh\nprintf "{\\"probe_ok\\":tr"\n' > "$1/bin/ss-probe-tool" ;;
 	invalid)   printf '#!/bin/sh\nprintf "{\\"unrelated\\":1}"\n' > "$1/bin/ss-probe-tool" ;;
 	empty)     printf '#!/bin/sh\nprintf ""\n' > "$1/bin/ss-probe-tool" ;;
+	hang)
+		# A real child that stays alive until it is terminated, and RECORDS that it started so
+		# the test can prove the timeout boundary was reached rather than the tool never running.
+		printf '#!/bin/sh\nprintf "started\\n" > "%s/child-started"\nprintf "$$\\n" > "%s/child-pid"\nwhile : ; do sleep 1; done\n' "$1" "$1" > "$1/bin/ss-probe-tool" ;;
+	secrets)
+		# Emits a harmless SENTINEL token alongside genuinely useful context, so redaction can be
+		# shown to remove the secret WITHOUT erasing the diagnostic.
+		printf '#!/bin/sh\nprintf "connecting to registry: useful-context-line\\n" >&2\nprintf "authorization: Bearer %s\\n" "SENTINELTESTTOKEN0123456789" >&2\nprintf "{\\"probe_ok\\":true}"\n' > "$1/bin/ss-probe-tool" ;;
 	*)         printf '#!/bin/sh\nprintf "{\\"probe_ok\\":true}"\n' > "$1/bin/ss-probe-tool" ;;
 	esac
 	chmod +x "$1/bin/ss-probe-tool"
@@ -188,5 +196,82 @@ assert_equal "with no fake on PATH the adapter reports unavailable, never a host
 	"unavailable" "$(c_state)"
 _hostcount=$(command -v ss-probe-tool >/dev/null 2>&1 && printf '1' || printf '0')
 assert_equal "the probe tool name is not a real host binary — the isolation is meaningful" "0" "$_hostcount"
+
+# ===========================================================================
+# 8. TIMEOUT — bounded, deterministic, and proven to reach the boundary.
+#
+# The timeout is INJECTED (one second) rather than waited out: a test that sleeps toward a
+# production timeout is slow and proves nothing extra. The child records that it started, so a
+# pass cannot come from the tool never running -- the failure mode that made an earlier Grype
+# probe meaningless.
+# ===========================================================================
+run_probe timeout hang SENTINEL_SHIELD_PROBE_TIMEOUT_SECONDS=1
+assert_true "timeout: the child actually started — the boundary was reached, not skipped" \
+	test -f "$TMP/timeout/child-started"
+assert_equal "timeout: the completion state is recorded as timeout" "timeout" "$(c_state)"
+assert_equal "timeout: no report is published" "absent" "$(c_report)"
+assert_equal "timeout: stale evidence does not survive" "gone" "$(c_stale)"
+assert_equal "timeout: no owned workspace remains" "0" "$(c_temp)"
+# The child must be GONE, not merely abandoned. A timeout that leaves the process running has
+# bounded the wrapper and not the work.
+_to_pid=$(cat "$TMP/timeout/child-pid" 2>/dev/null || printf '')
+if [ -n "$_to_pid" ]; then
+	assert_false "timeout: the terminated child is no longer running" kill -0 "$_to_pid"
+else
+	assert_true "timeout: the child recorded its pid for termination checking" test -n "$_to_pid"
+fi
+assert_true "timeout: a diagnostic explaining the timeout is retained in provenance" \
+	grep -q 'bounded runtime\|timeout' "$CASE/reports/raw/probe.provenance.json"
+
+# ===========================================================================
+# 9. INTERRUPTION — INT and TERM tested separately.
+#
+# They are NOT assumed to share a handler: st_begin registers two traps, and a mutation removing
+# either one must be visible. Each signal is delivered to a running child.
+# ===========================================================================
+interrupt_case() { # interrupt_case <name> <signal>
+	_ic_d="$TMP/$1"; rm -rf "$_ic_d"; mkdir -p "$_ic_d/proj/reports/raw"
+	probe_tool "$_ic_d" hang
+	sf_plant_stale "$_ic_d/proj" "$OUTREL"
+	( cd "$_ic_d/proj" || exit 1
+	  PATH="$_ic_d/bin:/usr/bin:/bin"; export PATH
+	  sh "$PROBE" "$OUTREL" >/dev/null 2>&1 ) &
+	_ic_wrapper=$!
+	# Wait for the child to exist, then signal the wrapper.
+	_ic_n=0
+	while [ ! -f "$_ic_d/child-started" ] && [ "$_ic_n" -lt 50 ]; do _ic_n=$((_ic_n + 1)); sleep 0.1; done
+	kill -"$2" "$_ic_wrapper" 2>/dev/null || :
+	wait "$_ic_wrapper" 2>/dev/null || :
+	CASE="$_ic_d/proj"
+	printf '%s' "$_ic_d"
+}
+for _sig in INT TERM; do
+	_id=$(interrupt_case "interrupt-$_sig" "$_sig")
+	assert_true "interrupt $_sig: the child started, so the signal reached a live run" \
+		test -f "$_id/child-started"
+	assert_equal "interrupt $_sig: no report is published" "absent" "$(c_report)"
+	assert_equal "interrupt $_sig: stale evidence does not survive" "gone" "$(c_stale)"
+	assert_equal "interrupt $_sig: no owned workspace remains" "0" "$(c_temp)"
+done
+# Both trap registrations exist. Without this a single shared handler could satisfy one signal
+# while the other silently had none.
+assert_true "INT is registered as its own trap" grep -q "trap 'st_cleanup; exit 130' INT" "$ROOT/scripts/lib/scanner-transaction.sh"
+assert_true "TERM is registered as its own trap" grep -q "trap 'st_cleanup; exit 143' TERM" "$ROOT/scripts/lib/scanner-transaction.sh"
+
+# ===========================================================================
+# 10. DIAGNOSTIC RETENTION AND REDACTION
+#
+# Two failure modes, opposite directions: leaking a token into evidence, and redacting so hard
+# that nothing useful survives. Both are asserted.
+# ===========================================================================
+run_probe secrets secrets
+assert_equal "redaction CONTROL: a run emitting diagnostics still completes" "completed-clean" "$(c_state)"
+_prov="$CASE/reports/raw/probe.provenance.json"
+assert_false "redaction: the raw token does not appear in provenance" \
+	grep -q 'SENTINELTESTTOKEN0123456789' "$_prov"
+assert_false "redaction: the raw token does not appear in the published report" \
+	grep -q 'SENTINELTESTTOKEN0123456789' "$CASE/$OUTREL"
+assert_true "redaction: useful diagnostic context is still retained" \
+	grep -q 'useful-context-line' "$_prov"
 
 assert_summary "scanner-lifecycle (shared transaction mechanics, proven once for ten adapters)"
