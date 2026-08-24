@@ -1,1 +1,11 @@
-{"results": []}
+{
+  "results": [
+    {
+      "source": {
+        "path": "laravel/lockfile",
+        "type": "lockfile"
+      },
+      "packages": []
+    }
+  ]
+}

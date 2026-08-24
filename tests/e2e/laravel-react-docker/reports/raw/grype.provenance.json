@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "grype",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "6a214c9243ed1f9be2e8477420300b08de6f82ba3f84f03df1bff01711dcfa57"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "laravel-react-docker",
+    "mode": "dir"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

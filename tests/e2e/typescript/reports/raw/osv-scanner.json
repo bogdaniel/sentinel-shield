@@ -1,1 +1,11 @@
-{"results": []}
+{
+  "results": [
+    {
+      "source": {
+        "path": "typescript/lockfile",
+        "type": "lockfile"
+      },
+      "packages": []
+    }
+  ]
+}

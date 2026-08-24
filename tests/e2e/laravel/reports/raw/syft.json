@@ -1,1 +1,11 @@
-{}
+{
+  "spdxVersion": "SPDX-2.3",
+  "name": "laravel",
+  "creationInfo": {
+    "created": "2026-01-01T00:00:00Z",
+    "creators": [
+      "Tool: syft"
+    ]
+  },
+  "packages": []
+}

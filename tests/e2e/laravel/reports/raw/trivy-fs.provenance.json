@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "trivy-fs",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "9e2d20e2ab84b1792c443ef9da357f71dcf457990c79385b9d91028e46ebb723"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "laravel",
+    "mode": "filesystem"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

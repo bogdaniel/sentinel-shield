@@ -1,1 +1,6 @@
-{"Results": []}
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "laravel",
+  "ArtifactType": "filesystem",
+  "Results": []
+}

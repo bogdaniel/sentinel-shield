@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "osv-scanner",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "3384348ef388dbffbf08808191666610102be190c8b9f01e0690325c957705ef"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "typescript",
+    "mode": "lockfile"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

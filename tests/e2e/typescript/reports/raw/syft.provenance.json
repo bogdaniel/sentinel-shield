@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "syft",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "24c5037684a1f886aec0f72d99367f4860c9b01942761c66b876333112441c93"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "typescript",
+    "mode": "dir"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}
