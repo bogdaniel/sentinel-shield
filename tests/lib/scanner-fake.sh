@@ -41,7 +41,12 @@ sf_make() {
 			# The payload is delivered exactly as the real tool would: to a file argument, or on
 			# stdout. `--version` is answered first so the adapter's version probe succeeds.
 			printf 'case "${1:-}" in --version|version|-v) printf "%s 9.9.9\\n" "%s"; exit 0 ;; esac\n' '%s' "$_sf_bin"
-			printf '_payload=%s\n' "$(printf '%s' "$_sf_payload" | sed "s/'/'\\\\''/g; s/^/'/; s/\$/'/")"
+			# THE PAYLOAD IS A HEREDOC, not a quoted assignment. A single-quoted assignment
+			# silently truncates any MULTI-LINE payload: the second line becomes a command in
+			# the generated fake. That defect made a truncated NDJSON stream look like one valid
+			# record, so tests/prod/310's stream cases passed for entirely the wrong reason.
+			# A quoted delimiter keeps the body literal, newlines and all.
+			printf "_payload=\$(cat <<'SSFAKEPAYLOAD'\n%s\nSSFAKEPAYLOAD\n)\n" "$_sf_payload"
 			case "$_sf_writes" in
 			file-argument)
 				# Find the output path among the arguments the way each tool accepts it.
