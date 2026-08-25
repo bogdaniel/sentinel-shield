@@ -102,9 +102,15 @@ PROV=$(ss_provenance_object "$PROVENANCE" "$NV" "$NDB")
 # unidentified scanner is not a verdict anyone can act on: there is no way to tell whether an
 # approved build did the scanning, and the criterion asks a clean result to prove exactly that.
 # The sidecar may supply it when the native report does not, so both are consulted before failing.
+# SCOPED TO A CLEAN RESULT, which is what the criterion actually says: "A clean result proves the
+# exact target was scanned to completion by an approved scanner version/database." A report that
+# CARRIES findings is evidence of the findings regardless of who produced it, and refusing those
+# for a missing descriptor would discard real vulnerability data to enforce a metadata rule.
 _gr_ver="$NV"
 [ -n "$_gr_ver" ] || _gr_ver=$(printf '%s' "$PROV" | jq -r '.scanner_version // ""' 2>/dev/null) || _gr_ver=""
-if [ -z "$_gr_ver" ] || [ "$_gr_ver" = unknown ] || [ "$_gr_ver" = null ]; then
+_gr_matches=$(jq -r '[.matches[]?] | length' "$INPUT" 2>/dev/null) || _gr_matches=0
+case "$_gr_matches" in ''|*[!0-9]*) _gr_matches=0 ;; esac
+if [ "$_gr_matches" -eq 0 ] && { [ -z "$_gr_ver" ] || [ "$_gr_ver" = unknown ] || [ "$_gr_ver" = null ]; }; then
 	log_error "$TOOL: the report names no scanner version — a clean result cannot be attributed to an approved scanner"
 	ss_emit_collector "$TOOL" "execution-error" \
 		'{"status":"execution-error","health":"execution-error","critical":0,"high":0,"medium":0,"reason":"no scanner version in report or provenance"}' '{}'

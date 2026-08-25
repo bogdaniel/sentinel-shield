@@ -34,27 +34,46 @@ TMP=$(mktemp -d)
 # No `exit` in the trap: an aborted suite must keep its non-zero status.
 trap 'rm -rf "$TMP" 2>/dev/null || :' EXIT
 
+# The evidence binding is absolute: a collector reads no field until provenance proves a scan
+# produced THIS report. These cases are about normalized evidence, not about binding, so they generate the
+# sidecar a real transaction would have written instead of tripping over its absence. A forged or
+# malformed report still gets REAL provenance — that is the point, it then reaches the guard the
+# case is actually testing rather than being turned away one layer early.
+. "$ROOT/tests/lib/collector-provenance.sh"
+
 # collect <tool> <input-file> [extra-args...] — run a collector, print its JSON.
 collect() {
 	_c_tool=$1; _c_in=$2; shift 2
-	( cd "$TMP" && sh "$ROOT/scripts/collectors/$_c_tool.sh" --input "$_c_in" "$@" 2>/dev/null ) || true
+	( cd "$TMP" && cp_write "$_c_in" "$_c_tool.sh" && sh "$ROOT/scripts/collectors/$_c_tool.sh" --input "$_c_in" "$@" 2>/dev/null ) || true
+}
+# collect_unbound — same, with NO provenance generated. For cases whose subject is what happens to
+# evidence nothing vouches for.
+collect_unbound() {
+	_cu_tool=$1; _cu_in=$2; shift 2
+	( cd "$TMP" && sh "$ROOT/scripts/collectors/$_cu_tool.sh" --input "$_cu_in" "$@" 2>/dev/null ) || true
 }
 field() { printf '%s' "$1" | jq -r "$2 // \"\"" 2>/dev/null; }
 
 # tool -> (native fixture json, raw filename)
+# A real Grype report always carries `source` and `descriptor`, and a real osv-scanner result
+# always records the manifest it came from. The bare `{"matches":[...]}` and `{"results":[...]}`
+# stubs below were shorter than anything either scanner emits, so the per-tool validators refuse
+# them — correctly. The fixtures are corrected to the native shape rather than the validators
+# relaxed to accept a shape no scanner produces.
+_GR_DESC='"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}'
 native_json() {
 	case "$1" in
-	grype) printf '{"matches":[{"vulnerability":{"severity":"CRITICAL"}}]}' ;;
+	grype) printf '{"matches":[{"vulnerability":{"severity":"CRITICAL"}}],%s}' "$_GR_DESC" ;;
 	codeql) printf '{"runs":[{"tool":{"driver":{"rules":[]}},"results":[{"level":"error"}]}]}' ;;
-	osv-scanner) printf '{"results":[{"packages":[{"vulnerabilities":[{"id":"X"}]}]}]}' ;;
+	osv-scanner) printf '{"results":[{"source":{"path":"go.mod"},"packages":[{"vulnerabilities":[{"id":"X"}]}]}]}' ;;
 	dependency-check) printf '{"dependencies":[{"vulnerabilities":[{"severity":"CRITICAL"}]}]}' ;;
 	esac
 }
 clean_native_json() {
 	case "$1" in
-	grype) printf '{"matches":[]}' ;;
+	grype) printf '{"matches":[],%s}' "$_GR_DESC" ;;
 	codeql) printf '{"runs":[{"tool":{"driver":{"rules":[]}},"results":[]}]}' ;;
-	osv-scanner) printf '{"results":[]}' ;;
+	osv-scanner) printf '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' ;;
 	dependency-check) printf '{"dependencies":[]}' ;;
 	esac
 }
@@ -64,8 +83,15 @@ TOOLS="grype codeql osv-scanner dependency-check"
 # --- 1. the forged zero object — the reported defect ----------------------
 for t in $TOOLS; do
 	printf '{"critical":0,"high":0,"medium":0}\n' > "$TMP/$t.json"
-	out=$(collect "$t" "$t.json")
-	if [ "$(field "$out" .status)" = "execution-error" ] && [ "$(field "$out" .tool_report.health)" = "untrusted-evidence" ]; then
+	# DELIBERATELY UNBOUND. This case is about a forged object with no scan behind it, so giving
+	# it provenance would change what is being tested. Since the evidence binding became
+	# absolute, the refusal now happens one layer EARLIER — before any field is read — and reports
+	# `unbound-evidence` rather than `untrusted-evidence`. Both are refusals and the earlier one
+	# is the stronger claim, so either token satisfies "refused, not reported clean". The status
+	# is still pinned to execution-error; only the layer that refused it may vary.
+	out=$(collect_unbound "$t" "$t.json")
+	_h=$(field "$out" .tool_report.health)
+	if [ "$(field "$out" .status)" = "execution-error" ] && { [ "$_h" = "untrusted-evidence" ] || [ "$_h" = "unbound-evidence" ]; }; then
 		pass "$t: a forged {critical,high,medium} object is refused, not reported clean"
 	else
 		fail "$t: forged zero object produced status=$(field "$out" .status) health=$(field "$out" .tool_report.health) — the #182 defect is back"
@@ -92,7 +118,7 @@ for t in $TOOLS; do
 	native_json "$t" > "$TMP/$t.json"
 	out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app \
 		GITHUB_SHA=1111111111111111111111111111111111111111 \
-		sh "$ROOT/scripts/collectors/$t.sh" --input "$t.json" 2>/dev/null || true)
+		cp_write "$t.json" "$t.sh"; sh "$ROOT/scripts/collectors/$t.sh" --input "$t.json" 2>/dev/null || true)
 	_trust=$(field "$out" .tool_report.evidence.trust.type)
 	_digest=$(field "$out" .tool_report.evidence.source.sha256)
 	_commit=$(field "$out" .tool_report.evidence.target.commit)
@@ -123,14 +149,14 @@ fi
 # --- 5. a malformed commit is recorded as null, never as an identity ------
 native_json grype > "$TMP/grype.json"
 out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app GITHUB_SHA="not-a-commit" \
-	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
+	cp_write grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
 if [ -z "$(field "$out" .tool_report.evidence.target.commit)" ]; then
 	pass "a malformed commit becomes null rather than being carried as a target identity"
 else
 	fail "a malformed commit was recorded as an identity: $(field "$out" .tool_report.evidence.target.commit)"
 fi
 out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app GITHUB_SHA=$(printf '1%.0s' 1 2 3 4 5 6 7 8 9 0) \
-	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
+	cp_write grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
 if [ -z "$(field "$out" .tool_report.evidence.target.commit)" ]; then
 	pass "a short (non-40-hex) commit is rejected as a target identity"
 else
@@ -157,7 +183,7 @@ else
 fi
 
 mk_fixture
-out=$(cd "$TMP" && GITHUB_REF=refs/tags/v9.9.9 sh "$ROOT/scripts/collectors/grype.sh" \
+out=$(cd "$TMP" && cp_write grype.json grype.sh; GITHUB_REF=refs/tags/v9.9.9 sh "$ROOT/scripts/collectors/grype.sh" \
 	--input grype.json --fixture-evidence 2>/dev/null || true)
 if [ "$(field "$out" .status)" = "execution-error" ]; then
 	pass "fixture: refused in a RELEASE context even with the explicit flag"
@@ -166,7 +192,7 @@ else
 fi
 
 mk_fixture
-out=$(cd "$TMP" && SENTINEL_SHIELD_RELEASE_CONTEXT=1 sh "$ROOT/scripts/collectors/grype.sh" \
+out=$(cd "$TMP" && cp_write grype.json grype.sh; SENTINEL_SHIELD_RELEASE_CONTEXT=1 sh "$ROOT/scripts/collectors/grype.sh" \
 	--input grype.json --fixture-evidence 2>/dev/null || true)
 if [ "$(field "$out" .status)" = "execution-error" ]; then
 	pass "fixture: refused when SENTINEL_SHIELD_RELEASE_CONTEXT is set"

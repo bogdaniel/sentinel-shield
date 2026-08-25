@@ -39,10 +39,20 @@ trap 'rm -rf "$TMP" 2>/dev/null || :' EXIT
 
 sha() { { command -v sha256sum >/dev/null 2>&1 && sha256sum "$1" || shasum -a 256 "$1"; } 2>/dev/null | awk '{print $1}'; }
 
-NATIVE='{"matches":[{"vulnerability":{"severity":"HIGH"}}]}'
+# A real Grype report carries `source` and `descriptor`; the bare matches array is shorter than
+# anything the scanner emits, and the per-tool validator refuses it. Corrected to the native shape
+# rather than relaxing a validator to accept a document no scanner produces.
+NATIVE='{"matches":[{"vulnerability":{"severity":"HIGH"}}],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}}'
 
 # run_grype — collect over $TMP/reports/raw/grype.json, print the tool JSON.
-run_grype() { ( cd "$TMP" && sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null ) || true; }
+# The evidence binding is absolute: a collector reads no field until provenance proves a scan
+# produced THIS report. These cases are about execution provenance, not about binding, so they generate the
+# sidecar a real transaction would have written instead of tripping over its absence. A forged or
+# malformed report still gets REAL provenance — that is the point, it then reaches the guard the
+# case is actually testing rather than being turned away one layer early.
+. "$ROOT/tests/lib/collector-provenance.sh"
+
+run_grype() { ( cd "$TMP" && cp_write reports/raw/grype.json grype.sh && sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null ) || true; }
 # NOT `jq -r "$2 // \"\""`. jq's `//` substitutes for null AND FALSE, so `observed: false`
 # came back as the empty string and the unobserved case looked like a missing field. Same
 # operator family as #285 defect 1, where `.conclusion // "pending"` swallowed an empty
@@ -135,7 +145,7 @@ out=$(run_grype)
 # A8 — a record produced against another commit.
 mkrec success "$D" 0 "grype" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 out=$( cd "$TMP" && GITHUB_REPOSITORY=a/b GITHUB_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-	sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null || true )
+	cp_write reports/raw/grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null || true )
 [ "$(f "$out" .status)" = "execution-error" ] \
 	&& pass "an execution record from a DIFFERENT commit is refused" \
 	|| fail "a record from another commit was accepted"
@@ -295,7 +305,7 @@ c_record() {
 	}' > "${2%.json}.execution.json"
 }
 
-c_run() { sh "$ROOT/scripts/collectors/$1.sh" --input "$2" 2>/dev/null || true; }
+c_run() { cp_write "$2" "$1.sh"; sh "$ROOT/scripts/collectors/$1.sh" --input "$2" 2>/dev/null || true; }
 
 C_SHAPE=""
 C_SHAPE_TOOL=""
