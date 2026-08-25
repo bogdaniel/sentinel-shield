@@ -2,7 +2,10 @@
 
 Validated Sentinel Shield scanner images are **tag-pinned** in the templates for readability, but a
 tag is mutable — the same `:v0.114.0` can point at a different image tomorrow. For supply-chain
-integrity, consuming projects should pin scanner images by **digest** (`@sha256:…`). This doc gives
+integrity, consuming projects should pin scanner images by **digest** (`@sha256:…`).
+
+**In a gated mode this is enforced, not advised.** See
+[Enforcement by mode](#enforcement-by-mode) below. This doc gives
 the real, resolved digests for the three live-validated/validated scanner images and the procedure
 to verify, update, and roll them back.
 
@@ -201,3 +204,37 @@ now an explicit, documented decision:
   Dependency-Check too (to `owasp/dependency-check@sha256:ad169904…cc77b9`).
 - **Rollback:** keep the prior `@sha256:` — immutable, always retrievable. **Drift:** a mismatch at
   pull time fails the gate closed; investigate before bumping.
+
+## Enforcement by mode
+
+A mutable tag names different bytes tomorrow, so evidence produced by an unpinned scanner cannot
+support a gated verdict. The scanner-running adapters therefore check the reference **before the
+scanner executes**, and the response depends on `SENTINEL_SHIELD_MODE`:
+
+| Mode | Unpinned scanner image |
+|---|---|
+| `report-only` | warns; the scan runs and reports |
+| `baseline` | warns; the scan runs and reports |
+| `strict` | **refused** — the transaction records `execution-error` |
+| `regulated` | **refused** — the transaction records `execution-error` |
+
+The non-gated modes exist to observe a repository rather than to gate it, which is why they warn
+rather than refuse. An unrecognised `SENTINEL_SHIELD_MODE` is a configuration error in every case,
+never a silent downgrade to the most permissive behaviour.
+
+Independently of mode, a reference that *claims* to be pinned must actually be pinned. These are
+refused as malformed rather than accepted as a pin:
+
+- `image@sha256:` — the digest is empty
+- `image@sha256:abc123` — the digest is not 64 characters
+- `image@sha256:<64 non-hex characters>` — not a hex digest
+
+Registry ports (`registry.example:5000/ns/dockle@sha256:…`) and repository paths
+(`docker.io/aquasec/dockle@sha256:…`) are valid pinned forms and are accepted.
+
+A warn is **not** a bypass. The non-gated modes relax the *pin requirement only*; a scanner
+reference containing whitespace or beginning with `-` is refused in every mode, because a warn must
+never become a path to passing attacker-controlled arguments to `docker run`.
+
+Behaviour is covered by the `db-policy`- and `digest-pin`-prefixed assertions in
+`tests/prod/310-scanner-semantics.sh`.

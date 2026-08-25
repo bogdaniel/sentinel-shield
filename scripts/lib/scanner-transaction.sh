@@ -158,22 +158,13 @@ st_cleanup() {
 # ones the criteria scope enforcement to. report-only and baseline warn instead, because the
 # criteria say "for gated use" and not "always".
 # ---------------------------------------------------------------------------
-ST_MODES_ALL='report-only baseline strict regulated'
-ST_MODES_GATED='strict regulated'
-
-st_mode() { printf '%s' "${SENTINEL_SHIELD_MODE:-baseline}"; }
-
-st_mode_valid() { # st_mode_valid [mode]
-	_sm=${1:-$(st_mode)}
-	for _m in $ST_MODES_ALL; do [ "$_m" = "$_sm" ] && return 0; done
-	return 1
-}
-
-st_gated() { # 0 when the active mode gates a release
-	_sg=$(st_mode)
-	for _m in $ST_MODES_GATED; do [ "$_m" = "$_sg" ] && return 0; done
-	return 1
-}
+# The vocabulary itself lives in adoption-mode.sh so the collectors read the same one.
+. "${SS_LIB_DIR:-scripts/lib}/adoption-mode.sh"
+ST_MODES_ALL="$AM_MODES_ALL"
+ST_MODES_GATED="$AM_MODES_GATED"
+st_mode() { am_mode; }
+st_mode_valid() { am_mode_valid "$@"; }
+st_gated() { am_gated; }
 
 # st_require_valid_mode — an unrecognised mode is a configuration error, never a quiet downgrade
 # to the most permissive behaviour. Fails the transaction rather than guessing.

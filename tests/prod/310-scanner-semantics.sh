@@ -423,6 +423,86 @@ assert_equal "digest-pin: argument smuggling after a valid digest is refused in 
 assert_equal "digest-pin: an unknown SENTINEL_SHIELD_MODE is a configuration error" \
 	"execution-error" "$(dp_run unknown-mode nonsense-mode "$DP_A")"
 
+# ===========================================================================
+# #137-AC5 DATABASE METADATA FOLLOWS A DOCUMENTED FAIL/WARN POLICY BY MODE
+#
+# "No matches" from a scanner whose vulnerability database is absent, unreadable or a year old is
+# not a clean result -- it is an unanswered question wearing a clean result's clothes. The build
+# timestamp was recorded in provenance and otherwise ignored, so all five conditions produced an
+# unqualified pass.
+#
+# The criterion names five conditions and asks for a policy BY MODE, so both halves are proven:
+# every condition fails closed in a gated mode, and every condition still reports in a non-gated
+# one. Asserting only the failures would pass a build that simply refused everything.
+# ===========================================================================
+gdb_run() { # gdb_run <descriptor-db-fragment> <mode> [env-assignment]
+	printf '%s' "{\"matches\":[],\"source\":{\"type\":\"directory\",\"target\":\".\"},\"descriptor\":{\"name\":\"grype\",\"version\":\"1\"$1}}" > "$SB/report.json"
+	prov "$SB/report.json" "grype" "completed-clean" "dir" ""
+	( [ -n "${3:-}" ] && export "${3?}"
+	  SENTINEL_SHIELD_MODE="$2"; export SENTINEL_SHIELD_MODE
+	  sh "$ROOT/scripts/collectors/grype.sh" --input "$SB/report.json" 2>/dev/null ) | jq -r '.status // "-"'
+}
+gdb_db() { printf ',"db":{"built":"%sT00:00:00Z"}' "$1"; }
+GDB_TODAY=$(date -u +%Y-%m-%d)
+GDB_OLD=$(date -u -v-400d +%Y-%m-%d 2>/dev/null || date -u -d '400 days ago' +%Y-%m-%d)
+GDB_FUTURE=$(date -u -v+30d +%Y-%m-%d 2>/dev/null || date -u -d '+30 days' +%Y-%m-%d)
+GDB_3DAY=$(date -u -v-3d +%Y-%m-%d 2>/dev/null || date -u -d '3 days ago' +%Y-%m-%d)
+
+# CONTROL: a current database scans normally in every mode, including the strictest. Without this
+# the group would also pass if the collector had simply started refusing every report.
+assert_equal "db-policy CONTROL: a current database scans in regulated mode" \
+	"pass" "$(gdb_run "$(gdb_db "$GDB_TODAY")" regulated)"
+assert_equal "db-policy CONTROL: a current database scans in report-only mode" \
+	"pass" "$(gdb_run "$(gdb_db "$GDB_TODAY")" report-only)"
+
+# All five conditions the criterion enumerates, failing closed where the verdict gates a release.
+assert_equal "db-policy: MISSING database metadata fails closed in a gated mode" \
+	"execution-error" "$(gdb_run "" strict)"
+assert_equal "db-policy: MALFORMED database metadata fails closed in a gated mode" \
+	"execution-error" "$(gdb_run ',"db":{"built":"not-a-date"}' strict)"
+assert_equal "db-policy: an impossible calendar date is malformed, not merely old" \
+	"execution-error" "$(gdb_run "$(gdb_db 2026-02-31)" strict)"
+assert_equal "db-policy: a FUTURE-DATED database fails closed in a gated mode" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_FUTURE")" strict)"
+assert_equal "db-policy: an EXPIRED database fails closed in a gated mode" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_OLD")" regulated)"
+
+# The same five conditions WARN rather than fail where the mode does not gate a release. This is
+# the half of the criterion that "fail on everything" would get wrong.
+assert_equal "db-policy: MISSING metadata warns and still reports in baseline mode" \
+	"pass" "$(gdb_run "" baseline)"
+assert_equal "db-policy: MALFORMED metadata warns and still reports in report-only mode" \
+	"pass" "$(gdb_run ',"db":{"built":"not-a-date"}' report-only)"
+assert_equal "db-policy: an EXPIRED database warns and still reports in baseline mode" \
+	"pass" "$(gdb_run "$(gdb_db "$GDB_OLD")" baseline)"
+
+# A warn that is silent is not a warn. The non-gated path must SAY the evidence is not
+# gate-quality, otherwise the operator has no way to learn the database was stale.
+_gdb_warn=$( ( SENTINEL_SHIELD_MODE=baseline; export SENTINEL_SHIELD_MODE
+	printf '%s' "{\"matches\":[],\"source\":{\"type\":\"directory\",\"target\":\".\"},\"descriptor\":{\"name\":\"grype\",\"version\":\"1\"$(gdb_db "$GDB_OLD")}}" > "$SB/report.json"
+	prov "$SB/report.json" "grype" "completed-clean" "dir" ""
+	sh "$ROOT/scripts/collectors/grype.sh" --input "$SB/report.json" 2>&1 >/dev/null ) | grep -c 'database is expired' || true)
+assert_true "db-policy: the non-gated path actually warns about the stale database" test "$_gdb_warn" -ge 1
+
+# regulated tightens the threshold, exactly as the waiver ceiling does. A database that is
+# acceptable under strict can be too old for regulated.
+assert_equal "db-policy: a 3-day-old database is acceptable under strict" \
+	"pass" "$(gdb_run "$(gdb_db "$GDB_3DAY")" strict)"
+assert_equal "db-policy: the same database is too old under regulated" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_3DAY")" regulated)"
+
+# The threshold is operator-controllable, so the policy is a policy and not a hardcoded verdict.
+assert_equal "db-policy: an explicit threshold lets an operator accept an older database" \
+	"pass" "$(gdb_run "$(gdb_db "$GDB_OLD")" regulated SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS=500)"
+# ...but a SET-BUT-EMPTY value is a configuration error rather than a silent fallback to the
+# default, which is the same distinction the waiver library goes out of its way to preserve.
+assert_equal "db-policy: a set-but-empty threshold is a configuration error, not a default" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_TODAY")" baseline SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS=)"
+assert_equal "db-policy: a non-numeric threshold is a configuration error" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_TODAY")" baseline SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS=soon)"
+assert_equal "db-policy: an unknown adoption mode is a configuration error" \
+	"execution-error" "$(gdb_run "$(gdb_db "$GDB_TODAY")" nonsense-mode)"
+
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_equal "no Layer 3 case left an owned workspace behind" "0" "$_l3_temp"

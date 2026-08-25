@@ -249,6 +249,36 @@ A failed self-check aborts with exit 2 — no contradictory summary is ever writ
 
 ---
 
+## Vulnerability database freshness (Grype)
+
+"No matches" from a scanner whose vulnerability database is absent, unreadable, or a year old is
+not a clean result — it is an unanswered question wearing a clean result's clothes. The Grype
+collector therefore classifies the database build timestamp (`.descriptor.db.built`, or the
+provenance record) into one of five states and applies a policy by mode.
+
+| Database state | Meaning |
+|---|---|
+| `missing` | no build timestamp at all |
+| `malformed` | present but not a real calendar date |
+| `future` | built more than one day ahead of today (UTC) |
+| `expired` | older than the maximum age |
+| `current` | everything else |
+
+| Mode | Any state other than `current` |
+|---|---|
+| `report-only` | warns; findings are reported but are not gate-quality evidence |
+| `baseline` | warns; findings are reported but are not gate-quality evidence |
+| `strict` | **fails closed** (`execution-error`) |
+| `regulated` | **fails closed** (`execution-error`) |
+
+Maximum age follows the same convention as the control-waiver ceilings:
+
+- unset → **7 days**, or **2 days** under `regulated`
+- `SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS=<n>` → the operator's value
+- set but **empty**, or non-numeric → a **configuration error**, not a silent fallback to the
+  default. An operator who writes `SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS=` is saying something
+  different from not writing it at all, and the engine preserves that distinction.
+
 ## Common failure modes
 
 | Symptom | Cause | Fix |

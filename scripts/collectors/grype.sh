@@ -24,6 +24,10 @@ SS_LIB_DIR="$SCRIPT_DIR/../lib"
 . "$SCRIPT_DIR/../lib/scanner-contracts.sh"
 # shellcheck source=scripts/lib/normalized-evidence.sh
 . "$SCRIPT_DIR/../lib/normalized-evidence.sh"
+# The database policy below is scoped by adoption mode and compares calendar dates; both already
+# have one implementation in this engine and neither is reimplemented here.
+. "$SCRIPT_DIR/../lib/adoption-mode.sh"
+. "$SCRIPT_DIR/../lib/control-waivers.sh"
 TOOL="grype"
 # #310/#204: PRODUCER is the VERIFIED EXECUTION IDENTITY and is captured HERE, before any
 # argument is parsed, so no presentation argument can overwrite or influence it.
@@ -91,6 +95,84 @@ fi
 NV=$(jq -r '.descriptor.version // ""' "$INPUT" 2>/dev/null) || NV=""
 NDB=$(jq -r '.descriptor.db.built // ""' "$INPUT" 2>/dev/null) || NDB=""
 PROV=$(ss_provenance_object "$PROVENANCE" "$NV" "$NDB")
+
+# ---------------------------------------------------------------------------
+# VULNERABILITY DATABASE METADATA POLICY (#137-AC5)
+#
+# "No matches" from a scanner whose database is a year old, or absent, is not a clean result --
+# it is an unanswered question wearing a clean result's clothes. The build timestamp was read for
+# the provenance record and otherwise ignored, so every one of these produced an unqualified pass.
+#
+# Five conditions, one policy: MISSING (no build timestamp at all), MALFORMED (present but not a
+# timestamp), FUTURE-DATED (built after now, beyond tolerated clock skew), EXPIRED (older than the
+# maximum age), and otherwise CURRENT.
+#
+# The policy is applied BY MODE, as the criterion states. In a gated mode (strict, regulated) a
+# database that cannot be vouched for fails closed. In report-only and baseline it warns and the
+# scan still reports, because those modes exist to observe a repository rather than to gate it.
+#
+# Thresholds follow the control-waiver convention already in the engine: a documented default for
+# an UNSET variable, a tighter value under regulated, and a set-but-EMPTY value treated as a
+# configuration error rather than silently substituted -- an operator who writes
+# SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS= is saying something different from not writing it at all.
+GRYPE_DB_MAX_AGE_DAYS_DEFAULT=7
+GRYPE_DB_MAX_AGE_DAYS_REGULATED=2
+# Clock skew is expressed in days, matching the waiver convention: runners disagree across a UTC
+# midnight, but a database built next month is not skew.
+GRYPE_DB_MAX_SKEW_DAYS=1
+
+grype__db_max_days() {
+	if [ -n "${SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS+set}" ]; then
+		case "$SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS" in
+		'' | *[!0-9]*) return 2 ;;
+		*) printf '%s' "$SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS"; return 0 ;;
+		esac
+	fi
+	if [ "$(am_mode)" = regulated ]; then printf '%s' "$GRYPE_DB_MAX_AGE_DAYS_REGULATED"
+	else printf '%s' "$GRYPE_DB_MAX_AGE_DAYS_DEFAULT"; fi
+}
+
+# Classify without deciding: the state is a fact about the database, the response is policy.
+# Dates are compared with the engine's existing civil-date primitives rather than date(1) parsing,
+# which is neither portable nor deterministic across GNU and BSD. Day granularity is the right
+# resolution for a policy whose threshold is expressed in days.
+grype__db_state() { # grype__db_state <timestamp> -> missing|malformed|future|expired|current
+	[ -n "$1" ] || { printf 'missing'; return 0; }
+	_g_day="${1%%T*}"
+	cw__valid_date "$_g_day" || { printf 'malformed'; return 0; }
+	_g_today=$(cw_today_utc) || { printf 'malformed'; return 0; }
+	_g_built=$(cw__days "$_g_day")
+	_g_now=$(cw__days "$_g_today")
+	[ "$_g_built" -gt "$((_g_now + GRYPE_DB_MAX_SKEW_DAYS))" ] && { printf 'future'; return 0; }
+	_g_max=$(grype__db_max_days) || { printf 'malformed'; return 0; }
+	[ "$((_g_now - _g_built))" -gt "$_g_max" ] && { printf 'expired'; return 0; }
+	printf 'current'
+}
+
+if ! am_mode_valid; then
+	log_error "$TOOL: SENTINEL_SHIELD_MODE '$(am_mode)' is not one of: $AM_MODES_ALL"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg m "$(am_mode)" '{status:"execution-error", health:"execution-error", critical:0, high:0, medium:0, reason:("unknown mode: " + $m)}')" '{}'
+	exit 0
+fi
+if ! grype__db_max_days >/dev/null; then
+	log_error "$TOOL: SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS is set to an unusable value — a configuration error, not a default"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","health":"execution-error","critical":0,"high":0,"medium":0,"reason":"unusable SENTINEL_SHIELD_GRYPE_DB_MAX_AGE_DAYS"}' '{}'
+	exit 0
+fi
+GRYPE_DB_STATE=$(grype__db_state "$NDB")
+if [ "$GRYPE_DB_STATE" != current ]; then
+	if am_gated; then
+		log_error "$TOOL: vulnerability database is $GRYPE_DB_STATE and mode '$(am_mode)' gates releases — a scan against an unvouched database is not a clean result"
+		ss_emit_collector "$TOOL" "execution-error" \
+			"$(jq -n --arg s "$GRYPE_DB_STATE" --arg m "$(am_mode)" \
+				'{status:"execution-error", health:"execution-error", critical:0, high:0, medium:0,
+				  reason:("vulnerability database " + $s + " in " + $m + " mode"), database_state:$s}')" '{}'
+		exit 0
+	fi
+	log_warn "$TOOL: vulnerability database is $GRYPE_DB_STATE; findings are reported but are not gate-quality evidence"
+fi
 
 # Fail closed on an unrecognized SHAPE (v2.0.2). Without this the `else` branch of the
 # extraction below coerced every missing key to 0, ss_counts_or_fail accepted those as
