@@ -35,7 +35,14 @@ sf_make() {
 		dbfail)
 			printf 'printf "%%s\\n" "%s: FATAL: vulnerability database unavailable" >&2\nexit 4\n' "$_sf_bin" ;;
 		apifail)
-			printf 'printf "%%s\\n" "%s: API rate limit exceeded (403)" >&2\nexit 5\n' "$_sf_bin" ;;
+			# Authentication, NOT rate limiting. #100-AC6 names them separately because they are
+			# different operational conditions with different remediations, and one fake message
+			# covering both let a single case claim two criteria.
+			printf 'printf "%%s\\n" "%s: API authentication failed (401 Unauthorized)" >&2\nexit 5\n' "$_sf_bin" ;;
+		ratelimit)
+			printf 'printf "%%s\\n" "%s: API rate limit exceeded (429), retry after 3600s" >&2\nexit 6\n' "$_sf_bin" ;;
+		noremote)
+			printf 'printf "%%s\\n" "%s: could not determine repository: no git remote configured" >&2\nexit 7\n' "$_sf_bin" ;;
 		fail)
 			printf 'printf "%%s\\n" "%s: operational failure (database unreachable)" >&2\n' "$_sf_bin"
 			printf 'exit 2\n' ;;

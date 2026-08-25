@@ -67,11 +67,21 @@ sc_syft_validate() { # sc_syft_validate <report>
 sc_trivy_validate() { # sc_trivy_validate <report>
 	_sc_parses "$1" || { SC_REASON="not parseable as JSON"; return 1; }
 	_sc_jq 'has("SchemaVersion")' "$1" || { SC_REASON="SchemaVersion missing — not a Trivy report"; return 1; }
+	# A schema this contract has never seen is not one it may reinterpret. Trivy has changed field
+	# meanings across major schema revisions, so guessing at an unknown version risks reading a
+	# future document with today's assumptions and reporting a confident wrong answer (#136-AC6).
+	_sc_jq '(.SchemaVersion) as $v | ($v == 2 or $v == "2")' "$1" \
+		|| { SC_REASON="unsupported Trivy SchemaVersion — this contract reads version 2"; return 1; }
 	_sc_jq 'has("Results") or has("results")' "$1" || { SC_REASON="Results missing — the scan produced no result set"; return 1; }
 	# A report-level error means a PARTIAL scan. Trivy still emits a document, and without this
 	# check a database failure reads as a clean result (#136).
 	if _sc_jq '((.Results // .results // []) | map(select(.Class == "error" or (.Type // "") == "error")) | length) > 0' "$1"; then
 		SC_REASON="the report carries a result-level error — the scan is partial"; return 1
+	fi
+	# A REPORT-level error says the same thing about the whole document. Only the per-result form
+	# was checked, so a scan that announced its own failure at the top level still read as clean.
+	if _sc_jq '((.Error // .error // "") | tostring) != ""' "$1"; then
+		SC_REASON="the report carries a report-level error — the scan is partial"; return 1
 	fi
 	SC_SHAPE="trivy"; return 0
 }

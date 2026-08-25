@@ -632,6 +632,129 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"creat
 assert_equal "helper: a report edited after generation no longer verifies" \
 	"execution-error" "$(st_of "$(collect syft "$CPD/drift.json")")"
 
+# ===========================================================================
+# CLUSTER D — THE INPUT SHAPES THE CRITERIA NAME AND THE SUITES DID NOT EXERCISE
+# ===========================================================================
+
+# --- #102-AC7 TERRASCAN: input kinds beyond Terraform ----------------------------
+# The criterion names Kubernetes and Compose inputs explicitly. Only Terraform providers were
+# exercised, so "an IaC kind terrascan supports" was an assumption rather than a measurement.
+assert_equal "terrascan-kubernetes: a scanned Kubernetes manifest with no violations is clean" \
+	"completed-clean" "$(ts_run k8s '{"results":{"violations":[],"scan_summary":{"file/folder":"deploy.yaml","iac_type":"k8s"}}}' 0)"
+assert_equal "terrascan-kubernetes: violations in a Kubernetes manifest reach findings" \
+	"completed-findings" "$(ts_run k8sfind '{"results":{"violations":[{"rule_id":"AC_K8S_1","category":"Kubernetes"}],"scan_summary":{"file/folder":"deploy.yaml","iac_type":"k8s"}}}' 3 findings)"
+assert_equal "terrascan-compose: a scanned Compose file with no violations is clean" \
+	"completed-clean" "$(ts_run compose '{"results":{"violations":[],"scan_summary":{"file/folder":"docker-compose.yml","iac_type":"docker"}}}' 0)"
+assert_equal "terrascan-compose: violations in a Compose file reach findings" \
+	"completed-findings" "$(ts_run composefind '{"results":{"violations":[{"rule_id":"AC_DOCKER_1","category":"Docker"}],"scan_summary":{"file/folder":"docker-compose.yml","iac_type":"docker"}}}' 3 findings)"
+
+# --- #135-AC2/AC6 SYFT: the document must be the schema it claims -----------------
+# `{}` was already refused. A document that is well-formed but a DIFFERENT schema is the subtler
+# case: CycloneDX is a real SBOM, just not the one this contract reads, and silently accepting it
+# would report an inventory nobody produced.
+SYFT_CDX='{"bomFormat":"CycloneDX","specVersion":"1.5","components":[{"name":"p"},{"name":"q"}]}'
+seed syft "$SYFT_CDX"
+assert_equal "syft-schema: a CycloneDX document does not satisfy the SPDX contract" \
+	"execution-error" "$(st_of "$(collect syft "$SB/report.json")")"
+seed syft '{"spdxVersion":"SPDX-2.3","packages":[{"name":"p"}]}'
+assert_equal "syft-schema: an SPDX document missing its creation info is incomplete, not empty" \
+	"execution-error" "$(st_of "$(collect syft "$SB/report.json")")"
+seed syft "$SYFT_OK"
+assert_equal "syft-schema CONTROL: a complete SPDX document is still accepted" \
+	"pass" "$(st_of "$(collect syft "$SB/report.json")")"
+
+# --- #136-AC3/AC4/AC6 TRIVY: case, partial scans and future versions ---------------
+# AC3 asks for case-SAFE normalization of documented values. The extraction upper-cases severities,
+# so lowercase must map identically rather than fall into the unclassified hole.
+_tv_lower=$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"A","Severity":"critical"},{"VulnerabilityID":"B","Severity":"low"}]}]}')
+assert_equal "trivy-case: a lowercase CRITICAL is classified, not unclassified" "1" "$(field "$_tv_lower" critical)"
+assert_equal "trivy-case: a lowercase LOW is intentionally ignored, not unclassified" "1" "$(field "$_tv_lower" low_info_ignored)"
+assert_equal "trivy-case: the lowercase report reconciles and gates on the critical" "fail" "$(st_of "$_tv_lower")"
+# An UNDOCUMENTED misconfiguration status must still fail closed — case-safety is not permission
+# to accept anything.
+assert_equal "trivy-case: an unknown misconfiguration status still fails closed" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"Dockerfile","Misconfigurations":[{"ID":"D1","Status":"MAYBE"}]}]}')")"
+# AC4: a report that records its own failure is not a clean scan, however well-formed it is.
+assert_equal "trivy-partial: a result-level scan error prevents a clean pass" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[]}],"Error":"scan aborted"}')")"
+# AC6: a future schema version is not something this collector may silently reinterpret.
+assert_equal "trivy-future: an unrecognised future SchemaVersion fails closed" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":99,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"A","Severity":"CRITICAL"}]}]}')")"
+
+# --- #137-AC6 GRYPE: an unknown descriptor version --------------------------------
+GRYPE_NOVER='{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","db":{"built":"2026-01-01T00:00:00Z"}}}'
+seed grype "$GRYPE_NOVER"
+assert_equal "grype-descriptor: a report with no scanner version cannot be a clean gated result" \
+	"execution-error" "$(st_of "$(collect grype "$SB/report.json")")"
+
+# --- #184-AC6 OSV: evidence about a different target ------------------------------
+printf '%s' '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' > "$SB/report.json"
+prov "$SB/report.json" "osv-scanner" "completed-clean" "lockfile" "subject-a"
+assert_equal "osv-target CONTROL: evidence for the requested subject is accepted" \
+	"pass" "$(st_of "$(collect osv-scanner "$SB/report.json" "SENTINEL_SHIELD_OSV_SUBJECT=subject-a")")"
+assert_equal "osv-target: evidence describing ANOTHER subject is refused" \
+	"execution-error" "$(st_of "$(collect osv-scanner "$SB/report.json" "SENTINEL_SHIELD_OSV_SUBJECT=subject-b")")"
+
+# --- #185-AC3/AC4/AC6 OSV: every severity reconciles and stays visible -------------
+osv_sev_report() { # osv_sev_report <severity-json-fragments...>
+	printf '{"results":[{"source":{"path":"go.mod"},"packages":[{"vulnerabilities":[%s]}]}]}' "$1" > "$SB/report.json"
+	prov "$SB/report.json" "osv-scanner" "completed-findings" "lockfile" "subject-a"
+	collect osv-scanner "$SB/report.json"
+}
+_ov=$(osv_sev_report '{"id":"I1","database_specific":{"severity":"MODERATE"}}')
+assert_equal "osv-reconcile: a MODERATE vulnerability lands in medium" "1" "$(field "$_ov" medium)"
+# An info-only report still has findings present: "no gating findings" and "nothing found" are
+# different statements, and only one of them is true here.
+_ov=$(osv_sev_report '{"id":"I1","database_specific":{"severity":"LOW"}},{"id":"I2","database_specific":{"severity":"LOW"}}')
+assert_equal "osv-info-only: a low-only report reports findings present" "findings" "$(health "$_ov")"
+assert_equal "osv-info-only: both low findings are preserved, not collapsed" "2" "$(field "$_ov" low)"
+assert_equal "osv-info-only: and the gate still passes under current defaults" "pass" "$(st_of "$_ov")"
+# AC4: an unknown severity must stay VISIBLE. Dropping it would understate the scan; silently
+# gating on it would overstate it. The conservative documented policy is to keep it countable.
+_ov=$(osv_sev_report '{"id":"U1","database_specific":{"severity":"BANANA"}}')
+assert_equal "osv-unknown-severity: an unrecognised severity is still counted as a finding" \
+	"findings" "$(health "$_ov")"
+assert_equal "osv-unknown-severity: it reconciles into the total rather than vanishing" \
+	"1" "$(field "$_ov" findings_total)"
+_ov=$(osv_sev_report '{"id":"N1"}')
+assert_equal "osv-missing-severity: a vulnerability with no severity at all is still counted" \
+	"1" "$(field "$_ov" findings_total)"
+# AC6 policy promotion. Promotion is a GATE decision, not a collector decision -- the collector
+# has no business deciding which severities block a release. What it owes the gate is a report in
+# which low findings are countable SEPARATELY from the gating buckets, so a policy can promote
+# them without re-parsing the native scanner output. That separation is the testable part here.
+_ov=$(osv_sev_report '{"id":"L1","database_specific":{"severity":"LOW"}},{"id":"H1","database_specific":{"severity":"HIGH"}}')
+assert_equal "osv-promotion: low is reported separately from the gating buckets" "1" "$(field "$_ov" low)"
+assert_equal "osv-promotion: and is excluded from the gating high count" "1" "$(field "$_ov" high)"
+assert_equal "osv-promotion: while the total still accounts for it" "2" "$(field "$_ov" findings_total)"
+_ov=$(osv_sev_report '{"id":"L1","database_specific":{"severity":"LOW"}}')
+assert_equal "osv-promotion CONTROL: low findings alone do not gate under current defaults" \
+	"pass" "$(st_of "$_ov")"
+assert_equal "osv-promotion CONTROL: but they are visible as findings for a policy to promote" \
+	"findings" "$(health "$_ov")"
+
+# --- #101-AC7 THE FIXTURE INDEX AGREES WITH THE COLLECTOR IT DESCRIBES ------------
+# INDEX.md is a hand-written description of what each fixture should produce, which makes it
+# exactly the kind of document that silently stops being true. It claimed trufflehog counts only
+# `Verified == true` items (2) — the superseded filter. The collector counts every finding (3) and
+# reports verified/unverified separately, because TruffleHog emits unverified findings by default
+# and non-verifiable custom detectors always report Verified:false, so a verified-only count drops
+# real secrets. The row is now reconciled against a MEASURED run rather than re-read.
+TH_FIX="$ROOT/tests/fixtures/collectors-v024/trufflehog.json"
+TH_IDX="$ROOT/tests/fixtures/collectors-v024/INDEX.md"
+_th_out=$(sh "$ROOT/scripts/collectors/trufflehog.sh" --input "$TH_FIX" 2>/dev/null)
+_th_actual=$(printf '%s' "$_th_out" | jq -r '.summary.secrets // "-"')
+_th_claim=$(awk -F'|' '/^\| trufflehog \|/ { gsub(/ /, "", $6); print $6; exit }' "$TH_IDX")
+assert_equal "index-agreement: INDEX.md's trufflehog count is what the collector actually emits" \
+	"$_th_actual" "$_th_claim"
+assert_equal "index-agreement: the collector counts unverified findings too" "3" "$_th_actual"
+assert_equal "index-agreement: verified findings remain separately reportable" \
+	"2" "$(printf '%s' "$_th_out" | jq -r '.tool_report.verified // "-"')"
+assert_equal "index-agreement: and so do unverified ones" \
+	"1" "$(printf '%s' "$_th_out" | jq -r '.tool_report.unverified // "-"')"
+assert_false "index-agreement: INDEX.md no longer documents the superseded verified-only filter" \
+	grep -qF 'counts items where `Verified == true`' "$TH_IDX"
+
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_equal "no Layer 3 case left an owned workspace behind" "0" "$_l3_temp"

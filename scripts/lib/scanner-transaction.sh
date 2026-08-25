@@ -104,13 +104,28 @@ st_begin() { # st_begin <tool> <out>
 	# destination's directory also guarantees the workspace is on the SAME FILESYSTEM, which is
 	# what makes the final publish a true atomic rename rather than a copy with a window in the
 	# middle. The name is dot-prefixed, so a collector globbing reports/raw/*.json cannot see it.
+	# A REFUSAL MUST NOT LEAVE THE PREVIOUS RUN'S EVIDENCE STANDING.
+	#
+	# Quarantining the stale report INTO the workspace is the better outcome -- it stays available
+	# for diagnostics -- but it is only possible once a workspace exists, and creating one can
+	# fail. An output directory whose path contains a control character (a tab, say) is refused by
+	# the filesystem-safety library, correctly; doing the quarantine second meant that refusal
+	# returned with the previous report still sitting at the output path, where the next consumer
+	# reads it as current. Every early exit from here on discards it first.
+	st__discard_stale() {
+		[ -e "$ST_OUT" ] && rm -f "$ST_OUT" 2>/dev/null
+		[ -e "$ST_PROV" ] && rm -f "$ST_PROV" 2>/dev/null
+		return 0
+	}
 	_st_root=$(CDPATH= cd -- "$(dirname "$ST_OUT")" && pwd) || {
-		log_error "$ST_TOOL: output directory is unusable; refusing to run"
+		st__discard_stale
+		log_error "$ST_TOOL: output directory is unusable; refusing to run, and no previous report is left as current"
 		return 1
 	}
 	ST_WORK_ROOT="$_st_root"
 	ST_WORK=$(fs_mktemp_dir "$_st_root") || {
-		log_error "$ST_TOOL: could not create a private workspace ($ST_WORK); refusing to run"
+		st__discard_stale
+		log_error "$ST_TOOL: could not create a private workspace ($ST_WORK); refusing to run, and no previous report is left as current"
 		return 1
 	}
 	ST_RAW="$ST_WORK/report.json"

@@ -96,6 +96,21 @@ NV=$(jq -r '.descriptor.version // ""' "$INPUT" 2>/dev/null) || NV=""
 NDB=$(jq -r '.descriptor.db.built // ""' "$INPUT" 2>/dev/null) || NDB=""
 PROV=$(ss_provenance_object "$PROVENANCE" "$NV" "$NDB")
 
+# A CLEAN RESULT MUST NAME THE SCANNER THAT PRODUCED IT (#137-AC2).
+#
+# The version was read for the provenance record and never gated on. "No matches" from an
+# unidentified scanner is not a verdict anyone can act on: there is no way to tell whether an
+# approved build did the scanning, and the criterion asks a clean result to prove exactly that.
+# The sidecar may supply it when the native report does not, so both are consulted before failing.
+_gr_ver="$NV"
+[ -n "$_gr_ver" ] || _gr_ver=$(printf '%s' "$PROV" | jq -r '.scanner_version // ""' 2>/dev/null) || _gr_ver=""
+if [ -z "$_gr_ver" ] || [ "$_gr_ver" = unknown ] || [ "$_gr_ver" = null ]; then
+	log_error "$TOOL: the report names no scanner version — a clean result cannot be attributed to an approved scanner"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","health":"execution-error","critical":0,"high":0,"medium":0,"reason":"no scanner version in report or provenance"}' '{}'
+	exit 0
+fi
+
 # ---------------------------------------------------------------------------
 # VULNERABILITY DATABASE METADATA POLICY (#137-AC5)
 #

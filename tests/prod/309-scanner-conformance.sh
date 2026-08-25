@@ -257,9 +257,14 @@ printf '%s\\\\n' \"\$@\" > \"$D/argv\"
 	set -- ; for _e in $(jq -r --arg t "$TOOL" '.scanners[] | select(.tool==$t) | .env[]?' "$TABLE"); do set -- "$@" "$_e"; done
 	_uv=$(printf '%s' "$TOOL" | tr '[:lower:]-' '[:upper:]_')
 	case "$TOOL" in
-	syft)     set -- "$@" "SENTINEL_SHIELD_SYFT_TARGET=$ODD_TARGET" ;;
-	conftest) set -- "$@" "SENTINEL_SHIELD_CONFTEST_TARGET=$ODD_TARGET" ;;
-	grype)    set -- "$@" "SENTINEL_SHIELD_GRYPE_TARGET=$ODD_TARGET" "SENTINEL_SHIELD_GRYPE_MODE=fs" ;;
+	syft)       set -- "$@" "SENTINEL_SHIELD_SYFT_TARGET=$ODD_TARGET" ;;
+	conftest)   set -- "$@" "SENTINEL_SHIELD_CONFTEST_TARGET=$ODD_TARGET" ;;
+	grype)      set -- "$@" "SENTINEL_SHIELD_GRYPE_TARGET=$ODD_TARGET" "SENTINEL_SHIELD_GRYPE_MODE=fs" ;;
+	checkov)    set -- "$@" "SENTINEL_SHIELD_CHECKOV_TARGET=$ODD_TARGET" ;;
+	trivy-fs)   set -- "$@" "SENTINEL_SHIELD_TRIVY_TARGET=$ODD_TARGET" ;;
+	osv-scanner) set -- "$@" "SENTINEL_SHIELD_OSV_TARGET=$ODD_TARGET" ;;
+	terrascan)  set -- "$@" "SENTINEL_SHIELD_TERRASCAN_TARGET=$ODD_TARGET" ;;
+	trufflehog) set -- "$@" "SENTINEL_SHIELD_TRUFFLEHOG_TARGET=$ODD_TARGET" ;;
 	esac
 	for _f in $(jq -r --arg t "$TOOL" '.scanners[] | select(.tool==$t) | .setup_files[]?' "$TABLE"); do
 		mkdir -p "$P/$(dirname "$_f")"; printf 'package main\n' > "$P/$_f"
@@ -301,8 +306,14 @@ while IFS="$(printf '\t')" read -r TOOL ADAPTER BINARY OUTPUT WRITES CLEAN; do
 done < "$TMP/dim-wrongtarget"
 
 # --- operational / database / api failure remain distinct from clean ------------------
-for _dim in operational-failure database-failure api-failure; do
-	case "$_dim" in operational-failure) _mode=fail ;; database-failure) _mode=dbfail ;; *) _mode=apifail ;; esac
+for _dim in operational-failure database-failure api-failure rate-limit missing-remote; do
+	case "$_dim" in
+	operational-failure) _mode=fail ;;
+	database-failure)    _mode=dbfail ;;
+	api-failure)         _mode=apifail ;;
+	rate-limit)          _mode=ratelimit ;;
+	*)                   _mode=noremote ;;
+	esac
 	jq -r --arg d "$_dim" '.scanners[] | select(.dimensions | index($d)) | [.tool,.adapter,.binary,.output,.writes] | @tsv' "$TABLE" > "$TMP/dim-$_dim"
 	while IFS="$(printf '\t')" read -r TOOL ADAPTER BINARY OUTPUT WRITES; do
 		[ -n "$TOOL" ] || continue

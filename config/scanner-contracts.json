@@ -78,7 +78,8 @@
       "setup_files": [],
       "dimensions": [
         "timeout",
-        "operational-failure"
+        "operational-failure",
+        "path-spaces"
       ]
     },
     {
@@ -152,7 +153,8 @@
       "dimensions": [
         "timeout",
         "database-failure",
-        "operational-failure"
+        "operational-failure",
+        "path-spaces"
       ]
     },
     {
@@ -188,7 +190,9 @@
       "dimensions": [
         "timeout",
         "api-failure",
-        "operational-failure"
+        "operational-failure",
+        "rate-limit",
+        "missing-remote"
       ]
     },
     {
@@ -221,7 +225,8 @@
       "setup_files": [],
       "dimensions": [
         "timeout",
-        "operational-failure"
+        "operational-failure",
+        "path-spaces"
       ]
     },
     {
@@ -254,7 +259,8 @@
       "setup_files": [],
       "dimensions": [
         "timeout",
-        "operational-failure"
+        "operational-failure",
+        "path-spaces"
       ]
     },
     {
@@ -361,7 +367,8 @@
       "setup_files": [],
       "dimensions": [
         "timeout",
-        "operational-failure"
+        "operational-failure",
+        "path-spaces"
       ]
     }
   ],
@@ -380,7 +387,9 @@
       "wrong-target",
       "operational-failure",
       "database-failure",
-      "api-failure"
+      "api-failure",
+      "rate-limit",
+      "missing-remote"
     ],
     "why": "The audit found these enumerated in acceptance criteria with no committed evidence. 308 owns the exhaustive shared mechanics; these dimensions prove that the specifically named adapters route through them. Declaring applicability per row keeps the matrix from claiming coverage a scanner's criteria never asked for.",
     "rules": [

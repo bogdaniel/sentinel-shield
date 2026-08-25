@@ -274,4 +274,70 @@ assert_false "redaction: the raw token does not appear in the published report" 
 assert_true "redaction: useful diagnostic context is still retained" \
 	grep -q 'useful-context-line' "$_prov"
 
+# ===========================================================================
+# THE TRANSACTION UNDER A HOSTILE PROJECT PATH
+#
+# The conformance matrix proves a hostile TARGET reaches the scanner as one argument. That says
+# nothing about a hostile OUTPUT path, and two adapters -- dockle and scorecard -- take an image
+# or a repository rather than a path, so no target-side case can ever cover them.
+#
+# The output path is the transaction's own problem: st_begin creates its private workspace inside
+# the output's directory so the final rename is atomic on one filesystem. A quoting slip there
+# would affect all ten adapters at once, so it is proven here once.
+#
+# Two DIFFERENT behaviours are required and are not conflated. A path with spaces, tabs or
+# Unicode is ordinary and must WORK. A path containing a control character is refused by the
+# filesystem-safety library, deliberately -- and a refusal must still leave nothing current.
+# ===========================================================================
+hostile_run() { # hostile_run <case-dir> <project-dir-name>
+	_hp_d="$TMP/$1"; rm -rf "$_hp_d"; mkdir -p "$_hp_d/bin" "$_hp_d/$2/reports/raw"
+	probe_tool "$_hp_d" ok
+	sf_plant_stale "$_hp_d/$2" "$OUTREL"
+	HP_RC=0
+	( cd "$_hp_d/$2" || exit 1
+	  PATH="$_hp_d/bin:/usr/bin:/bin:/usr/sbin:/sbin"; export PATH
+	  sh "$PROBE" "$OUTREL" >/dev/null 2>&1 ) || HP_RC=$?
+	HP_CASE="$_hp_d/$2"
+}
+
+# --- ordinary hostile-but-legal paths must complete normally ---------------------
+rm -f /tmp/ss-lifecycle-pwned
+hostile_run hostile-space 'proj dir with space'
+assert_equal "hostile path (spaces): the run completes as a clean scan" \
+	"completed-clean" "$(sf_state "$HP_CASE" "$OUTREL")"
+assert_false "hostile path (spaces): the stale report did not survive" \
+	sf_stale_survived "$HP_CASE" "$OUTREL"
+assert_equal "hostile path (spaces): provenance records the digest of the published report" \
+	"$(ne_sha256 "$HP_CASE/$OUTREL")" "$(jq -r '.report.sha256 // ""' "$HP_CASE/${OUTREL%.json}.provenance.json" 2>/dev/null)"
+assert_equal "hostile path (spaces): no owned workspace remains" "0" "$(sf_temp_left "$HP_CASE")"
+
+hostile_run hostile-unicode 'proj-é-ünïcode'
+assert_equal "hostile path (Unicode): the run completes as a clean scan" \
+	"completed-clean" "$(sf_state "$HP_CASE" "$OUTREL")"
+assert_equal "hostile path (Unicode): no owned workspace remains" "0" "$(sf_temp_left "$HP_CASE")"
+
+# A directory literally named with shell metacharacters must neither expand nor break quoting.
+hostile_run hostile-meta 'proj-$(touch /tmp/ss-lifecycle-pwned);|& dir'
+assert_false "hostile path (metacharacters): no shell expansion occurred anywhere in the lifecycle" \
+	test -e /tmp/ss-lifecycle-pwned
+assert_equal "hostile path (metacharacters): the run completes as a clean scan" \
+	"completed-clean" "$(sf_state "$HP_CASE" "$OUTREL")"
+assert_false "hostile path (metacharacters): the stale report did not survive" \
+	sf_stale_survived "$HP_CASE" "$OUTREL"
+
+# --- a REFUSED path must still leave nothing current -----------------------------
+# A tab is a control character, so fs_canonical_root refuses the output directory. That refusal
+# is correct and is NOT relaxed here. What was wrong is what it left behind: st_begin created the
+# workspace before quarantining, so a refusal returned with the PREVIOUS run's report still at
+# the output path, where the next consumer reads it as current evidence.
+hostile_run hostile-control "$(printf 'proj\twith-tab')"
+assert_true "hostile path (control char): the transaction refuses to run" test "$HP_RC" -ne 0
+assert_false "hostile path (control char): the refusal publishes no report" \
+	test -f "$HP_CASE/$OUTREL"
+assert_false "hostile path (control char): the refusal leaves no provenance" \
+	test -f "$HP_CASE/${OUTREL%.json}.provenance.json"
+assert_false "hostile path (control char): a refusal does NOT leave stale evidence current" \
+	sf_stale_survived "$HP_CASE" "$OUTREL"
+assert_equal "hostile path (control char): no owned workspace remains" "0" "$(sf_temp_left "$HP_CASE")"
+
 assert_summary "scanner-lifecycle (shared transaction mechanics, proven once for ten adapters)"
