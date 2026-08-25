@@ -78,7 +78,7 @@ No framework-validated or full-platform production-readiness claim may be made u
 | M1 — Evidence Trust Foundation | #287 | 20 | 14 | #182 **done**; #310 **done** — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
 | M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
 | M3 — Policy and Resolution Engine | #289 | 23 | 16 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
-| M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 63 | Per-producer correctness — **61 ready**, 32 still blocked on #204 |
+| M4 — Producer Chain Correctness | #290 (+#291–#299) | 83 | 63 | Per-producer correctness — **61 ready**, 32 still blocked on #204. The scanner evidence transaction batch (#96–#105, #135–#137, #184, #185) is **implemented and audited at 98/98 acceptance criteria**, awaiting merge — see [`m4-acceptance-audit.md`](m4-acceptance-audit.md) |
 | M5 — Documentation and External Validation | #38 | 4 | 0 | Say what it does; prove it against real consumers |
 
 ---
