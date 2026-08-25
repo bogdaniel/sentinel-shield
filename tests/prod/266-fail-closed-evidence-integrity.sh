@@ -57,9 +57,16 @@ att_for() {
 		  repository:$r, commit:$c, workflow:"sentinel-shield", run_id:"1"}' > "$2"
 }
 
+# As with the attestation supplied further down, this block's subject is fail-closed ARITHMETIC,
+# not evidence binding, so it provides the provenance the collectors now require instead of
+# failing on the binding before reaching what it means to test.
+. "$ROOT/scripts/lib/normalized-evidence.sh"
+. "$ROOT/tests/lib/collector-provenance.sh"
+
 # cstat <collector> <json> — run a collector over inline JSON, echo "status:key=value...".
 cstat() {
 	printf '%s' "$2" > "$WORK/in.json"
+	cp_write "$WORK/in.json" "$1"
 	sh "$COLL/$1" --input "$WORK/in.json" 2>/dev/null | jq -r '.status'
 }
 
@@ -168,7 +175,9 @@ check    "semgrep: unrecognized shape -> execution-error" \
 check    "semgrep: native clean still passes"            "$(cstat semgrep.sh '{"results":[]}')" "pass"
 check    "trivy: unrecognized shape -> execution-error" \
 	"$(cstat trivy.sh '{"Findings":[{"Severity":"CRITICAL"}]}')" "execution-error"
-check    "trivy: native clean still passes"              "$(cstat trivy.sh '{"Results":[]}')" "pass"
+# A native Trivy report carries SchemaVersion; '{"Results":[]}' is a fragment the validator is
+# right to refuse, so the fixture is corrected rather than the validator relaxed.
+check    "trivy: native clean still passes"              "$(cstat trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[]}')" "pass"
 check    "composer-audit: unrecognized shape -> execution-error" \
 	"$(cstat composer-audit.sh '{"packages":[]}')" "execution-error"
 check    "codeql: unrecognized shape -> execution-error" \
@@ -194,7 +203,11 @@ check "npm-audit: valid counts still map" \
 
 # A negative count must not be able to cancel a real finding through the merge.
 N="$WORK/neg"; mkdir -p "$N/raw"
-printf '%s' '{"Results":[{"Vulnerabilities":[{"Severity":"CRITICAL"},{"Severity":"CRITICAL"}]}]}' > "$N/raw/trivy.json"
+# The filesystem and image scans write to their own canonical outputs, and the fixture must use
+# the one the filesystem profile actually reads. It also needs the provenance the collector binds
+# against, for the same reason the inline cases above do.
+printf '%s' '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"A","Severity":"CRITICAL"},{"VulnerabilityID":"B","Severity":"CRITICAL"}]}]}' > "$N/raw/trivy-fs.json"
+cp_write "$N/raw/trivy-fs.json" trivy.sh completed-findings
 printf '%s' '{"metadata":{"vulnerabilities":{"critical":-99,"high":0,"moderate":0}}}' > "$N/raw/npm-audit.json"
 sh "$BUILD" --raw-dir "$N/raw" --output "$N/s.json" --project-name t >/dev/null 2>&1
 _crit=$(jq -r '.summary.critical_vulnerabilities' "$N/s.json")
