@@ -27,7 +27,7 @@ POLICY_DIR="${SENTINEL_SHIELD_CONFTEST_POLICY:-policy}"
 
 command_exists conftest || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'conftest' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v conftest)
-ST_VERSION=$(conftest --version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version conftest --version)
 
 # NOT-APPLICABLE is a real answer. Without a policy directory there is nothing to evaluate, and
 # reporting that honestly is different from reporting a clean evaluation.

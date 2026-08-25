@@ -36,7 +36,7 @@ case "$IMG" in *@sha256:*) ST_IMAGE_DIGEST="${IMG#*@}" ;; *) ST_IMAGE_DIGEST="" 
 
 if command_exists dockle; then
 	ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v dockle)
-	ST_VERSION=$(dockle --version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+	ST_VERSION=$(st_probe_version dockle --version)
 	st_execute scanner-run dockle --exit-code 0 -f json -o "$(st_report_path)" "$IMG"
 elif [ -n "$DOCKLE_IMG" ] && command_exists docker; then
 	ST_EXECUTOR="docker-image"; ST_IMAGE="$DOCKLE_IMG"

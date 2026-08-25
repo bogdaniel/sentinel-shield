@@ -41,7 +41,12 @@
       "env": [],
       "setup_files": [],
       "semantics_note": "No findings state. An SBOM is an inventory, not a verdict -- a populated document is completed-clean exactly like an empty one. What distinguishes a real empty inventory from a forged `{}` is document metadata, not package count.",
-      "no_findings_state": true
+      "no_findings_state": true,
+      "dimensions": [
+        "timeout",
+        "path-spaces",
+        "wrong-target"
+      ]
     },
     {
       "tool": "checkov",
@@ -70,7 +75,11 @@
         "missing": "unavailable"
       },
       "env": [],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "operational-failure"
+      ]
     },
     {
       "tool": "conftest",
@@ -103,6 +112,11 @@
       "env": [],
       "setup_files": [
         "policy/p.rego"
+      ],
+      "dimensions": [
+        "timeout",
+        "path-spaces",
+        "operational-failure"
       ]
     },
     {
@@ -134,7 +148,12 @@
         "missing": "unavailable"
       },
       "env": [],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "database-failure",
+        "operational-failure"
+      ]
     },
     {
       "tool": "scorecard",
@@ -165,7 +184,12 @@
       "env": [
         "SENTINEL_SHIELD_SCORECARD_REPO=github.com/o/r"
       ],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "api-failure",
+        "operational-failure"
+      ]
     },
     {
       "tool": "trufflehog",
@@ -194,7 +218,11 @@
         "missing": "unavailable"
       },
       "env": [],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "operational-failure"
+      ]
     },
     {
       "tool": "terrascan",
@@ -223,7 +251,11 @@
         "missing": "unavailable"
       },
       "env": [],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "operational-failure"
+      ]
     },
     {
       "tool": "dockle",
@@ -254,7 +286,11 @@
       "env": [
         "SENTINEL_SHIELD_IMAGE=example@sha256:abc"
       ],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "operational-failure"
+      ]
     },
     {
       "tool": "grype",
@@ -286,7 +322,13 @@
       "env": [
         "SENTINEL_SHIELD_GRYPE_MODE=fs"
       ],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "path-spaces",
+        "database-failure",
+        "operational-failure"
+      ]
     },
     {
       "tool": "osv-scanner",
@@ -316,7 +358,11 @@
         "missing": "unavailable"
       },
       "env": [],
-      "setup_files": []
+      "setup_files": [],
+      "dimensions": [
+        "timeout",
+        "operational-failure"
+      ]
     }
   ],
   "scenarios": [
@@ -326,5 +372,22 @@
     "fail",
     "missing"
   ],
-  "matrix_note": "tests/prod/309 runs these scenarios over every row and derives each expected state from the row. A scanner whose semantics differ declares that here rather than in a copied test body. tests/prod/308 proves the shared lifecycle mechanics once; 309 proves only that each adapter participates in that lifecycle and honours its own contract row."
+  "matrix_note": "tests/prod/309 runs these scenarios over every row and derives each expected state from the row. A scanner whose semantics differ declares that here rather than in a copied test body. tests/prod/308 proves the shared lifecycle mechanics once; 309 proves only that each adapter participates in that lifecycle and honours its own contract row.",
+  "scenario_dimensions": {
+    "vocabulary": [
+      "timeout",
+      "path-spaces",
+      "wrong-target",
+      "operational-failure",
+      "database-failure",
+      "api-failure"
+    ],
+    "why": "The audit found these enumerated in acceptance criteria with no committed evidence. 308 owns the exhaustive shared mechanics; these dimensions prove that the specifically named adapters route through them. Declaring applicability per row keeps the matrix from claiming coverage a scanner's criteria never asked for.",
+    "rules": [
+      "a dimension not in the vocabulary is rejected",
+      "a dimension declared but never executed is rejected",
+      "a dimension with zero participating rows is rejected",
+      "a row may not be driven through a dimension it does not declare"
+    ]
+  }
 }

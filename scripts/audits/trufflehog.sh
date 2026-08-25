@@ -31,7 +31,7 @@ ST_TARGET_MODE="filesystem"
 
 command_exists trufflehog || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'trufflehog' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v trufflehog)
-ST_VERSION=$(trufflehog --version 2>&1 | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version trufflehog --version)
 
 st_execute scanner-run trufflehog filesystem --json --no-update "$ST_TARGET"
 [ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "trufflehog exceeded its bounded runtime"; exit 0; }

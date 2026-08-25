@@ -32,7 +32,7 @@ if ! command -v syft >/dev/null 2>&1; then
 fi
 ST_EXECUTOR="local-binary"
 ST_BINPATH=$(command -v syft)
-ST_VERSION=$(syft --version 2>/dev/null | awk '{print $NF; exit}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version syft --version)
 
 st_execute scanner-run syft "scan" "dir:$ST_TARGET" -o "spdx-json=$(st_report_path)"
 

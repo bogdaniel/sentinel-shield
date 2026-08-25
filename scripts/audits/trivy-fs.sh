@@ -30,7 +30,7 @@ ST_TARGET_MODE="filesystem"
 
 command_exists trivy || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'trivy' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v trivy)
-ST_VERSION=$(trivy --version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version trivy --version)
 
 st_execute scanner-run trivy fs --format json --output "$(st_report_path)" --exit-code 1 "$ST_TARGET"
 [ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "trivy exceeded its bounded runtime"; exit 0; }

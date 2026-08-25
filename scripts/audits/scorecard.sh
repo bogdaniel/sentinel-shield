@@ -25,7 +25,7 @@ ST_TARGET="$REPO"; ST_TARGET_MODE="repository"
 
 command_exists scorecard || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'scorecard' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v scorecard)
-ST_VERSION=$(scorecard version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version scorecard version)
 [ -n "$REPO" ] || { st_fail "$ST_STATE_NOTAPPLICABLE" "SENTINEL_SHIELD_SCORECARD_REPO not set — no repository to evaluate"; exit 0; }
 
 st_execute scanner-run scorecard --repo="$REPO" --format=json

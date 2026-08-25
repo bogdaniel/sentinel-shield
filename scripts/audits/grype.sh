@@ -41,7 +41,7 @@ esac
 
 if command_exists grype; then
 	ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v grype)
-	ST_VERSION=$(grype version 2>/dev/null | awk '/[Vv]ersion:/{print $2; exit}') || ST_VERSION=""
+	ST_VERSION=$(st_probe_version grype version)
 	st_execute scanner-run grype "$GRYPE_ARG" -o json
 elif [ -n "$IMAGE" ] && command_exists docker; then
 	# THE IMAGE IS VALIDATED BEFORE IT REACHES A COMMAND LINE. A value carrying whitespace could

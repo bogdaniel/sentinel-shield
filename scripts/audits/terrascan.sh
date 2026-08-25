@@ -21,7 +21,7 @@ ST_TARGET_MODE="iac-directory"
 
 command_exists terrascan || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'terrascan' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v terrascan)
-ST_VERSION=$(terrascan version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version terrascan version)
 
 st_execute scanner-run terrascan scan -o json -d "$ST_TARGET"
 [ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "terrascan exceeded its bounded runtime"; exit 0; }

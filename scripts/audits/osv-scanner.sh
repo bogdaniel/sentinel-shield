@@ -25,7 +25,7 @@ ST_TARGET_MODE="recursive-lockfile-discovery"
 
 command_exists osv-scanner || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'osv-scanner' binary"; exit 0; }
 ST_EXECUTOR="local-binary"; ST_BINPATH=$(command -v osv-scanner)
-ST_VERSION=$(osv-scanner --version 2>/dev/null | awk 'NR==1{print $NF}') || ST_VERSION=""
+ST_VERSION=$(st_probe_version osv-scanner --version)
 
 st_execute scanner-run osv-scanner --format json --recursive "$ST_TARGET"
 [ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "osv-scanner exceeded its bounded runtime"; exit 0; }

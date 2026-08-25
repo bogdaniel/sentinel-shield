@@ -146,6 +146,43 @@ st_cleanup() {
 }
 
 # ---------------------------------------------------------------------------
+# st_probe_version <cmd> [args...]
+#
+# THE REGRESSION THIS EXISTS FOR. Master's grype.sh ran its version probe through bp_run,
+# commenting that "a hung binary can no longer stall the scan indefinitely". Migrating ten adapters
+# onto this transaction bounded the SCAN and left the version probe as a plain command
+# substitution -- so a binary that hangs on --version stalled the adapter forever, before
+# st_execute was ever reached. The Cluster B timeout dimension caught it by hanging.
+#
+# A version is metadata. Failing to read it must never decide the scan's outcome: the probe
+# records "unknown" and execution continues, leaving unavailable / execution-error / clean /
+# findings to the scan itself.
+#
+# Prints the normalized version, or "unknown". Never stalls, never emits partial output.
+# ---------------------------------------------------------------------------
+st_probe_version() { # st_probe_version <cmd> [args...]
+	[ "$#" -ge 1 ] || { printf 'unknown'; return 0; }
+	_sp_out="$ST_WORK/version.out"; _sp_err="$ST_WORK/version.err"
+	_sp_to=$(bp_timeout scanner-version) || _sp_to=30
+	if bp_run scanner-version "$_sp_to" "$_sp_out" "$_sp_err" -- "$@"; then
+		# The first token that looks like a version, across the several shapes tools use.
+		_sp_v=$(awk '{for (i = 1; i <= NF; i++) if ($i ~ /^v?[0-9]+\.[0-9]+/) { gsub(/^v/, "", $i); print $i; exit }}' "$_sp_out" 2>/dev/null) || _sp_v=""
+		[ -n "$_sp_v" ] || _sp_v=$(awk 'NR==1{print $NF}' "$_sp_out" 2>/dev/null) || _sp_v=""
+		[ -n "$_sp_v" ] || _sp_v="unknown"
+	else
+		if [ "${BP_STATUS:-}" = "timed-out" ]; then
+			log_warn "$ST_TOOL: version probe exceeded ${_sp_to}s; recording unknown and continuing"
+		else
+			log_warn "$ST_TOOL: version probe failed; recording unknown and continuing"
+		fi
+		_sp_v="unknown"
+	fi
+	rm -f "$_sp_out" "$_sp_err" 2>/dev/null || :
+	printf '%s' "$_sp_v"
+	return 0
+}
+
+# ---------------------------------------------------------------------------
 # st_execute <timeout-category> <cmd> [args...]
 #
 # Runs the scanner under a bounded timeout with stdout, stderr and the exact process exit status

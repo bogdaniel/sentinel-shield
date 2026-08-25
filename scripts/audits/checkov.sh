@@ -23,7 +23,7 @@ ST_TARGET="${SENTINEL_SHIELD_CHECKOV_TARGET:-.}"
 command -v checkov >/dev/null 2>&1 || { st_fail "$ST_STATE_UNAVAILABLE" "no local 'checkov' binary"; exit 0; }
 ST_EXECUTOR="local-binary"
 ST_BINPATH=$(command -v checkov)
-ST_VERSION=$(checkov --version 2>/dev/null | head -1) || ST_VERSION=""
+ST_VERSION=$(st_probe_version checkov --version)
 
 st_execute scanner-run checkov -d "$ST_TARGET" -o json --quiet
 [ "$ST_EXIT" = "timeout" ] && { st_fail "$ST_STATE_TIMEOUT" "checkov exceeded its bounded runtime"; exit 0; }

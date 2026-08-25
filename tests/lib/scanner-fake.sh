@@ -32,11 +32,17 @@ sf_make() {
 		printf '#!/bin/sh\n'
 		printf '# executable fake for %s (mode=%s) — reproduces documented exits and native shapes\n' "$_sf_bin" "$_sf_mode"
 		case "$_sf_mode" in
+		dbfail)
+			printf 'printf "%%s\\n" "%s: FATAL: vulnerability database unavailable" >&2\nexit 4\n' "$_sf_bin" ;;
+		apifail)
+			printf 'printf "%%s\\n" "%s: API rate limit exceeded (403)" >&2\nexit 5\n' "$_sf_bin" ;;
 		fail)
 			printf 'printf "%%s\\n" "%s: operational failure (database unreachable)" >&2\n' "$_sf_bin"
 			printf 'exit 2\n' ;;
 		hang)
-			printf 'sleep 120\nexit 0\n' ;;
+			# Records its start before blocking: a timeout assertion that cannot show the child
+			# ran is proving nothing about the boundary.
+			printf 'printf "started\\n" > "%s/child-started"\nwhile : ; do sleep 1; done\n' "$_sf_dir" ;;
 		*)
 			# The payload is delivered exactly as the real tool would: to a file argument, or on
 			# stdout. `--version` is answered first so the adapter's version probe succeeds.
@@ -112,4 +118,76 @@ sf_run() {
 	  for _sf_e in "$@"; do export "${_sf_e?}"; done
 	  sh "$_sf_ad" "$_sf_out" >/dev/null 2>&1 )
 	return $?
+}
+
+# sf_watchdog <marker-file> <seconds> <cmd> [args...]
+#
+# CONTAINMENT ONLY, NEVER EVIDENCE. There is no timeout(1) on every supported host, so this runs
+# the command in the background with a killer alongside it. If the killer fires it TOUCHES the
+# marker, so a test can tell "the internal scanner-version timeout worked" from "the outer
+# watchdog rescued a hang". A case that reaches the watchdog is a FAILURE: the marker existing is
+# what proves the internal bound did not fire.
+#
+# Returns the command's own status, or 137 when the watchdog killed it.
+sf_watchdog() {
+	_sw_marker=${1:?sf_watchdog: marker}; _sw_secs=${2:?sf_watchdog: seconds}
+	shift 2
+	rm -f "$_sw_marker" 2>/dev/null || :
+	"$@" & _sw_pid=$!
+	( sleep "$_sw_secs"
+	  if kill -0 "$_sw_pid" 2>/dev/null; then
+		: > "$_sw_marker"
+		# Kill the whole group where the shell supports it, so a hung child dies with its wrapper.
+		kill -KILL "-$_sw_pid" 2>/dev/null || kill -KILL "$_sw_pid" 2>/dev/null || :
+	  fi ) & _sw_killer=$!
+	wait "$_sw_pid" 2>/dev/null; _sw_rc=$?
+	kill "$_sw_killer" 2>/dev/null || :
+	wait "$_sw_killer" 2>/dev/null || :
+	return "$_sw_rc"
+}
+
+# sf_watchdog_fired <marker-file> — 0 when the outer watchdog had to intervene.
+sf_watchdog_fired() { [ -f "$1" ]; }
+
+# sf_make_version_hang <workdir> <binary> <writes> <payload> <findings_exit>
+#
+# A fake that answers the SCAN normally but HANGS on its version probe, recording the exact argv
+# it was asked for. This is the shape that exposed the unbounded-probe regression: the scan stage
+# was bounded and the version stage was not.
+sf_make_version_hang() {
+	_vh_dir=${1:?}; _vh_bin=${2:?}; _vh_writes=${3:?}; _vh_pay=${4-}; _vh_fx=${5:-1}
+	sf_make "$_vh_dir" "$_vh_bin" "$_vh_writes" clean "$_vh_pay" "$_vh_fx" >/dev/null
+	_vh_path="$_vh_dir/bin/$_vh_bin"
+	{
+		printf '#!/bin/sh\n'
+		printf '# fake %s: normal scan, HANGING version probe (records the argv it received)\n' "$_vh_bin"
+		printf 'case "${1:-}" in\n'
+		printf '  --version|version|-v)\n'
+		printf '    printf "%%s\\n" "$@" > "%s/version-argv"\n' "$_vh_dir"
+		printf '    printf "entered\\n" > "%s/version-entered"\n' "$_vh_dir"
+		printf '    while : ; do sleep 1; done ;;\n'
+		printf 'esac\n'
+		tail -n +3 "$_vh_path"
+	} > "$_vh_path.new"
+	mv -f "$_vh_path.new" "$_vh_path"; chmod +x "$_vh_path"
+	printf '%s' "$_vh_path"
+}
+
+# sf_make_version_fail <workdir> <binary> <writes> <payload> <findings_exit> — version probe
+# exits non-zero WITHOUT hanging, so "failed probe" stays distinguishable from "timed-out probe".
+sf_make_version_fail() {
+	_vf_dir=${1:?}; _vf_bin=${2:?}; _vf_writes=${3:?}; _vf_pay=${4-}; _vf_fx=${5:-1}
+	sf_make "$_vf_dir" "$_vf_bin" "$_vf_writes" clean "$_vf_pay" "$_vf_fx" >/dev/null
+	_vf_path="$_vf_dir/bin/$_vf_bin"
+	{
+		printf '#!/bin/sh\n'
+		printf 'case "${1:-}" in\n'
+		printf '  --version|version|-v)\n'
+		printf '    printf "%%s\\n" "$@" > "%s/version-argv"\n' "$_vf_dir"
+		printf '    printf "probe failed\\n" >&2; exit 3 ;;\n'
+		printf 'esac\n'
+		tail -n +3 "$_vf_path"
+	} > "$_vf_path.new"
+	mv -f "$_vf_path.new" "$_vf_path"; chmod +x "$_vf_path"
+	printf '%s' "$_vf_path"
 }
