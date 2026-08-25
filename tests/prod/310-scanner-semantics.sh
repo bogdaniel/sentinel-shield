@@ -289,6 +289,86 @@ assert_equal "scorecard-identity: a report with no repository identity is refuse
 assert_equal "scorecard-findings: a low check score is a finding, not an error" \
 	"completed-findings" "$(sc_run low '{"repo":{"name":"github.com/o/r"},"score":2,"checks":[{"name":"Pinned-Dependencies","score":1}]}' github.com/o/r)"
 
+# ===========================================================================
+# #103-AC4 THE SCANNER CONTAINER IS DIGEST-PINNED FOR GATED USE
+#
+# A mutable tag names different bytes tomorrow, so evidence produced by an unpinned scanner
+# cannot support a gated verdict. This was previously a log warning, which satisfies nobody:
+# the run continued and the verdict was published anyway.
+#
+# The criterion scopes enforcement to GATED USE, so these cases prove BOTH directions -- the
+# gated modes (strict, regulated) refuse, and the non-gated modes (report-only, baseline) warn
+# and still produce evidence. Enforcing everywhere would be easier and would fail the criterion
+# as written. Reference forms the criterion permits -- registry ports, repository paths -- must
+# keep working, so a pinned control is asserted to reach 'completed-clean' rather than merely to
+# avoid the gate; a control that only proves "not rejected" would also pass if the scanner never
+# ran at all.
+# ===========================================================================
+dp_run() { # dp_run <case> <mode> <scanner-image>
+	_dp_d="$TMP/digestpin-$1"; _dp_p=$(sf_project "$_dp_d"); mkdir -p "$_dp_d/bin"
+	# The scanner runs as a container, so the stub emulates the bind mount and writes the report
+	# where -v HOSTDIR:/ssreport actually points. A stub that only exits 0 would make every case
+	# fail identically and prove nothing.
+	cat > "$_dp_d/bin/docker" <<'DPSTUB'
+#!/bin/sh
+host=""
+while [ "$#" -gt 0 ]; do
+	case "$1" in -v) case "$2" in *:/ssreport) host="${2%:/ssreport}" ;; esac; shift ;; esac
+	shift
+done
+[ -n "$host" ] && printf %s '{"summary":{"fatal":0,"warn":0,"info":0,"pass":3},"details":[]}' > "$host/report.json"
+exit 0
+DPSTUB
+	chmod +x "$_dp_d/bin/docker"
+	sf_run "$_dp_p" "$_dp_d/bin" "$AD/dockle.sh" reports/raw/dockle.json \
+		"SENTINEL_SHIELD_IMAGE=app@sha256:bbb" \
+		"SENTINEL_SHIELD_DOCKLE_IMAGE=$3" "SENTINEL_SHIELD_MODE=$2" || :
+	sf_state "$_dp_p" reports/raw/dockle.json
+}
+DP_A="reg.example:5000/ns/dockle@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+DP_B="docker.io/aquasec/dockle@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+# CONTROL: a pinned scanner produces evidence in the strictest mode. Registry PORTS and
+# repository PATHS are valid pinned references and must not be collateral damage.
+assert_equal "digest-pin CONTROL: a digest-pinned scanner with a registry port scans in regulated mode" \
+	"completed-clean" "$(dp_run pinned-port regulated "$DP_A")"
+assert_equal "digest-pin CONTROL: a digest-pinned scanner with a repository path scans in strict mode" \
+	"completed-clean" "$(dp_run pinned-path strict "$DP_B")"
+
+# GATED USE: the criterion's actual subject.
+assert_equal "digest-pin: a mutable tag is REFUSED in strict mode" \
+	"execution-error" "$(dp_run tag-strict strict aquasec/dockle:latest)"
+assert_equal "digest-pin: a mutable tag is REFUSED in regulated mode" \
+	"execution-error" "$(dp_run tag-regulated regulated aquasec/dockle:v0.4.14)"
+
+# NON-GATED USE: the criterion says "for gated use", so these warn and still scan.
+assert_equal "digest-pin: a mutable tag WARNS and still produces evidence in baseline mode" \
+	"completed-clean" "$(dp_run tag-baseline baseline aquasec/dockle:latest)"
+assert_equal "digest-pin: a mutable tag WARNS and still produces evidence in report-only mode" \
+	"completed-clean" "$(dp_run tag-report report-only aquasec/dockle:latest)"
+
+# A digest reference must carry a real digest; '@sha256:' is a shape, not a pin.
+assert_equal "digest-pin: an empty digest is malformed, not pinned" \
+	"execution-error" "$(dp_run empty-digest regulated 'img@sha256:')"
+assert_equal "digest-pin: a truncated digest is malformed, not pinned" \
+	"execution-error" "$(dp_run short-digest regulated 'img@sha256:abc123')"
+assert_equal "digest-pin: a 64-character non-hex digest is malformed, not pinned" \
+	"execution-error" "$(dp_run nonhex-digest regulated 'img@sha256:zzzzaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
+
+# A WARN IS NOT A BYPASS: the non-gated modes downgrade the PIN requirement only. An injected
+# argument is refused in every mode, because "warn" must never become a path to docker run.
+assert_equal "digest-pin: an option-injection scanner reference is refused in baseline mode" \
+	"execution-error" "$(dp_run inject-baseline baseline -- '--privileged evil')"
+assert_equal "digest-pin: argument smuggling after a tag is refused in report-only mode" \
+	"execution-error" "$(dp_run smuggle-report report-only 'img:tag --rm -v /:/hostfs')"
+assert_equal "digest-pin: argument smuggling after a valid digest is refused in regulated mode" \
+	"execution-error" "$(dp_run smuggle-regulated regulated "$DP_A --rm -v /:/hostfs")"
+
+# An unrecognised mode is a configuration error, never a silent downgrade to the most
+# permissive behaviour -- the engine's existing rule, applied here rather than reinvented.
+assert_equal "digest-pin: an unknown SENTINEL_SHIELD_MODE is a configuration error" \
+	"execution-error" "$(dp_run unknown-mode nonsense-mode "$DP_A")"
+
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_equal "no Layer 3 case left an owned workspace behind" "0" "$_l3_temp"

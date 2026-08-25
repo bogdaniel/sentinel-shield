@@ -146,6 +146,46 @@ st_cleanup() {
 }
 
 # ---------------------------------------------------------------------------
+# st_mode / st_gated — the engine's existing adoption-mode vocabulary, not a new one.
+#
+# The canonical modes are report-only | baseline | strict | regulated, and the engine already
+# treats an unknown mode as a CONFIGURATION ERROR rather than a weaker custom state. Two live
+# criteria are scoped by mode -- #103-AC4 requires a digest-pinned scanner container "for gated
+# use", and #137-AC5 requires a "fail/warn policy by mode" -- so both read the same source of
+# truth instead of inventing a second one.
+#
+# GATED = strict | regulated. Those are the modes whose verdicts gate a release, and they are the
+# ones the criteria scope enforcement to. report-only and baseline warn instead, because the
+# criteria say "for gated use" and not "always".
+# ---------------------------------------------------------------------------
+ST_MODES_ALL='report-only baseline strict regulated'
+ST_MODES_GATED='strict regulated'
+
+st_mode() { printf '%s' "${SENTINEL_SHIELD_MODE:-baseline}"; }
+
+st_mode_valid() { # st_mode_valid [mode]
+	_sm=${1:-$(st_mode)}
+	for _m in $ST_MODES_ALL; do [ "$_m" = "$_sm" ] && return 0; done
+	return 1
+}
+
+st_gated() { # 0 when the active mode gates a release
+	_sg=$(st_mode)
+	for _m in $ST_MODES_GATED; do [ "$_m" = "$_sg" ] && return 0; done
+	return 1
+}
+
+# st_require_valid_mode — an unrecognised mode is a configuration error, never a quiet downgrade
+# to the most permissive behaviour. Fails the transaction rather than guessing.
+st_require_valid_mode() {
+	if ! st_mode_valid; then
+		st_fail "$ST_STATE_ERROR" "SENTINEL_SHIELD_MODE '$(st_mode)' is not one of: $ST_MODES_ALL"
+		return 1
+	fi
+	return 0
+}
+
+# ---------------------------------------------------------------------------
 # st_probe_version <cmd> [args...]
 #
 # THE REGRESSION THIS EXISTS FOR. Master's grype.sh ran its version probe through bp_run,

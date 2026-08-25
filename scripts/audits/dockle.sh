@@ -40,7 +40,36 @@ if command_exists dockle; then
 	st_execute scanner-run dockle --exit-code 0 -f json -o "$(st_report_path)" "$IMG"
 elif [ -n "$DOCKLE_IMG" ] && command_exists docker; then
 	ST_EXECUTOR="docker-image"; ST_IMAGE="$DOCKLE_IMG"
-	case "$DOCKLE_IMG" in *@sha256:*) : ;; *) log_warn "dockle: scanner image '$DOCKLE_IMG' is a mutable tag; pin by digest for reproducible evidence" ;; esac
+	# THE SCANNER CONTAINER IS DIGEST-PINNED FOR GATED USE (#103-AC4).
+	#
+	# This was a warning, which is not what the criterion asks: a mutable tag names different bytes
+	# tomorrow, so evidence produced by an unpinned scanner cannot support a gated verdict. In a
+	# gated mode the run is REFUSED BEFORE THE SCANNER EXECUTES; in report-only/baseline it stays a
+	# warning, because the criterion scopes enforcement to gated use and not to every run.
+	st_require_valid_mode || exit 0
+	case "$DOCKLE_IMG" in
+	*@sha256:*)
+		# A digest reference must actually carry a digest. `img@sha256:` or a truncated hex string
+		# is malformed, not pinned.
+		_dk_dig="${DOCKLE_IMG##*@sha256:}"
+		case "$_dk_dig" in
+		"" | *[!0-9a-f]* ) st_fail "$ST_STATE_ERROR" "scanner image digest is malformed"; exit 0 ;;
+		esac
+		[ "${#_dk_dig}" -eq 64 ] || { st_fail "$ST_STATE_ERROR" "scanner image digest is not a 64-character sha256"; exit 0; }
+		;;
+	*)
+		if st_gated; then
+			st_fail "$ST_STATE_ERROR" "scanner image is a mutable tag and mode '$(st_mode)' gates releases — pin it by @sha256: digest"
+			exit 0
+		fi
+		log_warn "dockle: scanner image '$DOCKLE_IMG' is a mutable tag; pin by digest before gated use"
+		;;
+	esac
+	# The scanner image is validated as a single non-option token for the same reason the target is.
+	case "$DOCKLE_IMG" in
+	*[[:space:]]*) st_fail "$ST_STATE_ERROR" "scanner image reference contains whitespace"; exit 0 ;;
+	-*)            st_fail "$ST_STATE_ERROR" "scanner image reference begins with '-'"; exit 0 ;;
+	esac
 	# Explicit argument vector, never a whitespace command string: the report is written inside
 	# the private workspace, which is bind-mounted read-write for exactly that purpose.
 	st_execute scanner-run docker run --rm \
