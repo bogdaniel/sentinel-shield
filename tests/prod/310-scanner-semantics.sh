@@ -503,6 +503,135 @@ assert_equal "db-policy: a non-numeric threshold is a configuration error" \
 assert_equal "db-policy: an unknown adoption mode is a configuration error" \
 	"execution-error" "$(gdb_run "$(gdb_db "$GDB_TODAY")" nonsense-mode)"
 
+# ===========================================================================
+# FILE-INPUT COLLECTORS ARE UNAFFECTED BY AN INHERITED OPEN STDIN
+#
+# This group exists because of a WRONG diagnosis, and encodes the property that diagnosis was
+# missing. All four binding collectors were reported as having an indefinite-hang path on an
+# inherited stdin. They do not. The reproduction was `sleep N | collector`, and a shell waits for
+# every member of a pipeline -- the construct hung on the sleep long after the collector had
+# exited. The corroborating evidence was a suite watchdog set below the suite's real runtime.
+#
+# The collectors are file-input-only: no `--input -`, no stdin read, no stdin mode. That is worth
+# holding still, because a helper or subprocess added later could quietly acquire a blocking read
+# and the symptom would be a CI job that never finishes.
+#
+# Stdin is held open here by a FIFO whose writer is detached, so nothing but the collector itself
+# can delay completion, and each run carries its own bound so a real regression FAILS rather than
+# hanging the suite.
+# ===========================================================================
+SIO_BOUND=15
+sio_run() { # sio_run <collector-path> <report> <open|closed> -> output, or the literal TIMEOUT
+	_sio_o="$SB/sio.out"; : > "$_sio_o"; _sio_w=""
+	if [ "$3" = open ]; then
+		_sio_f="$SB/sio.fifo"; rm -f "$_sio_f"; mkfifo "$_sio_f"
+		( sleep 60 > "$_sio_f" ) & _sio_w=$!
+		( sh "$1" --input "$2" >"$_sio_o" 2>/dev/null <"$_sio_f" ) & _sio_b=$!
+	else
+		( sh "$1" --input "$2" >"$_sio_o" 2>/dev/null </dev/null ) & _sio_b=$!
+	fi
+	_sio_i=0
+	while [ "$_sio_i" -lt "$SIO_BOUND" ] && kill -0 "$_sio_b" 2>/dev/null; do
+		sleep 1; _sio_i=$((_sio_i + 1))
+	done
+	if kill -0 "$_sio_b" 2>/dev/null; then kill "$_sio_b" 2>/dev/null; printf 'TIMEOUT'
+	else cat "$_sio_o"; fi
+	[ -n "$_sio_w" ] && kill "$_sio_w" 2>/dev/null
+	return 0
+}
+
+# Each collector gets valid, correctly bound evidence so the assertion is about stdin and nothing
+# else -- a collector that refused the report would "complete" too.
+SIO_DIR="$SB/stdin-cases"; mkdir -p "$SIO_DIR"
+printf '%s' "$SYFT_OK" > "$SIO_DIR/syft.json"; prov "$SIO_DIR/syft.json" syft completed-clean dir "subject-a"
+printf '%s' "$TRIVY_OK" > "$SIO_DIR/trivy-fs.json"; prov "$SIO_DIR/trivy-fs.json" trivy-fs completed-clean filesystem "subject-a"
+printf '%s' '{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"1","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}}' > "$SIO_DIR/grype.json"
+prov "$SIO_DIR/grype.json" grype completed-clean dir ""
+printf '%s' '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' > "$SIO_DIR/osv.json"
+prov "$SIO_DIR/osv.json" osv-scanner completed-clean dir ""
+
+for _sio_c in syft:syft.json trivy:trivy-fs.json grype:grype.json osv-scanner:osv.json; do
+	_sio_n=${_sio_c%%:*}; _sio_r="$SIO_DIR/${_sio_c##*:}"
+	_sio_open=$(sio_run "$ROOT/scripts/collectors/$_sio_n.sh" "$_sio_r" open)
+	_sio_closed=$(sio_run "$ROOT/scripts/collectors/$_sio_n.sh" "$_sio_r" closed)
+	# Completes at all, within its own bound rather than because something killed it.
+	assert_false "$_sio_n completes with an inherited open stdin" test "$_sio_open" = TIMEOUT
+	# The evidence verdict is unchanged, so this is not "it exits early by refusing the report".
+	assert_equal "$_sio_n still accepts valid bound evidence with stdin open" \
+		"pass" "$(st_of "$_sio_open")"
+	# Byte-identical: stdin shape must not reach the serialized output or the diagnostics.
+	assert_equal "$_sio_n produces identical output with stdin open and closed" \
+		"$_sio_closed" "$_sio_open"
+	# It must not swallow input intended for the next reader either.
+	assert_equal "$_sio_n does not consume inherited stdin" "keep-me" \
+		"$(printf 'keep-me\n' | sh -c "sh '$ROOT/scripts/collectors/$_sio_n.sh' --input '$_sio_r' >/dev/null 2>&1; cat")"
+done
+
+# Invalid evidence must still be refused with stdin open — the property is "stdin is ignored",
+# not "everything passes".
+printf '%s' '{}' > "$SIO_DIR/bad.json"; prov "$SIO_DIR/bad.json" syft completed-clean dir "subject-a"
+assert_equal "an invalid report is still refused with an inherited open stdin" \
+	"execution-error" "$(st_of "$(sio_run "$ROOT/scripts/collectors/syft.sh" "$SIO_DIR/bad.json" open)")"
+
+# MUTATION CONTROL: a collector that DOES acquire a blocking read must make this group fail.
+# Without this the four assertions above would also pass if sio_run silently never blocked.
+sed '2i\
+cat >/dev/null
+' "$ROOT/scripts/collectors/trivy.sh" > "$SIO_DIR/blocking-trivy.sh"
+assert_equal "MUTATION: a collector that reads stdin is caught by this group, not hidden by it" \
+	"TIMEOUT" "$(sio_run "$SIO_DIR/blocking-trivy.sh" "$SIO_DIR/trivy-fs.json" open)"
+
+# ===========================================================================
+# THE PROVENANCE TEST HELPER IS NOT A BACK DOOR
+#
+# tests/lib/collector-provenance.sh exists so suites about severity mapping or fail-closed
+# arithmetic can satisfy the absolute binding instead of tripping over it. A helper that hands out
+# valid-looking provenance is exactly the shape of the exemption this batch refused to add, so it
+# is audited rather than trusted.
+# ===========================================================================
+CPH="$ROOT/tests/lib/collector-provenance.sh"
+CPD="$SB/helper-audit"; mkdir -p "$CPD"
+
+# 1. The digest is DERIVED from the report, never accepted as a stated fact. Two different reports
+#    must therefore never carry the same digest, and no parameter may inject one.
+printf '%s' "$SYFT_OK" > "$CPD/a.json"
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"other"}]}' > "$CPD/b.json"
+( . "$ROOT/scripts/lib/normalized-evidence.sh"; . "$CPH"; cp_write "$CPD/a.json" syft.sh; cp_write "$CPD/b.json" syft.sh )
+_cp_da=$(jq -r '.report.sha256' "$CPD/a.provenance.json")
+_cp_db=$(jq -r '.report.sha256' "$CPD/b.provenance.json")
+assert_equal "helper: the recorded digest is the report's own digest" \
+	"$(ne_sha256 "$CPD/a.json")" "$_cp_da"
+assert_false "helper: two different reports cannot share a digest" test "$_cp_da" = "$_cp_db"
+assert_false "helper: no parameter accepts a caller-supplied digest" \
+	grep -qE 'sha256=|--digest|_cp_dig=\$[1-9]' "$CPH"
+
+# 2. It produces the binding shape PRODUCTION consumes — every field ce_bind reads is present.
+for _cp_f in .contract .tool .report.sha256 .completion.state .target.mode; do
+	assert_false "helper: provenance carries $_cp_f" \
+		test "$(jq -r "$_cp_f // \"\"" "$CPD/a.provenance.json")" = ""
+done
+
+# 3. It cannot make an INVALID native report valid. The binding and the tool validator are
+#    separate gates, and the helper only ever satisfies the first.
+printf '%s' '{}' > "$CPD/empty.json"
+( . "$ROOT/scripts/lib/normalized-evidence.sh"; . "$CPH"; cp_write "$CPD/empty.json" syft.sh )
+assert_equal "helper: a perfectly bound empty object is still not an SBOM" \
+	"execution-error" "$(st_of "$(collect syft "$CPD/empty.json")")"
+
+# 4. It grants no fixture exemption — the same assertion made of ce_bind itself.
+assert_false "helper: contains no fixture-exemption vocabulary" \
+	grep -qE 'ne_fixture_allowed|NE_KIND|non_production' "$CPH"
+
+# 5. Provenance is bound to the report AS IT WAS. A report edited afterwards must stop verifying,
+#    otherwise the helper would let a suite mutate evidence under its own attestation.
+printf '%s' "$SYFT_OK" > "$CPD/drift.json"
+( . "$ROOT/scripts/lib/normalized-evidence.sh"; . "$CPH"; cp_write "$CPD/drift.json" syft.sh )
+assert_equal "helper CONTROL: the freshly generated pairing verifies" \
+	"pass" "$(st_of "$(collect syft "$CPD/drift.json")")"
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"injected"}]}' > "$CPD/drift.json"
+assert_equal "helper: a report edited after generation no longer verifies" \
+	"execution-error" "$(st_of "$(collect syft "$CPD/drift.json")")"
+
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_equal "no Layer 3 case left an owned workspace behind" "0" "$_l3_temp"
