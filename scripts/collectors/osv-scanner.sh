@@ -211,7 +211,7 @@ else
 	STATUS="pass"; HEALTH="ok"
 fi
 
-# CONTRADICTORY EVIDENCE FAILS CLOSED (#184). The producer emits completed-clean only when it
+# CONTRADICTORY EVIDENCE IS REFUSED — see issue 184. The producer emits completed-clean only when it
 # discovered at least one source; a clean state beside zero sources means the report and its
 # provenance disagree about whether anything was examined.
 if [ "$CE_STATE" = "completed-clean" ] && [ "${SC_SOURCES:-0}" -eq 0 ]; then

@@ -65,7 +65,7 @@ if ! sc_trivy_validate "$INPUT"; then
 	exit 0
 fi
 
-# UNKNOWN VOCABULARY FAILS CLOSED (#136). A severity or misconfiguration status outside the
+# UNKNOWN VOCABULARY IS REFUSED — see issue 136. A severity or misconfiguration status outside the
 # documented set is not silently dropped into "no findings" -- an unrecognised value is precisely
 # the case where a silent omission becomes a false clean.
 _tv_known='CRITICAL HIGH MEDIUM LOW UNKNOWN'
