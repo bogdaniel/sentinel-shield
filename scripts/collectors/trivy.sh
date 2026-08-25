@@ -115,9 +115,55 @@ OV=$(jq '
 		secrets:                  $sec
 	}' "$INPUT")
 
+# CLASSIFICATION RECONCILIATION (#136-AC5). Every source item is either CLASSIFIED into a
+# gating bucket or INTENTIONALLY IGNORED as low/info — and the two must add back up to what the
+# report actually contained.
+#
+# The extraction above silently drops anything it does not recognise: a LOW or UNKNOWN severity,
+# a vulnerability carrying no Severity field at all, a misconfiguration whose Status is not FAIL.
+# Dropping is indistinguishable from a clean scan at the gate, which is the exact failure this
+# criterion exists to prevent. Ignoring low/info is a POLICY DECISION and stays; ignoring an item
+# the extraction could not read is a CLASSIFICATION HOLE and must fail closed.
+#
+# The reconciliation deliberately reuses the same `// empty` severity extraction as the overlay.
+# Reading it more leniently here (e.g. `// "UNKNOWN"`) would classify a severity-less vulnerability
+# as intentionally ignored and make the invariant balance — proving the arithmetic rather than the
+# classification.
+_tv_rec=$(jq -r '
+	[ .Results[]?.Vulnerabilities[]?.Severity // empty | ascii_upcase ] as $s
+	| (([ .Results[]?.Vulnerabilities[]? ] | length)
+	   + ([ .Results[]?.Misconfigurations[]? ] | length)
+	   + ([ .Results[]?.Secrets[]? ] | length)) as $total
+	| (([ $s[] | select(. == "CRITICAL" or . == "HIGH" or . == "MEDIUM") ] | length)
+	   + ([ .Results[]?.Misconfigurations[]? | select((.Status // "FAIL") == "FAIL") ] | length)
+	   + ([ .Results[]?.Secrets[]? ] | length)) as $classified
+	| (([ $s[] | select(. == "LOW" or . == "UNKNOWN") ] | length)
+	   + ([ .Results[]?.Misconfigurations[]? | select((.Status // "FAIL") != "FAIL") ] | length)) as $ignored
+	| "\($total) \($classified) \($ignored)"' "$INPUT") || _tv_rec=""
+_tv_total=${_tv_rec%% *}; _tv_rest=${_tv_rec#* }
+_tv_classified=${_tv_rest%% *}; _tv_ignored=${_tv_rest##* }
+case "$_tv_total$_tv_classified$_tv_ignored" in
+'' | *[!0-9]*)
+	log_error "$TOOL: classification reconciliation could not be computed — failing closed"
+	ss_emit_collector "$TOOL" "execution-error" \
+		'{"status":"execution-error","reason":"reconciliation not computable"}' '{}'
+	exit 0
+	;;
+esac
+if [ "$_tv_total" -ne "$((_tv_classified + _tv_ignored))" ]; then
+	log_error "$TOOL: $_tv_total source items but $_tv_classified classified + $_tv_ignored intentionally ignored — $((_tv_total - _tv_classified - _tv_ignored)) unaccounted, failing closed"
+	ss_emit_collector "$TOOL" "execution-error" \
+		"$(jq -n --arg t "$_tv_total" --arg c "$_tv_classified" --arg i "$_tv_ignored" \
+			'{status:"execution-error", reason:("unclassified source items: " + $t + " total, " + $c + " classified, " + $i + " ignored")}')" '{}'
+	exit 0
+fi
+
 # Fail closed on negative/float/non-numeric counts (v2.0.2); the builder SUMS these.
 ss_counts_or_fail "$TOOL" "$OV" '{"critical_vulnerabilities":0,"high_vulnerabilities":0,"medium_vulnerabilities":0}'
 TOTAL=$(printf '%s' "$OV" | jq '[.[]] | add // 0')
 if [ "$TOTAL" -gt 0 ]; then STATUS="fail"; else STATUS="pass"; fi
-REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" '{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities, iac_violations: .iac_violations, secrets: .secrets}')
+# The ignored count is REPORTED rather than merely applied: "0 findings" and "0 gating findings
+# plus 12 low/info we chose not to gate" are different statements about the same scan.
+REPORT=$(printf '%s' "$OV" | jq --arg s "$STATUS" --argjson ig "$_tv_ignored" --argjson tot "$_tv_total" \
+	'{status: $s, critical: .critical_vulnerabilities, high: .high_vulnerabilities, medium: .medium_vulnerabilities, iac_violations: .iac_violations, secrets: .secrets, low_info_ignored: $ig, source_items: $tot}')
 ss_emit_collector "$TOOL" "$STATUS" "$REPORT" "$OV"

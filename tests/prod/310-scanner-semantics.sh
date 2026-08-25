@@ -290,6 +290,60 @@ assert_equal "scorecard-findings: a low check score is a finding, not an error" 
 	"completed-findings" "$(sc_run low '{"repo":{"name":"github.com/o/r"},"score":2,"checks":[{"name":"Pinned-Dependencies","score":1}]}' github.com/o/r)"
 
 # ===========================================================================
+# #136-AC5 TOTAL SOURCE ITEMS = CLASSIFIED + INTENTIONALLY IGNORED LOW/INFO
+#
+# The extraction reads CRITICAL/HIGH/MEDIUM, FAIL misconfigurations and secrets. Everything else
+# it simply does not match, and an unmatched item leaves no trace: the gate sees the same "0" it
+# would see for a genuinely clean scan.
+#
+# Ignoring low/info is a policy decision and is preserved. What the invariant forbids is an item
+# that is NEITHER classified NOR intentionally ignored -- a severity the vocabulary does not
+# cover, or a vulnerability with no Severity field at all. Those now fail closed.
+# ===========================================================================
+tv_seed() { seed trivy-fs "$1" filesystem; collect trivy "$SB/report.json"; }
+
+# CONTROL: a report whose items all reconcile is accepted and gates on the classified ones.
+TV_MIX='{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[
+	{"VulnerabilityID":"A","Severity":"CRITICAL"},{"VulnerabilityID":"B","Severity":"HIGH"},
+	{"VulnerabilityID":"C","Severity":"MEDIUM"},{"VulnerabilityID":"D","Severity":"LOW"},
+	{"VulnerabilityID":"E","Severity":"UNKNOWN"}]}]}'
+_tv_out=$(tv_seed "$TV_MIX")
+assert_equal "reconcile CONTROL: a fully accounted report is accepted" "fail" "$(st_of "$_tv_out")"
+assert_equal "reconcile CONTROL: the three gating severities are classified" "1" "$(field "$_tv_out" critical)"
+assert_equal "reconcile CONTROL: five source items are recorded" "5" "$(field "$_tv_out" source_items)"
+
+# THE IGNORED SET IS REPORTED, NOT SILENT. "0 findings" and "0 gating findings plus 2 low/info we
+# chose not to gate" are different statements, and only one of them is what the scan found.
+assert_equal "reconcile: intentionally ignored low/info items are reported, not dropped" \
+	"2" "$(field "$_tv_out" low_info_ignored)"
+_tv_low=$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"L","Severity":"LOW"}]}]}')
+assert_equal "reconcile: a low-only report still passes the gate" "pass" "$(st_of "$_tv_low")"
+assert_equal "reconcile: a low-only report reports the item it did not gate" "1" "$(field "$_tv_low" low_info_ignored)"
+
+# THE HOLE THE INVARIANT EXISTS TO CATCH: an item that is neither classified nor ignored.
+# A vulnerability with NO Severity field is read as `empty` by the overlay and vanishes entirely.
+# Before the invariant this returned a clean pass.
+assert_equal "reconcile: a vulnerability with no Severity is unaccounted and fails closed" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"X"}]}]}')")"
+assert_equal "reconcile: an unaccounted item fails closed even alongside classified findings" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"go.mod","Vulnerabilities":[{"VulnerabilityID":"A","Severity":"CRITICAL"},{"VulnerabilityID":"X"}]}]}')")"
+
+# MISCONFIGURATIONS: only FAIL is classified, so the other statuses must be accounted as ignored
+# rather than silently discarded.
+_tv_mis=$(tv_seed '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"Dockerfile","Misconfigurations":[
+	{"ID":"DS001","Status":"FAIL"},{"ID":"DS002","Status":"PASS"},{"ID":"DS003","Status":"EXCEPTION"}]}]}')
+assert_equal "reconcile: a FAIL misconfiguration gates" "fail" "$(st_of "$_tv_mis")"
+assert_equal "reconcile: only the FAIL misconfiguration is classified" "1" "$(field "$_tv_mis" iac_violations)"
+assert_equal "reconcile: non-FAIL misconfigurations are accounted, not discarded" "2" "$(field "$_tv_mis" low_info_ignored)"
+assert_equal "reconcile: all three misconfigurations are counted as source items" "3" "$(field "$_tv_mis" source_items)"
+
+# An empty report reconciles trivially and must stay a clean pass -- the invariant must not turn
+# "nothing to classify" into a failure.
+_tv_empty=$(tv_seed "$TRIVY_OK")
+assert_equal "reconcile: an empty report reconciles and stays a pass" "pass" "$(st_of "$_tv_empty")"
+assert_equal "reconcile: an empty report reports zero source items" "0" "$(field "$_tv_empty" source_items)"
+
+# ===========================================================================
 # #103-AC4 THE SCANNER CONTAINER IS DIGEST-PINNED FOR GATED USE
 #
 # A mutable tag names different bytes tomorrow, so evidence produced by an unpinned scanner
