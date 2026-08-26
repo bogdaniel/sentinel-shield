@@ -42,6 +42,14 @@ cp__finding_count() {
 		"$1" 2>/dev/null || printf '0'
 }
 
+# cp__source_count — how many inputs the report says were discovered. Shapes that do not record
+# discovery return 1, which keeps the default at completed-clean rather than inventing no-targets.
+cp__source_count() {
+	jq -r 'if has("results") and ((.results | type) == "array")
+	       then ([ .results[]?.source?.path? ] | map(select(. != null)) | length)
+	       else 1 end' "$1" 2>/dev/null || printf '1'
+}
+
 cp_write() {
 	_cp_rep="$1"; _cp_tool=$(cp_tool_for "$2")
 	_cp_mode="${4:-filesystem}"; _cp_sub="${5:-}"
@@ -53,6 +61,11 @@ cp_write() {
 		_cp_state="$3"
 	elif [ "$(cp__finding_count "$_cp_rep")" -gt 0 ] 2>/dev/null; then
 		_cp_state="completed-findings"
+	elif [ "$(cp__source_count "$_cp_rep")" -eq 0 ] 2>/dev/null; then
+		# Nothing found because nothing was EXAMINED is a different statement from a clean scan,
+		# and the collectors that distinguish them are right to refuse provenance claiming
+		# otherwise. A scan that discovered no applicable input completed with no targets.
+		_cp_state="completed-no-targets"
 	else
 		_cp_state="completed-clean"
 	fi

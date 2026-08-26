@@ -163,41 +163,85 @@ else
 	fail "a short commit was accepted as a target identity"
 fi
 
-# --- 6. fixture mode needs EVERY condition --------------------------------
+# --- 6. fixture evidence CANNOT bypass evidence binding (Option B) ----------
+# This block used to assert the opposite: that an explicit flag plus a fixture label plus a
+# non-release context produced an accepted, non_production-stamped result. That path is gone by
+# owner decision. Evidence binding is absolute — a collector reads no field until provenance
+# proves a scan produced THIS report — and no exemption may be requested by evidence metadata or
+# by a CLI flag. The assertion is INVERTED rather than deleted, so the removed path stays removed.
 mk_fixture() { jq -n '{envelope:"sentinel-shield/normalized-evidence@1",trust:{type:"fixture"},counts:{critical:0,high:0,medium:0}}' > "$TMP/grype.json"; }
 
+# Every condition the retired exemption once required, supplied at once: the envelope, the fixture
+# trust label, precomputed counts, the explicit flag, and a non-release execution context.
 mk_fixture
-if [ "$(field "$(collect grype grype.json)" .status)" = "execution-error" ]; then
-	pass "fixture: a fixture-labelled envelope WITHOUT the explicit flag is refused"
+sf_stale_marker='{"STALE":"previous-run"}'
+printf '%s' "$sf_stale_marker" > "$TMP/grype.json.stale-probe"
+_fe_rc=0
+_fe_out=$( cd "$TMP" && env -u GITHUB_REF -u SENTINEL_SHIELD_RELEASE_CONTEXT \
+	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json --fixture-evidence 2>"$TMP/fe.err" ) || _fe_rc=$?
+
+if [ "$_fe_rc" -ne 0 ]; then
+	pass "fixture: the retired exemption fails with a non-zero status, it is not ignored"
 else
-	fail "fixture: a fixture envelope was accepted without the explicit invocation flag"
+	fail "fixture: --fixture-evidence returned 0 — a retired flag must never appear to succeed"
+fi
+if [ -z "$(field "$_fe_out" .status)" ] || [ "$(field "$_fe_out" .status)" = "execution-error" ]; then
+	pass "fixture: no trusted or clean verdict is emitted for fixture evidence"
+else
+	fail "fixture: a verdict was emitted for fixture evidence (status=$(field "$_fe_out" .status))"
+fi
+if [ "$(field "$_fe_out" .tool_report.non_production)" != "true" ]; then
+	pass "fixture: no non_production stamp is presented as successful evidence"
+else
+	fail "fixture: a non_production-stamped result was still produced"
+fi
+if grep -q 'cannot bypass evidence binding' "$TMP/fe.err" 2>/dev/null; then
+	pass "fixture: the diagnostic states that fixture evidence cannot bypass binding"
+else
+	fail "fixture: the refusal gave no diagnostic explaining why (stderr: $(head -1 "$TMP/fe.err" 2>/dev/null))"
+fi
+# A refusal must not leave a previous result standing as current.
+if [ ! -f "$TMP/reports/raw/grype.json" ]; then
+	pass "fixture: the refusal leaves no current output behind"
+else
+	fail "fixture: a refused fixture invocation left output at the production path"
+fi
+rm -f "$TMP/grype.json.stale-probe" "$TMP/fe.err"
+
+# The same fixture-labelled envelope is refused WITHOUT the flag too — the removal is of the
+# capability, not merely of one way to ask for it.
+mk_fixture
+if [ "$(field "$(collect_unbound grype grype.json)" .status)" = "execution-error" ]; then
+	pass "fixture: a fixture-labelled envelope is refused with or without the flag"
+else
+	fail "fixture: a fixture envelope was accepted without the flag"
 fi
 
-mk_fixture
-out=$(collect grype grype.json --fixture-evidence)
-if [ "$(field "$out" .status)" = "pass" ] && [ "$(field "$out" .tool_report.non_production)" = "true" ] \
-	&& [ "$(field "$out" .tool_report.evidence.trust.type)" = "fixture" ]; then
-	pass "fixture: explicit flag + fixture label + non-release is accepted and stamped non_production"
+# OPTION-B CONTROL. The same non-release fixture SCENARIO, done the supported way: a natively
+# valid report plus generated provenance whose digest matches it. Without this control the block
+# above would also pass if the collector had simply started refusing everything.
+printf '%s' "$(native_json grype)" > "$TMP/grype.json"
+_ob_out=$( cd "$TMP" && cp_write grype.json grype.sh >/dev/null && \
+	env -u GITHUB_REF -u SENTINEL_SHIELD_RELEASE_CONTEXT \
+	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null ) || true
+if [ "$(field "$_ob_out" .status)" = "fail" ] && [ "$(field "$_ob_out" .tool_report.health)" = "findings" ]; then
+	pass "Option B CONTROL: native evidence with generated provenance is accepted with no exemption"
 else
-	fail "fixture: the permitted path did not produce a stamped non-production result (status=$(field "$out" .status) np=$(field "$out" .tool_report.non_production))"
+	fail "Option B CONTROL: the supported path did not produce a verdict (status=$(field "$_ob_out" .status))"
 fi
-
-mk_fixture
-out=$(cd "$TMP" && cp_write grype.json grype.sh; GITHUB_REF=refs/tags/v9.9.9 sh "$ROOT/scripts/collectors/grype.sh" \
-	--input grype.json --fixture-evidence 2>/dev/null || true)
-if [ "$(field "$out" .status)" = "execution-error" ]; then
-	pass "fixture: refused in a RELEASE context even with the explicit flag"
+if [ "$(field "$_ob_out" .tool_report.non_production)" != "true" ]; then
+	pass "Option B CONTROL: the accepted result is production evidence, not a stamped fixture"
 else
-	fail "fixture: accepted in a release context — the conditions are not independent"
+	fail "Option B CONTROL: the supported path produced a non_production stamp"
 fi
-
+# REVERSION CONTROL: put the old invalid envelope back and the acceptance must disappear.
 mk_fixture
-out=$(cd "$TMP" && cp_write grype.json grype.sh; SENTINEL_SHIELD_RELEASE_CONTEXT=1 sh "$ROOT/scripts/collectors/grype.sh" \
-	--input grype.json --fixture-evidence 2>/dev/null || true)
-if [ "$(field "$out" .status)" = "execution-error" ]; then
-	pass "fixture: refused when SENTINEL_SHIELD_RELEASE_CONTEXT is set"
+( cd "$TMP" && cp_write grype.json grype.sh >/dev/null 2>&1 ) || true
+_rev=$( cd "$TMP" && sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null ) || true
+if [ "$(field "$_rev" .status)" = "execution-error" ]; then
+	pass "reversion control: restoring the precomputed-counts envelope loses acceptance again"
 else
-	fail "fixture: accepted despite an explicit release-context marker"
+	fail "reversion control: the old envelope is still accepted (status=$(field "$_rev" .status))"
 fi
 
 # --- 7. enforcing modes reject non-production tool evidence ---------------

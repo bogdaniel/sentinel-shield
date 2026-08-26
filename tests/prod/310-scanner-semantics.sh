@@ -150,7 +150,14 @@ printf '%s' "$OSV_CLEAN" > "$SB/report.json"; prov "$SB/report.json" "osv-scanne
 _o=$(collect osv-scanner "$SB/report.json")
 assert_equal "a clean applicable OSV scan is pass/ok" "ok" "$(health "$_o")"
 printf '{"results":[]}' > "$SB/report.json"; prov "$SB/report.json" "osv-scanner" "completed-no-targets" "lockfile" "subject-a"
-assert_equal "no-targets is its own outcome, not clean" "no-targets" "$(st_of "$(collect osv-scanner "$SB/report.json")")"
+# The distinction lives in HEALTH, not in the top-level status. This assertion originally pinned
+# the status to "no-targets", and the collector was shaped to match it — but that token is outside
+# the vocabulary build-security-summary.sh consumes, so it fell through the builder's default arm
+# and a scan that correctly found nothing to scan was recorded as execution-error. Health carries
+# the distinction; the status stays consumable.
+_o_nt=$(collect osv-scanner "$SB/report.json")
+assert_equal "no-targets is its own outcome, not clean" "no-targets" "$(health "$_o_nt")"
+assert_equal "no-targets reports a status the summary builder can consume" "pass" "$(st_of "$_o_nt")"
 printf '{"results":[]}' > "$SB/report.json"; prov "$SB/report.json" "osv-scanner" "completed-clean" "lockfile" "subject-a"
 assert_equal "empty results claiming clean is contradictory and refused" "execution-error" \
 	"$(st_of "$(collect osv-scanner "$SB/report.json")")"

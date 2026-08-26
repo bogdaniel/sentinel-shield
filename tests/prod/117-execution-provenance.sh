@@ -52,7 +52,11 @@ NATIVE='{"matches":[{"vulnerability":{"severity":"HIGH"}}],"source":{"type":"dir
 # case is actually testing rather than being turned away one layer early.
 . "$ROOT/tests/lib/collector-provenance.sh"
 
-run_grype() { ( cd "$TMP" && cp_write reports/raw/grype.json grype.sh && sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null ) || true; }
+# Provenance is generated only when there IS a report. Some cases here deliberately remove it, and
+# cp_write rightly refuses to digest a file that does not exist — chaining it with && would skip
+# the collector entirely and the case would measure the harness instead of the collector.
+run_grype() { ( cd "$TMP" && { [ -f reports/raw/grype.json ] && cp_write reports/raw/grype.json grype.sh; :; }
+	sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null ) || true; }
 # NOT `jq -r "$2 // \"\""`. jq's `//` substitutes for null AND FALSE, so `observed: false`
 # came back as the empty string and the unobserved case looked like a missing field. Same
 # operator family as #285 defect 1, where `.conclusion // "pending"` swallowed an empty
@@ -283,8 +287,12 @@ mkdir -p "$CTMP"
 # c_report <tool> — a well-formed native report for that collector.
 c_report() {
 	case "$1" in
-	grype)            printf '%s' '{"matches":[{"vulnerability":{"id":"CVE-1","severity":"High"}}]}' ;;
-	osv-scanner)      printf '%s' '{"results":[]}' ;;
+	# Native shapes, not the shortest thing that parses. A real Grype report carries `source` and
+	# `descriptor`; a real osv-scanner result records the manifest it came from. The previous
+	# stubs were refused by the per-tool validators, which is correct behaviour and made this
+	# parity block unable to reach the mapping it exists to compare.
+	grype)            printf '%s' '{"matches":[{"vulnerability":{"id":"CVE-1","severity":"High"}}],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}}' ;;
+	osv-scanner)      printf '%s' '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' ;;
 	codeql)           printf '%s' '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","rules":[]}},"results":[]}]}' ;;
 	dependency-check) printf '%s' '{"dependencies":[]}' ;;
 	*) return 1 ;;

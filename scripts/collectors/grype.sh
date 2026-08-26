@@ -49,8 +49,24 @@ while [ $# -gt 0 ]; do case "$1" in
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
 		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
-  --fixture-evidence) FIXTURE=1; shift ;;
-  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
+  --fixture-evidence)
+	# RETIRED (Option B). This flag asked the collector to accept a normalized-evidence envelope
+	# with precomputed counts and trust.type=fixture in place of a real scan. Evidence binding is
+	# now absolute: a collector reads no field until provenance proves a scan produced THIS report,
+	# and there is no exemption a caller can request. The flag therefore cannot do what its name
+	# promises.
+	#
+	# It fails LOUDLY rather than being ignored. Silently accepting a retired flag is worse than
+	# removing it: the caller believes fixture evidence was produced, the collector produces none,
+	# and the difference only shows up as a missing tool in a summary nobody reads closely. Exit 2
+	# is the configuration-error status used elsewhere for an unusable invocation.
+	printf '%s\n' "[sentinel-shield][error] grype: --fixture-evidence is retired and cannot be honoured." >&2
+	printf '%s\n' "[sentinel-shield][error]   Fixture evidence cannot bypass evidence binding. A report is accepted only when it is" >&2
+	printf '%s\n' "[sentinel-shield][error]   natively valid AND accompanied by generated provenance whose digest matches it." >&2
+	printf '%s\n' "[sentinel-shield][error]   Generate real provenance for the fixture instead of requesting a trust downgrade." >&2
+	exit 2
+	;;
+  -h|--help) echo "Usage: grype.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq

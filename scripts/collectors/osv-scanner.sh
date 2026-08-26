@@ -45,8 +45,24 @@ while [ $# -gt 0 ]; do case "$1" in
   --tool-name) TOOL="${2:?--tool-name requires a value}"; shift 2 ;;
 		--producer-key) PRODUCER="${2:?--producer-key requires a value}"; shift 2 ;;
   --provenance) PROVENANCE="${2:?--provenance requires a value}"; shift 2 ;;
-  --fixture-evidence) FIXTURE=1; shift ;;
-  -h|--help) echo "Usage: osv-scanner.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>] [--fixture-evidence]"; exit 0 ;;
+  --fixture-evidence)
+	# RETIRED (Option B). This flag asked the collector to accept a normalized-evidence envelope
+	# with precomputed counts and trust.type=fixture in place of a real scan. Evidence binding is
+	# now absolute: a collector reads no field until provenance proves a scan produced THIS report,
+	# and there is no exemption a caller can request. The flag therefore cannot do what its name
+	# promises.
+	#
+	# It fails LOUDLY rather than being ignored. Silently accepting a retired flag is worse than
+	# removing it: the caller believes fixture evidence was produced, the collector produces none,
+	# and the difference only shows up as a missing tool in a summary nobody reads closely. Exit 2
+	# is the configuration-error status used elsewhere for an unusable invocation.
+	printf '%s\n' "[sentinel-shield][error] osv-scanner: --fixture-evidence is retired and cannot be honoured." >&2
+	printf '%s\n' "[sentinel-shield][error]   Fixture evidence cannot bypass evidence binding. A report is accepted only when it is" >&2
+	printf '%s\n' "[sentinel-shield][error]   natively valid AND accompanied by generated provenance whose digest matches it." >&2
+	printf '%s\n' "[sentinel-shield][error]   Generate real provenance for the fixture instead of requesting a trust downgrade." >&2
+	exit 2
+	;;
+  -h|--help) echo "Usage: osv-scanner.sh [--input <path>] [--tool-name <name>] [--producer-key <key>] [--provenance <path>]"; exit 0 ;;
   *) log_error "unknown argument: $1"; exit 2 ;;
 esac; done
 ss_require_jq
@@ -97,8 +113,20 @@ if [ "$OSV_COMPLETION" = "completed-no-targets" ]; then
 		exit 0
 	fi
 	log_warn "$TOOL: completed with NO TARGETS — no lockfile was discovered; this is not a clean result"
-	ss_emit_collector "$TOOL" "no-targets" \
-		"$(jq -n '{status:"no-targets", health:"no-targets", critical:0, high:0, medium:0, low:0, sources:0}')" '{}'
+	# The top-level status stays inside the vocabulary the builder consumes
+	# (pass|findings|unavailable|not-configured|execution-error|disabled|not-applicable). Emitting
+	# a bare "no-targets" there fell through the builder's default arm and became execution-error —
+	# a scan that correctly found nothing to scan was reported as a broken one.
+	#
+	# The distinction the criterion asks for is preserved where it belongs: HEALTH says no-targets,
+	# which is how a clean applicable scan (health ok) stays distinguishable from one that had
+	# nothing to examine. Line 225 already emits pass/no-targets for the same condition.
+	# The provenance record travels with a no-targets result too. AC2 asks a legitimate no-targets
+	# outcome to prove the scanner actually started and searched — a result that names no scanner
+	# is indistinguishable from one that never ran, which is the confusion this state exists to
+	# remove.
+	ss_emit_collector "$TOOL" "pass" \
+		"$(jq -n --argjson prov "$PROV" '{status:"pass", health:"no-targets", critical:0, high:0, medium:0, low:0, sources:0, provenance:$prov}')" '{}'
 	exit 0
 fi
 
