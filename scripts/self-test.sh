@@ -887,13 +887,31 @@ sm_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 # run_scanner_matrix — self-test group 'scanner-matrix' (wired into the dispatch + 'all').
 run_scanner_matrix() {
 	log_info "scanner-matrix: collectors, resolver/enforcer gates, DAST safety, AI non-gating"
+	# sm_provenance <report> <tool> <completion-state> — the sidecar a real scanner transaction
+	# writes. Collectors that bind evidence read no field until provenance proves a scan produced
+	# THIS report; a self-test fixture is not exempt from that, by design.
+	sm_provenance() {
+		# self-test.sh does not source normalized-evidence.sh, so the digest is computed here with
+		# the same sha256sum/shasum fallback. Depending on a function that is not in scope produced
+		# an EMPTY digest — provenance that cannot bind, failing in a way that looks like the
+		# collector's fault rather than the fixture's.
+		_sm_d=$( { command -v sha256sum >/dev/null 2>&1 && sha256sum "$1" || shasum -a 256 "$1"; } 2>/dev/null | awk '{print $1}' )
+		jq -n --arg t "$2" --arg d "$_sm_d" --arg s "$3" \
+			'{contract:"sentinel-shield/scanner-transaction@1", tool:$t, completion:{state:$s},
+			  report:{sha256:$d}, target:{identity:"", mode:"filesystem"}}' > "${1%.json}.provenance.json"
+	}
 	_d=$(mktemp -d); _r="$_d/raw"; mkdir -p "$_r"
 	C="$ROOT/scripts/collectors"
 
 	# --- collector parsing (fixtures -> expected key counts) ---
 	echo '{"summary":{"failed":2}}' > "$_r/checkov.json"
 	sm_check "checkov -> iac_violations" "$(sh "$C/checkov.sh" --input "$_r/checkov.json" | jq '.summary.iac_violations')" "2"
-	echo '{"matches":[{"vulnerability":{"severity":"Critical"}},{"vulnerability":{"severity":"Medium"}}]}' > "$_r/grype.json"
+	# A native Grype report carries `source` and `descriptor`, and evidence binding requires the
+	# provenance a real scan would have written. The bare matches array with no sidecar is refused
+	# — correctly — so the fixture states what a real producer states rather than the validator
+	# being relaxed to accept a document no scanner emits.
+	printf '%s' '{"matches":[{"vulnerability":{"severity":"Critical"}},{"vulnerability":{"severity":"Medium"}}],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}}' > "$_r/grype.json"
+	sm_provenance "$_r/grype.json" grype completed-findings
 	sm_check "grype -> critical" "$(sh "$C/grype.sh" --input "$_r/grype.json" | jq '.summary.critical_vulnerabilities')" "1"
 	echo '{"details":[{"level":"FATAL"},{"level":"INFO"}]}' > "$_r/dockle.json"
 	sm_check "dockle -> container_image_violations" "$(sh "$C/dockle.sh" --input "$_r/dockle.json" | jq '.summary.container_image_violations')" "1"
@@ -1242,10 +1260,19 @@ run_main_gate_harness() {
 
 	# fake-binary PASS path: a stub osv-scanner that honors --output proves the pass branch + report
 	_bin=$(mktemp -d)
+	# The stub mirrors the real osv-scanner CLI: --output writes to a file, otherwise --format json
+	# prints to STDOUT. The adapter reads stdout (the contract table records writes=stdout for this
+	# row), so an --output-only stub delivered its report where nothing was looking and the run was
+	# recorded as an unparseable report.
+	#
+	# It also emits a report with a DISCOVERED SOURCE. `{"results":[]}` says nothing was examined,
+	# which is no-targets rather than a clean scan — a different outcome, and not the pass branch
+	# this case exists to exercise.
 	cat > "$_bin/osv-scanner" <<'STUB'
 #!/bin/sh
 out=""; while [ $# -gt 0 ]; do case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac; done
-[ -n "$out" ] && printf '{"results":[]}' > "$out"
+report='{"results":[{"source":{"path":"composer.lock"},"packages":[]}]}'
+if [ -n "$out" ]; then printf '%s' "$report" > "$out"; else printf '%s' "$report"; fi
 exit 0
 STUB
 	chmod +x "$_bin/osv-scanner"
@@ -1319,11 +1346,15 @@ run_main_gate_exec() {
 
 	# --- Grype: sbom mode + fixture SBOM + fake grype -> pass (file produced) ---
 	fb=$(_mx_fakebin)
+	# Mirrors the real grype CLI: `-o json` prints to STDOUT, `--file` writes to a path. The adapter
+	# uses the stdout form (the contract table records writes=stdout), so a --file-only fake wrote
+	# its report where nothing was reading. The payload is a native report too — grype always emits
+	# `source` and `descriptor`, and the validator refuses a bare matches array.
 	cat > "$fb/grype" <<'FAKE'
 #!/bin/sh
-# fake grype: find --file arg, write minimal valid JSON
 out=""; while [ $# -gt 0 ]; do [ "$1" = "--file" ] && out="$2"; shift; done
-[ -n "$out" ] && printf '{"matches":[]}' > "$out"
+report='{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2099-01-01T00:00:00Z"}}}'
+if [ -n "$out" ]; then printf '%s' "$report" > "$out"; else printf '%s' "$report"; fi
 FAKE
 	chmod +x "$fb/grype"
 	echo '{"SPDXID":"x"}' > "$_d/sbom.spdx.json"
@@ -1543,8 +1574,11 @@ run_v022_fixtures() {
 	_gb=$(mktemp -d); cp "$_b/jq" "$_gb/jq" 2>/dev/null || true
 	cat > "$_gb/grype" <<'FAKE'
 #!/bin/sh
+# Mirrors the real grype CLI: `-o json` prints to stdout, `--file` writes to a path. The adapter
+# reads stdout, and grype always emits `source` and `descriptor`.
 out=""; while [ $# -gt 0 ]; do [ "$1" = "--file" ] && out="$2"; shift; done
-[ -n "$out" ] && printf '{"matches":[]}' > "$out"
+report='{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2099-01-01T00:00:00Z"}}}'
+if [ -n "$out" ]; then printf '%s' "$report" > "$out"; else printf '%s' "$report"; fi
 FAKE
 	chmod +x "$_gb/grype"; printf '{"SPDXID":"x"}' > "$_d/sbom.spdx.json"
 	( cd "$_d" && PATH="$_gb:/usr/bin:/bin" SENTINEL_SHIELD_GRYPE_MODE=sbom SENTINEL_SHIELD_GRYPE_SBOM_PATH="$_d/sbom.spdx.json" sh "$ROOT/scripts/audits/grype.sh" "$_d/grype.json" >/dev/null 2>&1 )
@@ -1594,7 +1628,13 @@ run_v023_coverage() {
 
 	# --- Mode fixtures (Agent D): collector mappings ---
 	cv_check "mode style fixture -> style_violations=2" "$(sh "$C/php-style.sh" --input "$F/modes/style-violation/php-style.json" 2>/dev/null | jq '.summary.style_violations')" "2"
-	cv_check "mode medium-vuln fixture -> medium_vulnerabilities=1" "$(sh "$C/grype.sh" --input "$F/modes/medium-vuln/grype.json" 2>/dev/null | jq '.summary.medium_vulnerabilities')" "1"
+	# Run from an ISOLATED COPY with generated provenance. The committed fixture carries no sidecar,
+	# and evidence binding is absolute — a collector reads no field until provenance proves a scan
+	# produced this report. Copying rather than writing beside the fixture keeps the committed tree
+	# untouched.
+	mkdir -p "$_d/mv"; cp "$F/modes/medium-vuln/grype.json" "$_d/mv/grype.json"
+	sm_provenance "$_d/mv/grype.json" grype completed-findings
+	cv_check "mode medium-vuln fixture -> medium_vulnerabilities=1" "$(sh "$C/grype.sh" --input "$_d/mv/grype.json" 2>/dev/null | jq '.summary.medium_vulnerabilities')" "1"
 	cv_check "mode iac fixture -> iac_violations=2" "$(sh "$C/checkov.sh" --input "$F/modes/iac-violation/checkov.json" 2>/dev/null | jq '.summary.iac_violations')" "2"
 	cv_check "mode dast fixture -> dast_findings=1" "$(sh "$C/zap.sh" --input "$F/modes/dast-finding/zap.json" 2>/dev/null | jq '.summary.dast_findings')" "1"
 
@@ -1765,7 +1805,20 @@ cl_check() { if [ "$2" = "$3" ]; then log_info "PASS: $1 ($2)"; else log_error "
 # run_v024_collectors — self-test group 'v024-collectors' (wired into the dispatch + 'all').
 run_v024_collectors() {
 	log_info "v024-collectors: every collector parses its fixture-library sample + emits a normalized object"
-	LIB="$ROOT/tests/fixtures/collectors-v024"; C="$ROOT/scripts/collectors"
+	# The library is exercised from an ISOLATED COPY so the binding collectors can be given the
+	# provenance a real scan would have written, without adding sidecars to the committed fixture
+	# set or exempting anything from the binding.
+	_lib_src="$ROOT/tests/fixtures/collectors-v024"; C="$ROOT/scripts/collectors"
+	LIB=$(mktemp -d)/collectors-v024; mkdir -p "$LIB"; cp "$_lib_src"/*.json "$LIB/" 2>/dev/null || true
+	for _bt in grype osv-scanner syft trivy; do
+		[ -f "$LIB/$_bt.json" ] || continue
+		case "$_bt" in trivy) _bp=trivy-fs ;; *) _bp=$_bt ;; esac
+		if [ "$(jq -r '[(.matches[]?),(.results[]?.packages[]?.vulnerabilities[]?),(.Results[]?.Vulnerabilities[]?)]|length' "$LIB/$_bt.json" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
+			sm_provenance "$LIB/$_bt.json" "$_bp" completed-findings
+		else
+			sm_provenance "$LIB/$_bt.json" "$_bp" completed-clean
+		fi
+	done
 	cl_check "fixture library present (>=30 fixtures)" "$([ "$(ls "$LIB"/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 30 ] && echo yes || echo no)" "yes"
 	_bad=0; _n=0
 	for _f in "$LIB"/*.json; do
@@ -1935,7 +1988,12 @@ run_v025_live() {
 
 	# --- REAL scanner artifacts produced this sprint (parsed by the collectors) ---
 	vl_check "REAL checkov 3.3.0 artifact -> iac_violations=16" "$(sh "$C/checkov.sh" --input "$LE/checkov-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.iac_violations)"')" "fail:16"
-	vl_check "REAL grype 0.114.0 artifact -> medium=1" "$(sh "$C/grype.sh" --input "$LE/grype-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.medium_vulnerabilities)"')" "fail:1"
+	# A REAL captured artifact already has the native shape; what it lacks is the provenance sidecar
+	# a live transaction writes alongside it. Generated on an isolated copy so the committed
+	# artifact stays byte-identical.
+	_lev=$(mktemp -d); cp "$LE/grype-real.json" "$_lev/grype-real.json"
+	sm_provenance "$_lev/grype-real.json" grype completed-findings
+	vl_check "REAL grype 0.114.0 artifact -> medium=1" "$(sh "$C/grype.sh" --input "$_lev/grype-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.medium_vulnerabilities)"')" "fail:1"
 	vl_check "Dependency-Check NVD-429 evidence excerpt present" "$([ -s "$LE/dependency-check-429-excerpt.log" ] && grep -q '429' "$LE/dependency-check-429-excerpt.log" && echo yes || echo no)" "yes"
 
 	# --- REAL Deptrac 4.6.1 artifacts (Lane E) ---
