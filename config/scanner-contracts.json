@@ -26,8 +26,8 @@
       },
       "writes": "file-argument",
       "fakes": {
-        "clean": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[]}",
-        "findings": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[{\"name\":\"p\"}]}",
+        "clean": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[],\"dataLicense\":\"CC0-1.0\",\"SPDXID\":\"SPDXRef-DOCUMENT\",\"documentNamespace\":\"https://sentinel-shield.invalid/spdx/fake\"}",
+        "findings": "{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"proj\",\"creationInfo\":{\"created\":\"2026-01-01T00:00:00Z\"},\"packages\":[{\"name\":\"p\"}],\"dataLicense\":\"CC0-1.0\",\"SPDXID\":\"SPDXRef-DOCUMENT\",\"documentNamespace\":\"https://sentinel-shield.invalid/spdx/fake\"}",
         "malformed": "{\"spdxVersion\":\"SPDX-2.3\",\"creat"
       },
       "findings_exit": 0,

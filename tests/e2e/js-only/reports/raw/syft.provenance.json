@@ -7,7 +7,7 @@
     "exit": "0"
   },
   "report": {
-    "sha256": "047c32f9fe1e653aeb8ecdb13032371ffe0eb8f7fb95c8b2915281772aba8ceb"
+    "sha256": "25586087d57d92abd623cc068259cde8eab28e13e6e515ecba2d47fe90fc99f6"
   },
   "scanner": {
     "version": "fixture",

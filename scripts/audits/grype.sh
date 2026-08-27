@@ -50,7 +50,28 @@ elif [ -n "$IMAGE" ] && command_exists docker; then
 	*[[:space:]]*) st_fail "$ST_STATE_ERROR" "grype image reference contains whitespace — refusing to build a command from it"; exit 0 ;;
 	-*)            st_fail "$ST_STATE_ERROR" "grype image reference begins with '-' — refusing an option-like value"; exit 0 ;;
 	esac
-	case "$IMAGE" in *@sha256:*) ST_IMAGE_DIGEST="${IMAGE#*@}" ;; *) log_warn "grype: scanner image '$IMAGE' is a mutable tag; pin by digest for reproducible evidence" ;; esac
+	# THE SCANNER CONTAINER IS DIGEST-PINNED FOR GATED USE (#103-AC4), on the same terms as dockle.
+	# A warning here was the same defect the dockle adapter already had: a mutable tag names
+	# different bytes tomorrow, so a gated verdict cannot rest on it. Gated modes refuse before the
+	# scanner runs; report-only and baseline warn and still produce evidence.
+	st_require_valid_mode || exit 0
+	case "$IMAGE" in
+	*@sha256:*)
+		_gy_dig="${IMAGE##*@sha256:}"
+		case "$_gy_dig" in
+		"" | *[!0-9a-f]*) st_fail "$ST_STATE_ERROR" "grype scanner image digest is malformed"; exit 0 ;;
+		esac
+		[ "${#_gy_dig}" -eq 64 ] || { st_fail "$ST_STATE_ERROR" "grype scanner image digest is not a 64-character sha256"; exit 0; }
+		ST_IMAGE_DIGEST="${IMAGE#*@}"
+		;;
+	*)
+		if st_gated; then
+			st_fail "$ST_STATE_ERROR" "grype scanner image is a mutable tag and mode '$(st_mode)' gates releases — pin it by @sha256: digest"
+			exit 0
+		fi
+		log_warn "grype: scanner image '$IMAGE' is a mutable tag; pin by digest before gated use"
+		;;
+	esac
 	ST_EXECUTOR="docker-image"; ST_IMAGE="$IMAGE"
 	# An explicit argument vector. The project is mounted at a fixed interior path, so a host path
 	# containing spaces, tabs or Unicode never has to survive word splitting.
@@ -72,7 +93,36 @@ sc_grype_validate "$(st_report_path)" || { st_fail "$ST_STATE_ERROR" "grype repo
 # The report must describe the target we asked for, and the database it used is recorded so a
 # clean result can be judged against the data behind it (#137 consumes both).
 ST_DB_ID=$(jq -r '(.descriptor.db.built // .descriptor.db.checksum // "") | tostring' "$(st_report_path)" 2>/dev/null) || ST_DB_ID=""
+# THE REPORT MUST DESCRIBE THE TARGET WE ASKED FOR. _gy_src was read and never compared, so a
+# report about a different tree or SBOM satisfied the contract as long as it parsed. Comparison is
+# EXACT after normalising the forms Grype legitimately emits — it echoes the scheme-qualified input
+# ("dir:.", "sbom:path") in `userInput` and the bare resolved value in `source.target`. Substring
+# matching is deliberately not used: "." is a substring of almost everything, and "app" of
+# "app-fork".
 _gy_src=$(jq -r '(.source.target // .source.userInput // "") | tostring' "$(st_report_path)" 2>/dev/null) || _gy_src=""
+_gy_want="$ST_TARGET"
+gy__norm() { # strip a leading grype scheme and any trailing slash, then canonicalise "./x" -> "x"
+	_gn=${1#dir:}; _gn=${_gn#sbom:}; _gn=${_gn#file:}
+	while [ "${_gn%/}" != "$_gn" ] && [ "$_gn" != "/" ]; do _gn=${_gn%/}; done
+	case "$_gn" in ./?*) _gn=${_gn#./} ;; esac
+	[ -n "$_gn" ] || _gn="."
+	printf '%s' "$_gn"
+}
+# SCOPED TO fs MODE. There, ST_TARGET is a directory Grype echoes back as `dir:<path>` or the bare
+# path, so equality is meaningful. In sbom mode `source.target` describes the SBOM's SUBJECT — the
+# image or project the SBOM was made from — which is legitimately NOT the SBOM file path, so a path
+# comparison there would reject correct evidence. The sbom path is bound by digest instead, through
+# the provenance record the transaction already writes.
+if [ "$MODE" = fs ]; then
+	if [ -z "$_gy_src" ]; then
+		st_fail "$ST_STATE_ERROR" "grype report records no source — it cannot be bound to the requested target"
+		exit 0
+	fi
+	if [ "$(gy__norm "$_gy_src")" != "$(gy__norm "$_gy_want")" ]; then
+		st_fail "$ST_STATE_ERROR" "grype report describes '$_gy_src', not the requested '$_gy_want'"
+		exit 0
+	fi
+fi
 _gy_matches=$(jq -r '.matches | length' "$(st_report_path)" 2>/dev/null) || _gy_matches=0
 if [ "${_gy_matches:-0}" -gt 0 ]; then st_publish "$ST_STATE_FINDINGS"; else st_publish "$ST_STATE_CLEAN"; fi
 exit 0

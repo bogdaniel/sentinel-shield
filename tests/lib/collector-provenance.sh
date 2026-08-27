@@ -35,9 +35,13 @@ cp_tool_for() { # the identity the collector will demand of its producer
 # cp__finding_count — how many findings the report carries, across the native shapes these suites
 # use. Unknown shapes count zero, which keeps the default at completed-clean.
 cp__finding_count() {
+	# Misconfigurations are findings too. A Trivy report carrying ONLY failing misconfigurations
+	# has zero vulnerabilities and zero secrets, so it was derived as completed-clean — provenance
+	# contradicting its own report.
 	jq -r '[ (.matches[]?),
 	         (.results[]?.packages[]?.vulnerabilities[]?),
 	         (.Results[]?.Vulnerabilities[]?), (.Results[]?.Secrets[]?),
+	         (.Results[]?.Misconfigurations[]? | select((.Status // "FAIL") == "FAIL")),
 	         (.runs[]?.results[]?), (.dependencies[]?.vulnerabilities[]?) ] | length' \
 		"$1" 2>/dev/null || printf '0'
 }

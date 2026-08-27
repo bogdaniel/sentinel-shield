@@ -45,6 +45,16 @@ sc_syft_validate() { # sc_syft_validate <report>
 			|| { SC_REASON="document name (target identity) missing"; return 1; }
 		_sc_jq 'has("packages") and (.packages | type == "array")' "$1" \
 			|| { SC_REASON="packages is missing or not an array"; return 1; }
+		# An SPDX document declares its licence, its own SPDXID and a namespace. Accepting one that
+		# carries `spdxVersion` and none of them treated "claims to be SPDX" as "is SPDX" — the
+		# version string alone is not the contract, and a consumer resolving references needs the
+		# namespace and root identifier to exist.
+		_sc_jq '((.dataLicense // "") | tostring) != ""' "$1" \
+			|| { SC_REASON="SPDX document lacks dataLicense"; return 1; }
+		_sc_jq '((.SPDXID // "") | tostring) != ""' "$1" \
+			|| { SC_REASON="SPDX document lacks SPDXID"; return 1; }
+		_sc_jq '((.documentNamespace // "") | tostring) != ""' "$1" \
+			|| { SC_REASON="SPDX document lacks documentNamespace"; return 1; }
 		SC_SHAPE="spdx"; SC_COUNT=$(jq -r '.packages | length' "$1" 2>/dev/null || printf '0'); return 0
 	fi
 	if _sc_jq 'has("artifacts")' "$1"; then
@@ -73,6 +83,11 @@ sc_trivy_validate() { # sc_trivy_validate <report>
 	_sc_jq '(.SchemaVersion) as $v | ($v == 2 or $v == "2")' "$1" \
 		|| { SC_REASON="unsupported Trivy SchemaVersion — this contract reads version 2"; return 1; }
 	_sc_jq 'has("Results") or has("results")' "$1" || { SC_REASON="Results missing — the scan produced no result set"; return 1; }
+	# Every downstream expression iterates Results with `[]?`, which SILENTLY yields nothing for an
+	# object, a scalar or null. A report whose Results is `{}` therefore mapped to zero findings and
+	# read as a clean scan. The type is checked once, here, with a reason naming what was found.
+	_sc_jq '((.Results // .results) | type) == "array"' "$1" \
+		|| { SC_REASON="Results is $(jq -r '((.Results // .results) | type)' "$1" 2>/dev/null || printf 'unreadable'), not an array — the result set cannot be read"; return 1; }
 	# A report-level error means a PARTIAL scan. Trivy still emits a document, and without this
 	# check a database failure reads as a clean result (#136).
 	if _sc_jq '((.Results // .results // []) | map(select(.Class == "error" or (.Type // "") == "error")) | length) > 0' "$1"; then

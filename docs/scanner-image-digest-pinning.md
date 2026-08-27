@@ -1,8 +1,9 @@
 # Scanner Image Digest Pinning (v0.1.21)
 
-Validated Sentinel Shield scanner images are **tag-pinned** in the templates for readability, but a
-tag is mutable — the same `:v0.114.0` can point at a different image tomorrow. For supply-chain
-integrity, consuming projects should pin scanner images by **digest** (`@sha256:…`).
+A tag is mutable — the same `:v0.114.0` can point at a different image tomorrow — so Sentinel
+Shield scanner images are pinned by **digest** (`@sha256:…`). In a gated mode an unpinned scanner
+image is **refused before the scanner executes**; the older tag-pinned template values are retained
+below only as the provenance of each digest, not as a supported configuration.
 
 **In a gated mode this is enforced, not advised.** See
 [Enforcement by mode](#enforcement-by-mode) below. This doc gives

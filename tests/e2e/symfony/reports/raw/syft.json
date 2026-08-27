@@ -7,5 +7,8 @@
       "Tool: syft"
     ]
   },
-  "packages": []
+  "packages": [],
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "documentNamespace": "https://sentinel-shield.invalid/spdx/symfony"
 }

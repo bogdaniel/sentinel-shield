@@ -241,7 +241,11 @@ assert_equal "every adapter probes its version through the bounded helper" "" "$
 # One controlled value carries a space, a tab, a Unicode character and shell metacharacters at
 # once: each property is provable from the same argv, and separate cases would only multiply runs
 # without improving attribution.
-ODD_TARGET='dir with space	tab-é-$(touch /tmp/ss-pwned);|&'
+# The canary lives in this suite's own TMP. A shared /tmp path is writable by anything else on the
+# machine, so its presence or absence was not solely a statement about this test.
+SS_CANARY="$TMP/ss-pwned"
+rm -f "$SS_CANARY"
+ODD_TARGET="dir with space	tab-é-\$(touch $SS_CANARY);|&"
 jq -r '.scanners[] | select(.dimensions | index("path-spaces")) | [.tool,.adapter,.binary,.output,.writes] | @tsv' "$TABLE" > "$TMP/dim-path"
 while IFS="$(printf '\t')" read -r TOOL ADAPTER BINARY OUTPUT WRITES; do
 	[ -n "$TOOL" ] || continue
@@ -273,7 +277,8 @@ printf '%s\\\\n' \"\$@\" > \"$D/argv\"
 	if [ -f "$D/argv" ]; then
 		assert_true "[$TOOL/path-spaces] the hostile target arrived as ONE argument" \
 			grep -qF "$ODD_TARGET" "$D/argv"
-		assert_false "[$TOOL/path-spaces] no shell expansion occurred" test -e /tmp/ss-pwned
+		assert_false "[$TOOL/path-spaces] the canary was absent before the case" test -e "$SS_CANARY"
+		assert_false "[$TOOL/path-spaces] no shell expansion occurred" test -e "$SS_CANARY"
 	else
 		assert_true "[$TOOL/path-spaces] the fake recorded an argument vector to inspect" test -f "$D/argv"
 	fi

@@ -70,10 +70,29 @@ done
 assert_equal "every committed in-scope e2e report is claimed by exactly one row" "" "$_unref"
 
 # --check must not write. Compared by digest over the whole fixture tree, not by trusting the mode.
-_before=$(find "$ROOT/tests/e2e" -type f -exec ne_sha256 {} \; 2>/dev/null | sort | ne_sha256 /dev/stdin 2>/dev/null || printf 'a')
+# ne_sha256 is a SHELL FUNCTION, so `find -exec ne_sha256` never resolves it, and `ne_sha256
+# /dev/stdin` is not a regular file — both sides of this comparison were the empty string, and the
+# assertion could not have detected a write. Digests are computed by a real hasher over a sorted
+# file list, through a temporary file rather than a pipe.
+ft_digest() { # ft_digest <dir> -> one digest over every file's path+content
+	find "$1" -type f -print0 2>/dev/null | LC_ALL=C sort -z | xargs -0 \
+		sh -c 'for f do { command -v sha256sum >/dev/null 2>&1 && sha256sum "$f" || shasum -a 256 "$f"; } 2>/dev/null; done' sh \
+		> "$TMP/ft.list" 2>/dev/null || : 
+	{ command -v sha256sum >/dev/null 2>&1 && sha256sum "$TMP/ft.list" || shasum -a 256 "$TMP/ft.list"; } 2>/dev/null | awk '{print $1}'
+}
+_before=$(ft_digest "$ROOT/tests/e2e")
 sh "$GEN" --check >/dev/null 2>&1 || :
-_after=$(find "$ROOT/tests/e2e" -type f -exec ne_sha256 {} \; 2>/dev/null | sort | ne_sha256 /dev/stdin 2>/dev/null || printf 'b')
+_after=$(ft_digest "$ROOT/tests/e2e")
+assert_false "fixture-tree digest is actually computed, not an empty string" test -z "$_before"
 assert_equal "--check leaves the fixture tree byte-identical" "$_before" "$_after"
+# MUTATION CONTROL: the digest must CHANGE when a fixture changes, otherwise the assertion above
+# would hold for any implementation that returns a constant.
+_ft_probe="$ROOT/tests/e2e/.ft-mutation-probe"
+printf 'mutation\n' > "$_ft_probe"
+_mutated=$(ft_digest "$ROOT/tests/e2e")
+rm -f "$_ft_probe"
+assert_false "MUTATION: changing a fixture changes the tree digest" test "$_before" = "$_mutated"
+assert_equal "MUTATION: removing the probe restores the original digest" "$_before" "$(ft_digest "$ROOT/tests/e2e")"
 
 # Generation is deterministic: regenerating into a copy reproduces the committed bytes exactly.
 cp -R "$ROOT/tests/e2e" "$TMP/e2e-copy" 2>/dev/null || :
@@ -87,7 +106,7 @@ seed() { # seed <tool> <body> -> $SB/report.json with valid provenance
 	printf '%s' "$2" > "$SB/report.json"
 	prov "$SB/report.json" "$1" "completed-clean" "${3:-dir}" "subject-a"
 }
-SYFT_OK='{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[]}'
+SYFT_OK='{"dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":"https://sentinel-shield.invalid/spdx/t","spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[]}'
 GRYPE_OK='{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"1","db":{"built":"2026-01-01T00:00:00Z"}}}'
 TRIVY_OK='{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[]}'
 
@@ -130,7 +149,7 @@ assert_equal "image-mode provenance cannot satisfy the filesystem collector" "ex
 # SYFT (#135): an inventory, never a findings verdict; `{}` is not an SBOM.
 printf '{}' > "$SB/report.json"; prov "$SB/report.json" "syft" "completed-clean" "dir" "subject-a"
 assert_equal "an empty-object placeholder is not an SBOM" "execution-error" "$(st_of "$(collect syft "$SB/report.json")")"
-SYFT_POP='{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"p"},{"name":"q"}]}'
+SYFT_POP='{"dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":"https://sentinel-shield.invalid/spdx/t","spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"p"},{"name":"q"}]}'
 seed syft "$SYFT_POP"
 _out=$(collect syft "$SB/report.json")
 assert_equal "a populated inventory is still clean, not findings" "pass" "$(st_of "$_out")"
@@ -209,11 +228,13 @@ assert_equal "grype-injection: a leading-dash image value is refused" \
 	"execution-error" "$(gy_run "-v /:/host")"
 # The legitimate control must reach the docker boundary: the stub was invoked, and the image
 # arrived as ONE argument rather than being split.
-_gy_legit=$(gy_run "registry.example/img@sha256:abc123")
+# A REAL 64-hex digest. 'sha256:abc123' is six characters and is now refused as malformed before
+# docker is reached — correctly, so the control needs a digest that actually is one.
+_gy_legit=$(gy_run "registry.example/img@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 assert_true "grype-injection CONTROL: the docker boundary was reached for a digest-pinned image" \
 	test -f "$GD/argv"
 assert_true "grype-injection CONTROL: the image survived as a single argument" \
-	grep -qxF 'registry.example/img@sha256:abc123' "$GD/argv"
+	grep -qxF 'registry.example/img@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "$GD/argv"
 assert_false "grype-injection CONTROL: no argument was split on whitespace" \
 	grep -qxF '--privileged' "$GD/argv"
 
@@ -602,7 +623,7 @@ CPD="$SB/helper-audit"; mkdir -p "$CPD"
 # 1. The digest is DERIVED from the report, never accepted as a stated fact. Two different reports
 #    must therefore never carry the same digest, and no parameter may inject one.
 printf '%s' "$SYFT_OK" > "$CPD/a.json"
-printf '%s' '{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"other"}]}' > "$CPD/b.json"
+printf '%s' '{"dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":"https://sentinel-shield.invalid/spdx/t","spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"other"}]}' > "$CPD/b.json"
 ( . "$ROOT/scripts/lib/normalized-evidence.sh"; . "$CPH"; cp_write "$CPD/a.json" syft.sh; cp_write "$CPD/b.json" syft.sh )
 _cp_da=$(jq -r '.report.sha256' "$CPD/a.provenance.json")
 _cp_db=$(jq -r '.report.sha256' "$CPD/b.provenance.json")
@@ -635,7 +656,7 @@ printf '%s' "$SYFT_OK" > "$CPD/drift.json"
 ( . "$ROOT/scripts/lib/normalized-evidence.sh"; . "$CPH"; cp_write "$CPD/drift.json" syft.sh )
 assert_equal "helper CONTROL: the freshly generated pairing verifies" \
 	"pass" "$(st_of "$(collect syft "$CPD/drift.json")")"
-printf '%s' '{"spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"injected"}]}' > "$CPD/drift.json"
+printf '%s' '{"dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":"https://sentinel-shield.invalid/spdx/t","spdxVersion":"SPDX-2.3","name":"subject-a","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[{"name":"injected"}]}' > "$CPD/drift.json"
 assert_equal "helper: a report edited after generation no longer verifies" \
 	"execution-error" "$(st_of "$(collect syft "$CPD/drift.json")")"
 
@@ -663,7 +684,7 @@ SYFT_CDX='{"bomFormat":"CycloneDX","specVersion":"1.5","components":[{"name":"p"
 seed syft "$SYFT_CDX"
 assert_equal "syft-schema: a CycloneDX document does not satisfy the SPDX contract" \
 	"execution-error" "$(st_of "$(collect syft "$SB/report.json")")"
-seed syft '{"spdxVersion":"SPDX-2.3","packages":[{"name":"p"}]}'
+seed syft '{"dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":"https://sentinel-shield.invalid/spdx/t","spdxVersion":"SPDX-2.3","packages":[{"name":"p"}]}'
 assert_equal "syft-schema: an SPDX document missing its creation info is incomplete, not empty" \
 	"execution-error" "$(st_of "$(collect syft "$SB/report.json")")"
 seed syft "$SYFT_OK"
@@ -761,6 +782,110 @@ assert_equal "index-agreement: and so do unverified ones" \
 	"1" "$(printf '%s' "$_th_out" | jq -r '.tool_report.unverified // "-"')"
 assert_false "index-agreement: INDEX.md no longer documents the superseded verified-only filter" \
 	grep -qF 'counts items where `Verified == true`' "$TH_IDX"
+
+# ===========================================================================
+# REVIEW-DRIVEN PRODUCTION CORRECTIONS
+# ===========================================================================
+
+# --- Grype scanner image: digest-pinned for gated use, on dockle's terms ---------
+gyi_run() { # gyi_run <case> <mode> <scanner-image>
+	_gi_d="$TMP/gyimg-$1"; rm -rf "$_gi_d"; _gi_p=$(sf_project "$_gi_d"); mkdir -p "$_gi_d/bin"
+	cat > "$_gi_d/bin/docker" <<'GIS'
+#!/bin/sh
+printf '%s' '{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2026-01-01T00:00:00Z"}}}'
+exit 0
+GIS
+	chmod +x "$_gi_d/bin/docker"
+	sf_run "$_gi_p" "$_gi_d/bin" "$AD/grype.sh" reports/raw/grype.json \
+		"SENTINEL_SHIELD_GRYPE_MODE=fs" "SENTINEL_SHIELD_GRYPE_IMAGE=$3" "SENTINEL_SHIELD_MODE=$2" || :
+	sf_state "$_gi_p" reports/raw/grype.json
+}
+GYI_PIN="anchore/grype@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+assert_equal "grype-image CONTROL: a digest-pinned scanner runs in regulated mode" \
+	"completed-clean" "$(gyi_run pinned regulated "$GYI_PIN")"
+assert_equal "grype-image: a mutable tag is REFUSED in a gated mode" \
+	"execution-error" "$(gyi_run tag-strict strict anchore/grype:v0.114.0)"
+assert_equal "grype-image: a mutable tag WARNS and still scans in baseline" \
+	"completed-clean" "$(gyi_run tag-base baseline anchore/grype:v0.114.0)"
+assert_equal "grype-image: a malformed digest is refused" \
+	"execution-error" "$(gyi_run baddig regulated 'anchore/grype@sha256:abc')"
+
+# --- Grype target binding: the report must describe what we asked for ------------
+gyt_run() { # gyt_run <case> <requested-target> <source.target in the report>
+	_gt_d="$TMP/gytgt-$1"; rm -rf "$_gt_d"; _gt_p=$(sf_project "$_gt_d")
+	sf_make "$_gt_d" grype stdout clean \
+		"{\"matches\":[],\"source\":{\"type\":\"directory\",\"target\":\"$3\"},\"descriptor\":{\"name\":\"grype\",\"version\":\"1\",\"db\":{\"built\":\"2026-01-01T00:00:00Z\"}}}" 0 >/dev/null
+	mkdir -p "$_gt_p/$2" 2>/dev/null || :
+	sf_plant_stale "$_gt_p" reports/raw/grype.json
+	sf_run "$_gt_p" "$_gt_d/bin" "$AD/grype.sh" reports/raw/grype.json \
+		"SENTINEL_SHIELD_GRYPE_MODE=fs" "SENTINEL_SHIELD_GRYPE_TARGET=$2" || :
+	sf_state "$_gt_p" reports/raw/grype.json
+}
+assert_equal "grype-target CONTROL: a report describing the requested target is accepted" \
+	"completed-clean" "$(gyt_run match . .)"
+assert_equal "grype-target CONTROL: grype's scheme-qualified echo is the same target" \
+	"completed-clean" "$(gyt_run scheme . 'dir:.')"
+assert_equal "grype-target: a report about a DIFFERENT tree is refused" \
+	"execution-error" "$(gyt_run other src /etc)"
+# Substring matching is what this replaces: "app" must not satisfy a request for "app-fork".
+assert_equal "grype-target: a prefix of the requested target is not the target" \
+	"execution-error" "$(gyt_run prefix app-fork app)"
+assert_equal "grype-target: a report recording no source at all is refused" \
+	"execution-error" "$(gyt_run nosrc . '')"
+# The case directory is derived, not captured: gyt_run's assignments happen inside a command
+# substitution, so a variable set there never reaches this scope — and under `set -u` that turned
+# the assertion into an unbound-variable error rather than a failure.
+assert_false "grype-target: a refused target mismatch leaves no stale report" \
+	sf_stale_survived "$(sf_project "$TMP/gytgt-other")" reports/raw/grype.json
+
+# --- Scorecard identity and inconclusive results ---------------------------------
+sci_run() { # sci_run <case> <requested-repo> <payload>
+	_si_d="$TMP/scid-$1"; rm -rf "$_si_d"; _si_p=$(sf_project "$_si_d")
+	sf_make "$_si_d" scorecard stdout clean "$3" 0 >/dev/null
+	sf_run "$_si_p" "$_si_d/bin" "$AD/scorecard.sh" reports/raw/scorecard.json \
+		"SENTINEL_SHIELD_SCORECARD_REPO=$2" || :
+	sf_state "$_si_p" reports/raw/scorecard.json
+}
+SCI_OK='{"repo":{"name":"github.com/o/repo"},"score":9,"checks":[{"name":"Pinned-Dependencies","score":10}]}'
+assert_equal "scorecard-id CONTROL: the exact repository is accepted" \
+	"completed-clean" "$(sci_run exact github.com/o/repo "$SCI_OK")"
+assert_equal "scorecard-id CONTROL: an https:// prefix is an equivalent form" \
+	"completed-clean" "$(sci_run scheme https://github.com/o/repo "$SCI_OK")"
+# The collisions substring matching allowed.
+assert_equal "scorecard-id: repo cannot satisfy a request for repo-fork" \
+	"execution-error" "$(sci_run fork github.com/o/repo-fork "$SCI_OK")"
+assert_equal "scorecard-id: repo cannot satisfy a request for repo-docs" \
+	"execution-error" "$(sci_run docs github.com/o/repo-docs "$SCI_OK")"
+# score -1 is UNEVALUATED. All-inconclusive is not a clean scan.
+assert_equal "scorecard-inconclusive: every check unevaluated is unavailable, not clean" \
+	"unavailable" "$(sci_run allbad github.com/o/repo '{"repo":{"name":"github.com/o/repo"},"score":-1,"checks":[{"name":"A","score":-1},{"name":"B","score":-1}]}')"
+assert_equal "scorecard-inconclusive CONTROL: one usable high score is a genuine clean scan" \
+	"completed-clean" "$(sci_run onegood github.com/o/repo '{"repo":{"name":"github.com/o/repo"},"score":8,"checks":[{"name":"A","score":-1},{"name":"B","score":9}]}')"
+assert_equal "scorecard-inconclusive CONTROL: a low usable score is still findings" \
+	"completed-findings" "$(sci_run onelow github.com/o/repo '{"repo":{"name":"github.com/o/repo"},"score":2,"checks":[{"name":"A","score":-1},{"name":"B","score":1}]}')"
+
+# --- Trivy Results must be an array before anything maps it ----------------------
+assert_equal "trivy-type CONTROL: an empty array is a readable result set" \
+	"pass" "$(st_of "$(tv_seed "$TRIVY_OK")")"
+assert_equal "trivy-type: an OBJECT Results is refused, not silently mapped to zero" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"a","Results":{}}')")"
+assert_equal "trivy-type: a scalar Results is refused" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"a","Results":"none"}')")"
+assert_equal "trivy-type: a null Results is refused" \
+	"execution-error" "$(st_of "$(tv_seed '{"SchemaVersion":2,"ArtifactName":"a","Results":null}')")"
+
+# --- the shared derivation counts misconfigurations as findings -------------------
+# A Trivy report with only failing misconfigurations has zero vulnerabilities and zero secrets, so
+# the derivation called it completed-clean — provenance contradicting its own report.
+_mc_dir="$SB/misconf"; mkdir -p "$_mc_dir"
+printf '%s' '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"Dockerfile","Misconfigurations":[{"ID":"DS002","Status":"FAIL"}]}]}' > "$_mc_dir/r.json"
+( . "$ROOT/tests/lib/collector-provenance.sh"; cp_write "$_mc_dir/r.json" trivy.sh )
+assert_equal "derivation: a misconfiguration-only report is completed-findings, not clean" \
+	"completed-findings" "$(jq -r '.completion.state' "$_mc_dir/r.provenance.json")"
+printf '%s' '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":"Dockerfile","Misconfigurations":[{"ID":"DS002","Status":"PASS"}]}]}' > "$_mc_dir/r.json"
+( . "$ROOT/tests/lib/collector-provenance.sh"; cp_write "$_mc_dir/r.json" trivy.sh )
+assert_equal "derivation CONTROL: a passing misconfiguration is not a finding" \
+	"completed-clean" "$(jq -r '.completion.state' "$_mc_dir/r.provenance.json")"
 
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')

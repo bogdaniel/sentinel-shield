@@ -890,11 +890,15 @@ run_scanner_matrix() {
 	# sm_provenance <report> <tool> <completion-state> — the sidecar a real scanner transaction
 	# writes. Collectors that bind evidence read no field until provenance proves a scan produced
 	# THIS report; a self-test fixture is not exempt from that, by design.
+	# One derivation, shared with the suites, rather than a local copy of the rules.
+	# shellcheck source=tests/lib/collector-provenance.sh
+	. "$ROOT/tests/lib/collector-provenance.sh"
 	sm_provenance() {
 		# self-test.sh does not source normalized-evidence.sh, so the digest is computed here with
 		# the same sha256sum/shasum fallback. Depending on a function that is not in scope produced
 		# an EMPTY digest — provenance that cannot bind, failing in a way that looks like the
 		# collector's fault rather than the fixture's.
+		cp_write "$1" "$2.sh" "${3:-}" && return 0
 		_sm_d=$( { command -v sha256sum >/dev/null 2>&1 && sha256sum "$1" || shasum -a 256 "$1"; } 2>/dev/null | awk '{print $1}' )
 		jq -n --arg t "$2" --arg d "$_sm_d" --arg s "$3" \
 			'{contract:"sentinel-shield/scanner-transaction@1", tool:$t, completion:{state:$s},
@@ -1809,15 +1813,18 @@ run_v024_collectors() {
 	# provenance a real scan would have written, without adding sidecars to the committed fixture
 	# set or exempting anything from the binding.
 	_lib_src="$ROOT/tests/fixtures/collectors-v024"; C="$ROOT/scripts/collectors"
-	LIB=$(mktemp -d)/collectors-v024; mkdir -p "$LIB"; cp "$_lib_src"/*.json "$LIB/" 2>/dev/null || true
+	# The ROOT is retained so it can be removed. `$(mktemp -d)/collectors-v024` discarded the
+	# actual root, leaving one owned temporary directory behind on every run.
+	_lib_root=$(mktemp -d); LIB="$_lib_root/collectors-v024"; mkdir -p "$LIB"
+	cp "$_lib_src"/*.json "$LIB/" 2>/dev/null || true
 	for _bt in grype osv-scanner syft trivy; do
 		[ -f "$LIB/$_bt.json" ] || continue
 		case "$_bt" in trivy) _bp=trivy-fs ;; *) _bp=$_bt ;; esac
-		if [ "$(jq -r '[(.matches[]?),(.results[]?.packages[]?.vulnerabilities[]?),(.Results[]?.Vulnerabilities[]?)]|length' "$LIB/$_bt.json" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
-			sm_provenance "$LIB/$_bt.json" "$_bp" completed-findings
-		else
-			sm_provenance "$LIB/$_bt.json" "$_bp" completed-clean
-		fi
+		# The SHARED derivation decides the state. A reduced expression here was a second
+		# vocabulary that could drift from cp_write — it omitted misconfigurations and secrets, and
+		# it had no notion of source discovery, so `{"results":[]}` was labelled completed-clean
+		# when nothing had been examined.
+		sm_provenance "$LIB/$_bt.json" "$_bp"
 	done
 	cl_check "fixture library present (>=30 fixtures)" "$([ "$(ls "$LIB"/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 30 ] && echo yes || echo no)" "yes"
 	_bad=0; _n=0
@@ -1835,6 +1842,7 @@ run_v024_collectors() {
 	# Spot-check a few representative mapped counts from the library.
 	cl_check "grype fixture -> some vuln count" "$([ "$(sh "$C/grype.sh" --input "$LIB/grype.json" 2>/dev/null | jq '[.summary.critical_vulnerabilities,.summary.high_vulnerabilities,.summary.medium_vulnerabilities]|add')" -ge 1 ] && echo yes || echo no)" "yes"
 	cl_check "trufflehog fixture -> secrets (verified and unverified)" "$([ "$(sh "$C/trufflehog.sh" --input "$LIB/trufflehog.json" 2>/dev/null | jq '.summary.secrets')" -ge 1 ] && echo yes || echo no)" "yes"
+	rm -rf "$_lib_root" 2>/dev/null || :
 	if [ "$CL_FAILS" -ne 0 ]; then log_error "v024-collectors: $CL_FAILS case(s) failed"; return 1; fi
 	log_info "v024-collectors: OK (complete collector fixture library iterated; normalized output verified)"
 }
@@ -1991,7 +1999,7 @@ run_v025_live() {
 	# A REAL captured artifact already has the native shape; what it lacks is the provenance sidecar
 	# a live transaction writes alongside it. Generated on an isolated copy so the committed
 	# artifact stays byte-identical.
-	_lev=$(mktemp -d); cp "$LE/grype-real.json" "$_lev/grype-real.json"
+	_lev_root=$(mktemp -d); _lev="$_lev_root"; cp "$LE/grype-real.json" "$_lev/grype-real.json"
 	sm_provenance "$_lev/grype-real.json" grype completed-findings
 	vl_check "REAL grype 0.114.0 artifact -> medium=1" "$(sh "$C/grype.sh" --input "$_lev/grype-real.json" 2>/dev/null | jq -r '"\(.status):\(.summary.medium_vulnerabilities)"')" "fail:1"
 	vl_check "Dependency-Check NVD-429 evidence excerpt present" "$([ -s "$LE/dependency-check-429-excerpt.log" ] && grep -q '429' "$LE/dependency-check-429-excerpt.log" && echo yes || echo no)" "yes"
@@ -2040,6 +2048,7 @@ run_v025_live() {
 	vl_check "every scheduled template is also workflow_dispatch" "$_noschdispatch" "0"
 
 	rm -rf "$_d"
+	rm -rf "$_lev_root" 2>/dev/null || :
 	if [ "$VL_FAILS" -ne 0 ]; then log_error "v025-live: $VL_FAILS case(s) failed"; return 1; fi
 	log_info "v025-live: OK (real Checkov/Grype/Deptrac artifacts, NVD-429 evidence, zap-full fix, nuclei guard, regulated, workflow rules)"
 }
