@@ -49,12 +49,15 @@ sc_syft_validate() { # sc_syft_validate <report>
 		# carries `spdxVersion` and none of them treated "claims to be SPDX" as "is SPDX" — the
 		# version string alone is not the contract, and a consumer resolving references needs the
 		# namespace and root identifier to exist.
-		_sc_jq '((.dataLicense // "") | tostring) != ""' "$1" \
-			|| { SC_REASON="SPDX document lacks dataLicense"; return 1; }
-		_sc_jq '((.SPDXID // "") | tostring) != ""' "$1" \
-			|| { SC_REASON="SPDX document lacks SPDXID"; return 1; }
-		_sc_jq '((.documentNamespace // "") | tostring) != ""' "$1" \
-			|| { SC_REASON="SPDX document lacks documentNamespace"; return 1; }
+		# NON-EMPTY STRINGS, not values coerced with tostring. `tostring` accepts a number, an
+		# object or an array and turns it into a non-empty string, so `"SPDXID": 0` or
+		# `"documentNamespace": {}` passed a check meant to prove the field was declared.
+		_sc_jq '(.dataLicense | type == "string") and (.dataLicense | length > 0)' "$1" \
+			|| { SC_REASON="SPDX dataLicense is missing or not a non-empty string"; return 1; }
+		_sc_jq '(.SPDXID | type == "string") and (.SPDXID | length > 0)' "$1" \
+			|| { SC_REASON="SPDX SPDXID is missing or not a non-empty string"; return 1; }
+		_sc_jq '(.documentNamespace | type == "string") and (.documentNamespace | length > 0)' "$1" \
+			|| { SC_REASON="SPDX documentNamespace is missing or not a non-empty string"; return 1; }
 		SC_SHAPE="spdx"; SC_COUNT=$(jq -r '.packages | length' "$1" 2>/dev/null || printf '0'); return 0
 	fi
 	if _sc_jq 'has("artifacts")' "$1"; then

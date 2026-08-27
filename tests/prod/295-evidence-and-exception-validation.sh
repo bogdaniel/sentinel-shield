@@ -65,11 +65,34 @@ check "  missing_sbom is set" "$(jq -r '.summary.missing_sbom' "$D/s.json")" "tr
 check "  missing_release_evidence is set" "$(jq -r '.summary.missing_release_evidence' "$D/s.json")" "true"
 
 # Content classes that must never count as evidence.
-for _case in 'empty-object|{}|not-spdx' 'malformed|not json at all|malformed-json' 'no-packages|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[]}|no-packages' 'no-producer|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":[]},"packages":[{"name":"p","SPDXID":"SPDXRef-p"}]}|no-producer' 'not-a-document|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-Package","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[{"name":"p","SPDXID":"SPDXRef-p"}]}|not-spdx-document' 'incomplete-package|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[{"name":""}]}|incomplete-packages'; do
+for _case in 'empty-object|{}|not-spdx' 'malformed|not json at all|malformed-json' 'no-producer|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":[]},"packages":[{"name":"p","SPDXID":"SPDXRef-p"}]}|no-producer' 'not-a-document|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-Package","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[{"name":"p","SPDXID":"SPDXRef-p"}]}|not-spdx-document' 'incomplete-package|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[{"name":""}]}|incomplete-packages'; do
 	_n=${_case%%|*}; _rest=${_case#*|}; _body=${_rest%|*}; _why=${_rest##*|}
 	D=$(fresh "sbom-$_n"); printf '%s' "$_body" > "$D/sbom.spdx.json"; good_release "$D"
 	build "$D" >/dev/null
 	check "an SBOM that is $_n is not evidence" "$(ev "$D" sbom present)" "false"
+	check "  rejected as $_why" "$(ev "$D" sbom reason)" "$_why"
+done
+
+# A ZERO-PACKAGE SBOM IS NOT INHERENTLY INVALID (#135-AC3).
+#
+# `packages: []` used to be rejected outright, on the reasoning that an SBOM documenting nothing is
+# not an SBOM. That holds for a document nothing vouches for, and fails for a scan that ran against
+# a project with no resolvable packages and said so. The distinction is whether the document proves
+# an applicable scan completed — document name, creation time and producer — not how many elements
+# the array has. What stands behind the report is then decided by the provenance binding, which is
+# a stronger check than counting.
+D=$(fresh sbom-empty-proven)
+printf '%s' '{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","dataLicense":"CC0-1.0","documentNamespace":"https://sentinel-shield.invalid/spdx/x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: syft-1.0"]},"packages":[]}' > "$D/sbom.spdx.json"
+good_release "$D"; build "$D" >/dev/null
+check "a zero-package SBOM that proves a completed scan IS evidence" "$(ev "$D" sbom present)" "true"
+check "  and is not rejected for being empty" "$(ev "$D" sbom reason)" "verified-content-unattributed"
+
+# The rejection is preserved exactly where the proof is ABSENT.
+for _case in 'no-producer-empty|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":[]},"packages":[]}|no-producer' 'no-name-empty|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":[]}|no-document-name' 'no-time-empty|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"creators":["Tool: t"]},"packages":[]}|no-creation-time' 'packages-not-array|{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"x","creationInfo":{"created":"2026-01-01T00:00:00Z","creators":["Tool: t"]},"packages":{}}|no-packages'; do
+	_n=${_case%%|*}; _rest=${_case#*|}; _body=${_rest%|*}; _why=${_rest##*|}
+	D=$(fresh "sbom-$_n"); printf '%s' "$_body" > "$D/sbom.spdx.json"; good_release "$D"
+	build "$D" >/dev/null
+	check "an empty-package SBOM with no $_why proof is not evidence" "$(ev "$D" sbom present)" "false"
 	check "  rejected as $_why" "$(ev "$D" sbom reason)" "$_why"
 done
 

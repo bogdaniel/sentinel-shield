@@ -887,6 +887,45 @@ printf '%s' '{"SchemaVersion":2,"ArtifactName":"subject-a","Results":[{"Target":
 assert_equal "derivation CONTROL: a passing misconfiguration is not a finding" \
 	"completed-clean" "$(jq -r '.completion.state' "$_mc_dir/r.provenance.json")"
 
+# --- zero-package e2e SBOMs are validated, not repopulated (#135-AC3) ------------
+# Two e2e Syft fixtures carry `packages: []`. They are NOT given invented packages — that would
+# hide the question rather than answer it. What makes them evidence is the proof around them, so
+# that proof is asserted directly: the sidecar's digest matches the report bytes, the producer is
+# syft, the target identity and mode are right, the completion state is a completed CLEAN scan
+# (not no-targets, which would mean nothing was examined), and the SPDX metadata is complete and
+# correctly typed.
+for _z in tests/e2e/laravel/reports/raw/syft.json tests/e2e/laravel-react-docker/reports/raw/syft.json; do
+	_zr="$ROOT/$_z"; _zp="${_zr%.json}.provenance.json"
+	_zn=$(basename "$(dirname "$(dirname "$(dirname "$_zr")")")")
+	assert_equal "e2e[$_zn]: the fixture really is zero-package" "0" "$(jq '.packages|length' "$_zr")"
+	assert_equal "e2e[$_zn]: provenance records the report's own digest" \
+		"$(ne_sha256 "$_zr")" "$(jq -r '.report.sha256 // ""' "$_zp")"
+	assert_equal "e2e[$_zn]: the producer identity is syft" "syft" "$(jq -r '.tool // ""' "$_zp")"
+	assert_equal "e2e[$_zn]: a completed CLEAN scan, not no-targets" \
+		"completed-clean" "$(jq -r '.completion.state // ""' "$_zp")"
+	assert_false "e2e[$_zn]: a target identity is recorded" \
+		test -z "$(jq -r '.target.identity // ""' "$_zp")"
+	assert_false "e2e[$_zn]: a target mode is recorded" \
+		test -z "$(jq -r '.target.mode // ""' "$_zp")"
+	# Complete AND correctly typed: a number or object in these fields is not a declaration.
+	assert_true "e2e[$_zn]: SPDX metadata is present and string-typed" \
+		jq -e '(.dataLicense|type=="string" and (length>0)) and (.SPDXID|type=="string" and (length>0)) and (.documentNamespace|type=="string" and (length>0))' "$_zr"
+	# The collector is the arbiter: bound, complete, zero-package evidence is accepted.
+	assert_equal "e2e[$_zn]: the collector accepts it as an empty inventory" \
+		"pass" "$(st_of "$(collect syft "$_zr")")"
+done
+
+# The type check is real: coerced values must not satisfy it.
+_ztmp="$SB/spdx-typed.json"
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"x","dataLicense":"CC0-1.0","SPDXID":0,"documentNamespace":"https://x.invalid/1","creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[]}' > "$_ztmp"
+( . "$ROOT/tests/lib/collector-provenance.sh"; cp_write "$_ztmp" syft.sh >/dev/null 2>&1 )
+assert_equal "spdx-typed: a numeric SPDXID is not a declared identifier" \
+	"execution-error" "$(st_of "$(collect syft "$_ztmp")")"
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"x","dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","documentNamespace":{},"creationInfo":{"created":"2026-01-01T00:00:00Z"},"packages":[]}' > "$_ztmp"
+( . "$ROOT/tests/lib/collector-provenance.sh"; cp_write "$_ztmp" syft.sh >/dev/null 2>&1 )
+assert_equal "spdx-typed: an object documentNamespace is not a declared namespace" \
+	"execution-error" "$(st_of "$(collect syft "$_ztmp")")"
+
 # No adapter left a workspace behind across any of the groups above.
 _l3_temp=$(find "$TMP" -name '.ss-tmp.*' 2>/dev/null | wc -l | tr -d ' ')
 assert_equal "no Layer 3 case left an owned workspace behind" "0" "$_l3_temp"
