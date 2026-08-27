@@ -116,9 +116,10 @@ done
 # --- 3. the valid native path ---------------------------------------------
 for t in $TOOLS; do
 	native_json "$t" > "$TMP/$t.json"
-	out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app \
+	out=$(cd "$TMP" && cp_write "$t.json" "$t.sh" >/dev/null 2>&1; \
+		GITHUB_REPOSITORY=acme/app \
 		GITHUB_SHA=1111111111111111111111111111111111111111 \
-		cp_write "$t.json" "$t.sh"; sh "$ROOT/scripts/collectors/$t.sh" --input "$t.json" 2>/dev/null || true)
+		sh "$ROOT/scripts/collectors/$t.sh" --input "$t.json" 2>/dev/null || true)
 	_trust=$(field "$out" .tool_report.evidence.trust.type)
 	_digest=$(field "$out" .tool_report.evidence.source.sha256)
 	_commit=$(field "$out" .tool_report.evidence.target.commit)
@@ -147,16 +148,22 @@ else
 fi
 
 # --- 5. a malformed commit is recorded as null, never as an identity ------
+# NOTE ON SHAPE: the env assignments must prefix the COLLECTOR, not cp_write. Inserting
+# `cp_write ...;` after the `VAR=... \` continuation silently moved the assignments onto cp_write
+# and let the ambient GITHUB_SHA reach the collector instead — which passes locally, where that
+# variable is unset, and fails on CI, where it is not.
 native_json grype > "$TMP/grype.json"
-out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app GITHUB_SHA="not-a-commit" \
-	cp_write grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
+out=$(cd "$TMP" && cp_write grype.json grype.sh >/dev/null 2>&1; \
+	GITHUB_REPOSITORY=acme/app GITHUB_SHA="not-a-commit" \
+	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
 if [ -z "$(field "$out" .tool_report.evidence.target.commit)" ]; then
 	pass "a malformed commit becomes null rather than being carried as a target identity"
 else
 	fail "a malformed commit was recorded as an identity: $(field "$out" .tool_report.evidence.target.commit)"
 fi
-out=$(cd "$TMP" && GITHUB_REPOSITORY=acme/app GITHUB_SHA=$(printf '1%.0s' 1 2 3 4 5 6 7 8 9 0) \
-	cp_write grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
+out=$(cd "$TMP" && cp_write grype.json grype.sh >/dev/null 2>&1; \
+	GITHUB_REPOSITORY=acme/app GITHUB_SHA=$(printf '1%.0s' 1 2 3 4 5 6 7 8 9 0) \
+	sh "$ROOT/scripts/collectors/grype.sh" --input grype.json 2>/dev/null || true)
 if [ -z "$(field "$out" .tool_report.evidence.target.commit)" ]; then
 	pass "a short (non-40-hex) commit is rejected as a target identity"
 else

@@ -148,8 +148,12 @@ out=$(run_grype)
 
 # A8 — a record produced against another commit.
 mkrec success "$D" 0 "grype" "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-out=$( cd "$TMP" && GITHUB_REPOSITORY=a/b GITHUB_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-	cp_write reports/raw/grype.json grype.sh; sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null || true )
+# The env assignments prefix the COLLECTOR. Putting cp_write between the continuation and the
+# command moved them onto cp_write, so the ambient GITHUB_SHA reached the collector instead — a
+# false pass anywhere that variable is unset, and a failure anywhere it is set.
+out=$( cd "$TMP" && cp_write reports/raw/grype.json grype.sh >/dev/null 2>&1; \
+	GITHUB_REPOSITORY=a/b GITHUB_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+	sh "$ROOT/scripts/collectors/grype.sh" --input reports/raw/grype.json 2>/dev/null || true )
 [ "$(f "$out" .status)" = "execution-error" ] \
 	&& pass "an execution record from a DIFFERENT commit is refused" \
 	|| fail "a record from another commit was accepted"
