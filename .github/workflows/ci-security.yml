@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 # Pin the Trivy SCANNER version once. The trivy-action otherwise installs "latest", so the
-# binary that generates reports/raw/trivy.json could differ from whatever version the freshness
+# binary that generates reports/raw/trivy-fs.json could differ from whatever version the freshness
 # step records — the manifest would then claim a version that did not produce the scan. Every
 # trivy-action step below installs this exact version, and the version-capture step records
 # THIS value, so the recorded version is always the one that scanned.
@@ -247,14 +247,14 @@ jobs:
             --report-path /repo/reports/raw/gitleaks.json --redact || true
         continue-on-error: true
 
-      - name: Trivy (JSON → reports/raw/trivy.json)
+      - name: Trivy (JSON → reports/raw/trivy-fs.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
-          output: reports/raw/trivy.json
+          output: reports/raw/trivy-fs.json
           severity: CRITICAL,HIGH,MEDIUM
         continue-on-error: true
 
@@ -379,14 +379,14 @@ jobs:
           jq -e 'type == "array"' reports/raw/gitleaks.json >/dev/null 2>&1 \
             || { echo "gitleaks produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
 
-      - name: Trivy (JSON → reports/raw/trivy.json)
+      - name: Trivy (JSON → reports/raw/trivy-fs.json)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: ${{ env.TRIVY_VERSION }}
           scan-type: fs
           scan-ref: .
           format: json
-          output: reports/raw/trivy.json
+          output: reports/raw/trivy-fs.json
           severity: CRITICAL,HIGH,MEDIUM
           # Pin the DB cache dir so the freshness step below reads the SAME metadata.json
           # the action just wrote (the action's default is $GITHUB_WORKSPACE/.cache/trivy).
@@ -395,7 +395,7 @@ jobs:
 
       - name: Validate Trivy report (fail closed on scanner failure)
         run: |
-          jq -e '.SchemaVersion != null' reports/raw/trivy.json >/dev/null 2>&1 \
+          jq -e '.SchemaVersion != null' reports/raw/trivy-fs.json >/dev/null 2>&1 \
             || { echo "trivy produced no valid JSON report — scanner failure (fail closed)"; exit 1; }
 
       - name: OSV-Scanner (JSON → reports/raw/osv-scanner.json)
@@ -457,7 +457,7 @@ jobs:
           trivy_updated=$(jq -r '.UpdatedAt // empty' "$trivy_meta" 2>/dev/null || true)
           # Record the SAME version the trivy-action was pinned to above (env.TRIVY_VERSION),
           # not a separately-pulled container: the recorded version must be the one that
-          # actually generated reports/raw/trivy.json. Strip the leading "v" for the manifest. (#55 pin)
+          # actually generated reports/raw/trivy-fs.json. Strip the leading "v" for the manifest. (#55 pin)
           trivy_ver="${TRIVY_VERSION#v}"
           osv_ver=$(docker run --rm ghcr.io/google/osv-scanner:v2.4.0 --version 2>/dev/null | head -n1 | tr -cd '0-9.v' || true)
           # osv-scanner queries the LIVE OSV database during the scan, so its DB freshness IS the

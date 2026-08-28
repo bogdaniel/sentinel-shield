@@ -1251,8 +1251,18 @@ ev_provenance() {
 	printf 'verified'
 }
 
-# ev_sbom_content <path> — "ok" or the reason this is not a usable SPDX document. An SBOM
-# with no packages is not a shorter SBOM; it is an SBOM that documents nothing.
+# ev_sbom_content <path> — "ok" or the reason this is not a usable SPDX document.
+#
+# A ZERO-PACKAGE SBOM IS NOT INHERENTLY INVALID. This previously rejected `packages: []` outright,
+# on the reasoning that an SBOM documenting nothing is not an SBOM. That is true of a document
+# nothing vouches for, and false of a scan that ran against a project with no resolvable packages
+# and said so — which is exactly what #135-AC3 requires to be acceptable when the document carries
+# complete metadata, a target identity, and provenance proving an applicable scan completed.
+#
+# The rejection is preserved where the proof is ABSENT: no document name, no creation time, no
+# producer, a non-array packages field, or malformed metadata. What is no longer rejected is the
+# empty array alone. Whether a completed scan stands behind it is decided by the provenance
+# binding, which is a separate and stronger check than counting array elements.
 ev_sbom_content() {
 	if ! jq -e . "$1" >/dev/null 2>&1; then printf 'malformed-json'; return 0; fi
 	jq -r '
@@ -1262,7 +1272,6 @@ ev_sbom_content() {
 		elif ((.creationInfo.created // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T") | not) then "no-creation-time"
 		elif (((.creationInfo.creators // []) | length) == 0) then "no-producer"
 		elif (((.packages // []) | type) != "array") then "no-packages"
-		elif (((.packages // []) | length) == 0) then "no-packages"
 		elif ([ (.packages // [])[] | select(((.name // "") | length) == 0 or ((.SPDXID // "") | length) == 0) ] | length) > 0 then "incomplete-packages"
 		else "ok" end' "$1" 2>/dev/null || printf 'malformed-json'
 }

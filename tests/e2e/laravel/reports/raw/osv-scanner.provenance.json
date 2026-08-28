@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "osv-scanner",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "adf830c1c5636a470cd2801983f6274387ca9c8d1e7b6dfc957a3b25798e747a"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "laravel",
+    "mode": "lockfile"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

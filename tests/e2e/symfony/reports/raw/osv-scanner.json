@@ -1,1 +1,11 @@
-{"results": []}
+{
+  "results": [
+    {
+      "source": {
+        "path": "symfony/lockfile",
+        "type": "lockfile"
+      },
+      "packages": []
+    }
+  ]
+}

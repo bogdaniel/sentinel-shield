@@ -1,1 +1,6 @@
-{"Results": []}
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "typescript",
+  "ArtifactType": "filesystem",
+  "Results": []
+}

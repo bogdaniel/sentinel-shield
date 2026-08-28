@@ -52,7 +52,7 @@ python3 -c "import json,glob;[json.load(open(f)) for f in glob.glob('tests/fixtu
 | terrascan | terrascan.json | fail | iac_violations | 2 |
 | tests | tests.json | fail | test_failures | 4 |
 | trivy | trivy.json | fail | critical / high / medium_vulnerabilities | 1 / 2 / 1 |
-| trufflehog | trufflehog.json | fail | secrets | 2 |
+| trufflehog | trufflehog.json | fail | secrets | 3 |
 | typescript | typescript.json | fail | type_errors | 5 |
 | zap | zap.json | fail | dast_findings | 3 |
 | zizmor | zizmor.json | fail | unsafe_github_actions | 2 |
@@ -72,7 +72,10 @@ python3 -c "import json,glob;[json.load(open(f)) for f in glob.glob('tests/fixtu
 - **nuclei**: only critical/high/medium severities (3 of 4) are counted; info ignored.
 - **scorecard**: checks with `0 <= score < 5` (3) → warnings; `score == -1` and `score >= 5`
   excluded. Status is `warn`, not `fail`.
-- **trufflehog**: counts items where `Verified == true` (2); the `Verified: false` row is excluded.
+- **trufflehog**: counts EVERY finding (3), verified or not, and reports `verified` (2) and
+  `unverified` (1) separately for triage. TruffleHog reports unverified findings by default and
+  non-verifiable custom detectors always report `Verified: false`, so a verified-only count
+  silently drops real secrets. This note previously described the superseded verified-only filter.
 - **docker-base-digest / github-actions-pins**: producers emit a top-level JSON array of
   findings; collector counts array length.
 - **deptrac**: native `.Report.Violations` (number) = 2.

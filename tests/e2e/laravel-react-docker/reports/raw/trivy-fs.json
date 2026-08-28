@@ -1,1 +1,6 @@
-{"Results": []}
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "laravel-react-docker",
+  "ArtifactType": "filesystem",
+  "Results": []
+}

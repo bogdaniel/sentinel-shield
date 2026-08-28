@@ -29,13 +29,29 @@ WORK=$(mktemp -d 2>/dev/null || mktemp -d -t ss267)
 trap 'rm -rf -- "$WORK"' EXIT INT TERM
 COLL="$ROOT/scripts/collectors"
 
+# Collector evidence binding is absolute, so an inline report needs the provenance a real scanner
+# transaction would have written. This suite is about SEVERITY MAPPING, not about binding, so it
+# supplies that sidecar rather than tripping over it first — the same shape as the attestation
+# already supplied elsewhere for gates that require one.
+. "$ROOT/scripts/lib/normalized-evidence.sh"
+. "$ROOT/tests/lib/collector-provenance.sh"
+
 # m <collector> <json> <jq-projection> — run a collector over inline JSON and project a field.
-m() {
+m() { # m <collector> <json> <jq-projection> [completion-state]
 	printf '%s' "$2" > "$WORK/in.json"
-	sh "$COLL/$1" --input "$WORK/in.json" 2>/dev/null | jq -r "$3"
+	cp_write "$WORK/in.json" "$1" "${4:-completed-clean}"
+	_m_out=$(sh "$COLL/$1" --input "$WORK/in.json" 2>/dev/null) || :
+	# A collector that ERRORS emits a fully zeroed summary, so a mapping expectation of "0" is
+	# satisfied by a collector that never mapped anything. That is how a broken fixture reads as
+	# a correct mapping. Unless the projection is asking for the status itself, an errored
+	# collector reports as such and fails its assertion loudly.
+	if [ "$3" != ".status" ] && [ "$(printf '%s' "$_m_out" | jq -r '.status // ""' 2>/dev/null)" = "execution-error" ]; then
+		printf 'COLLECTOR-ERROR'; return 0
+	fi
+	printf '%s' "$_m_out" | jq -r "$3"
 }
 # sev <collector> <json> — "critical:high:medium" from the emitted summary.
-sev() { m "$1" "$2" '"\(.summary.critical_vulnerabilities):\(.summary.high_vulnerabilities):\(.summary.medium_vulnerabilities)"'; }
+sev() { m "$1" "$2" '"\(.summary.critical_vulnerabilities):\(.summary.high_vulnerabilities):\(.summary.medium_vulnerabilities)"' "${3:-completed-clean}"; }
 
 # --- php-style: violations, not scanned files --------------------------------
 PHPCS_CLEAN='{"totals":{"errors":0,"warnings":0},"files":{"a.php":{"errors":0,"warnings":0},"b.php":{"errors":0,"warnings":0}}}'
@@ -70,22 +86,37 @@ check "php-syntax: an array of error records is counted" \
 	"$(m php-syntax.sh '[{"file":"a.php"},{"file":"b.php"},{"file":"c.php"}]' '.summary.php_syntax_errors')" "3"
 
 # --- osv-scanner: preserve severity ------------------------------------------
+# A native osv-scanner report records the manifest each result came from, and a report that
+# CONTAINS vulnerabilities was produced by a scan that completed WITH FINDINGS. Declaring such a
+# report "clean" is contradictory evidence and the collector is right to refuse it, so these
+# fixtures state both facts instead of leaving the binding to infer them.
+osv_sev() { # osv_sev <report-without-source> -> "critical:high:medium"
+	printf '%s' "$1" | jq -c '.results = [ .results[] | .source = {path: "go.mod"} ]' > "$WORK/in.json"
+	cp_write "$WORK/in.json" osv-scanner.sh completed-findings
+	sh "$COLL/osv-scanner.sh" --input "$WORK/in.json" 2>/dev/null \
+		| jq -r '"\(.summary.critical_vulnerabilities):\(.summary.high_vulnerabilities):\(.summary.medium_vulnerabilities)"'
+}
 check "osv: a CRITICAL CVE is critical, not high" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"database_specific":{"severity":"CRITICAL"}}]}]}]}')" "1:0:0"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"database_specific":{"severity":"CRITICAL"}}]}]}]}')" "1:0:0"
 check "osv: HIGH and MODERATE land in their own buckets" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"database_specific":{"severity":"HIGH"}},{"database_specific":{"severity":"MODERATE"}}]}]}]}')" "0:1:1"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"database_specific":{"severity":"HIGH"}},{"database_specific":{"severity":"MODERATE"}}]}]}]}')" "0:1:1"
 check "osv: an unclassifiable vulnerability is counted, not dropped" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"id":"X"}]}]}]}')" "0:0:1"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"id":"X"}]}]}]}')" "0:0:1"
 # CVSS-vector fallback (no database_specific.severity label). The old code matched only the
 # all-high pattern -> critical and dumped every other vector into medium, so a genuine HIGH
 # vector was downgraded below the baseline gate (a fail-open). Classify by impact metrics:
 check "osv: unlabelled all-high CVSS vector -> critical" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}]}]}]}')" "1:0:0"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]}]}]}]}')" "1:0:0"
 check "osv: unlabelled single-high-impact CVSS vector -> high, NOT medium (baseline fail-open)" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N"}]}]}]}]}')" "0:1:0"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N"}]}]}]}]}')" "0:1:0"
 check "osv: unlabelled no-high-impact CVSS vector -> medium" \
-	"$(sev osv-scanner.sh '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"}]}]}]}]}')" "0:0:1"
-check "osv: clean report passes" "$(m osv-scanner.sh '{"results":[]}' '.status')" "pass"
+	"$(osv_sev '{"results":[{"packages":[{"vulnerabilities":[{"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N"}]}]}]}]}')" "0:0:1"
+# A clean scan EXAMINED something and found nothing; zero results is no-targets, a different
+# statement that belongs with the applicability cases rather than here.
+printf '%s' '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' > "$WORK/in.json"
+cp_write "$WORK/in.json" osv-scanner.sh completed-clean
+check "osv: clean report passes" \
+	"$(sh "$COLL/osv-scanner.sh" --input "$WORK/in.json" 2>/dev/null | jq -r '.status')" "pass"
 
 # --- codeql: rule-level severity, and criticals are reachable ----------------
 check "codeql: rule defaultConfiguration.level=error -> high (was medium)" \
@@ -149,15 +180,15 @@ check "trufflehog: clean report passes" "$(m trufflehog.sh '[]' '.status')" "pas
 
 # --- trivy: misconfigurations and secrets are their own channels -------------
 check "trivy: Misconfigurations map to iac_violations (were ignored)" \
-	"$(m trivy.sh '{"Results":[{"Misconfigurations":[{"Status":"FAIL"},{"Status":"FAIL"}]}]}' '.summary.iac_violations')" "2"
+	"$(m trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Misconfigurations":[{"Status":"FAIL"},{"Status":"FAIL"}]}]}' '.summary.iac_violations' completed-findings)" "2"
 check "trivy: Secrets map to secrets (were ignored)" \
-	"$(m trivy.sh '{"Results":[{"Secrets":[{"RuleID":"aws"}]}]}' '.summary.secrets')" "1"
+	"$(m trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Secrets":[{"RuleID":"aws"}]}]}' '.summary.secrets' completed-findings)" "1"
 check "trivy: a PASSing misconfiguration is not a violation" \
-	"$(m trivy.sh '{"Results":[{"Misconfigurations":[{"Status":"PASS"}]}]}' '.summary.iac_violations')" "0"
+	"$(m trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Misconfigurations":[{"Status":"PASS"}]}]}' '.summary.iac_violations')" "0"
 check "trivy: misconfigurations are NOT counted as vulnerabilities" \
-	"$(sev trivy.sh '{"Results":[{"Misconfigurations":[{"Status":"FAIL"}]}]}')" "0:0:0"
+	"$(sev trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Misconfigurations":[{"Status":"FAIL"}]}]}' completed-findings)" "0:0:0"
 check "trivy: vulnerability mapping is unchanged" \
-	"$(sev trivy.sh '{"Results":[{"Vulnerabilities":[{"Severity":"CRITICAL"}]}]}')" "1:0:0"
+	"$(sev trivy.sh '{"SchemaVersion":2,"ArtifactName":"t","Results":[{"Vulnerabilities":[{"Severity":"CRITICAL"}]}]}' completed-findings)" "1:0:0"
 
 # --- checkov: multi-framework array output -----------------------------------
 check "checkov: multi-framework ARRAY output is summed (was a crash)" \

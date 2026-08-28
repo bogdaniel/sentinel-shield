@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "osv-scanner",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "775498ae086866f8f21230055750e63671050f3a40c2ee048ad60d7929da188d"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "laravel-react-docker",
+    "mode": "lockfile"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

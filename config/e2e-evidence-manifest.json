@@ -1,0 +1,207 @@
+{
+  "schema": "sentinel-shield/e2e-evidence-manifest@1",
+  "purpose": "Declares only the INTENTIONAL semantics of each e2e scanner fixture: whose project, which producer, what kind of scan, and what the collector should conclude. Every mechanically derived fact -- digests above all -- is computed by scripts/generate-e2e-evidence.sh, never typed here.",
+  "why": "ce_bind requires provenance for every report, in production and in fixtures alike. Making fixtures exempt would put a bypass inside the exact binding that stops forged evidence, which is the property #135, #136, #137 and #184 rest on. So the fixtures carry real provenance instead.",
+  "rows": [
+    {
+      "project": "js-only",
+      "tool": "syft",
+      "report": "tests/e2e/js-only/reports/raw/syft.json",
+      "subject": "js-only",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "valid zero-package inventory"
+    },
+    {
+      "project": "js-only",
+      "tool": "trivy-fs",
+      "report": "tests/e2e/js-only/reports/raw/trivy-fs.json",
+      "subject": "js-only",
+      "target_mode": "filesystem",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean filesystem scan"
+    },
+    {
+      "project": "js-only",
+      "tool": "grype",
+      "report": "tests/e2e/js-only/reports/raw/grype.json",
+      "subject": "js-only",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean vulnerability scan"
+    },
+    {
+      "project": "js-only",
+      "tool": "osv-scanner",
+      "report": "tests/e2e/js-only/reports/raw/osv-scanner.json",
+      "subject": "js-only",
+      "target_mode": "lockfile",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean applicable scan"
+    },
+    {
+      "project": "laravel",
+      "tool": "syft",
+      "report": "tests/e2e/laravel/reports/raw/syft.json",
+      "subject": "laravel",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "valid zero-package inventory"
+    },
+    {
+      "project": "laravel",
+      "tool": "trivy-fs",
+      "report": "tests/e2e/laravel/reports/raw/trivy-fs.json",
+      "subject": "laravel",
+      "target_mode": "filesystem",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean filesystem scan"
+    },
+    {
+      "project": "laravel",
+      "tool": "grype",
+      "report": "tests/e2e/laravel/reports/raw/grype.json",
+      "subject": "laravel",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean vulnerability scan"
+    },
+    {
+      "project": "laravel",
+      "tool": "osv-scanner",
+      "report": "tests/e2e/laravel/reports/raw/osv-scanner.json",
+      "subject": "laravel",
+      "target_mode": "lockfile",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean applicable scan"
+    },
+    {
+      "project": "laravel-react-docker",
+      "tool": "syft",
+      "report": "tests/e2e/laravel-react-docker/reports/raw/syft.json",
+      "subject": "laravel-react-docker",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "valid zero-package inventory"
+    },
+    {
+      "project": "laravel-react-docker",
+      "tool": "trivy-fs",
+      "report": "tests/e2e/laravel-react-docker/reports/raw/trivy-fs.json",
+      "subject": "laravel-react-docker",
+      "target_mode": "filesystem",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean filesystem scan"
+    },
+    {
+      "project": "laravel-react-docker",
+      "tool": "grype",
+      "report": "tests/e2e/laravel-react-docker/reports/raw/grype.json",
+      "subject": "laravel-react-docker",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean vulnerability scan"
+    },
+    {
+      "project": "laravel-react-docker",
+      "tool": "osv-scanner",
+      "report": "tests/e2e/laravel-react-docker/reports/raw/osv-scanner.json",
+      "subject": "laravel-react-docker",
+      "target_mode": "lockfile",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean applicable scan"
+    },
+    {
+      "project": "symfony",
+      "tool": "syft",
+      "report": "tests/e2e/symfony/reports/raw/syft.json",
+      "subject": "symfony",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "valid zero-package inventory"
+    },
+    {
+      "project": "symfony",
+      "tool": "trivy-fs",
+      "report": "tests/e2e/symfony/reports/raw/trivy-fs.json",
+      "subject": "symfony",
+      "target_mode": "filesystem",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean filesystem scan"
+    },
+    {
+      "project": "symfony",
+      "tool": "grype",
+      "report": "tests/e2e/symfony/reports/raw/grype.json",
+      "subject": "symfony",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean vulnerability scan"
+    },
+    {
+      "project": "symfony",
+      "tool": "osv-scanner",
+      "report": "tests/e2e/symfony/reports/raw/osv-scanner.json",
+      "subject": "symfony",
+      "target_mode": "lockfile",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean applicable scan"
+    },
+    {
+      "project": "typescript",
+      "tool": "syft",
+      "report": "tests/e2e/typescript/reports/raw/syft.json",
+      "subject": "typescript",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "valid zero-package inventory"
+    },
+    {
+      "project": "typescript",
+      "tool": "trivy-fs",
+      "report": "tests/e2e/typescript/reports/raw/trivy-fs.json",
+      "subject": "typescript",
+      "target_mode": "filesystem",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean filesystem scan"
+    },
+    {
+      "project": "typescript",
+      "tool": "grype",
+      "report": "tests/e2e/typescript/reports/raw/grype.json",
+      "subject": "typescript",
+      "target_mode": "dir",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean vulnerability scan"
+    },
+    {
+      "project": "typescript",
+      "tool": "osv-scanner",
+      "report": "tests/e2e/typescript/reports/raw/osv-scanner.json",
+      "subject": "typescript",
+      "target_mode": "lockfile",
+      "completion": "completed-clean",
+      "expect": "pass",
+      "scenario": "clean applicable scan"
+    }
+  ]
+}

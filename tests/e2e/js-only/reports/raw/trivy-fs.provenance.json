@@ -1,0 +1,25 @@
+{
+  "contract": "sentinel-shield/scanner-transaction@1",
+  "tool": "trivy-fs",
+  "completion": {
+    "state": "completed-clean",
+    "detail": "generated e2e fixture evidence",
+    "exit": "0"
+  },
+  "report": {
+    "sha256": "36484c815a989d6ec6242a8843cfba9cde01bf5a1b4c511c84cc4b6e44c2bd25"
+  },
+  "scanner": {
+    "version": "fixture",
+    "executor": "fixture",
+    "platform": "fixture"
+  },
+  "target": {
+    "identity": "js-only",
+    "mode": "filesystem"
+  },
+  "source": {
+    "commit": ""
+  },
+  "diagnostics": ""
+}

@@ -1,1 +1,11 @@
-{"results": []}
+{
+  "results": [
+    {
+      "source": {
+        "path": "js-only/lockfile",
+        "type": "lockfile"
+      },
+      "packages": []
+    }
+  ]
+}

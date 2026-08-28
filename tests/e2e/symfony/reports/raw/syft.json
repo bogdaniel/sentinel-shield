@@ -1,1 +1,14 @@
-{}
+{
+  "spdxVersion": "SPDX-2.3",
+  "name": "symfony",
+  "creationInfo": {
+    "created": "2026-01-01T00:00:00Z",
+    "creators": [
+      "Tool: syft"
+    ]
+  },
+  "packages": [],
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "documentNamespace": "https://sentinel-shield.invalid/spdx/symfony"
+}

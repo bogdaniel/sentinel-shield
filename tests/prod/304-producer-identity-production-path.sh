@@ -47,11 +47,16 @@ sha() { { command -v sha256sum >/dev/null 2>&1 && sha256sum "$1" || shasum -a 25
 f() { printf '%s' "$1" | jq -r "[$2] | .[0] | if . == null then \"\" else tostring end" 2>/dev/null; }
 
 # native_report <producer-key> — a well-formed native report for that producer.
+. "$ROOT/tests/lib/collector-provenance.sh"
+
 native_report() {
 	case "$1" in
-	osv-scanner)      printf '%s' '{"results":[]}' ;;
+	# Native shapes. A real osv-scanner result records the manifest it examined and a real Grype
+	# report carries source and descriptor; the bare arrays are refused by the per-tool validators,
+	# which is correct and left this suite unable to reach the identity logic it exists to test.
+	osv-scanner)      printf '%s' '{"results":[{"source":{"path":"go.mod"},"packages":[]}]}' ;;
 	dependency-check) printf '%s' '{"dependencies":[]}' ;;
-	grype)            printf '%s' '{"matches":[]}' ;;
+	grype)            printf '%s' '{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"'"$(date -u +%Y-%m-%d)"'T00:00:00Z"}}}' ;;
 	codeql)           printf '%s' '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","rules":[]}},"results":[]}]}' ;;
 	php-coverage)     printf '%s' '{"tool":"coverage","status":"pass","line_percent":95,"branch_percent":90,"violations":0,"regression":false}' ;;
 	*) return 1 ;;
@@ -100,6 +105,10 @@ build() {
 	_b_dir="$TMP/$_b_key-run"
 	rm -rf "$_b_dir"; mkdir -p "$_b_dir/reports/raw"
 	cp "$TMP/staging/$_b_key.json" "$_b_dir/reports/raw/$_b_key.json" 2>/dev/null || true
+	# The provenance sidecar travels WITH the report. Copying one without the other is exactly the
+	# separation the binding exists to detect.
+	[ -f "$TMP/staging/$_b_key.provenance.json" ] \
+		&& cp "$TMP/staging/$_b_key.provenance.json" "$_b_dir/reports/raw/$_b_key.provenance.json"
 	[ -f "$TMP/staging/$_b_key.execution.json" ] \
 		&& cp "$TMP/staging/$_b_key.execution.json" "$_b_dir/reports/raw/$_b_key.execution.json"
 	( cd "$_b_dir" && sh "$BUILD" --raw-dir "$_b_dir/reports/raw" \
@@ -112,6 +121,9 @@ stage() {
 	mkdir -p "$TMP/staging"
 	rm -f "$TMP/staging/$1.json" "$TMP/staging/$1.execution.json"
 	printf '%s' "$2" > "$TMP/staging/$1.json"
+	# Evidence binding is absolute, so a staged report needs the provenance a real scan would have
+	# produced. This suite is about producer IDENTITY, not about binding.
+	cp_write "$TMP/staging/$1.json" "$1.sh" >/dev/null 2>&1 || true
 }
 
 # channel_of <producer-key> — the emitted channel, read from TOOL_TABLE rather than assumed.

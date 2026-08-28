@@ -18,6 +18,13 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 AUDIT="$ROOT/scripts/audits/tool-provenance-audit.sh"
 OSV="$ROOT/scripts/collectors/osv-scanner.sh"
 GRYPE="$ROOT/scripts/collectors/grype.sh"
+# The evidence binding is absolute: a collector reads no field until provenance proves a scan
+# produced THIS report. These cases are about scanner provenance health, not about binding, so they generate the
+# sidecar a real transaction would have written instead of tripping over its absence. A forged or
+# malformed report still gets REAL provenance — that is the point, it then reaches the guard the
+# case is actually testing rather than being turned away one layer early.
+. "$ROOT/tests/lib/collector-provenance.sh"
+
 SCHEMA="$ROOT/schemas/tool-provenance-audit.schema.json"
 
 FAILS=0
@@ -230,8 +237,24 @@ osv_case() {
 	else
 		printf '%s' "$_content" > "$_in"
 	fi
-	if [ -n "$_sidecar" ]; then printf '%s' "$_sidecar" > "$WORK/osv-$_name.provenance.json"; fi
+	_sidecar_file="$WORK/osv-$_name.provenance.json"
 	_rc=0
+	# Only when there IS a report. The __MISSING__ case deliberately has none, and cp_write rightly
+	# refuses to digest a file that does not exist — an unguarded call aborted the suite there under
+	# set -e, so every later assertion silently never ran while the failure count stayed zero.
+	[ -f "$_in" ] && cp_write "$_in" osv-scanner.sh
+	# The case's own provenance fields and the binding provenance are the SAME sidecar file, so the
+	# case content is MERGED into the generated record rather than replacing it. Writing it first
+	# and letting cp_write overwrite silently dropped scanner_version, and the assertion then read
+	# null from a field the collector had never been given.
+	if [ -n "$_sidecar" ] && [ -f "$_sidecar_file" ]; then
+		printf '%s' "$_sidecar" > "$_sidecar_file.case"
+		jq -s '.[0] * .[1]' "$_sidecar_file" "$_sidecar_file.case" > "$_sidecar_file.merged" \
+			&& mv "$_sidecar_file.merged" "$_sidecar_file"
+		rm -f "$_sidecar_file.case"
+	elif [ -n "$_sidecar" ]; then
+		printf '%s' "$_sidecar" > "$_sidecar_file"
+	fi
 	_out=$(sh "$OSV" --input "$_in" --tool-name osv_scanner 2>/dev/null) || _rc=$?
 	# fail-closed contract: an unparseable report must exit 2; all other health states exit 0
 	if [ "$_xhealth" = parser-error ]; then _xrc=2; else _xrc=0; fi
@@ -249,7 +272,9 @@ osv_case() {
 
 osv_case findings   '{"results":[{"packages":[{"vulnerabilities":[{"id":"CVE-1"}]}]}]}' fail            findings
 osv_case notargets  '{"results":[]}'                                                    pass            no-targets
-osv_case clean      '{"results":[{"packages":[{"vulnerabilities":[]}]}]}'               pass            ok
+# A CLEAN applicable scan records the manifest it examined; without `source.path` the report says
+# nothing was discovered, which is no-targets, not clean. The fixture now states which it is.
+osv_case clean      '{"results":[{"source":{"path":"go.mod"},"packages":[{"vulnerabilities":[]}]}]}' pass ok
 osv_case missing    '__MISSING__'                                                       unavailable     scanner-error
 osv_case badjson    'this is not json'                                                  execution-error parser-error
 
@@ -265,7 +290,8 @@ fi
 
 # Grype: findings + ok, with native-descriptor provenance (version + db.built).
 GIN_F="$WORK/grype-findings.json"
-printf '%s' '{"matches":[{"vulnerability":{"severity":"Critical"}}],"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2024-01-01T00:00:00Z"}}}' > "$GIN_F"
+printf '%s' '{"matches":[{"vulnerability":{"severity":"Critical"}}],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2024-01-01T00:00:00Z"}}}' > "$GIN_F"
+cp_write "$GIN_F" grype.sh
 GO=$(sh "$GRYPE" --input "$GIN_F" --tool-name grype 2>/dev/null) || fail "grype collector crashed (findings)"
 if [ "$(printf '%s' "$GO" | jq -r '.status')" = "fail" ] \
 	&& [ "$(printf '%s' "$GO" | jq -r '.tool_report.health')" = "findings" ] \
@@ -276,7 +302,8 @@ else
 fi
 
 GIN_OK="$WORK/grype-ok.json"
-printf '%s' '{"matches":[],"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2024-01-01T00:00:00Z"}}}' > "$GIN_OK"
+printf '%s' '{"matches":[],"source":{"type":"directory","target":"."},"descriptor":{"name":"grype","version":"0.74.0","db":{"built":"2024-01-01T00:00:00Z"}}}' > "$GIN_OK"
+cp_write "$GIN_OK" grype.sh
 GO2=$(sh "$GRYPE" --input "$GIN_OK" --tool-name grype 2>/dev/null) || fail "grype collector crashed (ok)"
 if [ "$(printf '%s' "$GO2" | jq -r '.status')" = "pass" ] \
 	&& [ "$(printf '%s' "$GO2" | jq -r '.tool_report.health')" = "ok" ] \
