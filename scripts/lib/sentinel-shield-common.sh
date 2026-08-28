@@ -38,13 +38,12 @@ ensure_dir() {
 	fi
 }
 
-# write_file <path> — write stdin to <path>, creating parent directories.
-# Usage:  printf '%s\n' "content" | write_file out.txt
-write_file() {
-	[ -n "${1:-}" ] || die "write_file: missing path argument"
-	ensure_dir "$(dirname -- "$1")"
-	cat > "$1" || die "write_file: cannot write '$1'"
-}
+# NOTE: `write_file` lived here and was `cat > "$1"` — it truncated the destination before the
+# replacement bytes existed, followed a symlink wherever it pointed, never inspected the parent
+# and left a partial file behind on interruption, all while writing into consumer repositories.
+# It is replaced by `fs_publish` in lib/filesystem-safety.sh (#147), which is where the symlink,
+# hard-link, ownership and atomic-replace guards already lived. It cannot live in this file:
+# filesystem-safety.sh sources THIS library, so the dependency only runs one way.
 
 # --- values ------------------------------------------------------------------
 # bool_value <value> — normalise a boolean; echo true|false; return 1 if invalid.

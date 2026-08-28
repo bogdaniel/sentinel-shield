@@ -40,7 +40,8 @@
           "FS_RACE_DETECTED",
           "FS_MKDIR_FAILED",
           "FS_WRITE_FAILED",
-          "FS_MODE_FAILED"
+          "FS_MODE_FAILED",
+          "FS_VALIDATOR_REJECTED"
         ]
       }
     }
