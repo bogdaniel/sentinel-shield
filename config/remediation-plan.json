@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "912f92b3e0d565017a1aa2729284746eabacd1fc",
+  "generated_for_master": "7b6f0016c276792b451b13c80b376478082a28b7",
   "milestones": [
     {
       "key": "M0",
@@ -3103,24 +3103,6 @@
       "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-harness-truthfulness",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 350,
-      "primary_domain": "governance",
-      "milestone": "M1",
-      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
-      "priority": "p1",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [],
-      "implementation_group": "backlog-semantic-reconciliation",
       "closure_evidence": [
         "implementation",
         "negative-regression",
