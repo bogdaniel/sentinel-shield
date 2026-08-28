@@ -1,10 +1,10 @@
 # Remediation roadmap
 
-**Current baseline:** `master` = `7b6f0016c276792b451b13c80b376478082a28b7` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **160 open issues** = **145 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
+**Current baseline:** `master` = `d3e268af9a06c032846484b2ef4c28c772f1b8d1` · 13 blocking workflows expected on `push` (12 + `ci-backlog-reconciliation`) · **159 open issues** = **144 findings + 15 epics** (14 created to organise the backlog, plus #38, an audit-era tracker repurposed as the M5 epic rather than closed and re-filed).
 
 **Original audit baseline:** `8f146d11`, 158 findings, all open.
 
-**Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182, #350 — see the closure comment on each.
+**Full acceptance evidence recorded for:** #310, #284, #285, #306, #326, #151, #259, #260, #264, #182, #350, #147 — see the closure comment on each.
 
 **Open or reopened from findings surfaced BY the work:** #315, #316, #317, #318, #320, #323, #324, #344, #345, #348, #350. The count going up is the programme working: each is a defect the remediation exposed, not one it created.
 
@@ -64,7 +64,7 @@ This document explains *why* the waves are ordered the way they are. It is prose
 
 Sentinel Shield is **not fully remediated and not fully production-ready.**
 
-The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **145 findings remain open, 110 of them P0.** Eleven have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345, #348, #350). #350 was the backlog itself: M4 records where the plan said `ready` and the label said `blocked`, surfaced the moment reconciliation began comparing semantics instead of membership. It is now **resolved on evidence**. Every `status:*` label was applied in one bulk pass on 2026-08-06 from the plan state of that day, and the disagreeing records were exactly those whose plan `blocked_by` was non-empty then — 36 on #182, three on #259. Both closed on 2026-08-08 and the plan was reconciled the same day; the labels never were. The 7 M4 records with an empty `blocked_by` on that date were labelled `ready` and still are, with no exceptions on either side. The labels were stale, the plan was authoritative, and the feared alternative — an incomplete `blocked_by` that would have invalidated the wave ordering — is **refuted**, not merely unconfirmed. The three before it are self-directed: #348 records an e2e harness that returned different verdicts for identical inputs, #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
+The v2 stack audit (#143 → #278, 14 PRs, 32 verified issue closures) proved something narrower than it is often read as proving: **CI green is meaningful for the tests that are implemented.** It did not prove that every filed issue was fixed. **144 findings remain open, 109 of them P0.** Eleven have been opened from findings surfaced *by* remediation work (#315–#318, #320, #323, #324, #344, #345, #348, #350). #350 was the backlog itself: M4 records where the plan said `ready` and the label said `blocked`, surfaced the moment reconciliation began comparing semantics instead of membership. It is now **resolved on evidence**. Every `status:*` label was applied in one bulk pass on 2026-08-06 from the plan state of that day, and the disagreeing records were exactly those whose plan `blocked_by` was non-empty then — 36 on #182, three on #259. Both closed on 2026-08-08 and the plan was reconciled the same day; the labels never were. The 7 M4 records with an empty `blocked_by` on that date were labelled `ready` and still are, with no exceptions on either side. The labels were stale, the plan was authoritative, and the feared alternative — an incomplete `blocked_by` that would have invalidated the wave ordering — is **refuted**, not merely unconfirmed. The three before it are self-directed: #348 records an e2e harness that returned different verdicts for identical inputs, #344 records that the merge oracle has no durable finalize or re-attestation path, and #345 collects a family of five defects in this repository's own test harness — suites that reported failures while exiting zero, assertions that could never fail, and tests that exercised an invocation path production never uses. **The count rising is the programme working, not regressing** — each is a defect the work exposed, and three of them (#320 `jq //`, #323 locale-collated ranges, #324 `set -e` unsafe capture) form one family: shell/jq idioms that are correct in most uses, silently wrong in a specific class, and invisible to review. They argue for one bounded static-analysis pass rather than repeated rediscovery.
 
 No framework-validated or full-platform production-readiness claim may be made until M5 closes on its own evidence.
 
@@ -75,10 +75,10 @@ No framework-validated or full-platform production-readiness claim may be made u
 | Milestone | Epic | Issues | P0 | Theme |
 | --- | --- | --- | --- | --- |
 | M0 — CI Enablement | #286 | **0** | 0 | ✅ **COMPLETE** — #284, #285 and #306 all closed on full acceptance evidence |
-| M1 — Evidence Trust Foundation | #287 | 20 | 14 | #182 **done**; #310 **done** — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
-| M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding) |
+| M1 — Evidence Trust Foundation | #287 | 19 | 13 | #182 **done**; #310 **done**; #147 **done** — the atomic-publication primitive landed and unblocked #110, #129, #159 and #163 — the producer/channel identity split landed and all six criteria were audited through the builder on merged master; **#204 partial** — all six producers emit the envelope, but that is structural compliance only; C1 + C2 outstanding |
+| M2 — Mutation and Transaction Safety | #288 | 30 | 30 | Do not damage consumer repositories — #151 **done**; #152 **partial** (transport-race coverage outstanding); #159 and #163 unblocked by #147, so 28 of 30 are ready and the epic's only remaining blocker is #286 |
 | M3 — Policy and Resolution Engine | #289 | 23 | 16 | Parser parity **done**; #248 **partial** (schema landed, AC2 outstanding); #251 **partial** (engine word-splitting removed, test harnesses remain) |
-| M4 — Producer Chain Correctness | #290 (+#291–#299) | 68 | 50 | Per-producer correctness — **46 ready**, 22 blocked (11 on #204, 8 on #146, 2 on #147, 1 on #227; #215 also cites #234). The scanner evidence transaction batch (#96–#105, #135–#137, #184, #185) **merged** at `b23c37f9`, audited at 98/98 acceptance criteria — see [`m4-acceptance-audit.md`](m4-acceptance-audit.md) |
+| M4 — Producer Chain Correctness | #290 (+#291–#299) | 68 | 50 | Per-producer correctness — **48 ready**, 20 blocked (11 on #204, 8 on #146, 1 on #227; #215 also cites #234). The scanner evidence transaction batch (#96–#105, #135–#137, #184, #185) **merged** at `b23c37f9`, audited at 98/98 acceptance criteria — see [`m4-acceptance-audit.md`](m4-acceptance-audit.md) |
 | M5 — Documentation and External Validation | #38 | 4 | 0 | Say what it does; prove it against real consumers |
 
 ---
@@ -107,7 +107,7 @@ This is the single most important sequencing decision in the programme, and the 
 | ~~#182~~ ✓ | ~~65~~ | trusted producer identity — **DONE**, PR #309. M4 ready work went from **10 to 61** the moment it landed |
 | **#204** | **16** | trusted completed-producer envelopes for engineering-quality evidence — **the last blocker on 32 M4 issues**. It must EXTEND the #182/#310 envelope, not introduce a second one. PRs A (#321) and B (#327) have landed: all six producers emit the shared envelope — **structural** compliance. C1 and C2 are the **semantic** half, and #204 requires both |
 | #146 | 8 | bounded safe-integer limits for all collector counts |
-| #147 | 5 | atomic, symlink-safe publication primitive |
+| ~~#147~~ ✓ | ~~5~~ | atomic, symlink-safe publication primitive — **DONE**, PR #362. #110, #129, #159 and #163 became ready; epic #288 still holds #286 |
 
 #### What #204's remaining half actually is
 
@@ -153,7 +153,7 @@ The shared-primitive rule applies concretely here. Before implementing similar f
 Three visible instances of one root cause, not many bugs:
 
 - **Placeholder credit** — #135, #141, #190, #192, #195, #206, #207, #209, #210. Empty objects and count-only shapes receiving evidence credit. One validator, nine call sites.
-- **Atomic publication** — #147 is the primitive; #110, #129, #159, #163 are consumers. Do not hand-roll a second atomic writer in M2.
+- **Atomic publication** — #147 was the primitive and is **done**: `fs_publish` composes the guards `filesystem-safety.sh` already shipped and delegates the replace to `fs_atomic_replace`. #110, #129, #159 and #163 are its consumers and are now ready. Do not hand-roll a second atomic writer in M2 — there is one, and it is reusable.
 - **Zero-step Cucumber** — #95 (runner) and #125 (acceptance conversion) are the same rule in two code paths. Land them together against one shared validator or they will diverge again.
 
 ### M2 is P0 throughout, even where no false green is possible

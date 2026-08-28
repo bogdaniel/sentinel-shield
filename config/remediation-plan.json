@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "7b6f0016c276792b451b13c80b376478082a28b7",
+  "generated_for_master": "d3e268af9a06c032846484b2ef4c28c772f1b8d1",
   "milestones": [
     {
       "key": "M0",
@@ -289,11 +289,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 291,
-      "blocked_by": [
-        147
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-acceptance-adapters",
       "closure_evidence": [
@@ -643,11 +641,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p1",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 293,
-      "blocked_by": [
-        147
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "testing-discipline-tdd",
       "closure_evidence": [
@@ -904,30 +900,6 @@
       ]
     },
     {
-      "issue": 147,
-      "primary_domain": "evidence",
-      "milestone": "M1",
-      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
-      "priority": "p0",
-      "type": "security",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [
-        110,
-        129,
-        159,
-        163,
-        288
-      ],
-      "implementation_group": "atomic-publication",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
       "issue": 148,
       "primary_domain": "evidence",
       "milestone": "M1",
@@ -1114,11 +1086,9 @@
       "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 288,
-      "blocked_by": [
-        147
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "atomic-writes",
       "closure_evidence": [
@@ -1188,11 +1158,9 @@
       "milestone_title": "M2 \u2014 Mutation and Transaction Safety",
       "priority": "p0",
       "type": "security",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 288,
-      "blocked_by": [
-        147
-      ],
+      "blocked_by": [],
       "blocks": [
         171
       ],
@@ -2700,7 +2668,6 @@
       "status": "blocked",
       "parent_epic": null,
       "blocked_by": [
-        147,
         286
       ],
       "blocks": [],
