@@ -72,6 +72,7 @@ FS_RACE_DETECTED
 FS_MKDIR_FAILED
 FS_WRITE_FAILED
 FS_MODE_FAILED
+FS_VALIDATOR_REJECTED
 EOF
 }
 
@@ -424,6 +425,133 @@ fs_atomic_replace() {
 	command -v sync >/dev/null 2>&1 && sync 2>/dev/null
 	unset _ar_src _ar_dst _ar_dir _ar_realdir _ar_tmp
 	return 0
+}
+
+# fs_publish <dst> [validator] — read stdin and publish it to <dst> as one durable, atomic,
+# guard-checked replacement. Prints a STABLE reason token and returns 1 on any refusal, WITHOUT
+# having modified <dst>. This replaces the old `write_file` helper (#147), which was
+# `cat > "$1"`: it truncated the destination before the replacement bytes existed, followed a
+# symlink to wherever it happened to point, never inspected the parent, held no lock, and left
+# a half-written file behind on interruption. Its caller writes into a CONSUMER repository, so
+# each of those was a way to damage a repository Sentinel Shield does not own.
+#
+# It is a COMPOSITION of guards this library already shipped, not a second atomic writer: the
+# final replacement is fs_atomic_replace. The guards were present and simply never wired to the
+# one helper that most needed them.
+#
+# THE SYMLINK-SWAP RACE IS DEFEATED STRUCTURALLY, NOT BY RE-CHECKING. An attacker who swaps
+# <dst> to a symlink after the guard runs still cannot reach the outside file, because rename(2)
+# replaces the LINK ITSELF; it never writes THROUGH it. A guard that merely re-tested would
+# still have a window. This has none.
+#
+# <validator>, when given, is invoked as `<validator> <tempfile>` on the fully-written temporary
+# BEFORE anything is published. A non-zero result publishes nothing (FS_VALIDATOR_REJECTED),
+# which is what lets a JSON/YAML writer refuse to install a malformed managed file.
+#
+# Reasons: FS_INVALID_PATH / FS_MKDIR_FAILED / FS_SYMLINK_COMPONENT / FS_IS_SYMLINK /
+# FS_SPECIAL_FILE / FS_UNEXPECTED_HARDLINK / FS_LINK_COUNT_UNAVAILABLE /
+# FS_GROUP_WORLD_WRITABLE / FS_RACE_DETECTED / FS_WRITE_FAILED / FS_VALIDATOR_REJECTED /
+# FS_MODE_FAILED.
+fs_publish() {
+	_fp_dst=${1:-}
+	_fp_val=${2:-}
+	[ -n "$_fp_dst" ] || { printf 'FS_INVALID_PATH'; return 1; }
+
+	_fp_dir=$(dirname -- "$_fp_dst")
+	_fp_base=$(basename -- "$_fp_dst")
+	case "$_fp_base" in
+		'' | '.' | '..') printf 'FS_INVALID_PATH'; unset _fp_dst _fp_val _fp_dir _fp_base; return 1 ;;
+	esac
+
+	# The parent may legitimately not exist yet (the old helper created it), but it is created
+	# BEFORE the symlink check, never after, so a symlinked parent is still caught below.
+	if [ ! -d "$_fp_dir" ]; then
+		mkdir -p -- "$_fp_dir" 2>/dev/null || { printf 'FS_MKDIR_FAILED'; unset _fp_dst _fp_val _fp_dir _fp_base; return 1; }
+	fi
+
+	# The IMMEDIATE parent must not itself be a symlink: swapping that one component redirects
+	# the entire publication somewhere else, and it is the component an attacker can plausibly
+	# control inside a repository.
+	#
+	# Deeper ancestors are NOT checked, deliberately. Comparing the whole lexical path against
+	# its physical resolution looks stricter and is simply wrong: `/var -> /private/var` and
+	# `/tmp -> /private/tmp` are ordinary OS layout, so that rule refuses every legitimate
+	# publication under a macOS temp directory while adding no security -- the rename still
+	# lands in the physically resolved directory, and the destination-symlink check below is
+	# what actually prevents the file being redirected.
+	if [ -L "$_fp_dir" ]; then
+		printf 'FS_SYMLINK_COMPONENT'; unset _fp_dst _fp_val _fp_dir _fp_base; return 1
+	fi
+	_fp_real=$(CDPATH= cd -P -- "$_fp_dir" 2>/dev/null && pwd -P) \
+		|| { printf 'FS_SYMLINK_COMPONENT'; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real; return 1; }
+
+	# A parent anyone else may write is a parent anyone else may swap entries in.
+	_fp_r=$(fs_assert_not_group_world_writable "$_fp_real") \
+		|| { printf '%s' "$_fp_r"; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r; return 1; }
+
+	# An EXISTING destination must be an ordinary file we alone hold: never a link to write
+	# through, never a device, never an inode someone else keeps a second name for.
+	if [ -e "$_fp_real/$_fp_base" ] || [ -L "$_fp_real/$_fp_base" ]; then
+		_fp_r=$(fs_assert_not_symlink "$_fp_real/$_fp_base") \
+			|| { printf '%s' "$_fp_r"; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r; return 1; }
+		_fp_r=$(fs_assert_no_special "$_fp_real/$_fp_base") \
+			|| { printf '%s' "$_fp_r"; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r; return 1; }
+		_fp_r=$(fs_assert_single_link "$_fp_real/$_fp_base" strict) \
+			|| { printf '%s' "$_fp_r"; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r; return 1; }
+	fi
+
+	# Single-writer. `mkdir` is the POSIX atomic test-and-set, so the loser fails DETERMINISTICALLY
+	# rather than interleaving with the winner.
+	# ponytail: a plain lock directory, no stale-lock reaper. A crashed publisher leaves one
+	# directory that a human removes; adding expiry here would need an owner/liveness record, and
+	# transaction.sh already owns that machinery for operations that need it.
+	_fp_lock="$_fp_real/.ss-publish-lock.$_fp_base.d"
+	mkdir "$_fp_lock" 2>/dev/null \
+		|| { printf 'FS_RACE_DETECTED'; unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r _fp_lock; return 1; }
+
+	_fp_tmp="$_fp_real/.ss-publish.$$.$_fp_base"
+
+	# POSIX sh has no scoped traps, so the caller's are saved and restored: a library that
+	# silently ate its consumer's EXIT handler would be a worse defect than the one being fixed.
+	_fp_traps=$(trap)
+	# shellcheck disable=SC2064  # expand NOW: the cleanup must name this invocation's own paths.
+	trap "rm -f -- '$_fp_tmp' 2>/dev/null; rmdir -- '$_fp_lock' 2>/dev/null; exit 143" INT TERM
+	# shellcheck disable=SC2064
+	trap "rm -f -- '$_fp_tmp' 2>/dev/null; rmdir -- '$_fp_lock' 2>/dev/null" EXIT
+
+	_fp_rc=0
+	_fp_reason=''
+	# Owner-only while in flight: the temporary is readable in the destination directory, and
+	# managed files can carry configuration worth not leaking to other local users.
+	if ! (umask 077 && cat > "$_fp_tmp") 2>/dev/null; then
+		_fp_rc=1; _fp_reason='FS_WRITE_FAILED'
+	fi
+	if [ "$_fp_rc" = 0 ] && [ -n "$_fp_val" ]; then
+		"$_fp_val" "$_fp_tmp" >/dev/null 2>&1 || { _fp_rc=1; _fp_reason='FS_VALIDATOR_REJECTED'; }
+	fi
+	# The mode is applied to the TEMPORARY, before the rename. Applying it afterwards would mean
+	# a mode failure left the destination already replaced — the one case AC1 forbids.
+	if [ "$_fp_rc" = 0 ]; then
+		_fp_r=$(fs_apply_file_mode "$_fp_tmp" 0) || { _fp_rc=1; _fp_reason="$_fp_r"; }
+	fi
+	if [ "$_fp_rc" = 0 ]; then
+		# ponytail: fs_atomic_replace copies the temporary once more into its own in-flight file.
+		# One extra copy of a managed config file, in exchange for a single audited replace path;
+		# if a large-payload caller ever appears, give fs_atomic_replace a move-don't-copy mode.
+		_fp_r=$(fs_atomic_replace "$_fp_tmp" "$_fp_real/$_fp_base") || { _fp_rc=1; _fp_reason="$_fp_r"; }
+	fi
+
+	rm -f -- "$_fp_tmp" 2>/dev/null
+	rmdir -- "$_fp_lock" 2>/dev/null
+	trap - INT TERM EXIT
+	# `if` rather than `[ -n "$x" ] && eval ...` for legibility. Both are safe under a caller's
+	# `set -e` (POSIX ignores it for the non-final command of an AND-OR list); the conditional
+	# form simply says what it means.
+	if [ -n "$_fp_traps" ]; then eval "$_fp_traps"; fi
+
+	[ "$_fp_rc" = 0 ] || printf '%s' "$_fp_reason"
+	unset _fp_dst _fp_val _fp_dir _fp_base _fp_real _fp_r _fp_lock _fp_tmp _fp_traps _fp_reason
+	return $_fp_rc
 }
 
 # --- trusted temp creation ---------------------------------------------------

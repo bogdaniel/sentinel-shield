@@ -34,6 +34,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/lib/sentinel-shield-common.sh
 . "$SCRIPT_DIR/../lib/sentinel-shield-common.sh"
+# shellcheck source=scripts/lib/filesystem-safety.sh
+. "$SCRIPT_DIR/../lib/filesystem-safety.sh"
 # shellcheck source=scripts/lib/isolated-tools.sh
 . "$SCRIPT_DIR/../lib/isolated-tools.sh"
 # shellcheck source=scripts/lib/bounded-process.sh

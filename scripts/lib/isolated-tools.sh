@@ -7,7 +7,15 @@
 #
 #   SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 #   . "$SCRIPT_DIR/lib/sentinel-shield-common.sh"
+#   . "$SCRIPT_DIR/lib/filesystem-safety.sh"     # REQUIRED before this file (see below)
 #   . "$SCRIPT_DIR/lib/isolated-tools.sh"
+#
+# LOAD ORDER IS THE CALLER'S JOB, DELIBERATELY. isolated_tool_scaffold writes into a consumer
+# repository and so publishes through fs_publish. A sourced POSIX file cannot reliably locate
+# its own siblings -- `$0` is the CALLER's script, and callers legitimately set SCRIPT_DIR to
+# their own directory -- so a self-sourcing heuristic here would resolve correctly for some
+# callers and silently not at all for others. Instead the dependency is asserted at the point
+# of use and fails with a named error, never with `fs_publish: command not found`.
 #
 # WHY THIS EXISTS
 #   Some tools (deptrac, rector, psalm, php-cs-fixer) pull dependency graphs that
@@ -161,7 +169,14 @@ isolated_tool_scaffold() {
 	if [ -f "$_it_path" ] && [ "$_it_force" != "true" ]; then
 		die "isolated_tool_scaffold: '$_it_path' already exists; pass --force to overwrite."
 	fi
-	isolated_tool_render_composer_json "$_it_tool" "$_it_pkg" "$_it_con" | write_file "$_it_path"
+	command -v fs_publish >/dev/null 2>&1 \
+		|| die "isolated_tool_scaffold: lib/filesystem-safety.sh must be sourced before lib/isolated-tools.sh"
+	# This writes INTO A CONSUMER REPOSITORY, so it publishes through the guarded primitive: a
+	# symlink, a hard-linked alias or a world-writable parent at the destination refuses the write
+	# instead of following it out of the repo. #147.
+	if ! _it_err=$(isolated_tool_render_composer_json "$_it_tool" "$_it_pkg" "$_it_con" | fs_publish "$_it_path"); then
+		die "isolated_tool_scaffold: refusing to write '$_it_path': $_it_err"
+	fi
 	log_info "isolated_tool_scaffold: wrote '$_it_path'. Next: $(isolated_tool_install_command "$_it_tool") (commit composer.json + composer.lock; vendor/ stays git-ignored)."
 	unset _it_apply _it_force _it_pos _it_tool _it_pkg _it_con _it_path
 }

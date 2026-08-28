@@ -413,6 +413,279 @@ sh "$GRM" --evidence "$EVID" --repo-root "$ROOT" --output "$SDIR/manifest.json" 
 	&& pass "(INT+) a real --output path yields a valid manifest" || fail "(INT+) real output manifest (rc=$rc)"
 
 # ============================================================================
+# (13) SAFE PUBLICATION — fs_publish (#147)
+#
+# `write_file` was `cat > "$1"`: it truncated the destination before the new bytes existed,
+# followed a symlink to wherever it pointed, never looked at the parent, held no lock, and left
+# a half-written file behind on interruption. Its one caller writes composer.json INTO A
+# CONSUMER REPOSITORY, so every one of those is a way to damage a repo Sentinel Shield does not
+# own. fs_publish is that helper replaced by a composition of the guards this library already
+# ships, and NOT by a second atomic writer: the final step is fs_atomic_replace.
+#
+# The symlink-swap race is defeated structurally rather than by re-checking: rename(2) replaces
+# the LINK at the destination, it never writes THROUGH it. A destination swapped to a symlink
+# after the guard therefore still cannot reach the outside file.
+# ============================================================================
+
+# --- the new reason token is cataloged in BOTH places -----------------------
+fs_reason_codes | grep -qx 'FS_VALIDATOR_REJECTED' \
+	&& pass "(13) FS_VALIDATOR_REJECTED is in the reason catalog" \
+	|| fail "(13) FS_VALIDATOR_REJECTED missing from fs_reason_codes"
+
+# --- POSITIVE control: a plain publication succeeds -------------------------
+# Every refusal below proves nothing unless the ordinary path works.
+PUB=$(mk_root)
+printf 'hello\n' | fs_publish "$PUB/out.txt" >/dev/null 2>&1 && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && [ "$(cat "$PUB/out.txt")" = "hello" ]; } \
+	&& pass "(13+) CONTROL: fs_publish writes a new file" || fail "(13+) control publication (rc=$rc)"
+[ "$(_fs_mode_str "$PUB/out.txt" | cut -c5-10)" = "r--r--" ] \
+	&& pass "(13+) the published file is 0644 — not group- or world-writable" \
+	|| fail "(13+) published mode is $(_fs_mode_str "$PUB/out.txt")"
+[ -z "$(find "$PUB" -name '.ss-*' 2>/dev/null)" ] \
+	&& pass "(13+) no in-flight temporary survives a successful publication" \
+	|| fail "(13+) temporary left behind after success"
+
+# --- POSITIVE: replacing an existing file ------------------------------------
+printf 'second\n' | fs_publish "$PUB/out.txt" >/dev/null 2>&1 && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && [ "$(cat "$PUB/out.txt")" = "second" ]; } \
+	&& pass "(13+) CONTROL: fs_publish replaces an existing file" || fail "(13+) control replace (rc=$rc)"
+
+# --- POSITIVE: an ANCESTOR symlink is ordinary OS layout, not an attack ------
+# `mktemp -d` hands back /var/... on macOS, and /var is a symlink to /private/var. A rule that
+# compared the whole lexical path against its physical resolution refused every legitimate
+# publication here while adding no security. Only the IMMEDIATE parent is a control surface.
+PA_REAL=$(mk_root); mkdir -p "$PA_REAL/inner"
+PA_VIA=$(mk_root)
+ln -s "$PA_REAL" "$PA_VIA/anc"
+# Publish through a path whose GRANDparent is a link but whose immediate parent is real.
+r=$(printf 'ancestor-ok\n' | fs_publish "$PA_VIA/anc/inner/f.txt" 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && [ "$(cat "$PA_REAL/inner/f.txt")" = "ancestor-ok" ]; } \
+	&& pass "(13+) CONTROL: an ancestor symlink does not block a legitimate publication" \
+	|| fail "(13+) ancestor symlink wrongly refused (rc=$rc r=$r)"
+
+# --- a `set -eu` caller with NO traps of its own must survive ----------------
+# fs_publish installs a cleanup trap and restores whatever the caller had. When the caller had
+# NONE, the restore path takes its empty branch, and that branch runs under the caller's
+# `set -e`. This pins the property; it is NOT a regression for an observed defect. The
+# `[ -n "$saved" ] && eval ...` form was checked against this case and does not exit the caller
+# either -- POSIX ignores `set -e` for the non-final command of an AND-OR list -- so the `if`
+# form in the library is chosen for legibility, not to repair a failure this ever produced.
+cat > "$WORK/eu-no-traps.sh" <<EUNT
+#!/bin/sh
+set -eu
+. "$LIB_COMMON"
+. "$LIB_FS"
+d=\$(mktemp -d)
+fs_publish "\$d/x.txt" < /dev/null
+printf 'REACHED-END\n'
+rm -rf -- "\$d"
+EUNT
+[ "$(sh "$WORK/eu-no-traps.sh" 2>/dev/null)" = "REACHED-END" ] \
+	&& pass "(13) a set -eu caller with no traps survives fs_publish" \
+	|| fail "(13) fs_publish exits a set -eu caller that had no traps of its own"
+
+# --- NEGATIVE: destination is a symlink pointing outside ---------------------
+PS=$(mk_root); PO=$(mk_root); printf 'OUTSIDE-SENTINEL\n' > "$PO/target"
+ln -s "$PO/target" "$PS/link.json"
+r=$(printf 'evil\n' | fs_publish "$PS/link.json" 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_IS_SYMLINK" ]; } \
+	&& pass "(13) a symlinked destination is refused (FS_IS_SYMLINK)" || fail "(13) symlink dst refused (rc=$rc r=$r)"
+[ "$(cat "$PO/target")" = "OUTSIDE-SENTINEL" ] \
+	&& pass "(13) the file behind the destination symlink was NOT written" || fail "(13) outside target untouched"
+
+# --- NEGATIVE: destination is a BROKEN symlink -------------------------------
+ln -s "$PS/does-not-exist" "$PS/broken.json"
+r=$(printf 'x\n' | fs_publish "$PS/broken.json" 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_IS_SYMLINK" ]; } \
+	&& pass "(13) a BROKEN symlink destination is refused, not created through" \
+	|| fail "(13) broken symlink dst (rc=$rc r=$r)"
+[ ! -e "$PS/does-not-exist" ] \
+	&& pass "(13) publishing did not create the broken symlink's target" || fail "(13) broken target created"
+
+# --- NEGATIVE: destination is a FIFO -----------------------------------------
+if mkfifo "$PS/fifo" 2>/dev/null; then
+	r=$(printf 'x\n' | fs_publish "$PS/fifo" 2>/dev/null) && rc=0 || rc=$?
+	{ [ "$rc" != 0 ] && [ "$r" = "FS_SPECIAL_FILE" ]; } \
+		&& pass "(13) a FIFO destination is refused (FS_SPECIAL_FILE)" || fail "(13) fifo dst (rc=$rc r=$r)"
+else
+	pass "(13) SKIP: mkfifo unavailable on this platform"
+fi
+
+# --- NEGATIVE: a symlinked PARENT component ----------------------------------
+PP=$(mk_root); PT=$(mk_root); mkdir -p "$PT/real"
+ln -s "$PT/real" "$PP/via"
+r=$(printf 'x\n' | fs_publish "$PP/via/f.json" 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_SYMLINK_COMPONENT" ]; } \
+	&& pass "(13) a symlinked parent component is refused (FS_SYMLINK_COMPONENT)" \
+	|| fail "(13) symlink parent (rc=$rc r=$r)"
+[ -z "$(ls -A "$PT/real" 2>/dev/null)" ] \
+	&& pass "(13) nothing was written through the parent symlink" || fail "(13) wrote through parent symlink"
+
+# --- NEGATIVE: an existing destination carrying a second hard link -----------
+PH=$(mk_root); printf 'ORIGINAL\n' > "$PH/managed.json"
+if ln "$PH/managed.json" "$PH/alias.json" 2>/dev/null; then
+	r=$(printf 'new\n' | fs_publish "$PH/managed.json" 2>/dev/null) && rc=0 || rc=$?
+	{ [ "$rc" != 0 ] && [ "$r" = "FS_UNEXPECTED_HARDLINK" ]; } \
+		&& pass "(13) a hard-linked destination is refused (FS_UNEXPECTED_HARDLINK)" \
+		|| fail "(13) hardlink dst (rc=$rc r=$r)"
+	[ "$(cat "$PH/alias.json")" = "ORIGINAL" ] \
+		&& pass "(13) the out-of-band hard-link alias was not mutated" || fail "(13) alias mutated"
+else
+	pass "(13) SKIP: hard links unavailable on this filesystem"
+fi
+
+# --- NEGATIVE: a group/world-writable parent ---------------------------------
+PW=$(mk_root); chmod 777 "$PW" 2>/dev/null || true
+if [ "$IS_ROOT" = "0" ] && [ "$(_fs_mode_str "$PW" | cut -c9)" = "w" ]; then
+	r=$(printf 'x\n' | fs_publish "$PW/f.json" 2>/dev/null) && rc=0 || rc=$?
+	{ [ "$rc" != 0 ] && [ "$r" = "FS_GROUP_WORLD_WRITABLE" ]; } \
+		&& pass "(13) a world-writable parent is refused (FS_GROUP_WORLD_WRITABLE)" \
+		|| fail "(13) world-writable parent (rc=$rc r=$r)"
+	[ ! -e "$PW/f.json" ] && pass "(13) nothing was published into the unsafe parent" \
+		|| fail "(13) published into unsafe parent"
+else
+	pass "(13) SKIP: cannot establish a world-writable parent here"
+fi
+
+# --- NEGATIVE: the validator rejects; the prior file must survive ------------
+PV=$(mk_root); printf 'GOOD-JSON\n' > "$PV/cfg.json"
+_reject() { return 1; }
+r=$(printf 'garbage\n' | fs_publish "$PV/cfg.json" _reject 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_VALIDATOR_REJECTED" ]; } \
+	&& pass "(13) a rejecting validator refuses publication (FS_VALIDATOR_REJECTED)" \
+	|| fail "(13) validator reject (rc=$rc r=$r)"
+[ "$(cat "$PV/cfg.json")" = "GOOD-JSON" ] \
+	&& pass "(13) EXISTING-FILE ROLLBACK: the prior content survived a rejected write" \
+	|| fail "(13) prior content destroyed by a rejected write"
+[ -z "$(find "$PV" -name '.ss-*' 2>/dev/null)" ] \
+	&& pass "(13) no temporary or lock survives a rejected write" || fail "(13) residue after rejection"
+
+# --- POSITIVE: the validator accepts -----------------------------------------
+_accept() { [ -s "$1" ]; }
+printf 'NEW-JSON\n' | fs_publish "$PV/cfg.json" _accept >/dev/null 2>&1 && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && [ "$(cat "$PV/cfg.json")" = "NEW-JSON" ]; } \
+	&& pass "(13+) CONTROL: an accepting validator publishes — the check is not always-reject" \
+	|| fail "(13+) validator accept (rc=$rc)"
+
+# --- NEGATIVE: a concurrent writer -------------------------------------------
+PC=$(mk_root); printf 'BEFORE\n' > "$PC/c.json"
+mkdir "$PC/.ss-publish-lock.c.json.d" 2>/dev/null || true
+r=$(printf 'racer\n' | fs_publish "$PC/c.json" 2>/dev/null) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && [ "$r" = "FS_RACE_DETECTED" ]; } \
+	&& pass "(13) a second concurrent writer fails DETERMINISTICALLY (FS_RACE_DETECTED)" \
+	|| fail "(13) concurrent writer (rc=$rc r=$r)"
+[ "$(cat "$PC/c.json")" = "BEFORE" ] \
+	&& pass "(13) the loser of the race did not modify the destination" || fail "(13) racer mutated dst"
+rmdir "$PC/.ss-publish-lock.c.json.d" 2>/dev/null || true
+printf 'AFTER\n' | fs_publish "$PC/c.json" >/dev/null 2>&1 && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && [ "$(cat "$PC/c.json")" = "AFTER" ]; } \
+	&& pass "(13+) CONTROL: publication succeeds once the lock is released — it is not stuck" \
+	|| fail "(13+) post-lock publication (rc=$rc)"
+
+# --- NEGATIVE: an unwritable destination directory ---------------------------
+# Stands in for the whole write-failure class (read-only mount, disk full): the destination
+# must be unchanged and no partial file may appear. The writability probe runs in a SUBSHELL
+# because `:` is a POSIX special builtin -- under dash a failed redirection on one terminates
+# the shell, which bash does not do, so the unguarded form passes locally and kills CI.
+PR=$(mk_root); printf 'KEEP\n' > "$PR/ro.json"; chmod 500 "$PR" 2>/dev/null || true
+if [ "$IS_ROOT" = "0" ] && ! ( : > "$PR/.probe" ) 2>/dev/null; then
+	r=$(printf 'nope\n' | fs_publish "$PR/ro.json" 2>/dev/null) && rc=0 || rc=$?
+	[ "$rc" != 0 ] && pass "(13) an unwritable destination directory fails closed ($r)" \
+		|| fail "(13) unwritable dir accepted (rc=$rc)"
+	[ "$(cat "$PR/ro.json" 2>/dev/null)" = "KEEP" ] \
+		&& pass "(13) EXISTING-FILE ROLLBACK: the prior file survived an unwritable parent" \
+		|| fail "(13) prior file lost on unwritable parent"
+else
+	pass "(13) SKIP: cannot make the destination directory unwritable here"
+fi
+chmod 700 "$PR" 2>/dev/null || true
+
+# --- INTERRUPTION: a publisher killed mid-write leaves nothing behind --------
+PI=$(mk_root); printf 'UNTOUCHED\n' > "$PI/i.json"
+cat > "$WORK/slow-publish.sh" <<SLOW
+#!/bin/sh
+set -eu
+. "$LIB_COMMON"
+. "$LIB_FS"
+# A stdin that never closes: the publisher blocks with its temp and lock allocated.
+mkfifo "$PI/feed" 2>/dev/null || exit 97
+fs_publish "$PI/i.json" < "$PI/feed"
+SLOW
+sh "$WORK/slow-publish.sh" >/dev/null 2>&1 &
+SLOW_PID=$!
+# Give it time to allocate, then interrupt it the way a timeout kill would.
+i=0; while [ $i -lt 40 ] && [ -z "$(find "$PI" -name '.ss-*' 2>/dev/null)" ]; do i=$((i+1)); sleep 0.1; done
+if [ -n "$(find "$PI" -name '.ss-*' 2>/dev/null)" ]; then
+	kill -TERM "$SLOW_PID" 2>/dev/null || true
+	wait "$SLOW_PID" 2>/dev/null || true
+	i=0; while [ $i -lt 40 ] && [ -n "$(find "$PI" -name '.ss-*' 2>/dev/null)" ]; do i=$((i+1)); sleep 0.1; done
+	[ -z "$(find "$PI" -name '.ss-*' 2>/dev/null)" ] \
+		&& pass "(13) SIGTERM during publication removes the temporary AND the lock" \
+		|| fail "(13) residue after SIGTERM: $(find "$PI" -name '.ss-*' 2>/dev/null | tr '\n' ' ')"
+	[ "$(cat "$PI/i.json")" = "UNTOUCHED" ] \
+		&& pass "(13) an interrupted publication left the destination unchanged" \
+		|| fail "(13) interrupted publication damaged the destination"
+else
+	kill -TERM "$SLOW_PID" 2>/dev/null || true; wait "$SLOW_PID" 2>/dev/null || true
+	pass "(13) SKIP: could not observe the in-flight window on this platform"
+fi
+rm -f "$PI/feed" 2>/dev/null || true
+
+# --- the library must not steal the CALLER's traps ---------------------------
+# fs_publish installs a cleanup trap. POSIX sh has no scoped traps, so it must save and
+# restore whatever the caller had, or every consumer silently loses its own cleanup.
+cat > "$WORK/trap-owner.sh" <<TRAPS
+#!/bin/sh
+set -eu
+. "$LIB_COMMON"
+. "$LIB_FS"
+trap 'printf "CALLER-TRAP-RAN\n"' EXIT
+d=\$(mktemp -d)
+printf 'x\n' | fs_publish "\$d/t.txt" >/dev/null 2>&1 || true
+rm -rf -- "\$d"
+TRAPS
+[ "$(sh "$WORK/trap-owner.sh" 2>/dev/null)" = "CALLER-TRAP-RAN" ] \
+	&& pass "(13) fs_publish restores the caller's EXIT trap instead of clobbering it" \
+	|| fail "(13) the caller's EXIT trap was destroyed by fs_publish"
+
+# --- INTEGRATION: the real consumer-repo writer ------------------------------
+# isolated_tool_scaffold --apply writes composer.json into a CONSUMER repository. This is the
+# call site #147 exists for; the primitive being safe is not the same as the caller using it.
+# shellcheck source=scripts/lib/isolated-tools.sh
+. "$ROOT/scripts/lib/isolated-tools.sh"
+PIT=$(mk_root); PIO=$(mk_root); printf 'CONSUMER-SENTINEL\n' > "$PIO/stolen"
+mkdir -p "$PIT/tools/deptrac"
+ln -s "$PIO/stolen" "$PIT/tools/deptrac/composer.json"
+( cd "$PIT" && isolated_tool_scaffold deptrac deptrac/deptrac ^4.0 --apply --force ) >/dev/null 2>&1 && rc=0 || rc=$?
+[ "$rc" != 0 ] && pass "(13-INT) isolated_tool_scaffold refuses a symlinked composer.json" \
+	|| fail "(13-INT) scaffold wrote through a symlink (rc=$rc)"
+[ "$(cat "$PIO/stolen")" = "CONSUMER-SENTINEL" ] \
+	&& pass "(13-INT) the file outside the consumer repo was NOT overwritten" \
+	|| fail "(13-INT) scaffold overwrote a file outside the repo"
+rm -f "$PIT/tools/deptrac/composer.json"
+( cd "$PIT" && isolated_tool_scaffold deptrac deptrac/deptrac ^4.0 --apply --force ) >/dev/null 2>&1 && rc=0 || rc=$?
+{ [ "$rc" = 0 ] && jq -e '.require|has("deptrac/deptrac")' "$PIT/tools/deptrac/composer.json" >/dev/null 2>&1; } \
+	&& pass "(13-INT+) CONTROL: a plain path still scaffolds a valid composer.json" \
+	|| fail "(13-INT+) ordinary scaffold broke (rc=$rc)"
+
+# The load-order dependency must announce itself. A sourced POSIX file cannot find its own
+# siblings ($0 is the CALLER's script), so the contract is asserted at the point of use --
+# otherwise a caller that forgot the library gets `fs_publish: command not found` while
+# writing into a consumer repository.
+cat > "$WORK/no-fs-lib.sh" <<NOFS
+#!/bin/sh
+set -eu
+. "$LIB_COMMON"
+. "$ROOT/scripts/lib/isolated-tools.sh"
+cd "$(mk_root)"
+isolated_tool_scaffold deptrac deptrac/deptrac ^4.0 --apply
+NOFS
+OUT_NOFS=$(sh "$WORK/no-fs-lib.sh" 2>&1) && rc=0 || rc=$?
+{ [ "$rc" != 0 ] && printf '%s' "$OUT_NOFS" | grep -q 'filesystem-safety.sh must be sourced'; } \
+	&& pass "(13-INT) a caller that omits filesystem-safety.sh fails with a NAMED error" \
+	|| fail "(13-INT) missing-library case (rc=$rc out=$OUT_NOFS)"
+
+# ============================================================================
 if [ "$FAILS" -ne 0 ]; then
 	printf '\n%d assertion(s) FAILED\n' "$FAILS"
 	exit 1
