@@ -404,9 +404,15 @@ for _k in $INT_SUMMARY_KEYS; do
 	if [ "$_v" = "null" ]; then
 		die_cfg "missing required summary key: summary.$_k"
 	fi
+	# The digit test alone let a value of ANY magnitude reach shell `[ -gt ]` below, where
+	# at 2^63 it is a HARD ERROR with a different message in each supported shell — a gate
+	# that crashes instead of deciding. ss_count_valid bounds it WITHOUT arithmetic, so the
+	# check survives the very inputs it exists to reject (#146).
 	case "$_v" in
 		'' | *[!0-9]*) die_cfg "summary.$_k must be a non-negative integer, got '$_v'" ;;
 	esac
+	ss_count_valid "$_v" \
+		|| die_cfg "summary.$_k is $_v, above the bounded-count maximum $SS_MAX_COUNT. A count shell arithmetic cannot represent is untrusted evidence; it is never clamped or read as a clean 0."
 done
 
 # Required boolean summary keys.
@@ -1162,6 +1168,8 @@ eval_count_gate() {
 			'' | *[!0-9]*)
 				die_cfg "summary.$_key must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
 		esac
+		ss_count_valid "$_val" \
+			|| die_cfg "summary.$_key is $_val, above the bounded-count maximum $SS_MAX_COUNT. A count shell arithmetic cannot represent is untrusted evidence; it is never clamped or read as a clean 0." # (#146)
 	fi
 	if [ "$_flag" = "true" ]; then
 		if [ "$_val" -gt 0 ]; then
@@ -1210,6 +1218,8 @@ eval_unsafe_docker() {
 			'' | *[!0-9]*)
 				die_cfg "summary.unsafe_docker must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
 		esac
+		ss_count_valid "$_val" \
+			|| die_cfg "summary.unsafe_docker is $_val, above the bounded-count maximum $SS_MAX_COUNT. A count shell arithmetic cannot represent is untrusted evidence; it is never clamped or read as a clean 0." # (#146)
 	fi
 	UD_TOTAL=$_val
 	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
@@ -1349,6 +1359,8 @@ eval_medium_vulnerabilities() {
 			'' | *[!0-9]*)
 				die_cfg "summary.$_key must be a non-negative integer, got '$_val'. Untrusted evidence never reads as a clean 0." ;;
 		esac
+		ss_count_valid "$_val" \
+			|| die_cfg "summary.$_key is $_val, above the bounded-count maximum $SS_MAX_COUNT. A count shell arithmetic cannot represent is untrusted evidence; it is never clamped or read as a clean 0." # (#146)
 	fi
 	MV_TOTAL=$_val
 	if [ "$_flag" != "true" ]; then add_eval "$_key" false "$_val" skipped; return; fi
