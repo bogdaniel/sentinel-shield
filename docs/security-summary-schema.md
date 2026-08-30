@@ -37,6 +37,42 @@ A missing `summary` key is an **error** (exit 2), never a silent zero.
 
 ---
 
+## Bounded counts
+
+Every integer count in this schema — individual **and** aggregate — is bounded at
+**2147483647** (`2^31-1`). A count above it, or one outside exact cross-runtime integer
+representation, is an evidence error. Nothing rounds, clamps, floors, wraps, saturates, or
+reads it as a clean `0`.
+
+The bound is 2^31-1 because that is the largest value that is exact **everywhere the number
+travels**, measured rather than assumed:
+
+| runtime | behaviour at 2^31-1 | behaviour above the safe range |
+| --- | --- | --- |
+| jq literal | exact | exact (a literal is preserved untouched — which is why round-tripping proves nothing) |
+| jq arithmetic | exact | `9007199254740991 + 2` yields `9007199254740992`; the aggregation adds, so this is the operative case |
+| `JSON.parse` / JS `Number` | exact | `9007199254740993` becomes `9007199254740992` |
+| `sh` / `dash` / `bash` `[ -gt ]` | exact | at `2^63` a **hard error**, with a different message in each shell |
+| `sh` / `dash` / `bash` `$(( ))` | exact | at `2^63` wraps **negative**, and diverges between dash and sh/bash beyond it |
+| 32-bit signed consumer | exact | `2^53-1` is not representable |
+
+`2^53-1` is the cross-runtime **ceiling**, not the policy maximum: two individually valid
+operands can sum past double exactness, so it is unusable as an aggregate bound. An aggregate
+is itself a count and reaches the same consumers, so it carries the **same** maximum — a
+higher aggregate limit would let a value pass aggregation and then be un-representable
+downstream. One constant, no second maximum to drift.
+
+Aggregation checks `total <= MAX - value` **before** adding. Adding first and inspecting the
+result is not equivalent: a sum that wraps negative passes a naive `<= MAX` test, so
+check-after-addition accepts precisely the overflow it is meant to catch.
+
+The constant lives in `scripts/lib/sentinel-shield-common.sh` as `SS_MAX_COUNT`, the schema
+carries `maximum` on all 63 integer fields, and this document states the value.
+`tests/prod/311-count-bounds.sh` asserts that all four agree and fails when any one drifts —
+the synchronisation is mechanical, not editorial.
+
+---
+
 ## Summary key meanings
 
 The **legacy** keys below are required (a missing one is an error, never a silent zero); integer

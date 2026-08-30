@@ -283,6 +283,73 @@ ss_shape_or_fail() {
 	exit 0
 }
 
+# --- the bounded-count contract (#146) ---------------------------------------------------
+# SS_MAX_COUNT — the canonical maximum for an individual count AND for an aggregate.
+#
+# 2^31-1, chosen from measurement rather than taste:
+#
+#   - exact as a jq literal AND through jq ARITHMETIC. That distinction is the whole issue:
+#     jq >= 1.7 round-trips an untouched literal unchanged, so a value surviving a round trip
+#     proves nothing. The summary aggregation ADDS, which converts to double.
+#   - exact through JSON.parse / JS Number, where 9007199254740993 silently becomes
+#     9007199254740992.
+#   - inside the range of `[ -gt ]` and `$(( ))` in sh, dash and bash. At 2^63 `[ -gt ]` is a
+#     HARD ERROR with three different messages across those shells, and `$(( ))` wraps to a
+#     NEGATIVE value, diverging between dash and sh/bash beyond it.
+#   - exact for a 32-bit signed consumer, which 2^53-1 is not.
+#   - operationally absurd to reach: 2.1e9 findings of ONE kind in ONE run.
+#
+# 2^53-1 is the cross-runtime CEILING, not a policy maximum. Two individually valid operands
+# can sum past double exactness — 9007199254740991 + 2 aggregated to ...992 on the production
+# path, losing the true sum. With this bound and checked addition holding every partial sum at
+# or below it, aggregates are exact everywhere too, so ONE constant serves both classes and
+# there is no second maximum to drift.
+#
+# An aggregate is itself a count and reaches the same consumers, so it gets the same ceiling:
+# a higher aggregate limit would let a value pass aggregation and then be un-representable
+# downstream. Kept in lockstep with schemas/security-summary.schema.json and
+# docs/security-summary-schema.md by tests/prod/311-count-bounds.sh.
+SS_MAX_COUNT=2147483647
+
+# ss_count_valid <value> — true when <value> is a non-negative integer at or below SS_MAX_COUNT.
+#
+# DELIBERATELY STRING-ONLY UNTIL THE VALUE IS PROVEN SMALL. A validator that reached for
+# `[ "$v" -le … ]` or `$(( v ))` on the candidate would be broken by exactly the inputs it
+# exists to reject: those constructs error or wrap on an out-of-range value, and a validator
+# that crashes has not failed closed. So the digits are checked lexically, then the LENGTH, and
+# only a same-length candidate — at most ten digits, far inside every shell's range — is
+# compared numerically.
+ss_count_valid() {
+	_cv=${1:-}
+	# Rejects '', whitespace, '-1', '1.5', '1e3', '0x10', '+1' and every non-digit form.
+	case "$_cv" in
+		'' | *[!0-9]*) return 1 ;;
+	esac
+	# A leading zero is not a canonical count; '007' and '0000000000000' are shapes a
+	# length comparison would otherwise have to reason about.
+	case "$_cv" in
+		0) return 0 ;;
+		0*) return 1 ;;
+	esac
+	if [ "${#_cv}" -lt "${#SS_MAX_COUNT}" ]; then return 0; fi
+	if [ "${#_cv}" -gt "${#SS_MAX_COUNT}" ]; then return 1; fi
+	[ "$_cv" -le "$SS_MAX_COUNT" ]
+}
+
+# ss_count_add <a> <b> — echo a+b, or fail (1) printing nothing.
+#
+# Both operands are validated INDEPENDENTLY, and the overflow test is a PRECONDITION —
+# `a <= MAX - b` — evaluated before the addition ever happens. Adding first and inspecting the
+# result afterwards is not equivalent: at 2^63 the sum wraps NEGATIVE, and a negative sum
+# passes a naive `<= MAX` test, so check-after-addition accepts precisely the overflow it was
+# meant to catch. `MAX - b` is itself safe because b has already been proven at or below MAX.
+ss_count_add() {
+	ss_count_valid "${1:-}" || return 1
+	ss_count_valid "${2:-}" || return 1
+	[ "$1" -le "$((SS_MAX_COUNT - $2))" ] || return 1
+	printf '%s' "$(($1 + $2))"
+}
+
 # ss_counts_or_fail <tool> <counts-json> [summary-overrides-json]
 # Validate that every value in a collector's count object is a NON-NEGATIVE INTEGER.
 #
@@ -294,12 +361,13 @@ ss_counts_or_fail() {
 	_cot=$1; _coc=$2; _cov=${3:-}; [ -n "$_cov" ] || _cov='{}'
 	# Keys prefixed with "_" are the collectors' existing internal-metadata convention
 	# (grype/osv carry _native/_results alongside the counts); they are not gate counts.
-	_cobad=$(printf '%s' "$_coc" | jq -r '
+	_cobad=$(printf '%s' "$_coc" | jq -r --argjson max "$SS_MAX_COUNT" '
 		[ to_entries[]
 		  | select(.key | startswith("_") | not)
 		  | select((.value | type) != "number"
 			or (.value < 0)
-			or ((.value | floor) != .value))
+			or ((.value | floor) != .value)
+			or (.value > $max))
 		  | "\(.key)=\(.value)" ] | join(", ")' 2>/dev/null || printf 'unreadable')
 	[ -z "$_cobad" ] && return 0
 	log_warn "$_cot: invalid count(s) [$_cobad]; status=execution-error (never coerced to a clean 0)"

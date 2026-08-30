@@ -569,7 +569,39 @@ ARR=$(printf '%s' "$COLLECTED" | jq -s '.')
 #     contribute scenarios), while the three missing_* keys are BOOLEAN — they OR, because ANY
 #     producer that failed to produce expected evidence means evidence is missing. Adding a
 #     boolean to a number would be a jq type error, so they are handled in their own branch.
-COUNTS=$(printf '%s' "$ARR" | jq '
+# #146 — every count crossing this boundary is validated, and the SUM is bounded.
+#
+# The reduce below used a bare `+`. jq performs arithmetic in double, so two individually
+# plausible operands could produce a sum that is not the true sum: 9007199254740991 + 2
+# aggregated to 9007199254740992 on this path. Beyond that, an unbounded aggregate reaches
+# `enforce-gates.sh`, where it is fed to shell `[ -gt ]` — a HARD ERROR at 2^63 with a
+# different message in each supported shell.
+#
+# Operands are validated FIRST, because an out-of-range operand must be refused as untrusted
+# evidence rather than added and inspected afterwards. The check here is RANGE only —
+# non-negative and within the maximum — because integrality is already enforced upstream by
+# `ss_counts_or_fail` and by the schema, and several informational keys (the coverage,
+# complexity and duplication percentages) are legitimately fractional. Widening this to demand
+# integers would reject valid evidence, which is not what #146 is about. Then the accumulation
+# checks
+# `total <= MAX - value` BEFORE adding: at 2^63 a sum wraps negative, and a negative sum
+# passes a naive `<= MAX` test, so checking after the addition accepts exactly the overflow it
+# is meant to catch.
+_badcounts=$(printf '%s' "$ARR" | jq -r --argjson max "$SS_MAX_COUNT" '
+	def bools: ["missing_test_change_evidence","missing_behavior_specification","missing_acceptance_evidence"];
+	[ .[] as $c
+	  | ($c.summary // {}) | to_entries[]
+	  | .key as $k | select((bools | index($k)) | not)
+	  | select((.value | type) == "number")
+	  | select((.value < 0) or (.value > $max))
+	  | "\($c.tool).\($k)=\(.value)" ] | unique | join(", ")' 2>/dev/null || printf 'unreadable')
+if [ -n "$_badcounts" ]; then
+	log_error "collector count(s) outside the bounded-integer contract (max $SS_MAX_COUNT): $_badcounts"
+	die_cfg "a count outside the safe-integer range is untrusted evidence; it is never rounded, clamped or read as a clean 0"
+fi
+
+COUNTS=$(printf '%s' "$ARR" | jq --argjson max "$SS_MAX_COUNT" '
+	def ckadd($a; $b): if $a > ($max - $b) then error("count-aggregate-overflow") else $a + $b end;
 	def mins: ["coverage_line_percent","coverage_branch_percent","coverage_method_percent","coverage_class_percent","mutation_score_percent","changed_lines_coverage_percent"];
 	def maxs: ["complexity_max","complexity_average","duplication_percent","max_file_lines","max_function_lines","architecture_context_count"];
 	def bools: ["missing_test_change_evidence","missing_behavior_specification","missing_acceptance_evidence"];
@@ -602,7 +634,7 @@ COUNTS=$(printf '%s' "$ARR" | jq '
 			  elif (maxs | index($k)) then
 				.[$k] = (if .[$k] == null then $v else ([.[$k], $v] | max) end)
 			  else
-				.[$k] = ((.[$k] // 0) + ($v // 0))
+				.[$k] = ckadd((.[$k] // 0); ($v // 0))
 			  end)
 	)
 	| .coverage_regression = ([.coverage_regression, 1] | min)')

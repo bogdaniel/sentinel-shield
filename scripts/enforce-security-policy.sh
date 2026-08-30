@@ -218,8 +218,20 @@ while [ "$_i" -lt "$_reqcount" ]; do
 	_digest=$(printf '%s' "$_rec" | jq -r '.raw_report_digest // ""')
 
 	_verjson=null; [ "$_version" != "null" ] && _verjson="\"$_version\""
+	# `age_days` reaches shell arithmetic below (`[ "$_agejson" -gt "$_cap" ]`), where an
+	# out-of-range value is a HARD ERROR with a different message in each supported shell.
+	# The digit test alone did not bound it, so an out-of-range age is refused here rather
+	# than crashing the freshness check or being read as fresh (#146).
 	_agejson=null; case "$_age" in ''|null) _agejson=null ;; *[!0-9]*) _agejson=null ;; *) _agejson=$_age ;; esac
+	if [ "$_agejson" != "null" ] && ! ss_count_valid "$_agejson"; then
+		log_error "scanner '$_name': database.age_days is $_agejson, above the bounded-count maximum $SS_MAX_COUNT; an age shell arithmetic cannot represent is untrusted evidence and never reads as fresh"
+		_agejson=null
+	fi
 	_tgtjson=null; case "$_targets" in ''|null) _tgtjson=null ;; *[!0-9]*) _tgtjson=null ;; *) _tgtjson=$_targets ;; esac
+	if [ "$_tgtjson" != "null" ] && ! ss_count_valid "$_tgtjson"; then
+		log_error "scanner '$_name': targets_scanned is $_tgtjson, above the bounded-count maximum $SS_MAX_COUNT; it is recorded as unknown rather than as a measured count" # (#146)
+		_tgtjson=null
+	fi
 	_digjson=null; [ -n "$_digest" ] && _digjson="\"$_digest\""
 
 	if [ "$_applicable" != "true" ]; then
