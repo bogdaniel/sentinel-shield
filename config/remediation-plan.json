@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "d3e268af9a06c032846484b2ef4c28c772f1b8d1",
+  "generated_for_master": "dfe5cb228d53fe178839e28a32c997b90d5b0c37",
   "milestones": [
     {
       "key": "M0",
@@ -211,11 +211,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -231,11 +229,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -251,11 +247,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -325,11 +319,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -453,11 +445,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -473,11 +463,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -493,11 +481,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -513,11 +499,9 @@
       "milestone_title": "M4 \u2014 Producer Chain Correctness",
       "priority": "p0",
       "type": "defect",
-      "status": "blocked",
+      "status": "ready",
       "parent_epic": 292,
-      "blocked_by": [
-        146
-      ],
+      "blocked_by": [],
       "blocks": [],
       "implementation_group": "test-coverage-evidence",
       "closure_evidence": [
@@ -866,33 +850,6 @@
         204
       ],
       "implementation_group": "collector-status-vocabulary",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 146,
-      "primary_domain": "evidence",
-      "milestone": "M1",
-      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
-      "priority": "p0",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [
-        106,
-        107,
-        108,
-        112,
-        119,
-        120,
-        121,
-        122
-      ],
-      "implementation_group": "numeric-validation",
       "closure_evidence": [
         "implementation",
         "negative-regression",
