@@ -97,7 +97,7 @@ fi
 if ! sc_osv_validate "$INPUT"; then
 	log_error "$TOOL: not a valid OSV report — ${SC_REASON:-unknown}"
 	ss_emit_collector "$TOOL" "execution-error" \
-		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"invalid-output", health:"invalid-output", reason:$r}')" '{}'
+		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"execution-error", health:"invalid-output", reason:$r}')" '{}'
 	exit 0
 fi
 

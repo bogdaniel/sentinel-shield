@@ -69,7 +69,7 @@ fi
 # consumer cannot disagree about what an SBOM is.
 if ! sc_syft_validate "$INPUT"; then
 	log_error "$TOOL: not a valid SBOM — ${SC_REASON:-unknown}"
-	REPORT=$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"invalid-output", packages:0, gated:false, reason:$r}')
+	REPORT=$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"execution-error", health:"invalid-output", packages:0, gated:false, reason:$r}')
 	ss_emit_collector "$TOOL" "execution-error" "$REPORT" '{}'
 	exit 0
 fi

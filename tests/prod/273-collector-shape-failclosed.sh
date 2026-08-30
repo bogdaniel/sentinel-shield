@@ -100,7 +100,12 @@ fi
 
 # (C) CONTROL: the correctly-spelled key on the SAME call site is accepted and lands in the
 # summary. Without this, (B) could be passing because the emitter is broken outright.
-_out=$(ss_emit_collector probe pass '{}' '{"changed_lines_coverage_violations":1}' 2>/dev/null) && _rc=0 || _rc=$?
+#
+# The status is `findings`, not `pass`: since #145 a clean `pass` may not carry a positive
+# gating count, and `changed_lines_coverage_violations` is one. Emitting a violation beside a
+# non-clean status is the contract, not a workaround for it — the point of this control is that
+# the KEY is accepted and reaches .summary, which it still proves.
+_out=$(ss_emit_collector probe findings '{}' '{"changed_lines_coverage_violations":1}' 2>/dev/null) && _rc=0 || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$(printf '%s' "$_out" | jq -r '.summary.changed_lines_coverage_violations')" = "1" ]; then
 	pass "CONTROL: the canonical key is accepted and reaches .summary"
 else

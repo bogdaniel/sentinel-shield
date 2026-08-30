@@ -537,7 +537,12 @@ for row in $TOOL_TABLE; do
 		INPUT_MANIFEST="${INPUT_MANIFEST}${key}	${raw}	${_psha}
 "
 	fi
-	out=$(printf '%s' "$out" | jq -c --arg p "$key" --arg rp "$raw" --arg sha "$_psha" \
+	# `-e` is load-bearing, not decoration (#145). Without it this guard NEVER fired: jq exits 0
+	# on EMPTY input, printing nothing, so a collector that refused to emit — which is exactly
+	# what a fail-closed emitter now does — was appended to COLLECTED as a blank line, skipped by
+	# the later `jq -s`, and silently dropped from the aggregate. `-e` makes empty input exit 4
+	# and a false/null document exit 1, so a collector that produced no object is a hard failure.
+	out=$(printf '%s' "$out" | jq -ce --arg p "$key" --arg rp "$raw" --arg sha "$_psha" \
 		'. + {producer: $p, producer_report: $rp,
 		      producer_sha256: (if $sha == "" then null else $sha end)}') \
 		|| die_cfg "collector '$key' did not return a JSON object"

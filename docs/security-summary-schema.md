@@ -140,7 +140,7 @@ directly:
 | `coverage_line_percent` / `coverage_branch_percent` / `coverage_method_percent` / `coverage_class_percent` | number | Informational coverage percentages. |
 | `changed_lines_coverage_percent` | number | Informational diff-coverage percent (aggregate = **minimum** across stacks). |
 | `mutation_score_percent` | number | Informational mutation score indicator. |
-| `complexity_max` / `complexity_average` | number | Informational complexity metrics. |
+| `complexity_max` / `complexity_average` | number | Informational complexity metrics. Fractional values are valid; bounded `0..2147483647` (`SS_MAX_COUNT`) — the ceiling the builder already enforces on every summary number (#145). |
 | `duplication_percent` | number | Informational duplicated-code percentage. |
 | `dead_code_count` | integer | Informational count of dead-code items. |
 | `test_count` | integer | Informational total tests executed (**summed** across stacks). |

@@ -364,7 +364,11 @@ collector emits are not cosmetic.
 ## Adding a new collector (for consuming projects)
 
 1. Create `scripts/collectors/<tool>.sh` following the contract (source the common
-   lib, `ss_collector_guard`, compute counts with `jq`, `ss_emit_collector`).
+   lib, `ss_collector_guard`, compute counts with `jq`, `ss_emit_collector`). What
+   `ss_emit_collector` will accept — the status vocabulary, status agreement, the
+   summary key allowlist and each value's type and range — is
+   [`collector-output-contract.md`](collector-output-contract.md); it fails closed and
+   publishes nothing when a collector breaks it.
 2. Add a clean example to `templates/raw/<tool>.example.json`.
 3. Add a row to `TOOL_TABLE` in `build-security-summary.sh`:
    `key|raw-filename|collector-script|emitted-tool-name`.

@@ -103,7 +103,7 @@ fi
 if ! sc_grype_validate "$INPUT"; then
 	log_error "$TOOL: not a valid Grype report — ${SC_REASON:-unknown}"
 	ss_emit_collector "$TOOL" "execution-error" \
-		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"invalid-output", health:"invalid-output", critical:0, high:0, medium:0, reason:$r}')" '{}'
+		"$(jq -n --arg r "${SC_REASON:-unknown}" '{status:"execution-error", health:"invalid-output", critical:0, high:0, medium:0, reason:$r}')" '{}'
 	exit 0
 fi
 
