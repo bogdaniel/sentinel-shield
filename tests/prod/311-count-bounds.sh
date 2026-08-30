@@ -62,7 +62,12 @@ HUGE=123456789012345678901234567890
 	&& pass "(1) production constant SS_MAX_COUNT is $MAX (2^31-1)" \
 	|| fail "(1) SS_MAX_COUNT is '${SS_MAX_COUNT:-unset}', suite expects $MAX"
 
-_schema_maxima=$(jq -r '[.. | objects | select(.type=="integer") | .maximum] | unique | map(tostring) | join(",")' "$SCHEMA")
+# INTFIELDS matches a scalar `"integer"` AND a union such as ["integer","null"]. The first
+# draft of this suite selected `.type == "integer"` only, so `targets_scanned` and `age_days`
+# — both ["integer","null"] — bypassed the drift check and the forgotten-field control alike.
+# A control that cannot see a whole shape of field is the gap it claims to close.
+INTFIELDS='[.. | objects | select((.type=="integer") or ((.type|type)=="array" and ((.type|index("integer")) != null)))]'
+_schema_maxima=$(jq -r "$INTFIELDS"' | [.[].maximum] | unique | map(tostring) | join(",")' "$SCHEMA")
 [ "$_schema_maxima" = "$MAX" ] \
 	&& pass "(1) EVERY integer field in the summary schema carries maximum $MAX, with no exception" \
 	|| fail "(1) schema integer maxima are [$_schema_maxima], expected exactly [$MAX]"
@@ -73,10 +78,20 @@ grep -q "$MAX" "$DOC" \
 
 # A drift control: the detector must actually reject a mismatch, or it proves nothing.
 _drifted="$WORK/drift.schema.json"
-jq --argjson m 999 '(.. | objects | select(.type=="integer") | .maximum) |= $m' "$SCHEMA" > "$_drifted"
-[ "$(jq -r '[.. | objects | select(.type=="integer") | .maximum] | unique | map(tostring) | join(",")' "$_drifted")" != "$MAX" ] \
+jq --argjson m 999 '(.. | objects | select((.type=="integer") or ((.type|type)=="array" and ((.type|index("integer")) != null))) | .maximum) |= $m' "$SCHEMA" > "$_drifted"
+[ "$(jq -r "$INTFIELDS"' | [.[].maximum] | unique | map(tostring) | join(",")' "$_drifted")" != "$MAX" ] \
 	&& pass "(1) CONTROL: the drift detector rejects a schema whose maximum was changed" \
 	|| fail "(1) the drift detector cannot see a changed schema maximum"
+
+# A count is not always spelled `"type": "integer"`. These two are ["integer","null"], they are
+# counts, and `age_days` reaches shell arithmetic in enforce-security-policy.sh — so an
+# unbounded value there is the same hard-error class as an unbounded summary count.
+for _f in targets_scanned age_days; do
+	_fm=$(jq -r --arg f "$_f" '[.. | objects | select(has($f)) | .[$f] | select((.type|type)=="array")] | first | .maximum // "NONE"' "$SCHEMA")
+	[ "$_fm" = "$MAX" ] \
+		&& pass "(1) union-typed count '$_f' (\"integer\"|null) carries maximum $MAX" \
+		|| fail "(1) union-typed count '$_f' carries maximum '$_fm'"
+done
 
 # ============================================================================
 # (2) ss_count_valid — the individual bound, WITHOUT shell arithmetic.
@@ -239,7 +254,7 @@ _afterwrap=$(sh -c 'a=9223372036854775807; b=1; s=$((a+b)); [ "$s" -le 214748364
 ( . "$LIB"; ss_count_valid " 5" ) >/dev/null 2>&1 \
 	&& fail "(6) ' 5' was coerced to a valid count" || pass "(6) MUTATION: a whitespace-padded numeric string is not coerced"
 # (e) one forgotten count field: EVERY integer field in the schema must carry the maximum
-_missing=$(jq -r '[.. | objects | select(.type=="integer") | select(has("maximum") | not)] | length' "$SCHEMA")
+_missing=$(jq -r "$INTFIELDS"' | map(select(has("maximum") | not)) | length' "$SCHEMA")
 [ "$_missing" = "0" ] \
 	&& pass "(6) MUTATION: no integer field in the schema is missing its maximum" \
 	|| fail "(6) $_missing integer field(s) carry no maximum — a forgotten field is exactly the gap"
