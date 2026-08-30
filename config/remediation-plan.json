@@ -3075,6 +3075,24 @@
         "negative-regression",
         "exact-head-ci"
       ]
+    },
+    {
+      "issue": 365,
+      "primary_domain": "ci",
+      "milestone": "M1",
+      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
+      "priority": "p2",
+      "type": "defect",
+      "status": "ready",
+      "parent_epic": 287,
+      "blocked_by": [],
+      "blocks": [],
+      "implementation_group": "test-harness-truthfulness",
+      "closure_evidence": [
+        "implementation",
+        "negative-regression",
+        "exact-head-ci"
+      ]
     }
   ]
 }
