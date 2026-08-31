@@ -311,6 +311,18 @@ ss_collector_contract_or_fail() {
 	# is string-only until a candidate is proven small, so an out-of-range value cannot break the
 	# check that exists to reject it. Duplicating a numeric policy in jq is exactly the second
 	# maximum #146 exists to prevent.
+	#
+	# TWO DIFFERENT MECHANISMS, AND SAYING SO IS THE POINT. The ratio and metric classes are
+	# refused by the RANGE tests below (`NaN >= 0` is false; Infinity exceeds the bound). The
+	# integer class has no range test here at all — it is refused by the SHAPE of the string jq
+	# renders: `tostring` gives `null` for NaN, `1.7976931348623157e+308` for Infinity and
+	# `1E+400` for a large exponential, and every one of those contains a character
+	# ss_count_valid's `*[!0-9]*` case rejects. Length then catches anything that survives as
+	# pure digits. Both paths are safe, but they are not the same path, and a reader who assumed
+	# the range test covered integers too would be wrong about why. tests/prod/312 pins the
+	# rendering these rejections depend on, so a jq that formatted them differently would fail
+	# rather than quietly change which mechanism is doing the work. (Raised in review of #145 on
+	# PR #368: the mechanism and the comment had diverged.)
 	_ccf_lines=$(printf '%s' "$_ccf_ov" | jq -r \
 		--argjson max "$SS_MAX_COUNT" \
 		--arg canon "$SS_SUMMARY_KEYS" \

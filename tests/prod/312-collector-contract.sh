@@ -406,6 +406,36 @@ done
 [ "$(printf '%s' '{"a":Infinity}' | jq -r '.a | type')" = "number" ] \
 	&& pass "(5m) jq admits Infinity as a number — the ceiling is what refuses it, not the parser" \
 	|| fail "(5m) the Infinity pin did not hold"
+# THE INTEGER CLASS IS REFUSED BY STRING SHAPE, NOT BY A RANGE TEST — pinned, because the two
+# classes are protected by DIFFERENT mechanisms and only one of them is a range comparison.
+# The ratio/metric classes are refused in jq by `>= 0` / `<= max`. The integer class has no range
+# test at all: ss_count_valid judges the string `tostring` produced, and every non-finite or
+# exponential value renders with a character its `*[!0-9]*` case rejects. That protection is
+# incidental to jq's FORMATTING, so it is pinned here rather than assumed — a jq that rendered
+# Infinity as 309 expanded digits would fail this block instead of silently shifting which
+# mechanism does the work. (Raised in review of #145 on PR #368.)
+for _nf in NaN Infinity -Infinity 1e30 1e400 1e999; do
+	_rend=$(printf '%s' "{\"a\":$_nf}" | jq -r '.a | tostring' 2>/dev/null || printf 'UNPARSED')
+	case "$_rend" in
+		'' | *[!0-9]*) pass "(5m) jq renders $_nf as '$_rend' — a shape ss_count_valid's digit test refuses" ;;
+		*) fail "(5m) jq renders $_nf as '$_rend', which is pure digits; the integer class would judge it numerically" ;;
+	esac
+	ss_count_valid "$_rend" \
+		&& fail "(5m) ss_count_valid ACCEPTED the rendering of $_nf ('$_rend')" \
+		|| pass "(5m) ss_count_valid refuses the rendering of $_nf"
+	# and the same value on a real INT-class key must be refused end to end
+	refused "(5m) integer-class secrets = $_nf" fail '{"status":"fail"}' "{\"secrets\":$_nf}"
+done
+# CONTROL: a legitimate count renders as pure digits and IS accepted, so the block above is
+# discriminating between shapes rather than refusing every rendering.
+_rend=$(printf '%s' "{\"a\":$MAX}" | jq -r '.a | tostring')
+case "$_rend" in
+	'' | *[!0-9]*) fail "(5m) CONTROL: $MAX rendered as '$_rend', not pure digits" ;;
+	*) ss_count_valid "$_rend" \
+		&& pass "(5m) CONTROL: $MAX renders as pure digits and ss_count_valid accepts it" \
+		|| fail "(5m) CONTROL: ss_count_valid refused the rendering of $MAX" ;;
+esac
+
 # EXACTNESS FOR THE DECLARED DOMAIN. A double carries 53 bits of mantissa and the ceiling needs
 # 31, so every value in 0..SS_MAX_COUNT with a few decimal places is exact. Proven by round trip
 # through the real emitter at both ends of the range rather than asserted.
