@@ -277,9 +277,16 @@ ss_collector_contract_or_fail() {
 	# attacker-shaped status string never comes back to be re-parsed by the shell. Anything this
 	# does not recognise (including a status carrying a newline, which would split the result
 	# into lines no branch matches) lands on the catch-all and is refused.
+	#
+	# "No status" is tested with `has("status")`, NOT with `(.status | type) == "null"`. jq gives
+	# `null` for a missing key AND for an explicit `"status": null`, so the type test conflated
+	# them and let a producer SUPPLY a non-string status that was read as making no claim — a way
+	# to opt out of the agreement check by writing `null` instead of omitting the field. An
+	# explicit null is a malformed status and now lands on the nonstring branch. Caught in review
+	# of #145 on PR #368.
 	_ccf_rs=$(printf '%s' "$_ccf_report" | jq -r --arg s "$_ccf_status" '
 		if type != "object" then "none"
-		elif (.status | type) == "null" then "none"
+		elif (has("status") | not) then "none"
 		elif (.status | type) != "string" then "nonstring:" + (.status | type)
 		elif .status == $s then "agree"
 		else "differs:" + .status

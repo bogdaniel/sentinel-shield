@@ -52,6 +52,13 @@ trap 'rm -rf -- "$WORK"' EXIT INT TERM HUP
 
 MAX=2147483647   # 2^31-1, this suite's own expectation of the #146 maximum
 OVER=2147483648
+# The suite's expectation must be the LIBRARY's constant, asserted directly and not only through
+# the schema and the documentation. Every label below — "exactly SS_MAX_COUNT is accepted", the
+# raised-bound mutant — names $MAX; if SS_MAX_COUNT moved, those labels would describe a bound the
+# emitter no longer enforces while the assertions still passed against a stale literal.
+[ "${SS_MAX_COUNT:-unset}" = "$MAX" ] \
+	&& pass "(0) SS_MAX_COUNT is $MAX, the bound this suite names throughout" \
+	|| fail "(0) SS_MAX_COUNT is '${SS_MAX_COUNT:-unset}', not $MAX — every bound label below is misattributed"
 
 # emit <status> <report> <overrides> — run the REAL emitter in a subshell and report
 # "<rc>|<stdout>". The subshell matters: the emitter exits (not returns) on refusal, which is
@@ -240,7 +247,23 @@ refused "(3) outer pass beside tool_report fail"            pass '{"status":"fai
 refused "(3) outer pass beside tool_report execution-error" pass '{"status":"execution-error"}' '{}'
 refused "(3) outer fail beside tool_report pass"            fail '{"status":"pass"}' '{}'
 refused "(3) a non-string tool_report status"               pass '{"status":1}'      '{}'
-refused "(3) a null-ish tool_report status object"          pass '{"status":{"a":1}}' '{}'
+refused "(3) a tool_report status that is an object"        pass '{"status":{"a":1}}' '{}'
+# AN EXPLICIT NULL IS A SUPPLIED STATUS, NOT AN ABSENT ONE. jq returns `null` both for a missing
+# key and for `"status": null`, so a `(.status | type) == "null"` test conflated them and let a
+# producer opt OUT of the agreement check by writing null rather than omitting the field. The
+# production test is `has("status")`, and these two cases must therefore diverge.
+refused "(3) an explicit null tool_report status"           pass '{"status":null}'   '{}'
+refused "(3) an explicit null status beside a fail outer"   fail '{"status":null}'   '{}'
+accepted "(3) CONTROL: the key being ABSENT still makes no claim" '.status' 'pass' \
+	pass '{"findings":0,"health":"ok"}' '{}'
+# The two must be distinguishable at the jq level, or the production branch is guessing.
+_n1=$(printf '%s' '{"status":null}' | jq -r 'has("status")')
+_n2=$(printf '%s' '{"findings":0}'  | jq -r 'has("status")')
+_n3=$(printf '%s' '{"status":null}' | jq -r '.status | type')
+_n4=$(printf '%s' '{"findings":0}'  | jq -r '.status | type')
+[ "$_n1" = "true" ] && [ "$_n2" = "false" ] && [ "$_n3" = "null" ] && [ "$_n4" = "null" ] \
+	&& pass "(3) has(\"status\") separates an explicit null from an absent key; (.status|type) does NOT" \
+	|| fail "(3) the has()/type distinction did not reproduce (has=$_n1/$_n2 type=$_n3/$_n4)"
 # The refusal must NAME the disagreement, or an operator cannot act on it.
 emit_err pass '{"status":"fail"}' '{}' > "$WORK/e3" 2>&1 || :
 grep -q "while its tool_report claims" "$WORK/e3" \
@@ -516,6 +539,26 @@ printf '' | jq -ce '. + {p:1}' >/dev/null 2>&1 && _e=0 || _e=$?
 [ "$_c" = "0" ] && [ "$_e" != "0" ] \
 	&& pass "(9) the -e flag is load-bearing: jq -c accepts empty input (rc=$_c), jq -ce does not (rc=$_e)" \
 	|| fail "(9) the -e demonstration did not reproduce (jq -c rc=$_c, jq -ce rc=$_e)"
+# `-e` ALONE IS NOT ENOUGH, AND THE SELECT IS NOT DECORATION. `null + {producer: …}` is a valid
+# jq expression that yields the metadata object, so a collector printing the four bytes `null`
+# satisfied `-e` and was appended to the aggregate as a producer record with no tool, no status
+# and no summary. An array or a string already errored on the `+`; null was the one shape that
+# added cleanly. Selecting the object type first makes the pipeline empty instead.
+grep -q 'select(type == "object")' "$BUILD" \
+	&& pass "(9) build-security-summary.sh selects the object type before merging producer metadata" \
+	|| fail "(9) build-security-summary.sh no longer type-checks collector output before the merge"
+_nullmerge=$(printf '%s' 'null' | jq -ce '. + {producer:"p"}' 2>/dev/null) && _nm=0 || _nm=$?
+[ "$_nm" = "0" ] && [ "$_nullmerge" = '{"producer":"p"}' ] \
+	&& pass "(9) the defect is real: null + {…} yields a truthy object and satisfies -e on its own" \
+	|| fail "(9) the null-merge demonstration did not reproduce (rc=$_nm out='$_nullmerge')"
+for _shape in null '[]' '"str"' ''; do
+	printf '%s' "$_shape" | jq -ce 'select(type == "object") | . + {producer:"p"}' >/dev/null 2>&1 \
+		&& fail "(9) the production filter ACCEPTED non-object collector output <$_shape>" \
+		|| pass "(9) the production filter refuses non-object collector output <${_shape:-empty}>"
+done
+printf '%s' '{"tool":"probe","status":"pass"}' | jq -ce 'select(type == "object") | . + {producer:"p"}' >/dev/null 2>&1 \
+	&& pass "(9) CONTROL: the production filter still accepts a real collector object" \
+	|| fail "(9) CONTROL: the production filter rejects a valid collector object"
 # A refusal writes NOTHING to stdout — checked byte-wise, because "non-zero exit" alone does
 # not prove a partial document was never produced.
 ( ss_emit_collector probe pass '{}' '{"secrets":-1}' > "$WORK/stale.out" 2>/dev/null ) || :
@@ -587,7 +630,21 @@ done
 
 # No shipped collector may emit `invalid-output` as a tool_report status: it is outside the
 # vocabulary and it disagreed with the outer status that accompanied it.
-_io=$(grep -rl 'status:"invalid-output"\|"status":"invalid-output"' "$ROOT/scripts/collectors" 2>/dev/null | tr '\n' ' ')
+#
+# TWO `-e` PATTERNS, NOT A `\|` ALTERNATION. BRE alternation is a GNU extension: where it is not
+# supported the pattern matches nothing, `_io` is empty, and this reports "no collector emits it"
+# having searched for a string that cannot occur — a check that passes precisely because it is
+# broken. The positive control below is the other half of that: the same invocation must FIND a
+# seeded occurrence, so an empty result can only mean the collectors are clean.
+_io_grep() { grep -rl -e 'status:"invalid-output"' -e '"status":"invalid-output"' "$1" 2>/dev/null; }
+mkdir -p "$WORK/seed"
+printf '%s\n' 'ss_emit_collector "$T" "execution-error" '"'"'{status:"invalid-output"}'"'"' '"'"'{}'"'"'' > "$WORK/seed/seeded.sh"
+if [ -n "$(_io_grep "$WORK/seed" | tr '\n' ' ')" ]; then
+	pass "(10) CONTROL: the invalid-output sweep finds a seeded occurrence — an empty result is meaningful"
+else
+	fail "(10) the invalid-output sweep cannot find a seeded occurrence; its empty result over the real collectors proves nothing"
+fi
+_io=$(_io_grep "$ROOT/scripts/collectors" | tr '\n' ' ')
 [ -z "$_io" ] && pass "(10) no collector emits a tool_report status outside the vocabulary" \
 	|| fail "(10) collector(s) still emit status:\"invalid-output\": $_io"
 
@@ -699,7 +756,11 @@ if mutate wide-vocab 's/^SS_COLLECTOR_STATUSES="pass /SS_COLLECTOR_STATUSES="tot
 		|| fail "(12) MUTATION: the invented status is refused even when the vocabulary contains it"
 fi
 # (d) the status-agreement branch
-if mutate no-agreement 's/^		differs:\*)$/		differs:*) : ;;\n		__never)/'; then
+# A backslash-continued LITERAL newline, not `\n`. `\n` in a sed replacement is a GNU extension;
+# where it is not honoured it inserts the letter `n`, producing a mutant that does not parse — and
+# a mutant that cannot be sourced proves nothing about the guard it was built to remove.
+if mutate no-agreement 's/^		differs:\*)$/		differs:*) : ;;\
+		__never)/'; then
 	[ "$(run_mut no-agreement pass '{"status":"fail"}' '{}')" = "0" ] \
 		&& pass "(12) MUTATION: removing the differs branch accepts contradictory statuses" \
 		|| fail "(12) MUTATION: contradictory statuses stay refused without the differs branch"
@@ -708,7 +769,8 @@ fi
 # The constant spans continuation lines, so it is OVERRIDDEN immediately before the emitter
 # rather than rewritten in place: editing only its first line would orphan the continuations
 # and produce a mutant that fails to parse, which proves nothing about the guard.
-if mutate no-gating 's|^ss_emit_collector() {$|SS_GATING_SUMMARY_KEYS=""\nss_emit_collector() {|'; then
+if mutate no-gating 's|^ss_emit_collector() {$|SS_GATING_SUMMARY_KEYS=""\
+ss_emit_collector() {|'; then
 	[ "$(run_mut no-gating pass '{"status":"pass"}' '{"secrets":1}')" = "0" ] \
 		&& pass "(12) MUTATION: emptying the gating set accepts pass beside a positive count" \
 		|| fail "(12) MUTATION: the contradiction is refused with an empty gating set — something else refuses it"
