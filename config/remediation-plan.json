@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_for_master": "dfe5cb228d53fe178839e28a32c997b90d5b0c37",
+  "generated_for_master": "88b2c4ee34891780dbb45e6379746d6cb7b443c8",
   "milestones": [
     {
       "key": "M0",
@@ -830,26 +830,6 @@
       "blocked_by": [],
       "blocks": [],
       "implementation_group": "json-document-contract",
-      "closure_evidence": [
-        "implementation",
-        "negative-regression",
-        "exact-head-ci"
-      ]
-    },
-    {
-      "issue": 145,
-      "primary_domain": "evidence",
-      "milestone": "M1",
-      "milestone_title": "M1 \u2014 Evidence Trust Foundation",
-      "priority": "p0",
-      "type": "defect",
-      "status": "ready",
-      "parent_epic": 287,
-      "blocked_by": [],
-      "blocks": [
-        204
-      ],
-      "implementation_group": "collector-status-vocabulary",
       "closure_evidence": [
         "implementation",
         "negative-regression",
@@ -1787,9 +1767,7 @@
       "type": "security",
       "status": "partial",
       "parent_epic": 287,
-      "blocked_by": [
-        145
-      ],
+      "blocked_by": [],
       "blocks": [
         205,
         206,
