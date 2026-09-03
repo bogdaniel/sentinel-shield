@@ -338,12 +338,14 @@
         "complexity_max": {
           "type": "number",
           "minimum": 0,
-          "description": "v2.1+ informational. Maximum complexity observed (aggregate = maximum across applicable stacks). Optional."
+          "maximum": 2147483647,
+          "description": "v2.1+ informational. Maximum cyclomatic/cognitive complexity observed (aggregate = maximum across applicable stacks). Optional. Fractional values are valid; the maximum is SS_MAX_COUNT, the same ceiling build-security-summary.sh already enforces on every summary number and the one its sibling worst-observed metrics (max_file_lines, max_function_lines) carry (#145)."
         },
         "complexity_average": {
           "type": "number",
           "minimum": 0,
-          "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional."
+          "maximum": 2147483647,
+          "description": "v2.1+ informational. Average complexity (aggregate = maximum across applicable stacks). Optional. Fractional values are valid; the maximum is SS_MAX_COUNT, the same ceiling build-security-summary.sh already enforces on every summary number (#145)."
         },
         "duplication_percent": {
           "type": "number",

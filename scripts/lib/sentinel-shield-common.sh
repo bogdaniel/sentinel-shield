@@ -146,38 +146,276 @@ test_count test_failures third_party_install_script_risk third_party_network_beh
 third_party_obfuscation third_party_suspicious_code tool_configuration_failures \
 tool_execution_failures type_errors unsafe_docker unsafe_github_actions"
 
-# ss_emit_collector <tool> <status> <tool_report_json> <summary_overrides_json>
-# Emit a canonical collector object on stdout. The summary always has all ten count
-# keys (zeroed), with <summary_overrides_json> merged on top.
-ss_emit_collector() {
-	# Defensive: validate the two JSON arguments before feeding them to
-	# `jq --argjson`, so a malformed/empty report surfaces a structured error
-	# (fail closed, exit 2 — matching ss_collector_guard) instead of a raw jq crash.
-	if ! printf '%s' "$3" | jq empty 2>/dev/null; then
-		log_error "ss_emit_collector: <tool_report_json> for '$1' is not valid JSON"
+# --- the collector output contract (#145) ------------------------------------------------
+#
+# ss_emit_collector is the ONE place a collector's evidence becomes a document, so it is the
+# only place the whole shape can be judged at once. Everything a consumer later trusts about
+# that document — the outer status vocabulary, its agreement with the tool report's own status,
+# the summary vocabulary, and the type and range of every summary value — is decided here, for
+# built-in and custom collectors alike.
+#
+# Validating downstream instead is too late. build-security-summary.sh SUMS these counts across
+# collectors before any schema runs, and several tools read a collector's stdout directly. Until
+# #145 the emitter checked only that both JSON arguments PARSED: `pass` beside `{"status":"fail"}`
+# beside `{"secrets":-1}` was emitted without complaint, and `-1` then cancelled another
+# scanner's real finding in the aggregate.
+#
+# Like SS_SUMMARY_KEYS, these lists are duplicated from schemas/security-summary.schema.json
+# rather than read from it at runtime, so a collector never depends on the schema file being
+# present in an installed layout. tests/prod/312 asserts each list is EXACTLY the schema's (and
+# the gating set exactly enforce-gates.sh's count gates), so drift is a CI failure, not a
+# surprise.
+
+# SS_COLLECTOR_STATUSES — the outer status vocabulary, verbatim from the schema's
+# properties.tools.additionalProperties.properties.status enum. An outer status outside this set
+# reaches the summary's `tools` map and makes the whole document schema-invalid, so it is refused
+# where it is produced rather than where it is finally parsed.
+SS_COLLECTOR_STATUSES="pass fail warn skipped unavailable findings not-configured \
+not-applicable execution-error disabled"
+
+# THE SUMMARY IS NOT ALL INTEGERS, AND PRETENDING IT IS WOULD REJECT VALID EVIDENCE.
+#
+# The default class is #146's bounded non-negative integer. These three lists are the entire
+# exception, each taken from the schema's declared type for that field:
+#   BOOL   — nine boolean evidence flags; a number here is not a "0 findings" claim, it is a
+#            malformed flag, so the type is enforced rather than coerced.
+#   RATIO  — seven percentages, `number` with maximum 100. Fractional values are legitimate
+#            (87.5% line coverage), so integrality is NOT required; the 0..100 range is.
+#   METRIC — two complexity metrics, `number` bounded at SS_MAX_COUNT. Fractional values are
+#            legitimate (an average of 12.75), so integrality is NOT required; the ceiling is.
+#            SS_MAX_COUNT is not a new constant chosen for them: build-security-summary.sh
+#            already refuses ANY summary number above it at the aggregation boundary, and their
+#            sibling worst-observed metrics (max_file_lines, max_function_lines) already carry
+#            it. The schema was the half that was out of step, and #145 closed that; a complexity
+#            threshold (quality-policy max_cyclomatic_complexity) is a POLICY value an observed
+#            maximum is meant to exceed, so it is not a representational ceiling and is not used
+#            as one.
+SS_SUMMARY_BOOL_KEYS="empty_test_suite missing_acceptance_evidence \
+missing_architecture_evidence missing_behavior_specification missing_coverage_evidence \
+missing_release_evidence missing_sbom missing_test_change_evidence missing_test_evidence"
+SS_SUMMARY_RATIO_KEYS="changed_lines_coverage_percent coverage_branch_percent \
+coverage_class_percent coverage_line_percent coverage_method_percent duplication_percent \
+mutation_score_percent"
+SS_SUMMARY_METRIC_KEYS="complexity_average complexity_max"
+
+# SS_GATING_SUMMARY_KEYS — the summary keys whose positive value IS a finding the collector
+# itself declared: every count gate enforce-gates.sh evaluates (INT_SUMMARY_KEYS,
+# THIRD_PARTY_KEYS, ENTERPRISE_COUNT_KEYS, QUALITY_COUNT_KEYS, TESTING_DISCIPLINE_COUNT_KEYS),
+# minus the census carve-out below.
+#
+# A collector emitting `pass` while carrying one of these above zero is emitting evidence that
+# contradicts itself, and the contradiction is not harmless: the per-tool status says the tool is
+# clean while the counts it shipped are summed into the aggregate the gates read. Only `pass` is
+# constrained — `warn`, `findings` and `fail` are already claims that something was found, and
+# the non-run statuses carry the zeroed defaults their emit paths supply.
+SS_GATING_SUMMARY_KEYS="secrets critical_vulnerabilities high_vulnerabilities \
+medium_vulnerabilities architecture_violations type_errors test_failures unsafe_docker \
+unsafe_github_actions expired_exceptions third_party_suspicious_code \
+third_party_install_script_risk third_party_obfuscation third_party_network_behavior \
+php_syntax_errors style_violations dependency_policy_violations iac_violations \
+container_image_violations dast_findings repository_health_warnings ai_review_findings \
+coverage_threshold_violations coverage_regression mutation_score_violations \
+complexity_violations duplication_violations dead_code_violations \
+changed_lines_coverage_violations focused_test_violations skipped_test_marker_violations \
+debug_code_violations large_file_violations large_function_violations \
+production_change_without_test_change orphan_behavior_specifications acceptance_test_failures"
+
+# SS_NONGATING_COUNT_KEYS — count gates that are a CENSUS, not a verdict. `skipped_tests` is the
+# number of tests a runner skipped; the suite that ran still PASSED, and whether skipping is
+# tolerable is a policy decision enforce-gates.sh makes per mode, not a finding the collector
+# declared. Constraining `pass` on it would refuse scripts/collectors/tests.sh's ordinary,
+# correct output. This carve-out is per-KEY and declared here, never per-tool: a channel is
+# non-gating for every collector or for none.
+SS_NONGATING_COUNT_KEYS="skipped_tests"
+
+# ss_in_set <value> <space-separated-set> — exact membership, no substring or prefix matches.
+# The set word is quoted, so glob metacharacters in <value> are literal.
+ss_in_set() {
+	case " $2 " in
+		*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
+# ss_redact <value> — a diagnostic-safe rendering of untrusted text: control characters dropped,
+# 60 characters kept. A refusal has to say WHAT it refused to be actionable, and a collector's
+# status or count value is attacker-influenced input being written to a log.
+ss_redact() {
+	printf '%s' "$1" | tr -d '[:cntrl:]' | cut -c1-60
+}
+
+# ss_collector_contract_or_fail <tool> <status> <tool_report_json> <summary_overrides_json>
+# THE canonical collector-output validator. Returns 0 when the four arguments describe a
+# self-consistent collector object, or 2 having logged exactly which invariant failed.
+#
+# It never rounds, clamps, floors or coerces, and it never accepts a partial override: one
+# invalid sibling refuses the whole object, because a caller cannot tell which of its fields
+# survived and would otherwise publish a summary built half from its own evidence and half from
+# zeroed defaults.
+#
+# Two jq calls, one per JSON argument. Both do their own parse check — a parse failure is jq's
+# non-zero exit, not a separate `jq empty` pass — so this validates strictly more than the code
+# it replaces while running fewer processes.
+ss_collector_contract_or_fail() {
+	_ccf_tool=$1; _ccf_status=$2; _ccf_report=$3; _ccf_ov=$4
+
+	# (1) OUTER STATUS VOCABULARY. Checked first and in pure shell: it costs nothing and an
+	# invented status is the one defect that makes the finished document schema-invalid.
+	if ! ss_in_set "$_ccf_status" "$SS_COLLECTOR_STATUSES"; then
+		log_error "ss_emit_collector: '$_ccf_tool' emits status '$(ss_redact "$_ccf_status")', outside the collector vocabulary ($SS_COLLECTOR_STATUSES)"
 		return 2
 	fi
-	if ! printf '%s' "$4" | jq empty 2>/dev/null; then
-		log_error "ss_emit_collector: <summary_overrides_json> for '$1' is not valid JSON"
-		return 2
-	fi
-	# Every override key must be a canonical summary key. An unknown key is rejected here,
-	# at the shared boundary, rather than trusting every collector author to spell it right.
-	# `jq -e` is deliberately not used: an EMPTY unknown-key list is the success case, and
-	# `-e` would report empty output as failure.
-	if [ "$(printf '%s' "$4" | jq -r 'type' 2>/dev/null)" != "object" ]; then
-		log_error "ss_emit_collector: <summary_overrides_json> for '$1' is not a JSON object"
-		return 2
-	fi
-	_ss_unknown=$(printf '%s' "$4" | jq -r --arg canon "$SS_SUMMARY_KEYS" '
-		keys - ($canon | split(" ") | map(select(length > 0))) | .[]' 2>/dev/null) || {
-		log_error "ss_emit_collector: could not validate <summary_overrides_json> for '$1'"
+
+	# (2) THE TOOL REPORT PARSES, AND ITS STATUS AGREES WITH THE OUTER ONE.
+	#
+	# The documented mapping is IDENTITY: when the tool report states a status, it is the same
+	# string as the outer status. The tool report carries the finer-grained detail — `health`,
+	# `reason` — precisely so the status field does not have to disagree to say more. A report
+	# with NO status makes no claim and is left alone; a non-string status is malformed.
+	#
+	# The comparison happens INSIDE jq against the outer status passed in as --arg, so an
+	# attacker-shaped status string never comes back to be re-parsed by the shell. Anything this
+	# does not recognise (including a status carrying a newline, which would split the result
+	# into lines no branch matches) lands on the catch-all and is refused.
+	#
+	# "No status" is tested with `has("status")`, NOT with `(.status | type) == "null"`. jq gives
+	# `null` for a missing key AND for an explicit `"status": null`, so the type test conflated
+	# them and let a producer SUPPLY a non-string status that was read as making no claim — a way
+	# to opt out of the agreement check by writing `null` instead of omitting the field. An
+	# explicit null is a malformed status and now lands on the nonstring branch. Caught in review
+	# of #145 on PR #368.
+	_ccf_rs=$(printf '%s' "$_ccf_report" | jq -r --arg s "$_ccf_status" '
+		if type != "object" then "none"
+		elif (has("status") | not) then "none"
+		elif (.status | type) != "string" then "nonstring:" + (.status | type)
+		elif .status == $s then "agree"
+		else "differs:" + .status
+		end' 2>/dev/null) || {
+		log_error "ss_emit_collector: <tool_report_json> for '$_ccf_tool' is not valid JSON"
 		return 2
 	}
-	if [ -n "$_ss_unknown" ]; then
-		log_error "ss_emit_collector: '$1' emits summary key(s) outside the canonical set: $(printf '%s' "$_ss_unknown" | tr '\n' ' ')"
+	case "$_ccf_rs" in
+		agree | none) : ;;
+		differs:*)
+			log_error "ss_emit_collector: '$_ccf_tool' emits outer status '$_ccf_status' while its tool_report claims '$(ss_redact "${_ccf_rs#differs:}")'. Contradictory evidence is never published; put the finer detail in tool_report.health or .reason."
+			return 2 ;;
+		*)
+			log_error "ss_emit_collector: '$_ccf_tool' tool_report.status is not a string ($(ss_redact "$_ccf_rs"))"
+			return 2 ;;
+	esac
+
+	# (3) THE SUMMARY OVERRIDES. One jq pass reports every structural problem it can see and
+	# hands the integer-class candidates back as STRINGS for #146's validator to judge.
+	#
+	# Integer range is deliberately NOT decided here. ss_count_valid is the shared authority and
+	# is string-only until a candidate is proven small, so an out-of-range value cannot break the
+	# check that exists to reject it. Duplicating a numeric policy in jq is exactly the second
+	# maximum #146 exists to prevent.
+	#
+	# TWO DIFFERENT MECHANISMS, AND SAYING SO IS THE POINT. The ratio and metric classes are
+	# refused by the RANGE tests below (`NaN >= 0` is false; Infinity exceeds the bound). The
+	# integer class has no range test here at all — it is refused by the SHAPE of the string jq
+	# renders: `tostring` gives `null` for NaN, `1.7976931348623157e+308` for Infinity and
+	# `1E+400` for a large exponential, and every one of those contains a character
+	# ss_count_valid's `*[!0-9]*` case rejects. Length then catches anything that survives as
+	# pure digits. Both paths are safe, but they are not the same path, and a reader who assumed
+	# the range test covered integers too would be wrong about why. tests/prod/312 pins the
+	# rendering these rejections depend on, so a jq that formatted them differently would fail
+	# rather than quietly change which mechanism is doing the work. (Raised in review of #145 on
+	# PR #368: the mechanism and the comment had diverged.)
+	_ccf_lines=$(printf '%s' "$_ccf_ov" | jq -r \
+		--argjson max "$SS_MAX_COUNT" \
+		--arg canon "$SS_SUMMARY_KEYS" \
+		--arg bools "$SS_SUMMARY_BOOL_KEYS" \
+		--arg ratios "$SS_SUMMARY_RATIO_KEYS" \
+		--arg metrics "$SS_SUMMARY_METRIC_KEYS" '
+		def s($x): $x | split(" ") | map(select(length > 0));
+		if type != "object" then "ERR\tnot-a-json-object"
+		else
+			s($canon) as $C | s($bools) as $B | s($ratios) as $R | s($metrics) as $M
+			| to_entries[] | .key as $k | .value as $v | ($v | type) as $t
+			| if ($C | index($k)) == null then "UNK\t\($k)"
+			  elif ($B | index($k)) then
+				(if $t == "boolean" then empty else "BAD\t\($k)\tnot-a-boolean-but-\($t)" end)
+			  elif $t != "number" then "BAD\t\($k)\tnot-a-number-but-\($t)"
+			  elif ($R | index($k)) then
+				(if ($v >= 0 and $v <= 100) then empty else "BAD\t\($k)\toutside-0-to-100" end)
+			  elif ($M | index($k)) then
+				(if ($v >= 0 and $v <= $max) then empty else "BAD\t\($k)\toutside-0-to-\($max)" end)
+			  else "INT\t\($k)\t\($v | tostring)"
+			  end
+		end' 2>/dev/null) || {
+		log_error "ss_emit_collector: <summary_overrides_json> for '$_ccf_tool' is not valid JSON"
+		return 2
+	}
+
+	_ccf_bad=""; _ccf_unknown=""; _ccf_contra=""
+	_ccf_oldifs=$IFS
+	IFS='	'
+	# A `while read` fed by a here-document runs in the CURRENT shell in sh, dash and bash, so
+	# the accumulators below survive the loop. A pipeline would put them in a subshell, and every
+	# refusal would be silently discarded — a validator that forgets what it found has not
+	# validated anything.
+	while read -r _ccf_kind _ccf_key _ccf_val; do
+		case "$_ccf_kind" in
+			'') continue ;;
+			ERR)
+				IFS=$_ccf_oldifs
+				log_error "ss_emit_collector: <summary_overrides_json> for '$_ccf_tool' is not a JSON object"
+				return 2 ;;
+			UNK) _ccf_unknown="$_ccf_unknown $_ccf_key" ;;
+			BAD) _ccf_bad="$_ccf_bad $_ccf_key($_ccf_val)" ;;
+			INT)
+				if ss_count_valid "$_ccf_val"; then
+					# ss_count_valid has proven this is at most ten digits, so `-gt` is safe.
+					if [ "$_ccf_status" = "pass" ] && [ "$_ccf_val" -gt 0 ] \
+						&& ss_in_set "$_ccf_key" "$SS_GATING_SUMMARY_KEYS"; then
+						_ccf_contra="$_ccf_contra $_ccf_key=$_ccf_val"
+					fi
+				else
+					_ccf_bad="$_ccf_bad $_ccf_key=$(ss_redact "$_ccf_val")"
+				fi ;;
+			*) _ccf_bad="$_ccf_bad unreadable-validator-output" ;;
+		esac
+	done <<EOF
+$_ccf_lines
+EOF
+	IFS=$_ccf_oldifs
+
+	if [ -n "$_ccf_unknown" ]; then
+		log_error "ss_emit_collector: '$_ccf_tool' emits summary key(s) outside the canonical set:$_ccf_unknown"
 		return 2
 	fi
+	if [ -n "$_ccf_bad" ]; then
+		log_error "ss_emit_collector: '$_ccf_tool' emits summary value(s) outside the bounded contract (non-negative, integral unless the schema declares otherwise, at or below $SS_MAX_COUNT):$_ccf_bad"
+		return 2
+	fi
+	if [ -n "$_ccf_contra" ]; then
+		log_error "ss_emit_collector: '$_ccf_tool' reports status 'pass' while declaring gating finding(s):$_ccf_contra. A clean status and a positive gating count cannot both be true."
+		return 2
+	fi
+	return 0
+}
+
+# ss_emit_collector <tool> <status> <tool_report_json> <summary_overrides_json>
+# Emit a canonical collector object on stdout. The summary always carries the eighteen
+# always-present count keys (zeroed), with <summary_overrides_json> merged on top.
+ss_emit_collector() {
+	# THE WHOLE CONTRACT, OR NOTHING IS PUBLISHED.
+	#
+	# Validation runs to completion BEFORE the first byte of the object is produced, so a refusal
+	# leaves no partial document behind for a consumer to read: the `jq -n` below is the only
+	# writer and it is never reached on a refusal path.
+	#
+	# `exit 2` rather than `return 2`. A refusal that merely RETURNED was swallowed by this
+	# library's own callers: ss_shape_or_fail, ss_counts_or_fail, td_bad_count and
+	# arch_passthrough_status all emit and then `exit 0` unconditionally, so a refused emit
+	# became a collector that exited 0 having printed nothing — and build-security-summary.sh
+	# dropped it from the aggregate without a word. Exiting here fails the collector closed at
+	# every one of those sites at once. Callers that need the status (the tests, and any future
+	# in-process consumer) already run this inside a command substitution, where `exit` ends the
+	# subshell and surfaces as exit status 2 exactly as before.
+	ss_collector_contract_or_fail "$1" "$2" "$3" "$4" || exit 2
 	jq -n \
 		--arg tool "$1" \
 		--arg status "$2" \

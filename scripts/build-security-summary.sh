@@ -537,9 +537,23 @@ for row in $TOOL_TABLE; do
 		INPUT_MANIFEST="${INPUT_MANIFEST}${key}	${raw}	${_psha}
 "
 	fi
-	out=$(printf '%s' "$out" | jq -c --arg p "$key" --arg rp "$raw" --arg sha "$_psha" \
-		'. + {producer: $p, producer_report: $rp,
-		      producer_sha256: (if $sha == "" then null else $sha end)}') \
+	# `-e` is load-bearing, not decoration (#145). Without it this guard NEVER fired: jq exits 0
+	# on EMPTY input, printing nothing, so a collector that refused to emit — which is exactly
+	# what a fail-closed emitter now does — was appended to COLLECTED as a blank line, skipped by
+	# the later `jq -s`, and silently dropped from the aggregate. `-e` makes empty input exit 4,
+	# so a collector that produced nothing is a hard failure.
+	#
+	# `select(type == "object")` runs BEFORE the merge, and `-e` alone is not a substitute for it.
+	# `null + {producer: …}` is a VALID jq expression that yields the metadata object, so a
+	# collector printing the four bytes `null` produced a truthy document, satisfied `-e`, and was
+	# appended to COLLECTED as a producer record carrying no tool, no status and no summary.
+	# Selecting first makes the pipeline empty for every non-object, which `-e` then reports as
+	# exit 4 and die_cfg refuses. (An array or a string already errored on the `+`; `null` was the
+	# one shape that added cleanly.) Caught in review of #145 on PR #368.
+	out=$(printf '%s' "$out" | jq -ce --arg p "$key" --arg rp "$raw" --arg sha "$_psha" \
+		'select(type == "object")
+		 | . + {producer: $p, producer_report: $rp,
+		        producer_sha256: (if $sha == "" then null else $sha end)}') \
 		|| die_cfg "collector '$key' did not return a JSON object"
 	COLLECTED="${COLLECTED}${out}
 "
